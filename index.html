@@ -26,6 +26,31 @@
     --danger:#EF4444;
     --gold:#F5A524;
   }
+  body.dark-mode{
+    --bg:#14161F;
+    --surface:#1C1F2B;
+    --surface-alt:#242838;
+    --border:#333750;
+    --violet:#818CF8;
+    --violet-dark:#A5B4FC;
+    --violet-pale:#2E2F55;
+    --text:#E7E9F5;
+    --muted:#9CA3B8;
+    --faint:#5B6178;
+    --success:#34D399;
+    --success-pale:#123B2C;
+    --danger:#F87171;
+    --gold:#FBBF24;
+  }
+  body.dark-mode .goal.done{border-color:#1E4433;border-left-color:var(--success);}
+  body.dark-mode .goal.done .goal-title{text-decoration-color:#1E4433;}
+  body.dark-mode .checklist-card.done{border-color:#1E4433;}
+  body.dark-mode .checklist-done-chip{border-color:#1E4433;}
+  body.dark-mode .setup-banner,body.dark-mode .confirm-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
+  body.dark-mode .confirm-banner span{color:#C7CCF5;}
+  body.dark-mode .habit-streak{background:#3A2F14;}
+  body.dark-mode .dark-toggle{}
+
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
   body{
@@ -48,7 +73,9 @@
     display:flex;align-items:center;justify-content:center;
   }
   .brand-icon svg{width:19px;height:19px;}
-  .brand-name{font-size:16.5px;font-weight:800;color:var(--text);letter-spacing:-0.2px;}
+  .brand-name{font-size:16.5px;font-weight:800;color:var(--text);letter-spacing:-0.2px;flex:1;}
+  .dark-toggle{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;width:28px;height:28px;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex:none;}
+  .dark-toggle:hover{border-color:var(--violet);}
 
   .profile-card{background:var(--surface-alt);border:1px solid var(--border);border-radius:13px;padding:14px;margin-bottom:18px;}
   .profile-row{margin-bottom:8px;}
@@ -222,6 +249,11 @@
   .day-box{width:100%;aspect-ratio:1;border-radius:7px;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;}
   .day-box.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .month-lbl{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
+  .month-lbl-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
+  .month-lbl-row .month-lbl-text{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;min-width:110px;text-align:center;}
+  .month-nav{background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;width:22px;height:22px;line-height:1;color:var(--text);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;}
+  .month-nav:hover:not(:disabled){border-color:var(--violet);color:var(--violet-dark);}
+  .month-nav:disabled{opacity:0.35;cursor:default;}
   .month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
   .month-cell{aspect-ratio:1;border-radius:4px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--faint);}
   .month-cell.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
@@ -254,6 +286,9 @@
   .checklist-freq:hover,.checklist-habit-link:hover{border-color:var(--violet);}
   .checklist-freq:focus,.checklist-habit-link:focus{border-color:var(--violet);}
   .checklist-habit-link{color:var(--violet-dark);font-weight:600;}
+  .checklist-card.done{border-color:#CDE8D8;background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 60px);}
+  .checklist-card.done .checklist-name{color:var(--muted);}
+  .checklist-done-chip{background:var(--success-pale);color:var(--success);border:1px solid #CDE8D8;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700;}
 
   /* mantras */
   .mantra-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 18px;margin-bottom:9px;display:flex;align-items:center;gap:12px;}
@@ -284,6 +319,7 @@
   <div class="brand">
     <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.5l2 2 4-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="2"/></svg></div>
     <div class="brand-name">Project 25</div>
+    <button id="darkModeToggle" class="dark-toggle" title="Toggle dark mode">🌙</button>
   </div>
 
   <div class="profile-card">
@@ -426,7 +462,7 @@
 
 <script>
 (function(){
-  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], profile: {name:'',age:'',netWorth:''}, focus: null };
+  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
   let goalFilter = 'all';
   let starredFirst = false;
   let pendingImport = null;
@@ -494,6 +530,7 @@
     state.checklists = parsed.checklists || [];
     state.profile = parsed.profile || {name:'',age:'',netWorth:''};
     state.focus = parsed.focus || null;
+    state.darkMode = !!parsed.darkMode;
   }
 
   async function save(){
@@ -519,7 +556,7 @@
         const res = await getWithRetry('app-data');
         if(res && res.value) applyLoadedState(JSON.parse(res.value));
       } else {
-        const ready = initSupabaseIfNeeded();
+        const ready = await initSupabaseIfNeeded();
         if(ready){
           const { data, error } = await supa.from('app_data').select('data').eq('id', SHARED_ROW_ID).maybeSingle();
           if(error) throw error;
@@ -537,6 +574,7 @@
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
     el('pfNetWorth').value = state.profile.netWorth || '';
+    applyDarkMode();
     renderAll();
   }
 
@@ -610,7 +648,17 @@
     let arr = state.goals.slice();
     if(goalFilter === 'completed') arr = arr.filter(g=>goalProgress(g)===100);
     if(goalFilter === 'unfinished') arr = arr.filter(g=>goalProgress(g)<100);
-    if(starredFirst) arr.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+
+    if(goalFilter === 'all'){
+      // Total view: unfinished goals on top, completed goals at the bottom, completed sorted by completion date (most recent first)
+      const unfinished = arr.filter(g=>goalProgress(g)<100);
+      const completed = arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
+      if(starredFirst) unfinished.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+      arr = unfinished.concat(completed);
+    } else {
+      if(goalFilter === 'completed') arr.sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
+      if(starredFirst) arr.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+    }
     return arr;
   }
 
@@ -624,22 +672,13 @@
 
     let pick = null;
     if(pool.length){
-      if(starredOpen.length){
-        // starred goals exist: pick randomly among their open subtasks (or the goal itself if it has none)
-        let candidates = [];
-        pool.forEach(g=>{ g.subtasks.filter(s=>!s.done).forEach(s=> candidates.push({label:s.title, goalTitle:g.title})); });
-        if(candidates.length) pick = candidates[Math.floor(Math.random()*candidates.length)];
-        else { const g = pool[Math.floor(Math.random()*pool.length)]; pick = {label:'Make progress on "'+g.title+'"', goalTitle:g.title}; }
+      let candidates = [];
+      pool.forEach(g=>{ g.subtasks.filter(s=>!s.done).forEach(s=> candidates.push({label:s.title, goalTitle:g.title})); });
+      if(candidates.length){
+        pick = candidates[Math.floor(Math.random()*candidates.length)];
       } else {
-        // no starred goals: favor the "easiest" goal — the one closest to finished (fewest remaining subtasks) —
-        // then pick randomly among any tied for easiest, and randomly among that goal's remaining subtasks
-        let minRemaining = Infinity;
-        pool.forEach(g=>{ const rem = g.subtasks.filter(s=>!s.done).length; if(rem < minRemaining) minRemaining = rem; });
-        const easiestGoals = pool.filter(g=> g.subtasks.filter(s=>!s.done).length === minRemaining);
-        const g = easiestGoals[Math.floor(Math.random()*easiestGoals.length)];
-        const openSubs = g.subtasks.filter(s=>!s.done);
-        if(openSubs.length) pick = {label: openSubs[Math.floor(Math.random()*openSubs.length)].title, goalTitle:g.title};
-        else pick = {label:'Make progress on "'+g.title+'"', goalTitle:g.title};
+        const g = pool[Math.floor(Math.random()*pool.length)];
+        pick = { label:'No subtask available', goalTitle: g.title };
       }
     }
     state.focus = { date: today, pick };
@@ -1052,6 +1091,8 @@
 
   /* ================= HABITS ================= */
   const DAY_LABELS = ['M','T','W','T','F','S','S'];
+  // tracks which month each habit's calendar is currently showing (0 = current month, negative = past); not persisted
+  const habitMonthOffset = {};
 
   function calcStreak(h){
     let streak = 0;
@@ -1104,7 +1145,7 @@
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
-        + '<div class="habit-badge habit-streak">🔥 '+streak+' day streak</div>'
+        + (streak>=2 ? '<div class="habit-badge habit-streak">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
         + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ h.collapsed = !h.collapsed; save(); renderHabits(); });
@@ -1126,11 +1167,24 @@
         });
         card.appendChild(wgrid);
 
-        const mlbl = document.createElement('div'); mlbl.className='month-lbl';
-        mlbl.textContent = today.toLocaleDateString(undefined,{month:'long',year:'numeric'});
-        card.appendChild(mlbl);
+        const mlblRow = document.createElement('div'); mlblRow.className='month-lbl-row';
+        const offset = habitMonthOffset[h.id] || 0;
+        const viewDate = new Date(today.getFullYear(), today.getMonth()+offset, 1);
+        mlblRow.innerHTML = '<button class="month-nav" data-dir="-1" title="Previous month">‹</button>'
+          + '<span class="month-lbl-text">'+viewDate.toLocaleDateString(undefined,{month:'long',year:'numeric'})+'</span>'
+          + '<button class="month-nav" data-dir="1" title="Next month" '+(offset>=0?'disabled':'')+'>›</button>';
+        mlblRow.querySelectorAll('.month-nav').forEach(btn=>{
+          btn.addEventListener('click', ()=>{
+            const dir = parseInt(btn.dataset.dir, 10);
+            const next = offset + dir;
+            if(next > 0) return; // never navigate past the current month
+            habitMonthOffset[h.id] = next;
+            renderHabits();
+          });
+        });
+        card.appendChild(mlblRow);
         const mgrid = document.createElement('div'); mgrid.className='month-grid';
-        const y = today.getFullYear(), m = today.getMonth();
+        const y = viewDate.getFullYear(), m = viewDate.getMonth();
         const daysInMonth = new Date(y, m+1, 0).getDate();
         const firstDow = (new Date(y, m, 1).getDay()+6)%7;
         for(let i=0;i<firstDow;i++){ const blank = document.createElement('div'); mgrid.appendChild(blank); }
@@ -1315,9 +1369,12 @@
 
       const top = document.createElement('div'); top.className='checklist-top';
       const doneCt = c.items.filter(i=>i.done).length;
+      const allItemsDone = c.items.length>0 && doneCt === c.items.length;
+      if(allItemsDone) card.classList.add('done');
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(c.collapsed?'Expand':'Minimize')+'">'+(c.collapsed?'▶':'▼')+'</button>'
         + '<div class="checklist-name">'+escapeHtml(c.name)+'</div>'
+        + (allItemsDone ? '<span class="checklist-done-chip">✓ Checklist done</span>' : '')
         + '<span class="chip">'+doneCt+'/'+c.items.length+'</span>'
         + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
           + '<option value="">🔗 Link a habit…</option>'
@@ -1357,9 +1414,17 @@
         const addRow = document.createElement('div'); addRow.className='add-sub-row';
         addRow.innerHTML = '<input type="text" class="mini-input" placeholder="Add an item..." maxlength="100"><button>+</button>';
         const itemInput = addRow.querySelector('input');
-        const doAddItem = () => { const v=itemInput.value.trim(); if(!v) return; c.items.push({id:uid(), text:v, done:false}); save(); renderChecklists(); };
+        const doAddItem = () => {
+          const v=itemInput.value.trim(); if(!v) return;
+          c.items.push({id:uid(), text:v, done:false});
+          save(); renderChecklists();
+          // renderChecklists() rebuilds the DOM, so re-find and re-focus this checklist's input
+          // to let the user keep adding items just by pressing Enter
+          const freshInput = list.querySelector('.checklist-card[data-checklist-id="'+c.id+'"] .mini-input');
+          if(freshInput) freshInput.focus();
+        };
         addRow.querySelector('button').addEventListener('click', doAddItem);
-        itemInput.addEventListener('keydown', e=>{ if(e.key==='Enter') doAddItem(); });
+        itemInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doAddItem(); } });
         card.appendChild(addRow);
       }
 
@@ -1378,6 +1443,16 @@
   function renderAll(){
     renderGoals(); renderHabits(); renderCountdowns(); renderInsights(); renderMantras(); renderChecklists();
   }
+
+  function applyDarkMode(){
+    document.body.classList.toggle('dark-mode', !!state.darkMode);
+    el('darkModeToggle').textContent = state.darkMode ? '☀️' : '🌙';
+  }
+  el('darkModeToggle').addEventListener('click', ()=>{
+    state.darkMode = !state.darkMode;
+    applyDarkMode();
+    save();
+  });
 
   load();
 })();

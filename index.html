@@ -442,25 +442,29 @@
      This app can run two ways:
      1) Inside Claude (claude.ai) — uses the built-in window.storage API automatically, no setup needed.
      2) Deployed elsewhere (e.g. GitHub Pages) — window.storage won't exist, so it falls back to Supabase.
+        No login: every visitor reads/writes the same shared row (see SHARED_ROW_ID below).
+        Anyone with the link can view and edit the data — there's no per-user separation.
         To enable that, create a free Supabase project, then:
-          a) Table + policies (run in the Supabase SQL editor):
+          a) Table + policy (run in the Supabase SQL editor):
                create table app_data (
-                 id uuid primary key references auth.users(id),
+                 id text primary key,
                  data jsonb,
                  updated_at timestamptz default now()
                );
                alter table app_data enable row level security;
-               create policy "Users manage own data" on app_data
-                 for all using (auth.uid() = id) with check (auth.uid() = id);
-          b) In Supabase → Authentication → Providers, enable "Anonymous Sign-ins".
-          c) Paste your Project URL and anon public key below.
+               create policy "Anyone can read and write" on app_data
+                 for all using (true) with check (true);
+          b) Paste your Project URL and anon public key below.
   ---------------------------------- */
   const SUPABASE_URL = 'https://gsmzeqybnacjtxtrpuil.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzbXplcXlibmFjanR4dHJwdWlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1NDI3OTIsImV4cCI6MjEwMDExODc5Mn0.99hVBDa3ZWFxj4rRQFfBW28MCgsaWHT7PTJFZJqca8I';
 
   const usingClaudeStorage = (typeof window.storage !== 'undefined' && window.storage && typeof window.storage.get === 'function');
   const supabaseConfigured = !SUPABASE_URL.includes('YOUR_SUPABASE') && !SUPABASE_ANON_KEY.includes('YOUR_SUPABASE');
-  let supa = null, supaUser = null;
+  // No login: everyone who opens this page reads/writes the same row. Anyone with the
+  // link can view and edit the data — there is no per-user separation.
+  const SHARED_ROW_ID = 'shared';
+  let supa = null;
 
   function showSetupBanner(msg){
     const b = el('setupBanner');
@@ -468,23 +472,16 @@
     b.innerHTML = msg || 'This copy of Project 25 isn\u2019t connected to a database yet, so nothing will be saved between visits. Open the HTML file and fill in <code>SUPABASE_URL</code> / <code>SUPABASE_ANON_KEY</code> near the top of the script (see the comment above them for the one-time Supabase setup steps).';
   }
 
-  async function initSupabaseIfNeeded(){
+  function initSupabaseIfNeeded(){
     if(usingClaudeStorage) return true;
     if(!supabaseConfigured){ showSetupBanner(); return false; }
-    if(supa && supaUser) return true;
+    if(supa) return true;
     try{
       supa = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-      let { data:{ session } } = await supa.auth.getSession();
-      if(!session){
-        const { data, error } = await supa.auth.signInAnonymously();
-        if(error) throw error;
-        session = data.session;
-      }
-      supaUser = session.user;
       return true;
     }catch(e){
       console.error('Supabase init failed', e);
-      showSetupBanner('Could not connect to Supabase. Double-check your URL/key and that Anonymous Sign-ins are enabled in your Supabase project, then reload.');
+      showSetupBanner('Could not connect to Supabase. Double-check your URL/key, then reload.');
       return false;
     }
   }
@@ -502,8 +499,8 @@
   async function save(){
     try{
       if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(state)); return; }
-      if(!supa || !supaUser) return;
-      const { error } = await supa.from('app_data').upsert({ id: supaUser.id, data: state, updated_at: new Date().toISOString() });
+      if(!supa) return;
+      const { error } = await supa.from('app_data').upsert({ id: SHARED_ROW_ID, data: state, updated_at: new Date().toISOString() });
       if(error) throw error;
     }catch(e){ console.error('save failed', e); }
   }
@@ -522,9 +519,9 @@
         const res = await getWithRetry('app-data');
         if(res && res.value) applyLoadedState(JSON.parse(res.value));
       } else {
-        const ready = await initSupabaseIfNeeded();
+        const ready = initSupabaseIfNeeded();
         if(ready){
-          const { data, error } = await supa.from('app_data').select('data').eq('id', supaUser.id).maybeSingle();
+          const { data, error } = await supa.from('app_data').select('data').eq('id', SHARED_ROW_ID).maybeSingle();
           if(error) throw error;
           if(data && data.data) applyLoadedState(data.data);
         }

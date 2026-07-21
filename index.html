@@ -364,6 +364,42 @@
   .finance-amt{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;flex:none;}
   .finance-amt.positive{color:var(--success);}
   .finance-amt.negative{color:var(--danger);}
+  /* finance: sub-nav + expandable accounts + transfer + subscriptions + converter */
+  .finance-subnav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;}
+  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .finance-ccy-badge{font-size:9.5px;font-weight:800;color:var(--violet-dark);background:var(--violet-pale);border-radius:5px;padding:2px 6px;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;}
+  .fa-thumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:1px solid var(--border);}
+  .finance-account{background:var(--surface);border:1px solid var(--border);border-radius:13px;margin-bottom:8px;overflow:hidden;}
+  .finance-account-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;}
+  .fa-chevron{flex:none;color:var(--faint);transition:transform .2s ease;font-size:10px;}
+  .finance-account.open .fa-chevron{transform:rotate(90deg);}
+  .finance-account-detail{max-height:0;overflow:hidden;transition:max-height .25s ease;}
+  .finance-account.open .finance-account-detail{max-height:1200px;}
+  .finance-account-detail-inner{padding:2px 16px 16px 16px;border-top:1px solid var(--border);}
+  .tx-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px;}
+  .tx-row:last-child{border-bottom:none;}
+  .tx-note{flex:1;min-width:0;color:var(--muted);}
+  .tx-date{color:var(--faint);font-size:11px;flex:none;}
+  .tx-amt{font-family:'Manrope',sans-serif;font-weight:800;flex:none;}
+  .tx-amt.positive{color:var(--success);}
+  .tx-amt.negative{color:var(--danger);}
+  .add-tx-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
+  .add-tx-row input{background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;}
+  .add-tx-row input[type=text]{flex:2;min-width:120px;}
+  .add-tx-row input[type=number]{width:100px;}
+  .finance-transfer-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:16px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .finance-transfer-panel select, .finance-transfer-panel input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .sub-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
+  .sub-icon{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);}
+  .sub-info{flex:1;min-width:0;}
+  .sub-name{font-size:13.5px;font-weight:700;}
+  .sub-meta{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;}
+  .sub-amt{font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;flex:none;color:var(--text);}
+  .rates-table{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px;}
+  .rate-cell{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;}
+  .rate-cell label{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:4px;}
+  .rate-cell input{width:100%;background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;box-sizing:border-box;}
 
   /* fitness */
   .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}
@@ -545,21 +581,67 @@
       <div class="stat" style="cursor:default;"><div class="num" id="finNetWorth">$0</div><div class="lbl">Finance Net Worth</div></div>
     </div>
 
-    <div class="finance-add-row">
-      <select id="finType">
-        <option value="savings">Savings account</option>
-        <option value="credit">Credit account</option>
-        <option value="lent">Lent (owed to you)</option>
-        <option value="custom-asset">Custom — Asset</option>
-        <option value="custom-liability">Custom — Liability</option>
-      </select>
-      <input type="text" id="finName" placeholder="Account name..." maxlength="60">
-      <input type="number" id="finBalance" placeholder="Balance $" min="0">
-      <button class="btn btn-primary" id="addFinanceBtn">+ Add Account</button>
+    <div class="finance-subnav">
+      <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
+      <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
+      <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency Converter</button>
     </div>
 
-    <div id="financeList"></div>
-    <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one above</b> to start tracking your net worth.</div>
+    <!-- ACCOUNTS -->
+    <div class="fintab" id="fintab-accounts">
+      <div class="finance-add-row">
+        <select id="finType">
+          <option value="savings">Savings account</option>
+          <option value="credit">Credit account</option>
+          <option value="lent">Lent (owed to you)</option>
+          <option value="custom-asset">Custom — Asset</option>
+          <option value="custom-liability">Custom — Liability</option>
+        </select>
+        <input type="text" id="finName" placeholder="Account name..." maxlength="60">
+        <input type="number" id="finBalance" placeholder="Balance" min="0" step="0.01">
+        <select id="finCurrency"></select>
+        <button class="btn btn-primary" id="addFinanceBtn">+ Add Account</button>
+      </div>
+
+      <div class="finance-add-row" style="margin-top:-8px;">
+        <button class="btn" id="toggleTransferBtn" type="button">⇄ Transfer Between Accounts</button>
+      </div>
+      <div id="transferPanel" class="finance-transfer-panel" style="display:none;"></div>
+
+      <div id="financeList"></div>
+      <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one above</b> to start tracking your net worth.</div>
+    </div>
+
+    <!-- SUBSCRIPTIONS -->
+    <div class="fintab" id="fintab-subs" style="display:none;">
+      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
+        <div class="stat" style="cursor:default;max-width:260px;"><div class="num" id="subsMonthlyTotal">$0</div><div class="lbl">Total Monthly Subscriptions</div></div>
+      </div>
+      <div class="finance-add-row">
+        <input type="text" id="subName" placeholder="Subscription name (e.g. Netflix)" maxlength="60">
+        <input type="number" id="subAmount" placeholder="Amount" min="0" step="0.01">
+        <select id="subCurrency"></select>
+        <select id="subCycle"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>
+        <input type="date" id="subNextDate" title="Next billing date">
+        <button class="btn btn-primary" id="addSubBtn">+ Add Subscription</button>
+      </div>
+      <div id="subsList"></div>
+      <div class="empty" id="subsEmpty" style="display:none;">No subscriptions tracked yet. <b>Add one above</b> — e.g. Netflix, Claude, Spotify.</div>
+    </div>
+
+    <!-- CURRENCY CONVERTER -->
+    <div class="fintab" id="fintab-convert" style="display:none;">
+      <div class="finance-add-row">
+        <input type="number" id="convAmount" placeholder="Amount" value="1" min="0" step="0.01">
+        <select id="convFrom"></select>
+        <span style="align-self:center;color:var(--muted);">→</span>
+        <select id="convTo"></select>
+      </div>
+      <div class="stat" style="cursor:default;max-width:280px;"><div class="num" id="convResult">$0</div><div class="lbl">Converted amount</div></div>
+      <div class="section-lbl" style="margin-top:22px;">Exchange Rates (units per 1 USD)</div>
+      <div class="view-sub" style="margin-top:-4px;margin-bottom:0;">Edit these to keep conversions accurate — rates aren't fetched automatically.</div>
+      <div id="ratesTable" class="rates-table"></div>
+    </div>
   </div>
 
   <!-- FITNESS -->
@@ -682,8 +764,15 @@
 
 <script>
 (function(){
+  // Supported currencies for Finance (multi-currency accounts, subscriptions, and the converter).
+  // Rates are "units per 1 USD" and are user-editable in the Currency Converter tab since they
+  // aren't fetched live from anywhere.
+  const CURRENCIES = ['USD','PHP','EUR','GBP','JPY','AUD','CAD','SGD','INR','CNY'];
+  const CURRENCY_SYMBOLS = {USD:'$',PHP:'₱',EUR:'€',GBP:'£',JPY:'¥',AUD:'A$',CAD:'C$',SGD:'S$',INR:'₹',CNY:'¥'};
+  const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
+
   let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [],
-    finance: { accounts: [] },
+    finance: { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
   let goalFilter = 'all';
@@ -753,8 +842,22 @@
     state.countdowns = parsed.countdowns || [];
     state.mantras = parsed.mantras || [];
     state.checklists = parsed.checklists || [];
-    state.finance = parsed.finance || { accounts: [] };
+    state.finance = parsed.finance || { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) };
     if(!state.finance.accounts) state.finance.accounts = [];
+    if(!state.finance.subscriptions) state.finance.subscriptions = [];
+    if(!state.finance.rates) state.finance.rates = Object.assign({}, DEFAULT_RATES);
+    CURRENCIES.forEach(c=>{ if(state.finance.rates[c]===undefined) state.finance.rates[c] = DEFAULT_RATES[c]; });
+    state.finance.accounts.forEach(a=>{
+      if(a.currency===undefined) a.currency = 'USD';
+      if(a.imageUrl===undefined) a.imageUrl = '';
+      if(a.transactions===undefined) a.transactions = [];
+      if(a.open===undefined) a.open = false;
+    });
+    state.finance.subscriptions.forEach(s=>{
+      if(s.currency===undefined) s.currency = 'USD';
+      if(s.cycle===undefined) s.cycle = 'monthly';
+      if(s.nextDate===undefined) s.nextDate = '';
+    });
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
@@ -899,11 +1002,25 @@
     const n = parseFloat(String(raw).replace(/[^0-9.\-]/g,''));
     return isNaN(n) ? 0 : n;
   }
+  // ---- currency helpers (rates are "units per 1 USD", user-editable in the converter tab) ----
+  function rateFor(ccy){ return (state.finance.rates && state.finance.rates[ccy]) || DEFAULT_RATES[ccy] || 1; }
+  function convertAmt(amount, from, to){
+    const usd = (parseFloat(amount)||0) / rateFor(from||'USD');
+    return usd * rateFor(to||'USD');
+  }
+  function ccySymbol(ccy){ return CURRENCY_SYMBOLS[ccy] || (ccy+' '); }
+  function fmtMoney(amount, ccy){
+    const sym = ccySymbol(ccy||'USD');
+    return sym + (parseFloat(amount)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+  }
+
   // sums Finance-section accounts: savings/lent/custom-asset are assets, credit/custom-liability are liabilities
+  // each account's balance is converted from its own currency into USD before summing
   function financeNetWorth(){
     return (state.finance.accounts||[]).reduce((sum,a)=>{
       const sign = (a.type==='credit' || a.type==='custom-liability') ? -1 : 1;
-      return sum + sign*(parseFloat(a.balance)||0);
+      const usdBal = convertAmt(a.balance, a.currency||'USD', 'USD');
+      return sum + sign*usdBal;
     }, 0);
   }
   // overall net worth = manually entered profile figure + everything tracked in the Finance section
@@ -1867,19 +1984,37 @@
   function financeIcon(type){
     return {savings:'\ud83d\udcb0', credit:'\ud83d\udcb3', lent:'\ud83e\udd1d', 'custom-asset':'\ud83d\udcc8', 'custom-liability':'\ud83d\udcc9'}[type] || '\ud83d\udcbc';
   }
+
+  // one-time population of every currency <select> in the Finance view
+  function populateCurrencySelects(){
+    const opts = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');
+    ['finCurrency','subCurrency','convFrom','convTo'].forEach(id=>{ const s = el(id); if(s) s.innerHTML = opts; });
+    if(el('convFrom')) el('convFrom').value = 'USD';
+    if(el('convTo')) el('convTo').value = CURRENCIES.includes('PHP') ? 'PHP' : 'USD';
+  }
+
   function renderFinance(){
+    renderFinanceAccounts();
+    renderFinanceSubs();
+    renderFinanceConverter();
+  }
+
+  /* ---- accounts (+ transfers, transactions, per-account currency & icon image) ---- */
+  function renderFinanceAccounts(){
     const list = el('financeList'); list.innerHTML = '';
     const accounts = state.finance.accounts || [];
     el('financeEmpty').style.display = accounts.length===0 ? 'block' : 'none';
 
     let assets = 0, liabilities = 0;
     accounts.forEach(a=>{
-      const bal = parseFloat(a.balance)||0;
-      if(a.type==='credit' || a.type==='custom-liability') liabilities += bal; else assets += bal;
+      const usdBal = convertAmt(a.balance, a.currency||'USD', 'USD');
+      if(a.type==='credit' || a.type==='custom-liability') liabilities += usdBal; else assets += usdBal;
     });
-    el('finTotalAssets').textContent = '$'+assets.toLocaleString();
-    el('finTotalLiabilities').textContent = '$'+liabilities.toLocaleString();
-    el('finNetWorth').textContent = '$'+(assets-liabilities).toLocaleString();
+    el('finTotalAssets').textContent = fmtMoney(assets,'USD');
+    el('finTotalLiabilities').textContent = fmtMoney(liabilities,'USD');
+    el('finNetWorth').textContent = fmtMoney(assets-liabilities,'USD');
+
+    populateTransferPanel();
 
     const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
     groups.forEach(([type,label])=>{
@@ -1887,17 +2022,103 @@
       if(!items.length) return;
       const lbl = document.createElement('div'); lbl.className='finance-group-lbl'; lbl.textContent = label; list.appendChild(lbl);
       items.forEach(a=>{
+        if(a.currency===undefined) a.currency = 'USD';
+        if(a.imageUrl===undefined) a.imageUrl = '';
+        if(a.transactions===undefined) a.transactions = [];
         const bal = parseFloat(a.balance)||0;
         const isNeg = (a.type==='credit' || a.type==='custom-liability');
-        const card = document.createElement('div'); card.className='finance-card';
-        card.innerHTML = '<div class="finance-icon">'+financeIcon(a.type)+'</div>'
-          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'</div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
-          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+'$'+bal.toLocaleString()+'</div>'
-          + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
-        card.querySelector('.del-goal').addEventListener('click', ()=>{
-          state.finance.accounts = state.finance.accounts.filter(x=>x.id!==a.id);
-          save(); renderFinance(); renderGoals();
+
+        const card = document.createElement('div'); card.className = 'finance-account' + (a.open ? ' open' : '');
+
+        const head = document.createElement('div'); head.className = 'finance-account-head';
+        head.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '<div class="finance-icon">'+financeIcon(a.type)+'</div>')
+          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'<span class="finance-ccy-badge">'+a.currency+'</span></div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
+          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(bal,a.currency)+'</div>'
+          + '<div class="fa-chevron">▶</div>';
+        head.addEventListener('click', ()=>{ a.open = !a.open; save(); renderFinanceAccounts(); });
+        card.appendChild(head);
+
+        const detail = document.createElement('div'); detail.className = 'finance-account-detail';
+        const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
+
+        // currency + balance
+        const ccyLbl = document.createElement('div'); ccyLbl.className='section-lbl'; ccyLbl.textContent='Currency & Balance'; inner.appendChild(ccyLbl);
+        const ccyRow = document.createElement('div'); ccyRow.className='inline-fields';
+        const ccySel = document.createElement('select');
+        ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(a.currency===c?'selected':'')+'>'+c+'</option>').join('');
+        ccySel.addEventListener('change', ()=>{ a.currency = ccySel.value; save(); renderFinanceAccounts(); });
+        const balInput = document.createElement('input'); balInput.type='number'; balInput.step='0.01'; balInput.value=a.balance; balInput.style.width='120px';
+        balInput.addEventListener('change', ()=>{ a.balance = parseFloat(balInput.value)||0; save(); renderFinanceAccounts(); renderGoals(); });
+        ccyRow.appendChild(ccySel); ccyRow.appendChild(balInput);
+        inner.appendChild(ccyRow);
+
+        // icon image
+        const iLbl = document.createElement('div'); iLbl.className='section-lbl'; iLbl.textContent='Icon Image'; inner.appendChild(iLbl);
+        const imgRow = document.createElement('div'); imgRow.className='img-row';
+        imgRow.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '')
+          + '<label>Upload image<input type="file" accept="image/*" style="display:none;"></label>'
+          + (a.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
+        imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
+          const file = e.target.files[0]; if(!file) return;
+          const reader = new FileReader();
+          reader.onload = ev => { a.imageUrl = ev.target.result; save(); renderFinanceAccounts(); };
+          reader.readAsDataURL(file);
         });
+        const rmBtn = imgRow.querySelector('.del-goal');
+        if(rmBtn) rmBtn.addEventListener('click', ()=>{ a.imageUrl=''; save(); renderFinanceAccounts(); });
+        inner.appendChild(imgRow);
+
+        // transactions
+        const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Transactions'; inner.appendChild(tLbl);
+        const txList = document.createElement('div');
+        const txs = (a.transactions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
+        if(!txs.length){
+          const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;'; noneRow.textContent='No transactions logged yet.';
+          txList.appendChild(noneRow);
+        }
+        txs.forEach(tx=>{
+          const row = document.createElement('div'); row.className='tx-row';
+          const isPos = tx.amount >= 0;
+          row.innerHTML = '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
+            + '<span class="tx-note">'+escapeHtml(tx.note||'')+'</span>'
+            + '<span class="tx-amt '+(isPos?'positive':'negative')+'">'+(isPos?'+':'-')+fmtMoney(Math.abs(tx.amount),a.currency)+'</span>'
+            + '<button class="del-goal" style="padding:2px 8px;font-size:11px;">✕</button>';
+          row.querySelector('.del-goal').addEventListener('click', ()=>{
+            a.balance = (parseFloat(a.balance)||0) - tx.amount;
+            a.transactions = (a.transactions||[]).filter(x=>x.id!==tx.id);
+            save(); renderFinanceAccounts(); renderGoals();
+          });
+          txList.appendChild(row);
+        });
+        inner.appendChild(txList);
+
+        const addTx = document.createElement('div'); addTx.className='add-tx-row';
+        addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80">'
+          + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)">'
+          + '<button class="btn btn-primary" type="button">+ Add</button>';
+        const txInputs = addTx.querySelectorAll('input');
+        const noteInput = txInputs[0], amtInput = txInputs[1];
+        addTx.querySelector('button').addEventListener('click', ()=>{
+          const amt = parseFloat(amtInput.value);
+          if(isNaN(amt) || amt===0) return;
+          const tx = { id:uid(), amount:amt, note:noteInput.value.trim(), createdAt:Date.now() };
+          a.transactions = a.transactions || []; a.transactions.push(tx);
+          a.balance = (parseFloat(a.balance)||0) + amt;
+          noteInput.value=''; amtInput.value='';
+          save(); renderFinanceAccounts(); renderGoals();
+        });
+        inner.appendChild(addTx);
+
+        const footer = document.createElement('div'); footer.className='goal-footer'; footer.style.marginTop='12px';
+        footer.innerHTML = '<span></span><button class="del-goal">Delete account</button>';
+        footer.querySelector('.del-goal').addEventListener('click', ()=>{
+          state.finance.accounts = state.finance.accounts.filter(x=>x.id!==a.id);
+          save(); renderFinanceAccounts(); renderGoals();
+        });
+        inner.appendChild(footer);
+
+        detail.appendChild(inner);
+        card.appendChild(detail);
         list.appendChild(card);
       });
     });
@@ -1906,10 +2127,129 @@
     const name = el('finName').value.trim();
     const balance = parseFloat(el('finBalance').value);
     if(!name || isNaN(balance)) return;
-    state.finance.accounts.push({ id:uid(), type: el('finType').value, name, balance, createdAt: Date.now() });
+    state.finance.accounts.push({ id:uid(), type: el('finType').value, name, balance, currency: el('finCurrency').value||'USD', imageUrl:'', transactions:[], open:false, createdAt: Date.now() });
     el('finName').value=''; el('finBalance').value='';
-    save(); renderFinance(); renderGoals();
+    save(); renderFinanceAccounts(); renderGoals();
   });
+
+  /* ---- transfer funds between accounts ---- */
+  el('toggleTransferBtn').addEventListener('click', ()=>{
+    const panel = el('transferPanel');
+    panel.style.display = panel.style.display==='none' ? 'flex' : 'none';
+  });
+  function populateTransferPanel(){
+    const panel = el('transferPanel'); if(!panel) return;
+    if(!panel.dataset.built){
+      panel.innerHTML = '<select id="xferFrom"></select><span style="color:var(--muted);">→</span><select id="xferTo"></select>'
+        + '<input type="number" id="xferAmt" placeholder="Amount" step="0.01" style="width:110px;">'
+        + '<button class="btn btn-primary" id="xferBtn" type="button">Transfer</button>'
+        + '<div id="xferMsg" style="width:100%;font-size:11.5px;color:var(--muted);"></div>';
+      panel.dataset.built = '1';
+      el('xferBtn').addEventListener('click', doTransfer);
+    }
+    const accounts = state.finance.accounts || [];
+    const optHtml = accounts.map(a=>'<option value="'+a.id+'">'+escapeHtml(a.name)+' ('+a.currency+')</option>').join('');
+    const fromSel = el('xferFrom'), toSel = el('xferTo');
+    const fv = fromSel.value, tv = toSel.value;
+    fromSel.innerHTML = optHtml; toSel.innerHTML = optHtml;
+    if(accounts.some(a=>a.id===fv)) fromSel.value = fv;
+    if(accounts.some(a=>a.id===tv)) toSel.value = tv;
+  }
+  function doTransfer(){
+    const accounts = state.finance.accounts || [];
+    const fromId = el('xferFrom').value, toId = el('xferTo').value;
+    const amt = parseFloat(el('xferAmt').value);
+    const msg = el('xferMsg');
+    if(!fromId || !toId || fromId===toId || isNaN(amt) || amt<=0){ msg.textContent = 'Pick two different accounts and a positive amount.'; return; }
+    const from = accounts.find(a=>a.id===fromId), to = accounts.find(a=>a.id===toId);
+    if(!from || !to) return;
+    const converted = convertAmt(amt, from.currency||'USD', to.currency||'USD');
+    from.balance = (parseFloat(from.balance)||0) - amt;
+    to.balance = (parseFloat(to.balance)||0) + converted;
+    from.transactions = from.transactions || []; from.transactions.push({ id:uid(), amount:-amt, note:'Transfer to '+to.name, createdAt:Date.now() });
+    to.transactions = to.transactions || []; to.transactions.push({ id:uid(), amount:converted, note:'Transfer from '+from.name, createdAt:Date.now() });
+    el('xferAmt').value = '';
+    msg.textContent = 'Transferred '+fmtMoney(amt, from.currency)+' → '+fmtMoney(converted, to.currency)+'.';
+    save(); renderFinanceAccounts(); renderGoals();
+  }
+
+  /* ---- subscriptions ---- */
+  function renderFinanceSubs(){
+    const list = el('subsList'); if(!list) return; list.innerHTML = '';
+    const subs = state.finance.subscriptions || [];
+    el('subsEmpty').style.display = subs.length===0 ? 'block' : 'none';
+    let totalUSD = 0;
+    subs.forEach(s=>{
+      const monthlyAmt = s.cycle==='yearly' ? (parseFloat(s.amount)||0)/12 : (parseFloat(s.amount)||0);
+      totalUSD += convertAmt(monthlyAmt, s.currency||'USD', 'USD');
+    });
+    el('subsMonthlyTotal').textContent = fmtMoney(totalUSD,'USD');
+    subs.slice().sort((a,b)=>(parseFloat(b.amount)||0)-(parseFloat(a.amount)||0)).forEach(s=>{
+      const card = document.createElement('div'); card.className='sub-card';
+      const nextTxt = s.nextDate ? ' · Next '+fmtDate(new Date(s.nextDate).getTime()) : '';
+      card.innerHTML = '<div class="sub-icon">🔁</div>'
+        + '<div class="sub-info"><div class="sub-name">'+escapeHtml(s.name)+'</div><div class="sub-meta">'+(s.cycle==='yearly'?'Yearly':'Monthly')+escapeHtml(nextTxt)+'</div></div>'
+        + '<div class="sub-amt">'+fmtMoney(parseFloat(s.amount)||0, s.currency||'USD')+' / '+(s.cycle==='yearly'?'yr':'mo')+'</div>'
+        + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
+      card.querySelector('.del-goal').addEventListener('click', ()=>{
+        state.finance.subscriptions = state.finance.subscriptions.filter(x=>x.id!==s.id);
+        save(); renderFinanceSubs();
+      });
+      list.appendChild(card);
+    });
+  }
+  el('addSubBtn').addEventListener('click', ()=>{
+    const name = el('subName').value.trim();
+    const amount = parseFloat(el('subAmount').value);
+    if(!name || isNaN(amount)) return;
+    state.finance.subscriptions.push({ id:uid(), name, amount, currency: el('subCurrency').value||'USD', cycle: el('subCycle').value||'monthly', nextDate: el('subNextDate').value||'', createdAt: Date.now() });
+    el('subName').value=''; el('subAmount').value=''; el('subNextDate').value='';
+    save(); renderFinanceSubs();
+  });
+
+  /* ---- currency converter ---- */
+  function renderFinanceConverter(){
+    const rt = el('ratesTable'); if(!rt) return;
+    if(!rt.dataset.built){
+      rt.innerHTML = CURRENCIES.map(c=>'<div class="rate-cell"><label>'+c+' per $1</label><input type="number" step="0.0001" min="0" data-ccy="'+c+'"></div>').join('');
+      rt.dataset.built = '1';
+      rt.querySelectorAll('input').forEach(inp=>{
+        inp.addEventListener('change', ()=>{
+          const c = inp.dataset.ccy;
+          const v = parseFloat(inp.value);
+          state.finance.rates[c] = isNaN(v) || v<=0 ? DEFAULT_RATES[c] : v;
+          save(); renderFinanceConverter();
+        });
+      });
+    }
+    rt.querySelectorAll('input').forEach(inp=>{
+      if(document.activeElement !== inp) inp.value = rateFor(inp.dataset.ccy);
+    });
+    doConvert();
+  }
+  function doConvert(){
+    const amt = parseFloat(el('convAmount').value);
+    const from = el('convFrom').value, to = el('convTo').value;
+    if(isNaN(amt)){ el('convResult').textContent = '—'; return; }
+    el('convResult').textContent = fmtMoney(convertAmt(amt, from, to), to);
+  }
+  ['convAmount','convFrom','convTo'].forEach(id=>{
+    el(id).addEventListener('input', doConvert);
+    el(id).addEventListener('change', doConvert);
+  });
+
+  /* ---- finance sub-nav (Accounts / Subscriptions / Currency Converter) ---- */
+  document.querySelectorAll('.finance-subnav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.finance-subnav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.fintab').forEach(t=>t.style.display='none');
+      btn.classList.add('active');
+      el('fintab-'+btn.dataset.fintab).style.display = '';
+      if(btn.dataset.fintab==='subs') renderFinanceSubs();
+      if(btn.dataset.fintab==='convert') renderFinanceConverter();
+    });
+  });
+  populateCurrencySelects();
 
   /* ================= FITNESS ================= */
   const KG_PER_LB = 0.45359237;

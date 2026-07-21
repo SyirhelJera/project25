@@ -371,15 +371,53 @@
   .fitness-field label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--faint);font-weight:700;}
   .fitness-field input, .fitness-field select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
   .fitness-field input:focus, .fitness-field select:focus{border-color:var(--violet);}
-  .fitness-results{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:6px;}
+  .fitness-results{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-top:6px;}
   .fitness-result-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 8px;text-align:center;}
   .fitness-result-card .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--violet-dark);}
   .fitness-result-card .lbl{font-size:10px;color:var(--muted);margin-top:4px;}
+  .fitness-result-card .sub{font-size:9.5px;color:var(--faint);margin-top:2px;}
   .fitness-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.6;text-align:center;}
+
+  .unit-toggle{display:inline-flex;background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;margin-bottom:16px;}
+  .unit-toggle button{border:none;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:6px 14px;border-radius:7px;cursor:pointer;font-family:'Inter',sans-serif;}
+  .unit-toggle button.active{background:var(--violet);color:#fff;}
+
+  .fitness-log-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .fitness-log-banner span{flex:1;font-size:12.5px;color:#3730A3;min-width:200px;}
+  body.dark-mode .fitness-log-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
+  body.dark-mode .fitness-log-banner span{color:#C7CCF5;}
+
+  .weight-log-row-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+  .weight-log-row-add input[type=date]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .weight-log-row-add input[type=number]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;width:120px;}
+  .weight-log-row-add input:focus{border-color:var(--violet);}
+
+  .weight-log-list{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);}
+  .weight-log-group-header{display:flex;align-items:center;gap:8px;padding:9px 14px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:var(--muted);background:var(--surface-alt);cursor:pointer;border-bottom:1px solid var(--border);}
+  .weight-log-group-header:hover{color:var(--violet-dark);}
+  .weight-log-group-header .wlg-chevron{font-size:9px;color:var(--faint);flex:none;}
+  .weight-log-group-header .wlg-label{flex:1;}
+  .weight-log-group-header .wlg-count{font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);}
+  .weight-log-item{display:flex;align-items:center;gap:10px;padding:8px 14px;font-size:12.5px;border-bottom:1px solid var(--border);}
+  .weight-log-item:last-child{border-bottom:none;}
+  .weight-log-item .wl-date{color:var(--muted);width:100px;flex:none;}
+  .weight-log-item .wl-weight{font-weight:700;flex:1;}
+  .weight-log-item .wl-delta{font-size:11px;font-weight:700;padding:1px 7px;border-radius:6px;flex:none;}
+  .weight-log-item .wl-delta.down{color:var(--success);background:var(--success-pale);}
+  .weight-log-item .wl-delta.up{color:var(--danger);background:#FEECEC;}
+  body.dark-mode .weight-log-item .wl-delta.up{background:#3A1E1E;}
+  .weight-log-item .wl-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 6px;}
+  .weight-log-item .wl-del:hover{color:var(--danger);}
+
+  .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:16px 18px;margin-bottom:18px;}
+  .chart-legend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-top:8px;justify-content:center;flex-wrap:wrap;}
+  .chart-legend span{display:inline-flex;align-items:center;gap:5px;}
+  .chart-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
 
   @media (max-width:720px){
     .finance-summary{grid-template-columns:repeat(3,1fr);}
-    .fitness-fields, .fitness-results{grid-template-columns:repeat(2,1fr);}
+    .fitness-fields{grid-template-columns:repeat(2,1fr);}
+    .fitness-results{grid-template-columns:repeat(2,1fr);}
   }
 
   ::-webkit-scrollbar{width:8px;}
@@ -411,7 +449,7 @@
     <div class="nav-item active" data-tab="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Goals</div>
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Habits<span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg>Finance</div>
-    <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness</div>
+    <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness<span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
     <div class="nav-item" data-tab="insights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20V10M10 20V4M17 20v-7"/></svg>Insights</div>
@@ -527,11 +565,18 @@
   <!-- FITNESS -->
   <div class="view" id="view-fitness">
     <div class="view-title">Fitness</div>
-    <div class="view-sub">Set your current and target weight (kg) to get a daily calorie target.</div>
+    <div class="view-sub">Log your weight, track BMI and trends, and get a daily calorie target.</div>
+
+    <div id="fitnessLogBanner" class="fitness-log-banner" style="display:none;"><span>⚠️ You haven't logged your weight today yet.</span><button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button></div>
+
+    <div class="unit-toggle" id="unitToggle">
+      <button data-unit="kg" id="unitBtnKg">KG</button>
+      <button data-unit="lb" id="unitBtnLb">LB</button>
+    </div>
 
     <div class="fitness-fields">
-      <div class="fitness-field"><label>Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.1"></div>
-      <div class="fitness-field"><label>Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.1"></div>
+      <div class="fitness-field"><label id="fitCurrentLbl">Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.1"></div>
+      <div class="fitness-field"><label id="fitTargetLbl">Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.1"></div>
       <div class="fitness-field"><label>Height (cm)</label><input type="number" id="fitHeight" min="0" step="0.1"></div>
       <div class="fitness-field"><label>Age</label><input type="number" id="fitAge" min="0"></div>
       <div class="fitness-field"><label>Biological Sex</label><select id="fitSex"><option value="male">Male</option><option value="female">Female</option></select></div>
@@ -544,23 +589,42 @@
           <option value="1.9">Very active (hard exercise daily)</option>
         </select>
       </div>
-      <div class="fitness-field"><label>Target Pace (kg/week)</label>
+      <div class="fitness-field"><label id="fitPaceLbl">Target Pace (kg/week)</label>
         <select id="fitPace">
-          <option value="0.25">0.25 kg / week</option>
-          <option value="0.5">0.5 kg / week</option>
-          <option value="0.75">0.75 kg / week</option>
-          <option value="1">1 kg / week</option>
+          <option value="0.25">0.25</option>
+          <option value="0.5">0.5</option>
+          <option value="0.75">0.75</option>
+          <option value="1">1</option>
         </select>
       </div>
     </div>
 
     <div class="fitness-results" id="fitnessResults" style="display:none;">
+      <div class="fitness-result-card"><div class="num" id="fitBMI">—</div><div class="lbl">BMI</div><div class="sub" id="fitBMICat">—</div></div>
       <div class="fitness-result-card"><div class="num" id="fitBMR">—</div><div class="lbl">BMR (kcal/day)</div></div>
       <div class="fitness-result-card"><div class="num" id="fitTDEE">—</div><div class="lbl">Maintenance (kcal/day)</div></div>
       <div class="fitness-result-card"><div class="num" id="fitTarget2">—</div><div class="lbl">Daily Calorie Target</div></div>
       <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Estimated Weeks</div></div>
     </div>
     <div class="fitness-note" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
+
+    <div class="section-lbl" style="margin-top:22px;">Log Today's Weight</div>
+    <div class="weight-log-row-add">
+      <input type="date" id="wlDate">
+      <input type="number" id="wlWeight" step="0.1" min="0" placeholder="Weight">
+      <button class="btn btn-primary" id="wlAddBtn">+ Log Weight</button>
+    </div>
+    <div class="weight-log-list" id="weightLogList"></div>
+    <div class="empty" id="weightLogEmpty" style="display:none;">No weight logged yet. Log your first entry above.</div>
+
+    <div class="section-lbl" style="margin-top:22px;">Weight Trend (Last 12 Months)</div>
+    <div class="chart-card">
+      <div id="weightChartWrap"></div>
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--violet);"></span>Weight</span>
+        <span><span class="dot" style="background:var(--gold);"></span>Moving average</span>
+      </div>
+    </div>
   </div>
 
   <!-- CHECKLISTS -->
@@ -620,7 +684,7 @@
 (function(){
   let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [],
     finance: { accounts: [] },
-    fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5' },
+    fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
   let goalFilter = 'all';
   let starredFirst = false;
@@ -691,7 +755,9 @@
     state.checklists = parsed.checklists || [];
     state.finance = parsed.finance || { accounts: [] };
     if(!state.finance.accounts) state.finance.accounts = [];
-    state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5' };
+    state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
+    if(!state.fitness.unit) state.fitness.unit = 'kg';
+    if(!state.fitness.weightLog) state.fitness.weightLog = [];
     state.profile = parsed.profile || {name:'',age:'',netWorth:''};
     state.focus = parsed.focus || null;
     state.darkMode = !!parsed.darkMode;
@@ -705,6 +771,22 @@
       if(error) throw error;
     }catch(e){ console.error('save failed', e); }
   }
+  // Debounced save — collapses rapid-fire writes (e.g. typing in a number field) into a single
+  // network/storage write after the user pauses, instead of one write per keystroke. This keeps
+  // usage well within free-tier request limits (Supabase or otherwise) for fields that fire on
+  // every 'input' event. Discrete actions (clicks, checkboxes, blur/change) still call save()
+  // directly since those are already naturally infrequent.
+  let saveDebounceTimer = null;
+  function debouncedSave(delay){
+    clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = setTimeout(save, delay || 700);
+  }
+  // best-effort flush of any pending debounced save when the user navigates away or hides the tab
+  function flushPendingSave(){
+    if(saveDebounceTimer){ clearTimeout(saveDebounceTimer); saveDebounceTimer = null; save(); }
+  }
+  window.addEventListener('beforeunload', flushPendingSave);
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'hidden') flushPendingSave(); });
   async function setWithRetry(key, value, attempts){
     attempts = attempts || 2;
     let lastErr = null;
@@ -1830,6 +1912,21 @@
   });
 
   /* ================= FITNESS ================= */
+  const KG_PER_LB = 0.45359237;
+  // fitness.currentWeight / targetWeight / weightLog entries are always stored internally in kg;
+  // the unit toggle only changes how values are displayed and entered.
+  function kgToDisplay(kg){ return state.fitness.unit === 'lb' ? kg / KG_PER_LB : kg; }
+  function displayToKg(v){ return state.fitness.unit === 'lb' ? v * KG_PER_LB : v; }
+  function unitLabel(){ return state.fitness.unit === 'lb' ? 'lb' : 'kg'; }
+  function roundDisp(v){ return Math.round(v*10)/10; }
+
+  function bmiCategory(bmi){
+    if(bmi < 18.5) return 'Underweight';
+    if(bmi < 25) return 'Normal weight';
+    if(bmi < 30) return 'Overweight';
+    return 'Obese';
+  }
+
   function calcFitness(){
     const f = state.fitness;
     const cw = parseFloat(f.currentWeight), tw = parseFloat(f.targetWeight), h = parseFloat(f.height), age = parseFloat(f.age);
@@ -1849,9 +1946,19 @@
       target = tw < cw ? tdee - dailyDelta : tdee + dailyDelta;
       const weeks = Math.ceil(Math.abs(tw - cw) / pace);
       el('fitWeeks').textContent = weeks;
-      note = (tw < cw ? 'A daily deficit of ' : 'A daily surplus of ') + Math.round(dailyDelta) + ' kcal gets you to ' + tw + 'kg in about ' + weeks + ' week' + (weeks===1?'':'s') + ', at ' + pace + 'kg/week.';
+      note = (tw < cw ? 'A daily deficit of ' : 'A daily surplus of ') + Math.round(dailyDelta) + ' kcal gets you to ' + roundDisp(kgToDisplay(tw)) + unitLabel() + ' in about ' + weeks + ' week' + (weeks===1?'':'s') + ', at ' + pace + 'kg/week.';
     } else {
       el('fitWeeks').textContent = '\u2014';
+    }
+    // BMI: always calculated from kg + cm regardless of display unit
+    const heightM = h/100;
+    const bmi = heightM > 0 ? cw / (heightM*heightM) : null;
+    if(bmi){
+      el('fitBMI').textContent = bmi.toFixed(1);
+      el('fitBMICat').textContent = bmiCategory(bmi);
+    } else {
+      el('fitBMI').textContent = '\u2014';
+      el('fitBMICat').textContent = '\u2014';
     }
     el('fitBMR').textContent = Math.round(bmr);
     el('fitTDEE').textContent = Math.round(tdee);
@@ -1859,24 +1966,47 @@
     resultsEl.style.display = 'grid';
     noteEl.textContent = note;
   }
+
+  function updateUnitLabels(){
+    const u = unitLabel();
+    el('fitCurrentLbl').textContent = 'Current Weight ('+u+')';
+    el('fitTargetLbl').textContent = 'Target Weight ('+u+')';
+    el('fitPaceLbl').textContent = 'Target Pace (kg/week)';
+    el('unitBtnKg').classList.toggle('active', state.fitness.unit!=='lb');
+    el('unitBtnLb').classList.toggle('active', state.fitness.unit==='lb');
+  }
+
   function renderFitness(){
     const f = state.fitness;
-    el('fitCurrent').value = f.currentWeight || '';
-    el('fitTarget').value = f.targetWeight || '';
+    updateUnitLabels();
+    el('fitCurrent').value = f.currentWeight ? roundDisp(kgToDisplay(parseFloat(f.currentWeight))) : '';
+    el('fitTarget').value = f.targetWeight ? roundDisp(kgToDisplay(parseFloat(f.targetWeight))) : '';
     el('fitHeight').value = f.height || '';
     el('fitAge').value = f.age || '';
     el('fitSex').value = f.sex || 'male';
     el('fitActivity').value = f.activity || '1.55';
     el('fitPace').value = f.pace || '0.5';
+    el('wlDate').value = localDateStr(new Date());
     calcFitness();
+    renderWeightLog();
+    renderWeightChart();
+    updateFitnessReminder();
   }
-  ['fitCurrent','fitTarget','fitHeight','fitAge'].forEach(id=>{
+  el('fitCurrent').addEventListener('input', ()=>{
+    const v = parseFloat(el('fitCurrent').value);
+    state.fitness.currentWeight = isNaN(v) ? '' : displayToKg(v);
+    debouncedSave(); calcFitness(); renderWeightChart();
+  });
+  el('fitTarget').addEventListener('input', ()=>{
+    const v = parseFloat(el('fitTarget').value);
+    state.fitness.targetWeight = isNaN(v) ? '' : displayToKg(v);
+    debouncedSave(); calcFitness();
+  });
+  ['fitHeight','fitAge'].forEach(id=>{
     el(id).addEventListener('input', ()=>{
-      state.fitness.currentWeight = el('fitCurrent').value;
-      state.fitness.targetWeight = el('fitTarget').value;
       state.fitness.height = el('fitHeight').value;
       state.fitness.age = el('fitAge').value;
-      save(); calcFitness();
+      debouncedSave(); calcFitness(); renderWeightChart();
     });
   });
   ['fitSex','fitActivity','fitPace'].forEach(id=>{
@@ -1887,6 +2017,190 @@
       save(); calcFitness();
     });
   });
+
+  el('unitToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-unit]');
+    if(!btn) return;
+    state.fitness.unit = btn.dataset.unit;
+    save(); renderFitness();
+  });
+
+  /* ---- daily weight log ---- */
+  function upsertWeightLog(dateStr, kg){
+    if(!state.fitness.weightLog) state.fitness.weightLog = [];
+    const existing = state.fitness.weightLog.find(e=>e.date===dateStr);
+    if(existing) existing.kg = kg;
+    else state.fitness.weightLog.push({date:dateStr, kg});
+    syncCurrentWeightFromLog();
+  }
+  // Keeps "Current Weight" (and therefore BMI/BMR) in sync with the most recently dated log
+  // entry, so logging a new weight — even backfilling a past date — always recalculates BMI
+  // against whichever entry is chronologically most recent.
+  function syncCurrentWeightFromLog(){
+    const log = state.fitness.weightLog;
+    if(!log || !log.length) return;
+    const latest = log.reduce((a,b)=> (b.date > a.date ? b : a));
+    state.fitness.currentWeight = latest.kg;
+  }
+  function addWeightLogEntry(){
+    const dateStr = el('wlDate').value || localDateStr(new Date());
+    const v = parseFloat(el('wlWeight').value);
+    if(isNaN(v) || v<=0) return;
+    upsertWeightLog(dateStr, displayToKg(v));
+    el('wlWeight').value = '';
+    save(); renderFitness();
+  }
+  el('wlAddBtn').addEventListener('click', addWeightLogEntry);
+  el('wlWeight').addEventListener('keydown', e=>{ if(e.key==='Enter') addWeightLogEntry(); });
+  el('fitnessLogNowBtn').addEventListener('click', ()=>{ el('wlWeight').focus(); });
+
+  // collapse state for each month group in the weight log — not persisted; all months
+  // collapsed by default except the most recent one, to avoid a wall of rows once the
+  // log has built up history.
+  const weightLogGroupCollapsed = {};
+  function renderWeightLog(){
+    const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> b.date.localeCompare(a.date));
+    const listEl = el('weightLogList');
+    el('weightLogEmpty').style.display = log.length===0 ? 'block':'none';
+    listEl.style.display = log.length===0 ? 'none':'block';
+    listEl.innerHTML = '';
+    if(!log.length) return;
+
+    // group entries by "YYYY-MM"
+    const groups = [];
+    const groupMap = {};
+    log.forEach(entry=>{
+      const key = entry.date.slice(0,7);
+      if(!groupMap[key]){ groupMap[key] = { key, label: new Date(entry.date+'T00:00:00').toLocaleDateString(undefined,{month:'long',year:'numeric'}), entries: [] }; groups.push(groupMap[key]); }
+      groupMap[key].entries.push(entry);
+    });
+
+    groups.forEach((grp, gi) => {
+      if(!(grp.key in weightLogGroupCollapsed)) weightLogGroupCollapsed[grp.key] = gi !== 0; // only newest month open by default
+      const collapsed = weightLogGroupCollapsed[grp.key];
+
+      const header = document.createElement('div');
+      header.className = 'weight-log-group-header';
+      header.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span><span class="wlg-label">'+escapeHtml(grp.label)+'</span><span class="wlg-count">'+grp.entries.length+' '+(grp.entries.length===1?'entry':'entries')+'</span>';
+      header.addEventListener('click', ()=>{ weightLogGroupCollapsed[grp.key] = !weightLogGroupCollapsed[grp.key]; renderWeightLog(); });
+      listEl.appendChild(header);
+
+      if(collapsed) return;
+      grp.entries.forEach((entry, idx)=>{
+        // show change vs the previous (older) logged entry for quick context, without cluttering the row
+        const olderVal = grp.entries[idx+1] ? grp.entries[idx+1].kg
+          : (log[log.indexOf(entry)+1] ? log[log.indexOf(entry)+1].kg : null);
+        let deltaHtml = '';
+        if(olderVal != null){
+          const deltaKg = entry.kg - olderVal;
+          const deltaDisp = roundDisp(kgToDisplay(deltaKg));
+          if(Math.abs(deltaDisp) >= 0.1){
+            deltaHtml = '<span class="wl-delta '+(deltaKg<0?'down':'up')+'">'+(deltaKg>0?'+':'')+deltaDisp+'</span>';
+          }
+        }
+        const row = document.createElement('div'); row.className='weight-log-item';
+        row.innerHTML = '<span class="wl-date">'+escapeHtml(fmtDate(new Date(entry.date+'T00:00:00').getTime()))+'</span>'
+          + '<span class="wl-weight">'+roundDisp(kgToDisplay(entry.kg))+' '+unitLabel()+'</span>'
+          + deltaHtml
+          + '<button class="wl-del">✕</button>';
+        row.querySelector('.wl-del').addEventListener('click', ()=>{
+          state.fitness.weightLog = state.fitness.weightLog.filter(e=>e.date!==entry.date);
+          syncCurrentWeightFromLog();
+          save(); renderFitness();
+        });
+        listEl.appendChild(row);
+      });
+    });
+  }
+
+  function updateFitnessReminder(){
+    const todayStr = localDateStr(new Date());
+    const loggedToday = (state.fitness.weightLog||[]).some(e=>e.date===todayStr);
+    el('fitnessLogBanner').style.display = loggedToday ? 'none' : 'flex';
+    el('fitnessLogBadge').style.display = loggedToday ? 'none' : 'inline-flex';
+  }
+
+  /* ---- weight trend chart: line + moving average over the last 12 months ---- */
+  // background bands showing BMI territory (underweight/normal/overweight/obese) translated into
+  // actual weight values for this person's height, so the chart visually shows which zone their
+  // weight sits in over time. Skipped entirely if height hasn't been entered yet.
+  function bmiBandsSvg(minV, maxV, yOf, W, padL, padR){
+    const heightCm = parseFloat(state.fitness.height);
+    if(!heightCm || heightCm<=0) return '';
+    const hM = heightCm/100;
+    const thresholdsDisp = [18.5,25,30].map(bmi => kgToDisplay(bmi*hM*hM));
+    const bounds = [-Infinity, thresholdsDisp[0], thresholdsDisp[1], thresholdsDisp[2], Infinity];
+    const bandColors = ['rgba(245,165,36,0.15)','rgba(22,163,74,0.14)','rgba(245,165,36,0.22)','rgba(239,68,68,0.15)'];
+    let svg = '';
+    for(let i=0;i<4;i++){
+      const lo = Math.max(bounds[i], minV), hi = Math.min(bounds[i+1], maxV);
+      if(hi <= lo) continue;
+      const yTop = yOf(hi), yBot = yOf(lo);
+      svg += '<rect x="'+padL+'" y="'+yTop.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yBot-yTop).toFixed(1)+'" fill="'+bandColors[i]+'"/>';
+    }
+    return svg;
+  }
+
+  function renderWeightChart(){
+    const wrap = el('weightChartWrap');
+    const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+    const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1);
+    const cutoffStr = localDateStr(cutoff);
+    const points = log.filter(e=>e.date >= cutoffStr);
+    if(points.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Log at least two days of weight to see your trend chart.</div>';
+      return;
+    }
+    const W = 780, H = 240, padL = 44, padR = 14, padT = 14, padB = 26;
+    const vals = points.map(p=>kgToDisplay(p.kg));
+    let minV = Math.min(...vals), maxV = Math.max(...vals);
+    if(minV === maxV){ minV -= 1; maxV += 1; }
+    const pad = (maxV-minV)*0.12; minV -= pad; maxV += pad;
+    const t0 = new Date(points[0].date).getTime(), t1 = new Date(points[points.length-1].date).getTime();
+    const tSpan = Math.max(1, t1-t0);
+    const xOf = d => padL + ((new Date(d).getTime()-t0)/tSpan) * (W-padL-padR);
+    const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+
+    // moving average: window of up to 5 surrounding entries (or fewer if near the edges)
+    const windowSize = 5;
+    const maVals = vals.map((_,i)=>{
+      const start = Math.max(0, i-Math.floor(windowSize/2));
+      const end = Math.min(vals.length, i+Math.ceil(windowSize/2));
+      const slice = vals.slice(start,end);
+      return slice.reduce((a,b)=>a+b,0)/slice.length;
+    });
+
+    const linePath = points.map((p,i)=> (i===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(vals[i]).toFixed(1)).join(' ');
+    const maPath = points.map((p,i)=> (i===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(maVals[i]).toFixed(1)).join(' ');
+
+    // gridlines + y-axis labels (4 bands)
+    let gridSvg = '';
+    const steps = 4;
+    for(let i=0;i<=steps;i++){
+      const v = minV + (maxV-minV)*(i/steps);
+      const y = yOf(v);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
+      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="10" fill="var(--muted)" text-anchor="end">'+roundDisp(v)+'</text>';
+    }
+    // x-axis labels: first, middle, last date
+    const labelIdxs = [0, Math.floor((points.length-1)/2), points.length-1];
+    let xLabelSvg = '';
+    labelIdxs.forEach(i=>{
+      const p = points[i];
+      xLabelSvg += '<text x="'+xOf(p.date).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+fmtDate(new Date(p.date).getTime())+'</text>';
+    });
+
+    const dotsSvg = points.map((p,i)=> '<circle cx="'+xOf(p.date).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="2.5" fill="var(--violet)"></circle>').join('');
+    const bandsSvg = bmiBandsSvg(minV, maxV, yOf, W, padL, padR);
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+      + bandsSvg + gridSvg + xLabelSvg
+      + '<path d="'+linePath+'" fill="none" stroke="var(--violet)" stroke-width="2"/>'
+      + dotsSvg
+      + '<path d="'+maPath+'" fill="none" stroke="var(--gold)" stroke-width="2.5" stroke-dasharray="6,4"/>'
+      + '</svg>'
+      + (bandsSvg ? '<div style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:6px;">Shaded bands show BMI zones for your height — <span style="color:#16A34A;font-weight:700;">green = normal weight</span>, amber = under/overweight, red = obese.</div>' : '');
+  }
 
   function renderAll(){
     renderGoals(); renderHabits(); renderCountdowns(); renderInsights(); renderMantras(); renderChecklists();

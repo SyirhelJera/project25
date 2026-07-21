@@ -121,7 +121,7 @@
   .reroll-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
 
   /* stat chips (clickable filter) */
-  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-bottom:16px;}
+  .stats{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:16px;}
   .stat{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 8px;text-align:center;cursor:pointer;transition:border-color .12s ease;}
   .stat:hover{border-color:var(--violet);}
   .stat.active-filter{border-color:var(--violet);background:var(--violet-pale);}
@@ -178,6 +178,31 @@
   .drag-handle:active{cursor:grabbing;}
   .goal.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .checklist-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+
+  /* tier badges */
+  .tier-chip{flex:none;font-family:'Manrope',sans-serif;font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 7px;letter-spacing:0.3px;border:1.5px solid transparent;}
+  .tier-chip.tier-F{background:var(--surface-alt);color:var(--muted);border-color:var(--border);}
+  .tier-chip.tier-B{background:#3B82F61A;color:#3B82F6;border-color:#3B82F6;}
+  .tier-chip.tier-A{background:var(--success-pale);color:var(--success);border-color:var(--success);}
+  .tier-chip.tier-S{background:var(--danger);color:#fff;border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
+  .tier-chip.tier-Splus{background:var(--violet-pale);color:var(--violet-dark);border-color:var(--violet);animation:tierGlowViolet 1.8s ease-in-out infinite;}
+  .tier-chip.tier-Mythical{background:linear-gradient(135deg,#F5A524,#FFE29A);color:#5A3B00;border-color:var(--gold);animation:tierGlowGold 1.8s ease-in-out infinite;}
+  @keyframes tierGlowViolet{0%,100%{box-shadow:0 0 3px 0 var(--violet);}50%{box-shadow:0 0 10px 3px var(--violet);}}
+  @keyframes tierGlowGold{0%,100%{box-shadow:0 0 3px 0 var(--gold);}50%{box-shadow:0 0 11px 4px var(--gold);}}
+  .tier-select{background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;}
+
+  /* locked goals */
+  .goal.locked{opacity:.72;}
+  .goal.locked .goal-check{cursor:not-allowed;border-color:var(--faint);}
+  .goal.locked .goal-title{color:var(--muted);}
+  .lock-badge{flex:none;font-size:10.5px;font-weight:800;color:var(--muted);background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:2px 7px;display:inline-flex;align-items:center;gap:3px;}
+  .unlock-note{font-size:12px;color:var(--muted);margin-top:6px;}
+  .unlock-note.met{color:var(--success);}
+
+  /* inline rename */
+  .rename-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:12px;padding:2px 5px;flex:none;}
+  .rename-btn:hover{color:var(--violet-dark);}
+  .rename-input{background:var(--surface-alt);border:1px solid var(--violet);border-radius:7px;padding:5px 8px;font-size:13px;color:var(--text);outline:none;font-family:'Inter',sans-serif;}
 
   .goal-detail{max-height:0;overflow:hidden;transition:max-height .25s ease;}
   .goal.open .goal-detail{max-height:1500px;}
@@ -372,6 +397,7 @@
       <div class="stat" data-filter="all"><div class="num" id="statTotal">0</div><div class="lbl">Total Goals</div></div>
       <div class="stat" data-filter="completed"><div class="num" id="statDone">0</div><div class="lbl">Completed</div></div>
       <div class="stat" data-filter="unfinished"><div class="num" id="statOpen">0</div><div class="lbl">Unfinished</div></div>
+      <div class="stat" data-filter="locked"><div class="num" id="statLocked">0</div><div class="lbl">🔒 Locked</div></div>
       <div class="stat" data-filter="all"><div class="num" id="statPct">0%</div><div class="lbl">Done Rate</div></div>
     </div>
 
@@ -605,6 +631,7 @@
       state.profile.age = el('pfAge').value;
       state.profile.netWorth = el('pfNetWorth').value;
       save();
+      renderGoals();
     });
   });
 
@@ -644,28 +671,46 @@
     return hrs + (g.completedAt ? 'h to finish' : 'h so far');
   }
 
+  // parses the free-text Net Worth profile field ("$ 12,000" etc.) into a plain number
+  function getNetWorthNum(){
+    const raw = (state.profile && state.profile.netWorth) || '';
+    const n = parseFloat(String(raw).replace(/[^0-9.\-]/g,''));
+    return isNaN(n) ? 0 : n;
+  }
+  // a goal is locked when it has a required net worth set and the profile's net worth hasn't reached it yet
+  function isGoalLocked(g){
+    return g.requiredNetWorth != null && g.requiredNetWorth !== '' && getNetWorthNum() < g.requiredNetWorth;
+  }
+
   function visibleGoals(){
     let arr = state.goals.slice();
-    if(goalFilter === 'completed') arr = arr.filter(g=>goalProgress(g)===100);
-    if(goalFilter === 'unfinished') arr = arr.filter(g=>goalProgress(g)<100);
 
-    if(goalFilter === 'all'){
-      // Total view: unfinished goals on top, completed goals at the bottom, completed sorted by completion date (most recent first)
-      const unfinished = arr.filter(g=>goalProgress(g)<100);
-      const completed = arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
-      if(starredFirst) unfinished.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
-      arr = unfinished.concat(completed);
-    } else {
-      if(goalFilter === 'completed') arr.sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
-      if(starredFirst) arr.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+    if(goalFilter === 'completed'){
+      return arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
     }
-    return arr;
+    if(goalFilter === 'unfinished'){
+      // locked goals are excluded from the Unfinished list — they aren't actionable yet
+      const unfinished = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
+      if(starredFirst) unfinished.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+      return unfinished;
+    }
+    if(goalFilter === 'locked'){
+      return arr.filter(g=>goalProgress(g)<100 && isGoalLocked(g));
+    }
+
+    // 'all': unlocked-and-open goals on top, then locked goals, then completed goals at the bottom
+    // (completed sorted by completion date, most recent first)
+    const openUnlocked = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
+    const openLocked = arr.filter(g=>goalProgress(g)<100 && isGoalLocked(g));
+    const completed = arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
+    if(starredFirst) openUnlocked.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+    return openUnlocked.concat(openLocked, completed);
   }
 
   function pickFocusTask(force){
     const today = localDateStr(new Date());
     if(!force && state.focus && state.focus.date === today) return;
-    const openGoals = state.goals.filter(g=>goalProgress(g)<100);
+    const openGoals = state.goals.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
     const starredOpen = openGoals.filter(g=>g.starred);
     // prefer starred goals; if none are starred, fall back to the whole open-goal pool
     const pool = starredOpen.length ? starredOpen : openGoals;
@@ -707,7 +752,7 @@
 
   function renderCheckin(){
     const slot = el('checkinSlot');
-    const stale = state.goals.find(g => goalProgress(g) < 100 && (!g.checkin || (Date.now() - g.checkin.at) > 3*24*3600*1000));
+    const stale = state.goals.find(g => goalProgress(g) < 100 && !isGoalLocked(g) && (!g.checkin || (Date.now() - g.checkin.at) > 3*24*3600*1000));
     if(!stale){ slot.innerHTML = ''; return; }
     slot.innerHTML = '<div class="checkin-banner"><div class="msg">How is <b>'+escapeHtml(stale.title)+'</b> going?</div><div class="checkin-opts">'
       + '<button class="btn btn-sm btn-ghost" data-status="Great">Great</button>'
@@ -719,6 +764,17 @@
   }
 
   const SWATCHES = ['#6366F1','#16A34A','#EF4444','#F5A524','#3B82F6','#EC4899','#6B7280'];
+  // goal tier rankings — 'value' is what's stored on the goal, 'cls' maps to the tier-chip CSS class
+  const TIERS = [
+    { value:'', label:'No tier' },
+    { value:'F', label:'F Tier', cls:'tier-F' },
+    { value:'B', label:'B Tier', cls:'tier-B' },
+    { value:'A', label:'A Tier', cls:'tier-A' },
+    { value:'S', label:'S Tier', cls:'tier-S' },
+    { value:'S+', label:'S+ Tier', cls:'tier-Splus' },
+    { value:'Mythical', label:'Mythical Tier', cls:'tier-Mythical' }
+  ];
+  function tierInfo(v){ return TIERS.find(t=>t.value===v) || TIERS[0]; }
 
   /* drag-to-reorder goals — registered once, delegated over #goalList */
   let draggedGoalId = null;
@@ -773,14 +829,20 @@
       if(g.targetDate === undefined) g.targetDate = '';
       if(g.color === undefined) g.color = '';
       if(g.imageUrl === undefined) g.imageUrl = '';
+      if(g.tier === undefined) g.tier = '';
+      if(g.requiredNetWorth === undefined) g.requiredNetWorth = null;
       const pct = goalProgress(g);
+      const locked = isGoalLocked(g);
 
       const card = document.createElement('div');
-      card.className = 'goal' + (pct===100 ? ' done' : '') + (g.open ? ' open' : '');
+      card.className = 'goal' + (pct===100 ? ' done' : '') + (g.open ? ' open' : '') + (locked ? ' locked' : '');
       card.dataset.goalId = g.id;
       if(g.color) card.style.borderLeftColor = g.color;
 
       let metaHtml = '';
+      const t = tierInfo(g.tier);
+      if(t.value) metaHtml += '<span class="tier-chip '+t.cls+'">'+escapeHtml(t.label)+'</span>';
+      if(locked) metaHtml += '<span class="lock-badge">🔒 Needs $'+Number(g.requiredNetWorth).toLocaleString()+' net worth</span>';
       if(g.subtasks.length) metaHtml += '<span class="chip subtask-chip">'+escapeHtml(g.subtasks.filter(s=>s.done).length + '/' + g.subtasks.length + ' subtasks')+'</span>';
       metaHtml += '<span class="chip">'+escapeHtml(timeSpentStr(g))+'</span>';
       if(g.targetDate) metaHtml += '<span class="chip">'+escapeHtml('Due ' + fmtDate(new Date(g.targetDate).getTime()))+'</span>';
@@ -791,7 +853,7 @@
       head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + (g.imageUrl ? '<img class="goal-thumb" src="'+g.imageUrl+'">' : '')
         + '<button class="star-btn ' + (g.starred?'active':'') + '" data-act="star">' + (g.starred?'★':'☆') + '</button>'
-        + '<div class="goal-check ' + (pct===100?'checked':'') + '" data-act="check">' + (pct===100?'✓':'') + '</div>'
+        + '<div class="goal-check ' + (pct===100?'checked':'') + '" data-act="check" title="'+(locked?'Locked until net worth requirement is met':'')+'">' + (locked ? '🔒' : (pct===100?'✓':'')) + '</div>'
         + '<div class="goal-body-main"><div class="goal-title">' + escapeHtml(g.title) + '</div>'
         + '<div class="goal-meta">' + metaHtml + '</div></div>'
         + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
@@ -802,6 +864,7 @@
         if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; save(); renderGoals(); return; }
         if(act && act.dataset.act === 'check'){
           e.stopPropagation();
+          if(isGoalLocked(g)) return; // locked goals can't be marked done until the net worth requirement is met
           if(g.subtasks.length === 0){ g.manualDone = !g.manualDone; }
           else { const allDone = g.subtasks.every(s=>s.done); g.subtasks.forEach(s => s.done = !allDone); }
           save(); renderGoals(); return;
@@ -847,7 +910,10 @@
           + '<div class="sub-check '+(s.done?'checked':'')+'">'+(s.done?'✓':'')+'</div>'
           + '<div class="sub-title '+(s.done?'done':'')+'">'+escapeHtml(s.title)+'</div>'
           + '<button class="sub-del">✕</button>';
-        row.querySelector('.sub-check').addEventListener('click', ()=>{ s.done=!s.done; save(); renderGoals(); });
+        row.querySelector('.sub-check').addEventListener('click', ()=>{
+          if(!s.done && isGoalLocked(g)) return; // locked goal — can uncheck, but can't check off subtasks toward completion
+          s.done=!s.done; save(); renderGoals();
+        });
         row.querySelector('.sub-del').addEventListener('click', ()=>{ g.subtasks=g.subtasks.filter(x=>x.id!==s.id); save(); renderGoals(); });
         row.querySelectorAll('.sub-move-btn').forEach(btn=>{
           btn.addEventListener('click', ()=>{
@@ -961,6 +1027,30 @@
         inner.appendChild(fnote);
       }
 
+      const tierLbl = document.createElement('div'); tierLbl.className='section-lbl'; tierLbl.textContent='Tier Ranking'; inner.appendChild(tierLbl);
+      const tierRow = document.createElement('div'); tierRow.className='inline-fields';
+      const tierSel = document.createElement('select'); tierSel.className='tier-select';
+      tierSel.innerHTML = TIERS.map(t=>'<option value="'+t.value+'" '+(g.tier===t.value?'selected':'')+'>'+t.label+'</option>').join('');
+      tierSel.addEventListener('change', ()=>{ g.tier = tierSel.value; save(); renderGoals(); });
+      tierRow.appendChild(tierSel);
+      inner.appendChild(tierRow);
+
+      const unlockLbl = document.createElement('div'); unlockLbl.className='section-lbl'; unlockLbl.textContent='Unlock Requirement'; inner.appendChild(unlockLbl);
+      const unlockRow = document.createElement('div'); unlockRow.className='inline-fields';
+      unlockRow.innerHTML = '<span>Required net worth $</span><input type="number" min="0" value="'+(g.requiredNetWorth??'')+'" placeholder="e.g. 10000">';
+      const unlockInput = unlockRow.querySelector('input');
+      unlockInput.addEventListener('change', ()=>{ g.requiredNetWorth = unlockInput.value===''?null:parseFloat(unlockInput.value); save(); renderGoals(); });
+      inner.appendChild(unlockRow);
+      if(g.requiredNetWorth != null && g.requiredNetWorth !== ''){
+        const unote = document.createElement('div');
+        const stillLocked = isGoalLocked(g);
+        unote.className = 'unlock-note' + (stillLocked ? '' : ' met');
+        unote.textContent = stillLocked
+          ? 'Locked — current net worth is $'+getNetWorthNum().toLocaleString()+', needs $'+Number(g.requiredNetWorth).toLocaleString()+'.'
+          : 'Unlocked — net worth requirement met.';
+        inner.appendChild(unote);
+      }
+
       const cLbl = document.createElement('div'); cLbl.className='section-lbl'; cLbl.textContent='Color & Image'; inner.appendChild(cLbl);
       const cRow = document.createElement('div'); cRow.className='swatches';
       cRow.innerHTML = SWATCHES.map(c=>'<div class="swatch '+(g.color===c?'selected':'')+'" style="background:'+c+';" data-color="'+c+'"></div>').join('')
@@ -998,11 +1088,14 @@
 
     const total = state.goals.length;
     const overall = total ? Math.round(totalPct/total) : 0;
+    const lockedCount = state.goals.filter(g=>goalProgress(g)<100 && isGoalLocked(g)).length;
     el('overallPct').textContent = overall+'%';
     el('manaFill').style.width = overall+'%';
     el('statTotal').textContent = total;
     el('statDone').textContent = completedCount;
-    el('statOpen').textContent = total-completedCount;
+    // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met
+    el('statOpen').textContent = total-completedCount-lockedCount;
+    el('statLocked').textContent = lockedCount;
     el('statPct').textContent = overall+'%';
     el('pfGoalsCompleted').textContent = completedCount;
 
@@ -1033,7 +1126,7 @@
     const input = el('newGoalInput');
     const v = input.value.trim();
     if(!v) return;
-    state.goals.unshift({ id:uid(), title:v, starred:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'' });
+    state.goals.unshift({ id:uid(), title:v, starred:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
     input.value=''; save(); renderGoals(); input.focus();
   }
   el('addGoalBtn').addEventListener('click', addGoal);
@@ -1054,6 +1147,7 @@
     const rows = state.goals.map(g => ({
       Title: g.title, Starred: g.starred?'Yes':'No', Progress: goalProgress(g)+'%',
       TargetDate: g.targetDate||'', FinanceTarget: g.financeTarget??'', FinanceSaved: g.financeSaved||0,
+      Tier: g.tier||'', RequiredNetWorth: g.requiredNetWorth??'',
       CreatedAt: fmtDate(g.createdAt), CompletedAt: fmtDate(g.completedAt), Subtasks: subtasksToStr(g.subtasks)
     }));
     const wb = XLSX.utils.book_new();
@@ -1075,7 +1169,9 @@
           manualDone: String(r.Progress).replace('%','')==='100', subtasks: strToSubtasks(r.Subtasks),
           open:false, createdAt: Date.now(), completedAt: null, targetDate: r.TargetDate || '',
           financeTarget: r.FinanceTarget===''||r.FinanceTarget===undefined ? null : parseFloat(r.FinanceTarget),
-          financeSaved: parseFloat(r.FinanceSaved)||0, checkin:null, color:'', imageUrl:''
+          financeSaved: parseFloat(r.FinanceSaved)||0, checkin:null, color:'', imageUrl:'',
+          tier: r.Tier || '',
+          requiredNetWorth: r.RequiredNetWorth===''||r.RequiredNetWorth===undefined ? null : parseFloat(r.RequiredNetWorth)
         }));
         pendingImport = imported;
         el('importSlot').innerHTML = '<div class="confirm-banner"><span>Importing will replace all '+state.goals.length+' current goals with '+imported.length+' goals from the file.</span><button class="btn btn-sm btn-primary" id="confirmImport">Replace goals</button><button class="btn btn-sm btn-ghost" id="cancelImport">Cancel</button></div>';
@@ -1228,8 +1324,23 @@
       const card = document.createElement('div'); card.className='cd-card';
       card.innerHTML = '<div class="cd-num '+(diff<0?'past':'')+'">'+(diff<0 ? 'past' : diff)+'</div>'
         + '<div class="cd-info"><div class="cd-name">'+escapeHtml(c.label)+'</div><div class="cd-date">'+fmtDate(target.getTime())+(diff>=0 ? ' · ' + diff + ' days left' : '')+'</div></div>'
+        + '<button class="rename-btn" title="Rename">✎</button>'
         + '<button class="del-goal">Delete</button>';
       card.querySelector('.del-goal').addEventListener('click', ()=>{ state.countdowns = state.countdowns.filter(x=>x.id!==c.id); save(); renderCountdowns(); });
+      card.querySelector('.rename-btn').addEventListener('click', ()=>{
+        const nameEl = card.querySelector('.cd-name');
+        const input = document.createElement('input');
+        input.type = 'text'; input.className = 'rename-input'; input.maxLength = 60; input.value = c.label;
+        nameEl.replaceWith(input);
+        input.focus(); input.select();
+        const commit = () => {
+          const v = input.value.trim();
+          if(v) c.label = v;
+          save(); renderCountdowns();
+        };
+        input.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') renderCountdowns(); });
+        input.addEventListener('blur', commit);
+      });
       list.appendChild(card);
     });
   }
@@ -1304,6 +1415,15 @@
     state.checklists.forEach(c=>{
       if(!c.resetFreq || c.resetFreq === 'none') return;
       const key = resetKeyFor(c.resetFreq);
+      if(c.lastResetKey == null){
+        // never synced before (freq just turned on, older saved data, etc.) — just record the
+        // current period without wiping anything the user has already checked off. Previously
+        // this fell through to the wipe branch below, which could clear a checklist's progress
+        // even though its reset day/week/month hadn't actually arrived yet.
+        c.lastResetKey = key;
+        changed = true;
+        return;
+      }
       if(c.lastResetKey !== key){
         c.items.forEach(it=>{ it.done = false; });
         c.lastResetKey = key;
@@ -1374,6 +1494,7 @@
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(c.collapsed?'Expand':'Minimize')+'">'+(c.collapsed?'▶':'▼')+'</button>'
         + '<div class="checklist-name">'+escapeHtml(c.name)+'</div>'
+        + '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
         + (allItemsDone ? '<span class="checklist-done-chip">✓ Checklist done</span>' : '')
         + '<span class="chip">'+doneCt+'/'+c.items.length+'</span>'
         + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
@@ -1383,6 +1504,21 @@
         + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
         + '<button class="del-goal">Delete</button>';
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ c.collapsed = !c.collapsed; save(); renderChecklists(); });
+      top.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
+        const nameEl = top.querySelector('.checklist-name');
+        const input = document.createElement('input');
+        input.type = 'text'; input.className = 'rename-input'; input.maxLength = 80; input.value = c.name;
+        input.style.flex = '1'; input.style.minWidth = '120px';
+        nameEl.replaceWith(input);
+        input.focus(); input.select();
+        const commit = () => {
+          const v = input.value.trim();
+          if(v) c.name = v;
+          save(); renderChecklists();
+        };
+        input.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') renderChecklists(); });
+        input.addEventListener('blur', commit);
+      });
       top.querySelector('.checklist-habit-link').addEventListener('change', e=>{
         c.linkedHabitId = e.target.value || null;
         syncChecklistHabitLink(c);

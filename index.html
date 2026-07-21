@@ -334,6 +334,54 @@
     .main{padding:20px 16px 70px;}
   }
 
+  /* exp bar */
+  .exp-row{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px;}
+  .exp-level{font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;color:var(--violet-dark);}
+  .exp-num{font-size:10px;color:var(--faint);}
+  .exp-track{position:relative;height:7px;border-radius:6px;background:var(--surface);border:1px solid var(--border);overflow:hidden;}
+  .exp-fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--gold),#FBD38D);transition:width .5s ease;}
+
+  /* sort controls */
+  .sort-select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;cursor:pointer;}
+  .sort-select:focus{border-color:var(--violet);}
+  .sort-dir-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;width:36px;height:36px;cursor:pointer;font-size:13px;flex:none;}
+  .sort-dir-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
+
+  /* finance */
+  .finance-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px;}
+  .finance-add-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
+  .finance-add-row select, .finance-add-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .finance-add-row input[type=text]{flex:2;min-width:140px;}
+  .finance-add-row input[type=number]{flex:1;min-width:100px;}
+  .finance-add-row select:focus, .finance-add-row input:focus{border-color:var(--violet);}
+  .finance-group-lbl{font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--faint);font-weight:800;margin:16px 0 8px;}
+  .finance-group-lbl:first-of-type{margin-top:4px;}
+  .finance-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
+  .finance-icon{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);}
+  .finance-info{flex:1;min-width:0;}
+  .finance-name{font-size:13.5px;font-weight:700;}
+  .finance-type{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;}
+  .finance-amt{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;flex:none;}
+  .finance-amt.positive{color:var(--success);}
+  .finance-amt.negative{color:var(--danger);}
+
+  /* fitness */
+  .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}
+  .fitness-field{display:flex;flex-direction:column;gap:5px;}
+  .fitness-field label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--faint);font-weight:700;}
+  .fitness-field input, .fitness-field select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .fitness-field input:focus, .fitness-field select:focus{border-color:var(--violet);}
+  .fitness-results{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:6px;}
+  .fitness-result-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 8px;text-align:center;}
+  .fitness-result-card .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--violet-dark);}
+  .fitness-result-card .lbl{font-size:10px;color:var(--muted);margin-top:4px;}
+  .fitness-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.6;text-align:center;}
+
+  @media (max-width:720px){
+    .finance-summary{grid-template-columns:repeat(3,1fr);}
+    .fitness-fields, .fitness-results{grid-template-columns:repeat(2,1fr);}
+  }
+
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
 </style>
@@ -352,11 +400,18 @@
     <div class="profile-row"><div class="profile-lbl">Age</div><input id="pfAge" type="number" min="0" placeholder="Age"></div>
     <div class="profile-row"><div class="profile-lbl">Net Worth</div><input id="pfNetWorth" type="text" placeholder="$ 0"></div>
     <div class="profile-row profile-stat"><span>Goals Completed</span><b id="pfGoalsCompleted">0</b></div>
+    <div class="profile-row profile-stat"><span>Net Worth</span><b id="pfNetWorthCalc">$0</b></div>
+    <div class="profile-row">
+      <div class="exp-row"><span class="exp-level" id="pfLevel">Lv. 1</span><span class="exp-num" id="pfExpNum">0 / 100 XP</span></div>
+      <div class="exp-track"><div class="exp-fill" id="pfExpFill" style="width:0%"></div></div>
+    </div>
   </div>
 
   <div class="nav">
     <div class="nav-item active" data-tab="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Goals</div>
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Habits<span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
+    <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg>Finance</div>
+    <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness</div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
     <div class="nav-item" data-tab="insights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20V10M10 20V4M17 20v-7"/></svg>Insights</div>
@@ -406,6 +461,14 @@
 
     <div class="toolbar">
       <button class="btn btn-ghost btn-sm" id="starredFirstBtn">★ Starred first</button>
+      <select class="sort-select" id="goalSortSelect">
+        <option value="none">Default order</option>
+        <option value="tier">Sort: Tier</option>
+        <option value="progress">Sort: % Completed</option>
+        <option value="created">Sort: Time Created</option>
+        <option value="updated">Sort: Last Updated</option>
+      </select>
+      <button class="sort-dir-btn" id="goalSortDirBtn" title="Toggle ascending/descending">↓</button>
       <div class="spacer"></div>
       <button class="btn btn-ghost" id="exportBtn">⬇ Export .xlsx</button>
       <label class="btn btn-ghost" style="margin:0;">⬆ Import .xlsx<input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;"></label>
@@ -431,6 +494,73 @@
     </div>
     <div id="habitList"></div>
     <div class="empty" id="habitEmpty" style="display:none;">No habits yet. <b>Add one above</b> and start checking off days.</div>
+  </div>
+
+  <!-- FINANCE -->
+  <div class="view" id="view-finance">
+    <div class="view-title">Finance</div>
+    <div class="view-sub">Track savings, credit, and lent money — this feeds your overall net worth.</div>
+
+    <div class="finance-summary">
+      <div class="stat" style="cursor:default;"><div class="num" id="finTotalAssets">$0</div><div class="lbl">Total Assets</div></div>
+      <div class="stat" style="cursor:default;"><div class="num" id="finTotalLiabilities">$0</div><div class="lbl">Total Liabilities</div></div>
+      <div class="stat" style="cursor:default;"><div class="num" id="finNetWorth">$0</div><div class="lbl">Finance Net Worth</div></div>
+    </div>
+
+    <div class="finance-add-row">
+      <select id="finType">
+        <option value="savings">Savings account</option>
+        <option value="credit">Credit account</option>
+        <option value="lent">Lent (owed to you)</option>
+        <option value="custom-asset">Custom — Asset</option>
+        <option value="custom-liability">Custom — Liability</option>
+      </select>
+      <input type="text" id="finName" placeholder="Account name..." maxlength="60">
+      <input type="number" id="finBalance" placeholder="Balance $" min="0">
+      <button class="btn btn-primary" id="addFinanceBtn">+ Add Account</button>
+    </div>
+
+    <div id="financeList"></div>
+    <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one above</b> to start tracking your net worth.</div>
+  </div>
+
+  <!-- FITNESS -->
+  <div class="view" id="view-fitness">
+    <div class="view-title">Fitness</div>
+    <div class="view-sub">Set your current and target weight (kg) to get a daily calorie target.</div>
+
+    <div class="fitness-fields">
+      <div class="fitness-field"><label>Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.1"></div>
+      <div class="fitness-field"><label>Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.1"></div>
+      <div class="fitness-field"><label>Height (cm)</label><input type="number" id="fitHeight" min="0" step="0.1"></div>
+      <div class="fitness-field"><label>Age</label><input type="number" id="fitAge" min="0"></div>
+      <div class="fitness-field"><label>Biological Sex</label><select id="fitSex"><option value="male">Male</option><option value="female">Female</option></select></div>
+      <div class="fitness-field"><label>Activity Level</label>
+        <select id="fitActivity">
+          <option value="1.2">Sedentary (little/no exercise)</option>
+          <option value="1.375">Light (1-3 days/week)</option>
+          <option value="1.55">Moderate (3-5 days/week)</option>
+          <option value="1.725">Active (6-7 days/week)</option>
+          <option value="1.9">Very active (hard exercise daily)</option>
+        </select>
+      </div>
+      <div class="fitness-field"><label>Target Pace (kg/week)</label>
+        <select id="fitPace">
+          <option value="0.25">0.25 kg / week</option>
+          <option value="0.5">0.5 kg / week</option>
+          <option value="0.75">0.75 kg / week</option>
+          <option value="1">1 kg / week</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="fitness-results" id="fitnessResults" style="display:none;">
+      <div class="fitness-result-card"><div class="num" id="fitBMR">—</div><div class="lbl">BMR (kcal/day)</div></div>
+      <div class="fitness-result-card"><div class="num" id="fitTDEE">—</div><div class="lbl">Maintenance (kcal/day)</div></div>
+      <div class="fitness-result-card"><div class="num" id="fitTarget2">—</div><div class="lbl">Daily Calorie Target</div></div>
+      <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Estimated Weeks</div></div>
+    </div>
+    <div class="fitness-note" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
   </div>
 
   <!-- CHECKLISTS -->
@@ -488,9 +618,14 @@
 
 <script>
 (function(){
-  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
+  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [],
+    finance: { accounts: [] },
+    fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5' },
+    profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
   let goalFilter = 'all';
   let starredFirst = false;
+  let sortMode = 'none';
+  let sortDir = 'desc';
   let pendingImport = null;
   let mantraIdx = 0;
 
@@ -554,6 +689,9 @@
     state.countdowns = parsed.countdowns || [];
     state.mantras = parsed.mantras || [];
     state.checklists = parsed.checklists || [];
+    state.finance = parsed.finance || { accounts: [] };
+    if(!state.finance.accounts) state.finance.accounts = [];
+    state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5' };
     state.profile = parsed.profile || {name:'',age:'',netWorth:''};
     state.focus = parsed.focus || null;
     state.darkMode = !!parsed.darkMode;
@@ -647,6 +785,8 @@
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='checklists') renderChecklists();
+      if(t.dataset.tab==='finance') renderFinance();
+      if(t.dataset.tab==='fitness') renderFitness();
     });
   });
 
@@ -672,39 +812,91 @@
   }
 
   // parses the free-text Net Worth profile field ("$ 12,000" etc.) into a plain number
-  function getNetWorthNum(){
+  function manualNetWorthNum(){
     const raw = (state.profile && state.profile.netWorth) || '';
     const n = parseFloat(String(raw).replace(/[^0-9.\-]/g,''));
     return isNaN(n) ? 0 : n;
+  }
+  // sums Finance-section accounts: savings/lent/custom-asset are assets, credit/custom-liability are liabilities
+  function financeNetWorth(){
+    return (state.finance.accounts||[]).reduce((sum,a)=>{
+      const sign = (a.type==='credit' || a.type==='custom-liability') ? -1 : 1;
+      return sum + sign*(parseFloat(a.balance)||0);
+    }, 0);
+  }
+  // overall net worth = manually entered profile figure + everything tracked in the Finance section
+  function getNetWorthNum(){
+    return manualNetWorthNum() + financeNetWorth();
   }
   // a goal is locked when it has a required net worth set and the profile's net worth hasn't reached it yet
   function isGoalLocked(g){
     return g.requiredNetWorth != null && g.requiredNetWorth !== '' && getNetWorthNum() < g.requiredNetWorth;
   }
 
+  // tier ranking used for the Tier sort option — higher index = higher tier
+  const TIER_ORDER = {'':0,'F':1,'B':2,'A':3,'S':4,'S+':5,'Mythical':6};
+  function sortGoalsBy(arr, mode, dir){
+    const factor = dir === 'asc' ? 1 : -1;
+    return arr.slice().sort((a,b)=>{
+      let av, bv;
+      if(mode === 'tier'){ av = TIER_ORDER[a.tier||'']||0; bv = TIER_ORDER[b.tier||'']||0; }
+      else if(mode === 'progress'){ av = goalProgress(a); bv = goalProgress(b); }
+      else if(mode === 'created'){ av = a.createdAt||0; bv = b.createdAt||0; }
+      else if(mode === 'updated'){ av = a.updatedAt||a.createdAt||0; bv = b.updatedAt||b.createdAt||0; }
+      else { av = 0; bv = 0; }
+      return (av-bv)*factor;
+    });
+  }
+
   function visibleGoals(){
     let arr = state.goals.slice();
 
     if(goalFilter === 'completed'){
-      return arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
+      arr = arr.filter(g=>goalProgress(g)===100);
+      return sortMode !== 'none' ? sortGoalsBy(arr, sortMode, sortDir) : arr.sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
     }
     if(goalFilter === 'unfinished'){
       // locked goals are excluded from the Unfinished list — they aren't actionable yet
       const unfinished = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
+      if(sortMode !== 'none') return sortGoalsBy(unfinished, sortMode, sortDir);
       if(starredFirst) unfinished.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
       return unfinished;
     }
     if(goalFilter === 'locked'){
-      return arr.filter(g=>goalProgress(g)<100 && isGoalLocked(g));
+      arr = arr.filter(g=>goalProgress(g)<100 && isGoalLocked(g));
+      return sortMode !== 'none' ? sortGoalsBy(arr, sortMode, sortDir) : arr;
     }
 
-    // 'all': unlocked-and-open goals on top, then locked goals, then completed goals at the bottom
+    // 'all' with an explicit sort chosen: flat sort across everything, ignoring the default grouping
+    if(sortMode !== 'none') return sortGoalsBy(arr, sortMode, sortDir);
+
+    // 'all' default: unlocked-and-open goals on top, then locked goals, then completed goals at the bottom
     // (completed sorted by completion date, most recent first)
     const openUnlocked = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
     const openLocked = arr.filter(g=>goalProgress(g)<100 && isGoalLocked(g));
     const completed = arr.filter(g=>goalProgress(g)===100).sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
     if(starredFirst) openUnlocked.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
     return openUnlocked.concat(openLocked, completed);
+  }
+
+  // marks a goal as edited "now" so the "Last Updated" sort reflects it
+  function touchGoal(g){ g.updatedAt = Date.now(); }
+
+  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
+  function totalExp(){
+    return state.goals.filter(g=>goalProgress(g)===100).reduce((sum,g)=> sum + (TIER_EXP[g.tier||'']||5), 0);
+  }
+  function levelInfo(exp){
+    let level = 1, need = 100, floor = 0;
+    while(exp >= floor + need){ floor += need; level++; need = Math.round(need*1.25); }
+    return { level, into: exp-floor, need };
+  }
+  function updateExpUI(){
+    const exp = totalExp();
+    const { level, into, need } = levelInfo(exp);
+    el('pfLevel').textContent = 'Lv. ' + level;
+    el('pfExpNum').textContent = into + ' / ' + need + ' XP';
+    el('pfExpFill').style.width = Math.round((into/need)*100) + '%';
   }
 
   function pickFocusTask(force){
@@ -759,7 +951,7 @@
       + '<button class="btn btn-sm btn-ghost" data-status="Slow">Slow going</button>'
       + '<button class="btn btn-sm btn-ghost" data-status="Stuck">Stuck</button></div></div>';
     slot.querySelectorAll('[data-status]').forEach(b=>{
-      b.addEventListener('click', () => { stale.checkin = { status: b.dataset.status, at: Date.now() }; save(); renderCheckin(); });
+      b.addEventListener('click', () => { stale.checkin = { status: b.dataset.status, at: Date.now() }; touchGoal(stale); save(); renderCheckin(); });
     });
   }
 
@@ -831,6 +1023,7 @@
       if(g.imageUrl === undefined) g.imageUrl = '';
       if(g.tier === undefined) g.tier = '';
       if(g.requiredNetWorth === undefined) g.requiredNetWorth = null;
+      if(g.updatedAt === undefined) g.updatedAt = g.createdAt;
       const pct = goalProgress(g);
       const locked = isGoalLocked(g);
 
@@ -847,6 +1040,7 @@
       metaHtml += '<span class="chip">'+escapeHtml(timeSpentStr(g))+'</span>';
       if(g.targetDate) metaHtml += '<span class="chip">'+escapeHtml('Due ' + fmtDate(new Date(g.targetDate).getTime()))+'</span>';
       if(g.checkin) metaHtml += '<span class="chip">'+escapeHtml('Check-in: ' + g.checkin.status)+'</span>';
+      if(g.updatedAt) metaHtml += '<span class="chip">'+escapeHtml('Updated ' + fmtDate(g.updatedAt))+'</span>';
 
       const head = document.createElement('div');
       head.className = 'goal-head';
@@ -861,13 +1055,13 @@
       head.addEventListener('click', (e) => {
         if(e.target.closest('.drag-handle')) return;
         const act = e.target.closest('[data-act]');
-        if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; save(); renderGoals(); return; }
+        if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; touchGoal(g); save(); renderGoals(); return; }
         if(act && act.dataset.act === 'check'){
           e.stopPropagation();
           if(isGoalLocked(g)) return; // locked goals can't be marked done until the net worth requirement is met
           if(g.subtasks.length === 0){ g.manualDone = !g.manualDone; }
           else { const allDone = g.subtasks.every(s=>s.done); g.subtasks.forEach(s => s.done = !allDone); }
-          save(); renderGoals(); return;
+          touchGoal(g); save(); renderGoals(); return;
         }
         g.open = !g.open; renderGoals();
       });
@@ -912,9 +1106,9 @@
           + '<button class="sub-del">✕</button>';
         row.querySelector('.sub-check').addEventListener('click', ()=>{
           if(!s.done && isGoalLocked(g)) return; // locked goal — can uncheck, but can't check off subtasks toward completion
-          s.done=!s.done; save(); renderGoals();
+          s.done=!s.done; touchGoal(g); save(); renderGoals();
         });
-        row.querySelector('.sub-del').addEventListener('click', ()=>{ g.subtasks=g.subtasks.filter(x=>x.id!==s.id); save(); renderGoals(); });
+        row.querySelector('.sub-del').addEventListener('click', ()=>{ g.subtasks=g.subtasks.filter(x=>x.id!==s.id); touchGoal(g); save(); renderGoals(); });
         row.querySelectorAll('.sub-move-btn').forEach(btn=>{
           btn.addEventListener('click', ()=>{
             const i = g.subtasks.findIndex(x=>x.id===s.id);
@@ -922,7 +1116,7 @@
             const j = i+dir;
             if(i<0 || j<0 || j>=g.subtasks.length) return;
             const tmp = g.subtasks[i]; g.subtasks[i]=g.subtasks[j]; g.subtasks[j]=tmp;
-            save(); renderGoals();
+            touchGoal(g); save(); renderGoals();
           });
         });
         return row;
@@ -935,7 +1129,7 @@
       const doAddSub = () => {
         const v=subInput.value.trim(); if(!v) return;
         const ns = {id:uid(),title:v,done:false};
-        g.subtasks.push(ns); save();
+        g.subtasks.push(ns); touchGoal(g); save();
         subListEl.appendChild(buildSubRow(ns));
         subInput.value='';
         refreshHeadUI();
@@ -972,7 +1166,7 @@
             // subtask directly and just mark this row as added, instead of calling renderGoals()
             row.querySelector('button').addEventListener('click', ()=>{
               const ns = {id:uid(), title:s, done:false};
-              g.subtasks.push(ns); save();
+              g.subtasks.push(ns); touchGoal(g); save();
               subListEl.appendChild(buildSubRow(ns));
               refreshHeadUI();
               row.classList.add('added');
@@ -992,7 +1186,7 @@
       const dLbl = document.createElement('div'); dLbl.className='section-lbl'; dLbl.textContent='Target Date'; inner.appendChild(dLbl);
       const dRow = document.createElement('div'); dRow.className='inline-fields';
       dRow.innerHTML = '<input type="date" value="'+(g.targetDate||'')+'">';
-      dRow.querySelector('input').addEventListener('change', e=>{ g.targetDate = e.target.value; save(); renderGoals(); });
+      dRow.querySelector('input').addEventListener('change', e=>{ g.targetDate = e.target.value; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(dRow);
 
       if(pct === 100){
@@ -1014,8 +1208,8 @@
       const fRow = document.createElement('div'); fRow.className='inline-fields';
       fRow.innerHTML = '<span>Target $</span><input type="number" min="0" value="'+(g.financeTarget??'')+'" placeholder="e.g. 500"><span>Saved $</span><input type="number" min="0" value="'+(g.financeSaved||0)+'" style="width:90px;">';
       const finInputs = fRow.querySelectorAll('input');
-      finInputs[0].addEventListener('change', ()=>{ g.financeTarget = finInputs[0].value===''?null:parseFloat(finInputs[0].value); save(); renderGoals(); });
-      finInputs[1].addEventListener('change', ()=>{ g.financeSaved = parseFloat(finInputs[1].value)||0; save(); renderGoals(); });
+      finInputs[0].addEventListener('change', ()=>{ g.financeTarget = finInputs[0].value===''?null:parseFloat(finInputs[0].value); touchGoal(g); save(); renderGoals(); });
+      finInputs[1].addEventListener('change', ()=>{ g.financeSaved = parseFloat(finInputs[1].value)||0; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(fRow);
       if(g.financeTarget){
         const fbar = document.createElement('div'); fbar.className='finance-bar';
@@ -1031,7 +1225,7 @@
       const tierRow = document.createElement('div'); tierRow.className='inline-fields';
       const tierSel = document.createElement('select'); tierSel.className='tier-select';
       tierSel.innerHTML = TIERS.map(t=>'<option value="'+t.value+'" '+(g.tier===t.value?'selected':'')+'>'+t.label+'</option>').join('');
-      tierSel.addEventListener('change', ()=>{ g.tier = tierSel.value; save(); renderGoals(); });
+      tierSel.addEventListener('change', ()=>{ g.tier = tierSel.value; touchGoal(g); save(); renderGoals(); });
       tierRow.appendChild(tierSel);
       inner.appendChild(tierRow);
 
@@ -1039,7 +1233,7 @@
       const unlockRow = document.createElement('div'); unlockRow.className='inline-fields';
       unlockRow.innerHTML = '<span>Required net worth $</span><input type="number" min="0" value="'+(g.requiredNetWorth??'')+'" placeholder="e.g. 10000">';
       const unlockInput = unlockRow.querySelector('input');
-      unlockInput.addEventListener('change', ()=>{ g.requiredNetWorth = unlockInput.value===''?null:parseFloat(unlockInput.value); save(); renderGoals(); });
+      unlockInput.addEventListener('change', ()=>{ g.requiredNetWorth = unlockInput.value===''?null:parseFloat(unlockInput.value); touchGoal(g); save(); renderGoals(); });
       inner.appendChild(unlockRow);
       if(g.requiredNetWorth != null && g.requiredNetWorth !== ''){
         const unote = document.createElement('div');
@@ -1056,9 +1250,9 @@
       cRow.innerHTML = SWATCHES.map(c=>'<div class="swatch '+(g.color===c?'selected':'')+'" style="background:'+c+';" data-color="'+c+'"></div>').join('')
         + '<input type="color" class="swatch-custom" value="'+(g.color||'#6366F1')+'">';
       cRow.querySelectorAll('.swatch').forEach(sw=>{
-        sw.addEventListener('click', ()=>{ g.color = sw.dataset.color; save(); renderGoals(); });
+        sw.addEventListener('click', ()=>{ g.color = sw.dataset.color; touchGoal(g); save(); renderGoals(); });
       });
-      cRow.querySelector('.swatch-custom').addEventListener('change', e=>{ g.color = e.target.value; save(); renderGoals(); });
+      cRow.querySelector('.swatch-custom').addEventListener('change', e=>{ g.color = e.target.value; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(cRow);
 
       const imgRow = document.createElement('div'); imgRow.className='img-row'; imgRow.style.marginTop='9px';
@@ -1068,11 +1262,11 @@
       imgRow.querySelector('input[type=file]').addEventListener('change', (e)=>{
         const file = e.target.files[0]; if(!file) return;
         const reader = new FileReader();
-        reader.onload = ev => { g.imageUrl = ev.target.result; save(); renderGoals(); };
+        reader.onload = ev => { g.imageUrl = ev.target.result; touchGoal(g); save(); renderGoals(); };
         reader.readAsDataURL(file);
       });
       const rmBtn = imgRow.querySelector('.del-goal');
-      if(rmBtn) rmBtn.addEventListener('click', ()=>{ g.imageUrl = ''; save(); renderGoals(); });
+      if(rmBtn) rmBtn.addEventListener('click', ()=>{ g.imageUrl = ''; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(imgRow);
 
       const footer = document.createElement('div'); footer.className='goal-footer';
@@ -1098,6 +1292,8 @@
     el('statLocked').textContent = lockedCount;
     el('statPct').textContent = overall+'%';
     el('pfGoalsCompleted').textContent = completedCount;
+    el('pfNetWorthCalc').textContent = '$'+getNetWorthNum().toLocaleString();
+    updateExpUI();
 
     document.querySelectorAll('.stat').forEach(s=>s.classList.remove('active-filter'));
     if(goalFilter !== 'all'){
@@ -1121,12 +1317,18 @@
     el('starredFirstBtn').classList.toggle('btn-ghost', !starredFirst);
     renderGoals();
   });
+  el('goalSortSelect').addEventListener('change', e=>{ sortMode = e.target.value; renderGoals(); });
+  el('goalSortDirBtn').addEventListener('click', ()=>{
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    el('goalSortDirBtn').textContent = sortDir === 'asc' ? '↑' : '↓';
+    renderGoals();
+  });
 
   function addGoal(){
     const input = el('newGoalInput');
     const v = input.value.trim();
     if(!v) return;
-    state.goals.unshift({ id:uid(), title:v, starred:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
+    state.goals.unshift({ id:uid(), title:v, starred:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
     input.value=''; save(); renderGoals(); input.focus();
   }
   el('addGoalBtn').addEventListener('click', addGoal);
@@ -1576,8 +1778,119 @@
   el('addChecklistBtn').addEventListener('click', addChecklist);
   el('newChecklistInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addChecklist(); });
 
+  /* ================= FINANCE ================= */
+  function financeAccountLabel(type){
+    return {savings:'Savings', credit:'Credit', lent:'Lent', 'custom-asset':'Custom (Asset)', 'custom-liability':'Custom (Liability)'}[type] || type;
+  }
+  function financeIcon(type){
+    return {savings:'\ud83d\udcb0', credit:'\ud83d\udcb3', lent:'\ud83e\udd1d', 'custom-asset':'\ud83d\udcc8', 'custom-liability':'\ud83d\udcc9'}[type] || '\ud83d\udcbc';
+  }
+  function renderFinance(){
+    const list = el('financeList'); list.innerHTML = '';
+    const accounts = state.finance.accounts || [];
+    el('financeEmpty').style.display = accounts.length===0 ? 'block' : 'none';
+
+    let assets = 0, liabilities = 0;
+    accounts.forEach(a=>{
+      const bal = parseFloat(a.balance)||0;
+      if(a.type==='credit' || a.type==='custom-liability') liabilities += bal; else assets += bal;
+    });
+    el('finTotalAssets').textContent = '$'+assets.toLocaleString();
+    el('finTotalLiabilities').textContent = '$'+liabilities.toLocaleString();
+    el('finNetWorth').textContent = '$'+(assets-liabilities).toLocaleString();
+
+    const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
+    groups.forEach(([type,label])=>{
+      const items = accounts.filter(a=>a.type===type);
+      if(!items.length) return;
+      const lbl = document.createElement('div'); lbl.className='finance-group-lbl'; lbl.textContent = label; list.appendChild(lbl);
+      items.forEach(a=>{
+        const bal = parseFloat(a.balance)||0;
+        const isNeg = (a.type==='credit' || a.type==='custom-liability');
+        const card = document.createElement('div'); card.className='finance-card';
+        card.innerHTML = '<div class="finance-icon">'+financeIcon(a.type)+'</div>'
+          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'</div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
+          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+'$'+bal.toLocaleString()+'</div>'
+          + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
+        card.querySelector('.del-goal').addEventListener('click', ()=>{
+          state.finance.accounts = state.finance.accounts.filter(x=>x.id!==a.id);
+          save(); renderFinance(); renderGoals();
+        });
+        list.appendChild(card);
+      });
+    });
+  }
+  el('addFinanceBtn').addEventListener('click', ()=>{
+    const name = el('finName').value.trim();
+    const balance = parseFloat(el('finBalance').value);
+    if(!name || isNaN(balance)) return;
+    state.finance.accounts.push({ id:uid(), type: el('finType').value, name, balance, createdAt: Date.now() });
+    el('finName').value=''; el('finBalance').value='';
+    save(); renderFinance(); renderGoals();
+  });
+
+  /* ================= FITNESS ================= */
+  function calcFitness(){
+    const f = state.fitness;
+    const cw = parseFloat(f.currentWeight), tw = parseFloat(f.targetWeight), h = parseFloat(f.height), age = parseFloat(f.age);
+    const activity = parseFloat(f.activity)||1.55, pace = parseFloat(f.pace)||0.5;
+    const resultsEl = el('fitnessResults'), noteEl = el('fitnessNote');
+    if(isNaN(cw) || isNaN(h) || isNaN(age)){
+      resultsEl.style.display='none';
+      noteEl.textContent = 'Fill in current weight, height, and age to calculate your calorie targets.';
+      return;
+    }
+    // Mifflin-St Jeor BMR formula
+    const bmr = f.sex==='female' ? (10*cw + 6.25*h - 5*age - 161) : (10*cw + 6.25*h - 5*age + 5);
+    const tdee = bmr * activity;
+    let target = tdee, note = 'Enter a target weight above to get a daily calorie target for reaching it.';
+    if(!isNaN(tw) && tw !== cw){
+      const dailyDelta = (pace * 7700) / 7; // ~7700 kcal per kg of body weight
+      target = tw < cw ? tdee - dailyDelta : tdee + dailyDelta;
+      const weeks = Math.ceil(Math.abs(tw - cw) / pace);
+      el('fitWeeks').textContent = weeks;
+      note = (tw < cw ? 'A daily deficit of ' : 'A daily surplus of ') + Math.round(dailyDelta) + ' kcal gets you to ' + tw + 'kg in about ' + weeks + ' week' + (weeks===1?'':'s') + ', at ' + pace + 'kg/week.';
+    } else {
+      el('fitWeeks').textContent = '\u2014';
+    }
+    el('fitBMR').textContent = Math.round(bmr);
+    el('fitTDEE').textContent = Math.round(tdee);
+    el('fitTarget2').textContent = Math.round(target);
+    resultsEl.style.display = 'grid';
+    noteEl.textContent = note;
+  }
+  function renderFitness(){
+    const f = state.fitness;
+    el('fitCurrent').value = f.currentWeight || '';
+    el('fitTarget').value = f.targetWeight || '';
+    el('fitHeight').value = f.height || '';
+    el('fitAge').value = f.age || '';
+    el('fitSex').value = f.sex || 'male';
+    el('fitActivity').value = f.activity || '1.55';
+    el('fitPace').value = f.pace || '0.5';
+    calcFitness();
+  }
+  ['fitCurrent','fitTarget','fitHeight','fitAge'].forEach(id=>{
+    el(id).addEventListener('input', ()=>{
+      state.fitness.currentWeight = el('fitCurrent').value;
+      state.fitness.targetWeight = el('fitTarget').value;
+      state.fitness.height = el('fitHeight').value;
+      state.fitness.age = el('fitAge').value;
+      save(); calcFitness();
+    });
+  });
+  ['fitSex','fitActivity','fitPace'].forEach(id=>{
+    el(id).addEventListener('change', ()=>{
+      state.fitness.sex = el('fitSex').value;
+      state.fitness.activity = el('fitActivity').value;
+      state.fitness.pace = el('fitPace').value;
+      save(); calcFitness();
+    });
+  });
+
   function renderAll(){
     renderGoals(); renderHabits(); renderCountdowns(); renderInsights(); renderMantras(); renderChecklists();
+    renderFinance(); renderFitness();
   }
 
   function applyDarkMode(){

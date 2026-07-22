@@ -178,6 +178,16 @@
   .drag-handle:active{cursor:grabbing;}
   .goal.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .checklist-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .finance-account.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .habit-card.at-risk{outline:2px solid var(--danger);outline-offset:-2px;}
+  .habit-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .habit-restore-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;}
+  .habit-restore-btn:hover{background:var(--violet-pale);}
+  .habit-link-btn{background:var(--violet-pale);border:1px solid var(--border);color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;}
+  .habit-link-btn:hover{background:var(--violet);color:#fff;}
+  .checklist-flash{animation:checklistFlash 1.6s ease;}
+  @keyframes checklistFlash{0%,100%{box-shadow:none;}25%,75%{box-shadow:0 0 0 3px var(--violet);}}
+  .sub-prereq{background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:3px 5px;font-size:10.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;max-width:110px;flex:none;}
 
   /* tier badges */
   .tier-chip{flex:none;font-family:'Manrope',sans-serif;font-size:10.5px;font-weight:800;border-radius:6px;padding:2px 7px;letter-spacing:0.3px;border:1.5px solid transparent;}
@@ -472,9 +482,9 @@
   <div class="profile-card">
     <div class="profile-row"><div class="profile-lbl">Name</div><input id="pfName" type="text" placeholder="Your name" maxlength="40"></div>
     <div class="profile-row"><div class="profile-lbl">Age</div><input id="pfAge" type="number" min="0" placeholder="Age"></div>
-    <div class="profile-row"><div class="profile-lbl">Net Worth</div><input id="pfNetWorth" type="text" placeholder="$ 0"></div>
     <div class="profile-row profile-stat"><span>Goals Completed</span><b id="pfGoalsCompleted">0</b></div>
     <div class="profile-row profile-stat"><span>Net Worth</span><b id="pfNetWorthCalc">$0</b></div>
+    <div class="profile-row profile-stat"><span>Fitness Level</span><b id="pfFitnessLevel">—</b></div>
     <div class="profile-row">
       <div class="exp-row"><span class="exp-level" id="pfLevel">Lv. 1</span><span class="exp-num" id="pfExpNum">0 / 100 XP</span></div>
       <div class="exp-track"><div class="exp-fill" id="pfExpFill" style="width:0%"></div></div>
@@ -639,7 +649,8 @@
       </div>
       <div class="stat" style="cursor:default;max-width:280px;"><div class="num" id="convResult">$0</div><div class="lbl">Converted amount</div></div>
       <div class="section-lbl" style="margin-top:22px;">Exchange Rates (units per 1 USD)</div>
-      <div class="view-sub" style="margin-top:-4px;margin-bottom:0;">Edit these to keep conversions accurate — rates aren't fetched automatically.</div>
+      <div class="view-sub" style="margin-top:-4px;margin-bottom:10px;">Edit these manually, or fetch current rates automatically.</div>
+      <button class="btn btn-ghost btn-sm" id="fetchRatesBtn" type="button" style="margin-bottom:12px;">⟳ Fetch Live Rates</button>
       <div id="ratesTable" class="rates-table"></div>
     </div>
   </div>
@@ -857,6 +868,7 @@
       if(s.currency===undefined) s.currency = 'USD';
       if(s.cycle===undefined) s.cycle = 'monthly';
       if(s.nextDate===undefined) s.nextDate = '';
+      if(s.imageUrl===undefined) s.imageUrl = '';
     });
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
@@ -922,7 +934,6 @@
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
-    el('pfNetWorth').value = state.profile.netWorth || '';
     applyDarkMode();
     renderAll();
   }
@@ -948,11 +959,10 @@
   }
 
 
-  ['pfName','pfAge','pfNetWorth'].forEach(id=>{
+  ['pfName','pfAge'].forEach(id=>{
     el(id).addEventListener('change', ()=>{
       state.profile.name = el('pfName').value;
       state.profile.age = el('pfAge').value;
-      state.profile.netWorth = el('pfNetWorth').value;
       save();
       renderGoals();
     });
@@ -1109,9 +1119,22 @@
     let pick = null;
     if(pool.length){
       let candidates = [];
-      pool.forEach(g=>{ g.subtasks.filter(s=>!s.done).forEach(s=> candidates.push({label:s.title, goalTitle:g.title})); });
+      pool.forEach(g=>{
+        g.subtasks.forEach(s=>{
+          if(s.done) return;
+          if(s.requiresId){
+            const req = g.subtasks.find(x=>x.id===s.requiresId);
+            if(req && !req.done) return; // prerequisite not met yet — don't recommend this one
+          }
+          candidates.push({label:s.title, goalTitle:g.title, hasPrereq: !!s.requiresId});
+        });
+      });
       if(candidates.length){
-        pick = candidates[Math.floor(Math.random()*candidates.length)];
+        // subtasks with no prerequisite at all are always favored over ones that merely have
+        // their prerequisite already satisfied
+        const noPrereq = candidates.filter(c=>!c.hasPrereq);
+        const pickPool = noPrereq.length ? noPrereq : candidates;
+        pick = pickPool[Math.floor(Math.random()*pickPool.length)];
       } else {
         const g = pool[Math.floor(Math.random()*pool.length)];
         pick = { label:'No subtask available', goalTitle: g.title };
@@ -1223,6 +1246,7 @@
       if(g.tier === undefined) g.tier = '';
       if(g.requiredNetWorth === undefined) g.requiredNetWorth = null;
       if(g.updatedAt === undefined) g.updatedAt = g.createdAt;
+      g.subtasks.forEach(s=>{ if(s.requiresId === undefined) s.requiresId = null; });
       const pct = goalProgress(g);
       const locked = isGoalLocked(g);
 
@@ -1296,18 +1320,35 @@
       function buildSubRow(s){
         const row = document.createElement('div'); row.className = 'sub-row'; row.dataset.subId = s.id;
         const idx = g.subtasks.findIndex(x=>x.id===s.id);
+        const prereq = s.requiresId ? g.subtasks.find(x=>x.id===s.requiresId) : null;
+        const blocked = !s.done && prereq && !prereq.done;
         row.innerHTML = '<div class="sub-move">'
           + '<button class="sub-move-btn" data-dir="up" '+(idx<=0?'disabled':'')+'>▲</button>'
           + '<button class="sub-move-btn" data-dir="down" '+(idx>=g.subtasks.length-1?'disabled':'')+'>▼</button>'
           + '</div>'
-          + '<div class="sub-check '+(s.done?'checked':'')+'">'+(s.done?'✓':'')+'</div>'
-          + '<div class="sub-title '+(s.done?'done':'')+'">'+escapeHtml(s.title)+'</div>'
+          + '<div class="sub-check '+(s.done?'checked':'')+'" title="'+(blocked?'Locked until prerequisite is done':'')+'">'+(s.done?'✓':(blocked?'🔒':''))+'</div>'
+          + '<div class="sub-title '+(s.done?'done':'')+'">'+escapeHtml(s.title)+(blocked?' <span class="chip">🔒 needs: '+escapeHtml(prereq.title)+'</span>':'')+'</div>'
+          + '<select class="sub-prereq" title="Requires this subtask to be done first">'
+            + '<option value="">No prerequisite</option>'
+            + g.subtasks.filter(x=>x.id!==s.id).map(x=>'<option value="'+x.id+'" '+(s.requiresId===x.id?'selected':'')+'>Needs: '+escapeHtml(x.title.slice(0,22))+'</option>').join('')
+          + '</select>'
           + '<button class="sub-del">✕</button>';
         row.querySelector('.sub-check').addEventListener('click', ()=>{
           if(!s.done && isGoalLocked(g)) return; // locked goal — can uncheck, but can't check off subtasks toward completion
+          if(!s.done && s.requiresId){
+            const req = g.subtasks.find(x=>x.id===s.requiresId);
+            if(req && !req.done) return; // prerequisite subtask not done yet
+          }
           s.done=!s.done; touchGoal(g); save(); renderGoals();
         });
-        row.querySelector('.sub-del').addEventListener('click', ()=>{ g.subtasks=g.subtasks.filter(x=>x.id!==s.id); touchGoal(g); save(); renderGoals(); });
+        row.querySelector('.sub-prereq').addEventListener('change', e=>{
+          s.requiresId = e.target.value || null; touchGoal(g); save(); renderGoals();
+        });
+        row.querySelector('.sub-del').addEventListener('click', ()=>{
+          g.subtasks=g.subtasks.filter(x=>x.id!==s.id);
+          g.subtasks.forEach(x=>{ if(x.requiresId===s.id) x.requiresId=null; }); // clear dangling prerequisite refs
+          touchGoal(g); save(); renderGoals();
+        });
         row.querySelectorAll('.sub-move-btn').forEach(btn=>{
           btn.addEventListener('click', ()=>{
             const i = g.subtasks.findIndex(x=>x.id===s.id);
@@ -1327,7 +1368,7 @@
       const subInput = addSubRow.querySelector('input');
       const doAddSub = () => {
         const v=subInput.value.trim(); if(!v) return;
-        const ns = {id:uid(),title:v,done:false};
+        const ns = {id:uid(),title:v,done:false,requiresId:null};
         g.subtasks.push(ns); touchGoal(g); save();
         subListEl.appendChild(buildSubRow(ns));
         subInput.value='';
@@ -1364,7 +1405,7 @@
             // adding a suggestion no longer wipes out the rest of the batch — we append the
             // subtask directly and just mark this row as added, instead of calling renderGoals()
             row.querySelector('button').addEventListener('click', ()=>{
-              const ns = {id:uid(), title:s, done:false};
+              const ns = {id:uid(), title:s, done:false, requiresId:null};
               g.subtasks.push(ns); touchGoal(g); save();
               subListEl.appendChild(buildSubRow(ns));
               refreshHeadUI();
@@ -1609,19 +1650,64 @@
     const badge = el('habitRiskBadge');
     if(atRisk.length){ badge.style.display = 'inline-flex'; badge.textContent = atRisk.length; }
     else { badge.style.display = 'none'; }
-
+    // habits at risk are now shown via an outline directly on their card (see renderHabits)
+    // instead of a separate text banner listing them out.
     const banner = el('habitReminderBanner');
-    if(atRisk.length){
-      banner.style.display = 'flex';
-      const plural = atRisk.length > 1;
-      banner.innerHTML = '<span>\u{1F534} <b>' + atRisk.length + '</b> habit' + (plural?'s':'') + ' need' + (plural?'':'s')
-        + ' to be done today to keep ' + (plural?'their':'its') + ' streak: '
-        + atRisk.map(h=>escapeHtml(h.name)).join(', ') + '</span>';
-    } else {
-      banner.style.display = 'none';
-      banner.innerHTML = '';
-    }
+    if(banner){ banner.style.display = 'none'; banner.innerHTML = ''; }
   }
+
+  function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  function restoresUsedThisMonth(h){
+    if(!h.streakRestores) h.streakRestores = {};
+    return h.streakRestores[monthKey(new Date())] || 0;
+  }
+  // Returns the date string of the single missed day that most recently broke an active streak,
+  // or null if there's nothing to restore (streak currently alive, or no prior streak existed).
+  function habitBrokenGapDate(h){
+    const today = new Date(); today.setHours(0,0,0,0);
+    if(h.completions[localDateStr(today)]) return null; // today already done, nothing broken
+    const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
+    const yStr = localDateStr(yesterday);
+    if(h.completions[yStr]) return null; // yesterday done — streak is still alive as of today
+    let cur = new Date(yesterday); cur.setDate(cur.getDate()-1);
+    let priorStreak = 0;
+    while(h.completions[localDateStr(cur)]){ priorStreak++; cur.setDate(cur.getDate()-1); }
+    return priorStreak > 0 ? yStr : null;
+  }
+
+  /* drag-to-reorder habits — registered once, delegated over #habitList */
+  let draggedHabitId = null;
+  const habitListEl = el('habitList');
+  habitListEl.addEventListener('dragstart', e=>{
+    const handle = e.target.closest('.drag-handle');
+    if(!handle) return;
+    const card = handle.closest('.habit-card');
+    draggedHabitId = card ? card.dataset.habitId : null;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  habitListEl.addEventListener('dragover', e=>{
+    if(!draggedHabitId) return;
+    e.preventDefault();
+    const overCard = e.target.closest('.habit-card');
+    habitListEl.querySelectorAll('.habit-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    if(overCard && overCard.dataset.habitId !== draggedHabitId) overCard.classList.add('drag-over');
+  });
+  habitListEl.addEventListener('drop', e=>{
+    if(!draggedHabitId) return;
+    e.preventDefault();
+    habitListEl.querySelectorAll('.habit-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    const overCard = e.target.closest('.habit-card');
+    const toId = overCard ? overCard.dataset.habitId : null;
+    const fromId = draggedHabitId; draggedHabitId = null;
+    if(!toId || toId === fromId) return;
+    const fromIdx = state.habits.findIndex(x=>x.id===fromId);
+    const toIdx = state.habits.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const [moved] = state.habits.splice(fromIdx,1);
+    state.habits.splice(toIdx,0,moved);
+    save(); renderHabits();
+  });
+  habitListEl.addEventListener('dragend', ()=>{ draggedHabitId = null; habitListEl.querySelectorAll('.habit-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
   function renderHabits(){
     const list = el('habitList'); list.innerHTML = '';
@@ -1630,23 +1716,65 @@
 
     const today = new Date(); today.setHours(0,0,0,0);
     const weekStart = new Date(today); const wd=(weekStart.getDay()+6)%7; weekStart.setDate(weekStart.getDate()-wd);
+    const atRiskIds = new Set(habitsAtRisk().map(h=>h.id));
 
     state.habits.forEach(h => {
       if(!h.completions) h.completions = {};
+      if(!h.streakRestores) h.streakRestores = {};
       const weekDates = [];
       for(let i=0;i<7;i++){ const d = new Date(weekStart); d.setDate(d.getDate()+i); weekDates.push(d); }
       const doneCount = weekDates.filter(d=>h.completions[localDateStr(d)]).length;
       const streak = calcStreak(h);
+      const gapDate = habitBrokenGapDate(h);
+      const restoresLeft = 3 - restoresUsedThisMonth(h);
+      const linkedChecklists = state.checklists.filter(c=>c.linkedHabitId===h.id);
 
-      const card = document.createElement('div'); card.className='habit-card';
+      const card = document.createElement('div'); card.className='habit-card' + (atRiskIds.has(h.id) ? ' at-risk' : '');
+      card.dataset.habitId = h.id;
       const top = document.createElement('div'); top.className='habit-top';
-      top.innerHTML = '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
+      top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+        + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
         + (streak>=2 ? '<div class="habit-badge habit-streak">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
-        + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
+        + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist">🔗 '+escapeHtml(c.name)+'</button>').join('') : '')
+        + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
+        + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>';
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ h.collapsed = !h.collapsed; save(); renderHabits(); });
-      top.querySelector('.del-goal').addEventListener('click', ()=>{ state.habits = state.habits.filter(x=>x.id!==h.id); save(); renderHabits(); });
+      top.querySelector('[data-act="delete"]').addEventListener('click', ()=>{
+        if(!window.confirm('Delete habit "'+h.name+'"? This can\'t be undone.')) return;
+        state.habits = state.habits.filter(x=>x.id!==h.id); save(); renderHabits();
+      });
+      const restoreBtn = top.querySelector('[data-act="restore"]');
+      if(restoreBtn){
+        restoreBtn.addEventListener('click', ()=>{
+          const gd = habitBrokenGapDate(h);
+          if(!gd) return;
+          if(restoresUsedThisMonth(h) >= 3) return;
+          h.completions[gd] = true;
+          const key = monthKey(new Date());
+          h.streakRestores[key] = (h.streakRestores[key]||0) + 1;
+          save(); renderHabits();
+        });
+      }
+      top.querySelectorAll('.habit-link-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const targetId = btn.dataset.checklistId;
+          // expand the target checklist and minimize every other one, so the user lands
+          // straight on it without having to hunt through a wall of open checklists
+          state.checklists.forEach(c=>{ c.collapsed = (c.id !== targetId); });
+          save(); renderChecklists();
+          document.querySelector('.nav-item[data-tab="checklists"]').click();
+          setTimeout(()=>{
+            const targetCard = document.querySelector('.checklist-card[data-checklist-id="'+targetId+'"]');
+            if(targetCard){
+              targetCard.scrollIntoView({behavior:'smooth', block:'center'});
+              targetCard.classList.add('checklist-flash');
+              setTimeout(()=>targetCard.classList.remove('checklist-flash'), 1600);
+            }
+          }, 60);
+        });
+      });
       card.appendChild(top);
 
       if(!h.collapsed){
@@ -1707,7 +1835,7 @@
   function addHabit(){
     const input = el('newHabitInput'); const v = input.value.trim();
     if(!v) return;
-    state.habits.unshift({ id:uid(), name:v, completions:{} });
+    state.habits.unshift({ id:uid(), name:v, completions:{}, streakRestores:{} });
     input.value=''; save(); renderHabits();
   }
   el('addHabitBtn').addEventListener('click', addHabit);
@@ -1878,13 +2006,39 @@
   });
   checklistListEl.addEventListener('dragend', ()=>{ draggedChecklistId = null; checklistListEl.querySelectorAll('.checklist-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
+  /* collapse state for named checklist subgroups — not persisted, resets per page load, mirrors
+     the pattern used for weight-log month groups */
+  const checklistGroupCollapsed = {};
+
   function renderChecklists(){
     applyChecklistResets();
     const list = el('checklistList'); list.innerHTML = '';
     el('checklistEmpty').style.display = state.checklists.length===0 ? 'block' : 'none';
+
+    // group checklists into subgroups (by c.group), preserving overall order; ungrouped items
+    // (group === '') render without a header, above any named groups they appear alongside
+    const groupOrder = [];
+    const groupsMap = {};
     state.checklists.forEach(c=>{
       if(c.resetFreq === undefined) c.resetFreq = 'none';
       if(c.linkedHabitId === undefined) c.linkedHabitId = null;
+      if(c.group === undefined) c.group = '';
+      const gkey = c.group || '';
+      if(!(gkey in groupsMap)){ groupsMap[gkey] = []; groupOrder.push(gkey); }
+      groupsMap[gkey].push(c);
+    });
+
+    groupOrder.forEach(gkey=>{
+      if(gkey){
+        const collapsed = !!checklistGroupCollapsed[gkey];
+        const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header';
+        lbl.style.cursor = 'pointer';
+        lbl.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
+        lbl.addEventListener('click', ()=>{ checklistGroupCollapsed[gkey] = !checklistGroupCollapsed[gkey]; renderChecklists(); });
+        list.appendChild(lbl);
+        if(collapsed) return; // skip rendering this subgroup's checklists while minimized
+      }
+      groupsMap[gkey].forEach(c=>{
       const card = document.createElement('div'); card.className='checklist-card';
       card.dataset.checklistId = c.id;
 
@@ -1898,12 +2052,16 @@
         + '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
         + (allItemsDone ? '<span class="checklist-done-chip">✓ Checklist done</span>' : '')
         + '<span class="chip">'+doneCt+'/'+c.items.length+'</span>'
+        + '<input type="text" class="mini-input checklist-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(c.group||'')+'" style="width:100px;flex:none;padding:5px 8px;font-size:11.5px;" title="Organize this checklist into a subgroup">'
         + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
           + '<option value="">🔗 Link a habit…</option>'
           + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
         + '</select>'
         + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
         + '<button class="del-goal">Delete</button>';
+      top.querySelector('.checklist-group-input').addEventListener('change', e=>{
+        c.group = e.target.value.trim(); save(); renderChecklists();
+      });
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ c.collapsed = !c.collapsed; save(); renderChecklists(); });
       top.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
         const nameEl = top.querySelector('.checklist-name');
@@ -1966,12 +2124,13 @@
       }
 
       list.appendChild(card);
-    });
+      }); // end groupsMap[gkey].forEach
+    }); // end groupOrder.forEach
   }
   function addChecklist(){
     const input = el('newChecklistInput'); const v = input.value.trim();
     if(!v) return;
-    state.checklists.push({ id:uid(), name:v, resetFreq:'none', lastResetKey:null, items:[] });
+    state.checklists.push({ id:uid(), name:v, resetFreq:'none', lastResetKey:null, group:'', items:[] });
     input.value=''; save(); renderChecklists();
   }
   el('addChecklistBtn').addEventListener('click', addChecklist);
@@ -1998,6 +2157,41 @@
     renderFinanceSubs();
     renderFinanceConverter();
   }
+
+  /* drag-to-reorder finance accounts — registered once, delegated over #financeList */
+  let draggedAccountId = null;
+  const financeListEl = el('financeList');
+  financeListEl.addEventListener('dragstart', e=>{
+    const handle = e.target.closest('.drag-handle');
+    if(!handle) return;
+    const card = handle.closest('.finance-account');
+    draggedAccountId = card ? card.dataset.accountId : null;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  financeListEl.addEventListener('dragover', e=>{
+    if(!draggedAccountId) return;
+    e.preventDefault();
+    const overCard = e.target.closest('.finance-account');
+    financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    if(overCard && overCard.dataset.accountId !== draggedAccountId) overCard.classList.add('drag-over');
+  });
+  financeListEl.addEventListener('drop', e=>{
+    if(!draggedAccountId) return;
+    e.preventDefault();
+    financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    const overCard = e.target.closest('.finance-account');
+    const toId = overCard ? overCard.dataset.accountId : null;
+    const fromId = draggedAccountId; draggedAccountId = null;
+    if(!toId || toId === fromId) return;
+    const accounts = state.finance.accounts;
+    const fromIdx = accounts.findIndex(x=>x.id===fromId);
+    const toIdx = accounts.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const [moved] = accounts.splice(fromIdx,1);
+    accounts.splice(toIdx,0,moved);
+    save(); renderFinanceAccounts();
+  });
+  financeListEl.addEventListener('dragend', ()=>{ draggedAccountId = null; financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
   /* ---- accounts (+ transfers, transactions, per-account currency & icon image) ---- */
   function renderFinanceAccounts(){
@@ -2029,17 +2223,33 @@
         const isNeg = (a.type==='credit' || a.type==='custom-liability');
 
         const card = document.createElement('div'); card.className = 'finance-account' + (a.open ? ' open' : '');
+        card.dataset.accountId = a.id;
 
         const head = document.createElement('div'); head.className = 'finance-account-head';
-        head.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '<div class="finance-icon">'+financeIcon(a.type)+'</div>')
+        head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+          + (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '<div class="finance-icon">'+financeIcon(a.type)+'</div>')
           + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'<span class="finance-ccy-badge">'+a.currency+'</span></div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
           + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(bal,a.currency)+'</div>'
           + '<div class="fa-chevron">▶</div>';
-        head.addEventListener('click', ()=>{ a.open = !a.open; save(); renderFinanceAccounts(); });
+        head.addEventListener('click', (e)=>{
+          if(e.target.closest('.drag-handle')) return;
+          a.open = !a.open; save(); renderFinanceAccounts();
+        });
         card.appendChild(head);
 
         const detail = document.createElement('div'); detail.className = 'finance-account-detail';
         const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
+
+        // account name (rename)
+        const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Account Name'; inner.appendChild(nameLbl);
+        const nameRow = document.createElement('div'); nameRow.className='inline-fields';
+        const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=a.name; nameInput.maxLength=60; nameInput.style.width='220px';
+        nameInput.addEventListener('change', ()=>{
+          const v = nameInput.value.trim();
+          if(v){ a.name = v; save(); renderFinanceAccounts(); }
+        });
+        nameRow.appendChild(nameInput);
+        inner.appendChild(nameRow);
 
         // currency + balance
         const ccyLbl = document.createElement('div'); ccyLbl.className='section-lbl'; ccyLbl.textContent='Currency & Balance'; inner.appendChild(ccyLbl);
@@ -2185,12 +2395,24 @@
     });
     el('subsMonthlyTotal').textContent = fmtMoney(totalUSD,'USD');
     subs.slice().sort((a,b)=>(parseFloat(b.amount)||0)-(parseFloat(a.amount)||0)).forEach(s=>{
+      if(s.imageUrl===undefined) s.imageUrl = '';
       const card = document.createElement('div'); card.className='sub-card';
       const nextTxt = s.nextDate ? ' · Next '+fmtDate(new Date(s.nextDate).getTime()) : '';
-      card.innerHTML = '<div class="sub-icon">🔁</div>'
+      card.innerHTML = '<div class="sub-icon" style="cursor:pointer;overflow:hidden;padding:0;" title="Click to upload a custom icon">'
+          + (s.imageUrl ? '<img src="'+s.imageUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:9px;">' : '🔁')
+        + '</div>'
+        + '<input type="file" accept="image/*" class="sub-icon-file" style="display:none;">'
         + '<div class="sub-info"><div class="sub-name">'+escapeHtml(s.name)+'</div><div class="sub-meta">'+(s.cycle==='yearly'?'Yearly':'Monthly')+escapeHtml(nextTxt)+'</div></div>'
         + '<div class="sub-amt">'+fmtMoney(parseFloat(s.amount)||0, s.currency||'USD')+' / '+(s.cycle==='yearly'?'yr':'mo')+'</div>'
         + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
+      const iconFile = card.querySelector('.sub-icon-file');
+      card.querySelector('.sub-icon').addEventListener('click', ()=> iconFile.click());
+      iconFile.addEventListener('change', e=>{
+        const file = e.target.files[0]; if(!file) return;
+        const reader = new FileReader();
+        reader.onload = ev => { s.imageUrl = ev.target.result; save(); renderFinanceSubs(); };
+        reader.readAsDataURL(file);
+      });
       card.querySelector('.del-goal').addEventListener('click', ()=>{
         state.finance.subscriptions = state.finance.subscriptions.filter(x=>x.id!==s.id);
         save(); renderFinanceSubs();
@@ -2202,7 +2424,7 @@
     const name = el('subName').value.trim();
     const amount = parseFloat(el('subAmount').value);
     if(!name || isNaN(amount)) return;
-    state.finance.subscriptions.push({ id:uid(), name, amount, currency: el('subCurrency').value||'USD', cycle: el('subCycle').value||'monthly', nextDate: el('subNextDate').value||'', createdAt: Date.now() });
+    state.finance.subscriptions.push({ id:uid(), name, amount, currency: el('subCurrency').value||'USD', cycle: el('subCycle').value||'monthly', nextDate: el('subNextDate').value||'', imageUrl:'', createdAt: Date.now() });
     el('subName').value=''; el('subAmount').value=''; el('subNextDate').value='';
     save(); renderFinanceSubs();
   });
@@ -2237,6 +2459,26 @@
     el(id).addEventListener('input', doConvert);
     el(id).addEventListener('change', doConvert);
   });
+  el('fetchRatesBtn').addEventListener('click', async ()=>{
+    const btn = el('fetchRatesBtn');
+    const orig = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Fetching…';
+    try{
+      const res = await fetch('https://open.er-api.com/v6/latest/USD');
+      const data = await res.json();
+      if(data && data.result === 'success' && data.rates){
+        CURRENCIES.forEach(c=>{ if(typeof data.rates[c] === 'number') state.finance.rates[c] = data.rates[c]; });
+        state.finance.rates.USD = 1;
+        save(); renderFinanceConverter();
+        btn.textContent = '✓ Rates updated';
+      } else {
+        btn.textContent = 'Fetch failed — try again';
+      }
+    }catch(e){
+      btn.textContent = 'Fetch failed — try again';
+    }
+    setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
+  });
 
   /* ---- finance sub-nav (Accounts / Subscriptions / Currency Converter) ---- */
   document.querySelectorAll('.finance-subnav-btn').forEach(btn=>{
@@ -2267,11 +2509,27 @@
     return 'Obese';
   }
 
+  // Fitness Level shown on the profile card — a simplified 3-way read of BMI (Underweight / Fit / Overweight)
+  function updateFitnessLevelUI(){
+    const lvlEl = el('pfFitnessLevel');
+    if(!lvlEl) return;
+    const f = state.fitness;
+    const cw = parseFloat(f.currentWeight), h = parseFloat(f.height);
+    if(isNaN(cw) || isNaN(h) || h<=0){ lvlEl.textContent = '—'; return; }
+    const heightM = h/100;
+    const bmi = cw / (heightM*heightM);
+    let level = 'Fit';
+    if(bmi < 18.5) level = 'Underweight';
+    else if(bmi >= 25) level = 'Overweight';
+    lvlEl.textContent = level;
+  }
+
   function calcFitness(){
     const f = state.fitness;
     const cw = parseFloat(f.currentWeight), tw = parseFloat(f.targetWeight), h = parseFloat(f.height), age = parseFloat(f.age);
     const activity = parseFloat(f.activity)||1.55, pace = parseFloat(f.pace)||0.5;
     const resultsEl = el('fitnessResults'), noteEl = el('fitnessNote');
+    updateFitnessLevelUI();
     if(isNaN(cw) || isNaN(h) || isNaN(age)){
       resultsEl.style.display='none';
       noteEl.textContent = 'Fill in current weight, height, and age to calculate your calorie targets.';

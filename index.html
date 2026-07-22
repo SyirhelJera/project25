@@ -1441,8 +1441,8 @@
         try{
           const existing = g.subtasks.map(s=>s.title);
           const contextLine = existing.length
-            ? 'Subtasks already added for this goal: ' + existing.join('; ') + '. Suggest 5 concise, actionable NEW subtasks (each under 8 words) that are not duplicates or rephrasings of the ones already added, and that logically build on what\'s already there to help finish this goal.'
-            : 'Suggest 5 concise, actionable subtasks (each under 8 words) to help finish this goal.';
+            ? 'Subtasks already added for this goal: ' + existing.join('; ') + '. Suggest 3-5 concise, actionable NEW subtasks (each under 8 words) that are not duplicates or rephrasings of the ones already added, and that logically build on what\'s already there to help finish this goal. Be brief.'
+            : 'Break this goal into 5-8 concise, actionable subtasks (each under 8 words), ordered so they build on each other. Make the very first one absurdly small and easy — a near-zero-effort action that takes under 2 minutes, so easy it\'s hard to say no to — to create quick momentum. Be brief, no explanations.';
           // Calls our Supabase Edge Function instead of Anthropic directly — the API key
           // lives only as a server-side secret there, never in this browser code.
           const { data, error } = await supa.functions.invoke('suggest-subtasks', {

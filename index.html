@@ -1394,15 +1394,14 @@
           const contextLine = existing.length
             ? 'Subtasks already added for this goal: ' + existing.join('; ') + '. Suggest 5 concise, actionable NEW subtasks (each under 8 words) that are not duplicates or rephrasings of the ones already added, and that logically build on what\'s already there to help finish this goal.'
             : 'Suggest 5 concise, actionable subtasks (each under 8 words) to help finish this goal.';
-          const resp = await fetch('https://api.anthropic.com/v1/messages', {
-            method:'POST', headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ model:'claude-sonnet-4-6', max_tokens:1000,
-              messages:[{role:'user', content:'Goal: "'+g.title+'". '+contextLine+' Respond with ONLY a raw JSON array of strings, nothing else.'}] })
+          // Calls our Supabase Edge Function instead of Anthropic directly — the API key
+          // lives only as a server-side secret there, never in this browser code.
+          const { data, error } = await supa.functions.invoke('suggest-subtasks', {
+            body: { goalTitle: g.title, contextLine }
           });
-          const data = await resp.json();
-          const text = (data.content||[]).filter(c=>c.type==='text').map(c=>c.text).join('');
-          const clean = text.replace(/```json|```/g,'').trim();
-          const suggestions = JSON.parse(clean);
+          if(error) throw error;
+          if(data && data.error) throw new Error(data.error);
+          const suggestions = data.suggestions;
           aiSuggDiv.style.display = 'flex'; aiSuggDiv.innerHTML = '';
           suggestions.forEach(s => {
             const row = document.createElement('div'); row.className='ai-sugg-row';
@@ -1422,7 +1421,8 @@
           });
         }catch(e){
           aiSuggDiv.style.display='flex';
-          aiSuggDiv.innerHTML = '<div class="ai-sugg-row"><span>Could not reach the AI right now, try again shortly.</span></div>';
+          const msg = (e && e.message) ? e.message : 'Could not reach the AI right now, try again shortly.';
+          aiSuggDiv.innerHTML = '<div class="ai-sugg-row"><span>'+escapeHtml(msg)+'</span></div>';
         }
         aiBtn.textContent = '✦ Suggest subtasks with AI'; aiBtn.disabled = false;
       });

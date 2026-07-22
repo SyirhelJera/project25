@@ -181,9 +181,9 @@
   .finance-account.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .habit-card.at-risk{outline:2px solid var(--danger);outline-offset:-2px;}
   .habit-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
-  .habit-restore-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;}
+  .habit-restore-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .habit-restore-btn:hover{background:var(--violet-pale);}
-  .habit-link-btn{background:var(--violet-pale);border:1px solid var(--border);color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;}
+  .habit-link-btn{background:var(--violet-pale);border:1px solid var(--border);color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .habit-link-btn:hover{background:var(--violet);color:#fff;}
   .checklist-flash{animation:checklistFlash 1.6s ease;}
   @keyframes checklistFlash{0%,100%{box-shadow:none;}25%,75%{box-shadow:0 0 0 3px var(--violet);}}
@@ -270,10 +270,10 @@
   .empty b{color:var(--muted);}
 
   /* habits */
-  .habit-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;}
-  .habit-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
-  .habit-name{flex:1;font-size:14px;font-weight:700;}
-  .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;}
+  .habit-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;overflow:hidden;}
+  .habit-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+  .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
+  .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .habit-recap{color:var(--violet-dark);background:var(--violet-pale);}
   .habit-streak{color:var(--gold);background:#FEF3C7;}
   .habit-collapse-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:11px;padding:2px 6px;flex:none;}
@@ -311,7 +311,7 @@
   /* checklists */
   .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
-  .checklist-name{flex:1;min-width:120px;font-size:14px;font-weight:700;}
+  .checklist-name{flex:1;min-width:120px;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
   .checklist-freq,.checklist-habit-link{
     appearance:none;-webkit-appearance:none;-moz-appearance:none;
     background:var(--surface-alt) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;
@@ -342,6 +342,11 @@
     .nav{flex-direction:row;flex-wrap:wrap;}
     .sidebar-footer{display:none;}
     .main{padding:20px 16px 70px;}
+    .habit-card{padding:12px;}
+    .habit-top{gap:6px;}
+    .habit-name{flex:1 1 100%;font-size:13.5px;}
+    .habit-badge,.habit-restore-btn,.habit-link-btn,.del-goal{font-size:10px;}
+    .habit-link-btn{max-width:130px;}
   }
 
   /* exp bar */

@@ -162,6 +162,10 @@
   .goal-thumb{width:38px;height:38px;border-radius:9px;object-fit:cover;flex:none;border:1px solid var(--border);}
   .star-btn{background:none;border:none;cursor:pointer;color:var(--faint);font-size:16px;line-height:1;padding:2px;flex:none;}
   .star-btn.active{color:var(--gold);}
+  .working-btn{background:none;border:1.5px solid var(--border);cursor:pointer;color:var(--faint);font-size:10.5px;font-weight:800;line-height:1;padding:4px 8px;border-radius:999px;flex:none;letter-spacing:0.2px;white-space:nowrap;}
+  .working-btn:hover{border-color:var(--violet);color:var(--violet-dark);}
+  .working-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
+  .working-chip{background:var(--violet-pale) !important;color:var(--violet-dark) !important;border-color:var(--violet) !important;}
   .goal-check{flex:none;width:21px;height:21px;border-radius:50%;border:2px solid #D3D7E8;display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-size:12px;transition:all .15s ease;}
   .goal-check.checked{background:linear-gradient(135deg,var(--success),#2E8F5D);border-color:var(--success);color:#fff;}
   .goal-body-main{flex:1;min-width:0;}
@@ -255,6 +259,10 @@
   .swatches{display:flex;gap:7px;align-items:center;flex-wrap:wrap;}
   .swatch{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;}
   .swatch.selected{border-color:var(--text);}
+  .swatch-none{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid var(--border);flex:none;position:relative;background:var(--surface);}
+  .swatch-none::before,.swatch-none::after{content:'';position:absolute;left:3px;right:3px;top:50%;height:2px;background:var(--danger);transform:translateY(-50%) rotate(45deg);}
+  .swatch-none::after{transform:translateY(-50%) rotate(-45deg);}
+  .swatch-none.selected{border-color:var(--text);}
   .swatch-custom{width:22px;height:22px;border-radius:50%;padding:0;border:1px solid var(--border);cursor:pointer;}
   .img-row{display:flex;align-items:center;gap:10px;}
   .img-row .goal-thumb{width:44px;height:44px;}
@@ -538,11 +546,11 @@
     </div>
 
     <div class="stats">
-      <div class="stat" data-filter="all"><div class="num" id="statTotal">0</div><div class="lbl">Total Goals</div></div>
-      <div class="stat" data-filter="completed"><div class="num" id="statDone">0</div><div class="lbl">Completed</div></div>
+      <div class="stat" data-filter="working"><div class="num" id="statWorking">0</div><div class="lbl">Working On</div></div>
       <div class="stat" data-filter="unfinished"><div class="num" id="statOpen">0</div><div class="lbl">Unfinished</div></div>
+      <div class="stat" data-filter="completed"><div class="num" id="statDone">0</div><div class="lbl">Completed</div></div>
       <div class="stat" data-filter="locked"><div class="num" id="statLocked">0</div><div class="lbl">🔒 Locked</div></div>
-      <div class="stat" data-filter="all"><div class="num" id="statPct">0%</div><div class="lbl">Done Rate</div></div>
+      <div class="stat" data-filter="all"><div class="num" id="statTotal">0</div><div class="lbl">All Goals</div></div>
     </div>
 
     <div id="checkinSlot"></div>
@@ -791,7 +799,7 @@
     finance: { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
-  let goalFilter = 'all';
+  let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';
   let sortDir = 'desc';
@@ -980,6 +988,7 @@
       document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       el('view-' + t.dataset.tab).classList.add('active');
+      if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='insights') renderInsights();
       if(t.dataset.tab==='countdowns') renderCountdowns();
       if(t.dataset.tab==='habits') renderHabits();
@@ -1065,6 +1074,13 @@
   function visibleGoals(){
     let arr = state.goals.slice();
 
+    if(goalFilter === 'working'){
+      // goals the user has explicitly marked as actively working on — never includes completed or locked goals
+      const working = arr.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g));
+      if(sortMode !== 'none') return sortGoalsBy(working, sortMode, sortDir);
+      if(starredFirst) working.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
+      return working;
+    }
     if(goalFilter === 'completed'){
       arr = arr.filter(g=>goalProgress(g)===100);
       return sortMode !== 'none' ? sortGoalsBy(arr, sortMode, sortDir) : arr.sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
@@ -1236,13 +1252,23 @@
 
     const list = el('goalList');
     const empty = el('emptyState');
-    empty.style.display = state.goals.length === 0 ? 'block' : 'none';
-    list.innerHTML = '';
 
     let totalPct = 0, completedCount = 0;
     state.goals.forEach(g => { updateCompletionMeta(g); totalPct += goalProgress(g); if(goalProgress(g)===100) completedCount++; });
 
-    visibleGoals().forEach(g => {
+    const visible = visibleGoals();
+    if(state.goals.length === 0){
+      empty.style.display = 'block';
+      empty.innerHTML = 'No goals yet. <b>Add your first goal above</b> to get started.';
+    } else if(visible.length === 0 && goalFilter === 'working'){
+      empty.style.display = 'block';
+      empty.innerHTML = 'Nothing marked as <b>working on</b> yet. Open a goal below and tap <b>▶ Work on this</b>, or check <b>All Goals</b>.';
+    } else {
+      empty.style.display = 'none';
+    }
+    list.innerHTML = '';
+
+    visible.forEach(g => {
       if(g.financeTarget === undefined) g.financeTarget = null;
       if(g.financeSaved === undefined) g.financeSaved = 0;
       if(g.targetDate === undefined) g.targetDate = '';
@@ -1251,6 +1277,7 @@
       if(g.tier === undefined) g.tier = '';
       if(g.requiredNetWorth === undefined) g.requiredNetWorth = null;
       if(g.updatedAt === undefined) g.updatedAt = g.createdAt;
+      if(g.workingOn === undefined) g.workingOn = false;
       g.subtasks.forEach(s=>{ if(s.requiresId === undefined) s.requiresId = null; });
       const pct = goalProgress(g);
       const locked = isGoalLocked(g);
@@ -1263,6 +1290,7 @@
       let metaHtml = '';
       const t = tierInfo(g.tier);
       if(t.value) metaHtml += '<span class="tier-chip '+t.cls+'">'+escapeHtml(t.label)+'</span>';
+      if(g.workingOn && pct<100 && !locked) metaHtml += '<span class="chip working-chip">▶ Working on</span>';
       if(locked) metaHtml += '<span class="lock-badge">🔒 Needs $'+Number(g.requiredNetWorth).toLocaleString()+' net worth</span>';
       if(g.subtasks.length) metaHtml += '<span class="chip subtask-chip">'+escapeHtml(g.subtasks.filter(s=>s.done).length + '/' + g.subtasks.length + ' subtasks')+'</span>';
       metaHtml += '<span class="chip">'+escapeHtml(timeSpentStr(g))+'</span>';
@@ -1275,6 +1303,7 @@
       head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + (g.imageUrl ? '<img class="goal-thumb" src="'+g.imageUrl+'">' : '')
         + '<button class="star-btn ' + (g.starred?'active':'') + '" data-act="star">' + (g.starred?'★':'☆') + '</button>'
+        + (pct<100 && !locked ? '<button class="working-btn ' + (g.workingOn?'active':'') + '" data-act="working" title="Mark as actively working on this">' + (g.workingOn?'▶ Working on':'Work on this') + '</button>' : '')
         + '<div class="goal-check ' + (pct===100?'checked':'') + '" data-act="check" title="'+(locked?'Locked until net worth requirement is met':'')+'">' + (locked ? '🔒' : (pct===100?'✓':'')) + '</div>'
         + '<div class="goal-body-main"><div class="goal-title">' + escapeHtml(g.title) + '</div>'
         + '<div class="goal-meta">' + metaHtml + '</div></div>'
@@ -1284,6 +1313,7 @@
         if(e.target.closest('.drag-handle')) return;
         const act = e.target.closest('[data-act]');
         if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; touchGoal(g); save(); renderGoals(); return; }
+        if(act && act.dataset.act === 'working'){ e.stopPropagation(); g.workingOn = !g.workingOn; touchGoal(g); save(); renderGoals(); return; }
         if(act && act.dataset.act === 'check'){
           e.stopPropagation();
           if(isGoalLocked(g)) return; // locked goals can't be marked done until the net worth requirement is met
@@ -1492,10 +1522,13 @@
 
       const cLbl = document.createElement('div'); cLbl.className='section-lbl'; cLbl.textContent='Color & Image'; inner.appendChild(cLbl);
       const cRow = document.createElement('div'); cRow.className='swatches';
-      cRow.innerHTML = SWATCHES.map(c=>'<div class="swatch '+(g.color===c?'selected':'')+'" style="background:'+c+';" data-color="'+c+'"></div>').join('')
+      cRow.innerHTML = '<div class="swatch-none '+(g.color?'':'selected')+'" title="No color"></div>'
+        + SWATCHES.map(c=>'<div class="swatch '+(g.color===c?'selected':'')+'" style="background:'+c+';" data-color="'+c+'"></div>').join('')
         + '<input type="color" class="swatch-custom" value="'+(g.color||'#6366F1')+'">';
+      cRow.querySelector('.swatch-none').addEventListener('click', ()=>{ g.color = ''; touchGoal(g); save(); renderGoals(); });
       cRow.querySelectorAll('.swatch').forEach(sw=>{
-        sw.addEventListener('click', ()=>{ g.color = sw.dataset.color; touchGoal(g); save(); renderGoals(); });
+        // clicking the already-selected color clears it, so a color can always be unset from the swatches themselves
+        sw.addEventListener('click', ()=>{ g.color = (g.color === sw.dataset.color) ? '' : sw.dataset.color; touchGoal(g); save(); renderGoals(); });
       });
       cRow.querySelector('.swatch-custom').addEventListener('change', e=>{ g.color = e.target.value; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(cRow);
@@ -1528,6 +1561,7 @@
     const total = state.goals.length;
     const overall = total ? Math.round(totalPct/total) : 0;
     const lockedCount = state.goals.filter(g=>goalProgress(g)<100 && isGoalLocked(g)).length;
+    const workingCount = state.goals.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g)).length;
     el('overallPct').textContent = overall+'%';
     el('manaFill').style.width = overall+'%';
     el('statTotal').textContent = total;
@@ -1535,7 +1569,7 @@
     // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met
     el('statOpen').textContent = total-completedCount-lockedCount;
     el('statLocked').textContent = lockedCount;
-    el('statPct').textContent = overall+'%';
+    el('statWorking').textContent = workingCount;
     el('pfGoalsCompleted').textContent = completedCount;
     el('pfNetWorthCalc').textContent = '$'+getNetWorthNum().toLocaleString();
     updateExpUI();
@@ -1573,7 +1607,7 @@
     const input = el('newGoalInput');
     const v = input.value.trim();
     if(!v) return;
-    state.goals.unshift({ id:uid(), title:v, starred:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
+    state.goals.unshift({ id:uid(), title:v, starred:false, workingOn:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
     input.value=''; save(); renderGoals(); input.focus();
   }
   el('addGoalBtn').addEventListener('click', addGoal);
@@ -1592,7 +1626,7 @@
   }
   el('exportBtn').addEventListener('click', () => {
     const rows = state.goals.map(g => ({
-      Title: g.title, Starred: g.starred?'Yes':'No', Progress: goalProgress(g)+'%',
+      Title: g.title, Starred: g.starred?'Yes':'No', WorkingOn: g.workingOn?'Yes':'No', Progress: goalProgress(g)+'%',
       TargetDate: g.targetDate||'', FinanceTarget: g.financeTarget??'', FinanceSaved: g.financeSaved||0,
       Tier: g.tier||'', RequiredNetWorth: g.requiredNetWorth??'',
       CreatedAt: fmtDate(g.createdAt), CompletedAt: fmtDate(g.completedAt), Subtasks: subtasksToStr(g.subtasks)
@@ -1612,7 +1646,7 @@
         const sheet = wb.Sheets['Goals'] || wb.Sheets[wb.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(sheet);
         const imported = rows.map(r => ({
-          id:uid(), title: r.Title || 'Untitled goal', starred: r.Starred==='Yes',
+          id:uid(), title: r.Title || 'Untitled goal', starred: r.Starred==='Yes', workingOn: r.WorkingOn==='Yes',
           manualDone: String(r.Progress).replace('%','')==='100', subtasks: strToSubtasks(r.Subtasks),
           open:false, createdAt: Date.now(), completedAt: null, targetDate: r.TargetDate || '',
           financeTarget: r.FinanceTarget===''||r.FinanceTarget===undefined ? null : parseFloat(r.FinanceTarget),

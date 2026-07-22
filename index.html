@@ -293,7 +293,8 @@
   .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px;}
   .day-cell{text-align:center;}
   .day-cell .dlabel{font-size:9.5px;color:var(--faint);margin-bottom:4px;text-transform:uppercase;}
-  .day-box{width:100%;aspect-ratio:1;border-radius:7px;border:2px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;}
+  .day-box{width:100%;aspect-ratio:1;border-radius:7px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;transition:border-color .12s ease, background .12s ease;}
+  .day-box:hover{border-color:var(--violet);}
   .day-box.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .month-lbl{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
   .month-lbl-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
@@ -1122,9 +1123,14 @@
   // marks a goal as edited "now" so the "Last Updated" sort reflects it
   function touchGoal(g){ g.updatedAt = Date.now(); }
 
-  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
+  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':120,'S+':200,'Mythical':500};
+  // Checklist items give a small trickle of exp — enough to feel rewarding day-to-day, but far
+  // less than actually finishing a goal, which is the real accomplishment.
+  const CHECKLIST_ITEM_EXP = 1;
   function totalExp(){
-    return state.goals.filter(g=>goalProgress(g)===100).reduce((sum,g)=> sum + (TIER_EXP[g.tier||'']||5), 0);
+    const goalExp = state.goals.filter(g=>goalProgress(g)===100).reduce((sum,g)=> sum + (TIER_EXP[g.tier||'']||5), 0);
+    const checklistExp = state.checklists.reduce((sum,c)=> sum + c.items.filter(i=>i.done).length, 0) * CHECKLIST_ITEM_EXP;
+    return goalExp + checklistExp;
   }
   function levelInfo(exp){
     let level = 1, need = 100, floor = 0;
@@ -2157,9 +2163,9 @@
           row.querySelector('.sub-check').addEventListener('click', ()=>{
             it.done=!it.done;
             syncChecklistHabitLink(c);
-            save(); renderChecklists(); renderHabits();
+            save(); renderChecklists(); renderHabits(); updateExpUI();
           });
-          row.querySelector('.sub-del').addEventListener('click', ()=>{ c.items=c.items.filter(x=>x.id!==it.id); save(); renderChecklists(); });
+          row.querySelector('.sub-del').addEventListener('click', ()=>{ c.items=c.items.filter(x=>x.id!==it.id); save(); renderChecklists(); updateExpUI(); });
           itemsWrap.appendChild(row);
         });
         card.appendChild(itemsWrap);
@@ -2567,19 +2573,22 @@
     return 'Obese';
   }
 
-  // Fitness Level shown on the profile card — a simplified 3-way read of BMI (Underweight / Fit / Overweight)
+  // Fitness Level shown on the profile card — a simplified read of BMI (Underweight / Fit / Overweight / Obese),
+  // color-coded so it's readable at a glance: green when normal, amber when under/overweight, red when obese.
   function updateFitnessLevelUI(){
     const lvlEl = el('pfFitnessLevel');
     if(!lvlEl) return;
     const f = state.fitness;
     const cw = parseFloat(f.currentWeight), h = parseFloat(f.height);
-    if(isNaN(cw) || isNaN(h) || h<=0){ lvlEl.textContent = '—'; return; }
+    if(isNaN(cw) || isNaN(h) || h<=0){ lvlEl.textContent = '—'; lvlEl.style.color = ''; return; }
     const heightM = h/100;
     const bmi = cw / (heightM*heightM);
-    let level = 'Fit';
-    if(bmi < 18.5) level = 'Underweight';
-    else if(bmi >= 25) level = 'Overweight';
+    let level = 'Fit', color = 'var(--success)';
+    if(bmi < 18.5){ level = 'Underweight'; color = 'var(--gold)'; }
+    else if(bmi >= 30){ level = 'Obese'; color = 'var(--danger)'; }
+    else if(bmi >= 25){ level = 'Overweight'; color = 'var(--gold)'; }
     lvlEl.textContent = level;
+    lvlEl.style.color = color;
   }
 
   function calcFitness(){

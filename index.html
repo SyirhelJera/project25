@@ -48,7 +48,12 @@
   body.dark-mode .checklist-done-chip{border-color:#1E4433;}
   body.dark-mode .setup-banner,body.dark-mode .confirm-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
   body.dark-mode .confirm-banner span{color:#C7CCF5;}
-  body.dark-mode .habit-streak{background:#3A2F14;}
+  body.dark-mode .habit-streak.streak-t0{background:#2A2E42;}
+  body.dark-mode .habit-streak.streak-t1{background:#3A2413;color:#F0B27A;}
+  body.dark-mode .habit-streak.streak-t2{background:#333750;color:#C7CCF5;}
+  body.dark-mode .habit-streak.streak-t3{background:#3A2F14;color:#FBBF24;}
+  body.dark-mode .habit-streak.streak-t4{background:#2E2F55;color:#A5B4FC;}
+  body.dark-mode .habit-streak.streak-t5{background:#3B1A1A;color:#F87171;}
   body.dark-mode .dark-toggle{}
 
   *{box-sizing:border-box;}
@@ -186,6 +191,7 @@
   .drag-handle:active{cursor:grabbing;}
   .goal.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .checklist-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .sub-row.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;border-radius:6px;}
   .finance-account.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .habit-card.at-risk{outline:2px solid var(--danger);outline-offset:-2px;}
   .habit-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
@@ -287,7 +293,13 @@
   .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
   .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .habit-recap{color:var(--violet-dark);background:var(--violet-pale);}
-  .habit-streak{color:var(--gold);background:#FEF3C7;}
+  .habit-streak.streak-t0{color:var(--muted);background:var(--surface-alt);}
+  .habit-streak.streak-t1{color:#B45309;background:#FDEBD3;}
+  .habit-streak.streak-t2{color:#475569;background:#E2E8F0;}
+  .habit-streak.streak-t3{color:#92400E;background:#FEF3C7;}
+  .habit-streak.streak-t4{color:var(--violet-dark);background:var(--violet-pale);}
+  .habit-streak.streak-t5{color:var(--danger);background:#FEE2E2;}
+  .habit-streak.streak-t6{color:#fff;background:linear-gradient(135deg,#F5A524,#EF4444,#818CF8);box-shadow:0 0 0 1px rgba(255,255,255,0.5) inset;}
   .habit-collapse-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:11px;padding:2px 6px;flex:none;}
   .habit-collapse-btn:hover{color:var(--violet-dark);}
   .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px;}
@@ -315,12 +327,7 @@
   .cd-name{font-size:13.5px;font-weight:700;}
   .cd-date{font-size:11px;color:var(--muted);}
 
-  /* insights */
-  .ins-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
-  .ins-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 10px;text-align:center;}
-  .ins-card .num{font-family:'Manrope',sans-serif;font-size:25px;font-weight:800;color:var(--violet-dark);}
-  .ins-card .lbl{font-size:11px;color:var(--muted);margin-top:4px;}
-
+  
   /* checklists */
   .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
@@ -483,6 +490,10 @@
   .chart-legend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-top:8px;justify-content:center;flex-wrap:wrap;}
   .chart-legend span{display:inline-flex;align-items:center;gap:5px;}
   .chart-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
+  .chart-zoom-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+  .chart-zoom-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
+  .chart-zoom-btn:hover{border-color:var(--violet);color:var(--text);}
+  .chart-zoom-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
 
   @media (max-width:720px){
     .finance-summary{grid-template-columns:repeat(3,1fr);}
@@ -522,7 +533,7 @@
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness<span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
-    <div class="nav-item" data-tab="insights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20V10M10 20V4M17 20v-7"/></svg>Insights</div>
+    <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Mantras</div>
   </div>
 
@@ -734,7 +745,8 @@
     <div class="weight-log-list" id="weightLogList"></div>
     <div class="empty" id="weightLogEmpty" style="display:none;">No weight logged yet. Log your first entry above.</div>
 
-    <div class="section-lbl" style="margin-top:22px;">Weight Trend (Last 12 Months)</div>
+    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
+    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
     <div class="chart-card">
       <div id="weightChartWrap"></div>
       <div class="chart-legend">
@@ -769,18 +781,15 @@
     <div class="empty" id="cdEmpty" style="display:none;">No countdowns yet. Try "End of Year" or a birthday.</div>
   </div>
 
-  <!-- INSIGHTS -->
-  <div class="view" id="view-insights">
-    <div class="view-title">Insights</div>
-    <div class="view-sub">How you're doing over time.</div>
-    <div class="section-lbl" style="margin-top:4px;">Goals completed</div>
-    <div class="ins-grid">
-      <div class="ins-card"><div class="num" id="insWeek">0</div><div class="lbl">This Week</div></div>
-      <div class="ins-card"><div class="num" id="insMonth">0</div><div class="lbl">This Month</div></div>
-      <div class="ins-card"><div class="num" id="insYear">0</div><div class="lbl">This Year</div></div>
+  <!-- SETTINGS -->
+  <div class="view" id="view-settings">
+    <div class="view-title">Settings</div>
+    <div class="view-sub">App-wide preferences.</div>
+    <div class="section-lbl" style="margin-top:4px;">Net Worth Display Currency</div>
+    <div class="fitness-field" style="max-width:260px;">
+      <label>Shown on your profile card</label>
+      <select id="settingsNetWorthCurrency"></select>
     </div>
-    <div class="section-lbl">Average time to finish a goal</div>
-    <div class="stat" style="text-align:center;padding:16px;cursor:default;"><div class="num" id="insTime" style="font-size:22px;">—</div></div>
   </div>
 
   <!-- MANTRAS -->
@@ -806,10 +815,10 @@
   const CURRENCY_SYMBOLS = {USD:'$',PHP:'₱',EUR:'€',GBP:'£',JPY:'¥',AUD:'A$',CAD:'C$',SGD:'S$',INR:'₹',CNY:'¥'};
   const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
 
-  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [],
+  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
-    profile: {name:'',age:'',netWorth:''}, focus: null, darkMode: false };
+    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD'}, focus: null, darkMode: false };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';
@@ -877,6 +886,13 @@
     state.countdowns = parsed.countdowns || [];
     state.mantras = parsed.mantras || [];
     state.checklists = parsed.checklists || [];
+    if(parsed.checklistExp === undefined){
+      // upgrading from before exp was tracked separately from item-checked state — seed with
+      // whatever's currently checked so the exp bar doesn't jump backward on upgrade
+      state.checklistExp = state.checklists.reduce((sum,c)=> sum + (c.items||[]).filter(i=>i.done).length, 0);
+    } else {
+      state.checklistExp = parsed.checklistExp;
+    }
     state.finance = parsed.finance || { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) };
     if(!state.finance.accounts) state.finance.accounts = [];
     if(!state.finance.subscriptions) state.finance.subscriptions = [];
@@ -897,7 +913,8 @@
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
-    state.profile = parsed.profile || {name:'',age:'',netWorth:''};
+    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
+    if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     state.focus = parsed.focus || null;
     state.darkMode = !!parsed.darkMode;
   }
@@ -1000,7 +1017,7 @@
       t.classList.add('active');
       el('view-' + t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
-      if(t.dataset.tab==='insights') renderInsights();
+      if(t.dataset.tab==='settings') renderSettings();
       if(t.dataset.tab==='countdowns') renderCountdowns();
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
@@ -1123,14 +1140,16 @@
   // marks a goal as edited "now" so the "Last Updated" sort reflects it
   function touchGoal(g){ g.updatedAt = Date.now(); }
 
-  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':120,'S+':200,'Mythical':500};
+  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
   // Checklist items give a small trickle of exp — enough to feel rewarding day-to-day, but far
-  // less than actually finishing a goal, which is the real accomplishment.
+  // less than actually finishing a goal, which is the real accomplishment. This is tracked as a
+  // running total (state.checklistExp) rather than recomputed from which items are *currently*
+  // checked, because daily/weekly/etc. resets clear item.done for the next period — that reset
+  // shouldn't erase exp the user already earned by completing the checklist.
   const CHECKLIST_ITEM_EXP = 1;
   function totalExp(){
     const goalExp = state.goals.filter(g=>goalProgress(g)===100).reduce((sum,g)=> sum + (TIER_EXP[g.tier||'']||5), 0);
-    const checklistExp = state.checklists.reduce((sum,c)=> sum + c.items.filter(i=>i.done).length, 0) * CHECKLIST_ITEM_EXP;
-    return goalExp + checklistExp;
+    return goalExp + (state.checklistExp||0);
   }
   function levelInfo(exp){
     let level = 1, need = 100, floor = 0;
@@ -1596,7 +1615,11 @@
     el('statLocked').textContent = lockedCount;
     el('statWorking').textContent = workingCount;
     el('pfGoalsCompleted').textContent = completedCount;
-    el('pfNetWorthCalc').textContent = '$'+getNetWorthNum().toLocaleString();
+    {
+      const nwCcy = state.profile.netWorthCurrency || 'USD';
+      const nwConverted = convertAmt(getNetWorthNum(), 'USD', nwCcy);
+      el('pfNetWorthCalc').textContent = ccySymbol(nwCcy)+Math.round(nwConverted).toLocaleString();
+    }
     updateExpUI();
 
     document.querySelectorAll('.stat').forEach(s=>s.classList.remove('active-filter'));
@@ -1721,6 +1744,17 @@
   }
 
   function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
+  // maps a streak length to a badge color tier — climbs from a muted "just started" tone up to
+  // a shimmering gradient once a streak has been kept alive for 300+ days
+  function streakTierClass(streak){
+    if(streak>=300) return 'streak-t6';
+    if(streak>=200) return 'streak-t5';
+    if(streak>=100) return 'streak-t4';
+    if(streak>=30) return 'streak-t3';
+    if(streak>=7) return 'streak-t2';
+    if(streak>=3) return 'streak-t1';
+    return 'streak-t0';
+  }
   function restoresUsedThisMonth(h){
     if(!h.streakRestores) h.streakRestores = {};
     return h.streakRestores[monthKey(new Date())] || 0;
@@ -1799,7 +1833,7 @@
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
-        + (streak>=2 ? '<div class="habit-badge habit-streak">🔥 '+streak+' day streak</div>' : '')
+        + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
         + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist">🔗 '+escapeHtml(c.name)+'</button>').join('') : '')
         + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
@@ -1946,32 +1980,16 @@
   });
 
   /* ================= INSIGHTS ================= */
-  function renderInsights(){
-    const now = new Date();
-    const startOfWeek = new Date(now); const day=(startOfWeek.getDay()+6)%7; startOfWeek.setDate(startOfWeek.getDate()-day); startOfWeek.setHours(0,0,0,0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-    let wk=0, mo=0, yr=0;
-    let totalDurations = [];
-    state.goals.forEach(g => {
-      if(g.completedAt){
-        const d = new Date(g.completedAt);
-        if(d >= startOfWeek) wk++;
-        if(d >= startOfMonth) mo++;
-        if(d >= startOfYear) yr++;
-        totalDurations.push(g.completedAt - g.createdAt);
-      }
-    });
-    el('insWeek').textContent = wk;
-    el('insMonth').textContent = mo;
-    el('insYear').textContent = yr;
-    if(totalDurations.length){
-      const avgMs = totalDurations.reduce((a,b)=>a+b,0)/totalDurations.length;
-      const avgDays = Math.round(avgMs/(1000*3600*24)*10)/10;
-      el('insTime').textContent = avgDays + ' days';
-    } else {
-      el('insTime').textContent = 'No goals finished yet';
+  function renderSettings(){
+    const sel = el('settingsNetWorthCurrency');
+    if(!sel.options.length){
+      sel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');
+      sel.addEventListener('change', ()=>{
+        state.profile.netWorthCurrency = sel.value;
+        save(); renderGoals();
+      });
     }
+    sel.value = state.profile.netWorthCurrency || 'USD';
   }
 
   /* ================= MANTRAS ================= */
@@ -2038,6 +2056,7 @@
 
   /* drag-to-reorder checklists — registered once, delegated over #checklistList */
   let draggedChecklistId = null;
+  let draggedChecklistItemId = null;
   const checklistListEl = el('checklistList');
   checklistListEl.addEventListener('dragstart', e=>{
     const handle = e.target.closest('.drag-handle');
@@ -2158,15 +2177,54 @@
       if(!c.collapsed){
         const itemsWrap = document.createElement('div');
         c.items.forEach(it=>{
-          const row = document.createElement('div'); row.className='sub-row';
-          row.innerHTML = '<div class="sub-check '+(it.done?'checked':'')+'">'+(it.done?'✓':'')+'</div><div class="sub-title '+(it.done?'done':'')+'">'+escapeHtml(it.text)+'</div><button class="sub-del">✕</button>';
+          const row = document.createElement('div'); row.className='sub-row'; row.dataset.itemId = it.id;
+          row.innerHTML = '<span class="drag-handle sub-drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+            + '<div class="sub-check '+(it.done?'checked':'')+'">'+(it.done?'✓':'')+'</div><div class="sub-title '+(it.done?'done':'')+'">'+escapeHtml(it.text)+'</div><button class="sub-del">✕</button>';
           row.querySelector('.sub-check').addEventListener('click', ()=>{
-            it.done=!it.done;
+            if(it.done){ it.done = false; state.checklistExp = Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP); }
+            else { it.done = true; state.checklistExp = (state.checklistExp||0) + CHECKLIST_ITEM_EXP; }
             syncChecklistHabitLink(c);
             save(); renderChecklists(); renderHabits(); updateExpUI();
           });
-          row.querySelector('.sub-del').addEventListener('click', ()=>{ c.items=c.items.filter(x=>x.id!==it.id); save(); renderChecklists(); updateExpUI(); });
+          row.querySelector('.sub-del').addEventListener('click', ()=>{
+            if(it.done) state.checklistExp = Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP);
+            c.items=c.items.filter(x=>x.id!==it.id); save(); renderChecklists(); updateExpUI();
+          });
           itemsWrap.appendChild(row);
+        });
+        // drag-to-reorder items within this checklist — delegated over this checklist's itemsWrap
+        itemsWrap.addEventListener('dragstart', e=>{
+          const handle = e.target.closest('.sub-drag-handle');
+          if(!handle) return;
+          const row = handle.closest('.sub-row');
+          draggedChecklistItemId = row ? row.dataset.itemId : null;
+          e.dataTransfer.effectAllowed = 'move';
+        });
+        itemsWrap.addEventListener('dragover', e=>{
+          if(!draggedChecklistItemId) return;
+          e.preventDefault();
+          const overRow = e.target.closest('.sub-row');
+          itemsWrap.querySelectorAll('.sub-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+          if(overRow && overRow.dataset.itemId !== draggedChecklistItemId) overRow.classList.add('drag-over');
+        });
+        itemsWrap.addEventListener('drop', e=>{
+          if(!draggedChecklistItemId) return;
+          e.preventDefault();
+          itemsWrap.querySelectorAll('.sub-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+          const overRow = e.target.closest('.sub-row');
+          const toId = overRow ? overRow.dataset.itemId : null;
+          const fromId = draggedChecklistItemId; draggedChecklistItemId = null;
+          if(!toId || toId === fromId) return;
+          const fromIdx = c.items.findIndex(x=>x.id===fromId);
+          const toIdx = c.items.findIndex(x=>x.id===toId);
+          if(fromIdx<0 || toIdx<0) return;
+          const [moved] = c.items.splice(fromIdx,1);
+          c.items.splice(toIdx,0,moved);
+          save(); renderChecklists();
+        });
+        itemsWrap.addEventListener('dragend', ()=>{
+          draggedChecklistItemId = null;
+          itemsWrap.querySelectorAll('.sub-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
         });
         card.appendChild(itemsWrap);
 
@@ -2785,7 +2843,15 @@
     el('fitnessLogBadge').style.display = loggedToday ? 'none' : 'inline-flex';
   }
 
-  /* ---- weight trend chart: line + moving average over the last 12 months ---- */
+  /* ---- weight trend chart: line + moving average, zoomable to a chosen time range ---- */
+  const WEIGHT_CHART_ZOOMS = [
+    {key:'1m', label:'1M', months:1},
+    {key:'3m', label:'3M', months:3},
+    {key:'6m', label:'6M', months:6},
+    {key:'1y', label:'1Y', months:12},
+    {key:'all', label:'All', months:null}
+  ];
+  let weightChartZoom = '1y'; // not persisted — resets to a sensible default each page load
   // background bands showing BMI territory (underweight/normal/overweight/obese) translated into
   // actual weight values for this person's height, so the chart visually shows which zone their
   // weight sits in over time. Skipped entirely if height hasn't been entered yet.
@@ -2807,13 +2873,32 @@
   }
 
   function renderWeightChart(){
+    const zoomRow = el('weightChartZoomRow');
+    zoomRow.innerHTML = WEIGHT_CHART_ZOOMS.map(z=>
+      '<button class="chart-zoom-btn'+(weightChartZoom===z.key?' active':'')+'" data-zoom="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    zoomRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        weightChartZoom = btn.dataset.zoom;
+        renderWeightChart();
+      });
+    });
+
     const wrap = el('weightChartWrap');
     const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
-    const cutoff = new Date(); cutoff.setFullYear(cutoff.getFullYear()-1);
-    const cutoffStr = localDateStr(cutoff);
-    const points = log.filter(e=>e.date >= cutoffStr);
-    if(points.length < 2){
+    if(log.length < 2){
       wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Log at least two days of weight to see your trend chart.</div>';
+      return;
+    }
+    const zoomOpt = WEIGHT_CHART_ZOOMS.find(z=>z.key===weightChartZoom) || WEIGHT_CHART_ZOOMS[3];
+    let points = log;
+    if(zoomOpt.months != null){
+      const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - zoomOpt.months);
+      const cutoffStr = localDateStr(cutoff);
+      points = log.filter(e=>e.date >= cutoffStr);
+    }
+    if(points.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">No entries in this time range — try a wider zoom.</div>';
       return;
     }
     const W = 780, H = 240, padL = 44, padR = 14, padT = 14, padB = 26;
@@ -2868,7 +2953,7 @@
   }
 
   function renderAll(){
-    renderGoals(); renderHabits(); renderCountdowns(); renderInsights(); renderMantras(); renderChecklists();
+    renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness();
   }
 

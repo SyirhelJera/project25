@@ -495,6 +495,44 @@
   .chart-zoom-btn:hover{border-color:var(--violet);color:var(--text);}
   .chart-zoom-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
 
+  /* ---------- valorant ---------- */
+  .val-api-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;}
+  .val-api-row .fitness-field{flex:1;min-width:220px;margin-bottom:0;}
+  .val-add-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
+  .val-add-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .val-add-row input:focus, .val-add-row select:focus{border-color:var(--violet);}
+  .val-add-row input.val-riotid-input{flex:2;min-width:160px;}
+  .val-add-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .val-account-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px 17px;margin-bottom:12px;transition:border-color .12s ease;}
+  .val-account-card.selected{border-color:var(--violet);}
+  .val-account-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .val-riotid{font-family:'Manrope',sans-serif;font-weight:800;font-size:15px;cursor:pointer;}
+  .val-riotid:hover{color:var(--violet-dark);}
+  .val-tag{font-size:10px;color:var(--violet-dark);font-weight:700;}
+  .val-region-chip{font-size:10px;color:var(--muted);text-transform:uppercase;background:var(--surface-alt);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-weight:700;letter-spacing:0.3px;}
+  .val-acc-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
+  .val-icon-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+  .val-icon-btn:hover{border-color:var(--violet);color:var(--violet-dark);}
+  .val-icon-btn.spinning{animation:val-spin 0.8s linear infinite;}
+  @keyframes val-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+  .val-account-body{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
+  .val-rank-cluster{display:inline-flex;align-items:center;gap:10px;}
+  .val-rank-icon{width:38px;height:38px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));}
+  .val-rank-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:10px;font-weight:800;font-size:13px;color:#fff;white-space:nowrap;}
+  .val-rr-wrap{flex:1;min-width:160px;}
+  .val-rr-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;}
+  .val-rr-top b{color:var(--text);font-family:'Manrope',sans-serif;font-size:12.5px;}
+  .val-rr-track{position:relative;height:9px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
+  .val-rr-fill{height:100%;border-radius:8px;transition:width .4s ease;}
+  .val-stat-mini{text-align:center;flex:none;}
+  .val-stat-mini .num{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;}
+  .val-stat-mini .num.up{color:var(--success);}
+  .val-stat-mini .num.down{color:var(--danger);}
+  .val-stat-mini .lbl{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;}
+  .val-peak-note{font-size:10.5px;color:var(--faint);margin-top:8px;}
+  .val-err{font-size:11.5px;color:var(--danger);margin-top:8px;}
+  .val-empty-accounts{text-align:center;padding:30px 20px;color:var(--faint);border:1px dashed var(--border);border-radius:14px;font-size:13px;margin-bottom:16px;}
+
   @media (max-width:720px){
     .finance-summary{grid-template-columns:repeat(3,1fr);}
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
@@ -531,6 +569,7 @@
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>Habits<span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg>Finance</div>
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness<span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
+    <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg>Valorant</div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
@@ -756,6 +795,56 @@
     </div>
   </div>
 
+  <!-- VALORANT -->
+  <div class="view" id="view-valorant">
+    <div class="view-title">Valorant</div>
+    <div class="view-sub">Track competitive rank and RR history across one or more Riot accounts.</div>
+
+    <div id="valApiBanner" class="setup-banner" style="display:none;">
+      Rank lookups use the unofficial HenrikDev Valorant API, which requires a free API key.
+      Get one at <code>https://discord.com/invite/X3GaVkX2YN</code> (join the Discord, then generate a key on the
+      <code>api.henrikdev.xyz</code> dashboard) and paste it below.
+    </div>
+    <div class="val-api-row">
+      <div class="fitness-field">
+        <label>HenrikDev API Key</label>
+        <input type="password" id="valApiKey" placeholder="Paste your API key">
+      </div>
+      <button class="btn btn-ghost" id="valSaveKeyBtn" style="margin-bottom:0;">Save Key</button>
+    </div>
+
+    <div class="section-lbl" style="margin-top:4px;">Add Account</div>
+    <div class="val-add-row">
+      <input type="text" id="valNewRiotId" class="val-riotid-input" placeholder='Riot ID, e.g. "Henrik3#VALO"' maxlength="40">
+      <select id="valNewRegion">
+        <option value="na">NA</option>
+        <option value="eu">EU</option>
+        <option value="ap">APAC</option>
+        <option value="kr">KR</option>
+        <option value="latam">LATAM</option>
+        <option value="br">BR</option>
+      </select>
+      <select id="valNewPlatform">
+        <option value="pc">PC</option>
+        <option value="console">Console</option>
+      </select>
+      <button class="btn btn-primary" id="valAddAccountBtn">+ Add Account</button>
+    </div>
+    <div class="val-err" id="valAddErr" style="display:none;"></div>
+
+    <div id="valAccountList"></div>
+    <div class="val-empty-accounts" id="valAccountsEmpty" style="display:none;">No accounts yet. Add a Riot ID above (e.g. "Henrik3#VALO") to start tracking rank.</div>
+
+    <div class="section-lbl" id="valChartLbl" style="margin-top:8px;display:none;">RR History</div>
+    <div class="chart-zoom-row" id="valChartAccountRow" style="display:none;"></div>
+    <div class="chart-card" id="valChartCard" style="display:none;">
+      <div id="valChartWrap"></div>
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--violet);"></span>RR at match end</span>
+      </div>
+    </div>
+  </div>
+
   <!-- CHECKLISTS -->
   <div class="view" id="view-checklists">
     <div class="view-title">Checklists</div>
@@ -818,6 +907,7 @@
   let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD'}, focus: null, darkMode: false };
   let goalFilter = 'working';
   let starredFirst = false;
@@ -913,6 +1003,16 @@
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
+    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null };
+    if(!state.valorant.apiKey) state.valorant.apiKey = '';
+    if(!state.valorant.accounts) state.valorant.accounts = [];
+    state.valorant.accounts.forEach(a=>{
+      if(!a.platform) a.platform = 'pc';
+      if(!a.history) a.history = [];
+      if(a.current===undefined) a.current = null;
+      if(a.error===undefined) a.error = '';
+    });
+    if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     state.focus = parsed.focus || null;
@@ -975,6 +1075,7 @@
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
+    el('valApiKey').value = state.valorant.apiKey || '';
     applyDarkMode();
     renderAll();
   }
@@ -1024,6 +1125,7 @@
       if(t.dataset.tab==='checklists') renderChecklists();
       if(t.dataset.tab==='finance') renderFinance();
       if(t.dataset.tab==='fitness') renderFitness();
+      if(t.dataset.tab==='valorant') renderValorant();
     });
   });
 
@@ -2952,9 +3054,281 @@
       + (bandsSvg ? '<div style="font-size:10.5px;color:var(--muted);text-align:center;margin-top:6px;">Shaded bands show BMI zones for your height — <span style="color:#16A34A;font-weight:700;">green = normal weight</span>, amber = under/overweight, red = obese.</div>' : '');
   }
 
+  /* ================= VALORANT ================= */
+  const HENRIK_BASE = 'https://api.henrikdev.xyz/valorant';
+  const VAL_REGION_LABELS = { na:'NA', eu:'EU', ap:'APAC', kr:'KR', latam:'LATAM', br:'BR' };
+  const VALORANT_API_BASE = 'https://valorant-api.com/v1';
+
+  // Rank tier icons (id -> {name, small, large}), fetched once from the public valorant-api.com
+  // reference API (no key required) and cached for the session.
+  let valTierIconCache = null;
+  let valTierIconPromise = null;
+  function ensureValTierIcons(){
+    if(valTierIconCache) return Promise.resolve(valTierIconCache);
+    if(valTierIconPromise) return valTierIconPromise;
+    valTierIconPromise = fetch(VALORANT_API_BASE+'/competitivetiers')
+      .then(r=>r.json())
+      .then(json=>{
+        const episodes = (json && Array.isArray(json.data)) ? json.data : [];
+        const latest = episodes[episodes.length-1];
+        const map = {};
+        if(latest && Array.isArray(latest.tiers)){
+          latest.tiers.forEach(t=>{
+            map[t.tier] = { name: t.tierName, small: t.smallIcon, large: t.largeIcon };
+          });
+        }
+        valTierIconCache = map;
+        renderValorant();
+        return map;
+      })
+      .catch(()=>{ valTierIconCache = {}; return valTierIconCache; });
+    return valTierIconPromise;
+  }
+  ensureValTierIcons();
+
+  function valTierColor(tierName){
+    if(!tierName) return '#8B92A8';
+    const t = tierName.toLowerCase();
+    if(t.includes('iron')) return '#6B7280';
+    if(t.includes('bronze')) return '#A9714B';
+    if(t.includes('silver')) return '#9CA6AF';
+    if(t.includes('gold')) return '#E8B94B';
+    if(t.includes('platinum')) return '#2FB6B0';
+    if(t.includes('diamond')) return '#B084F0';
+    if(t.includes('ascendant')) return '#2FBE7A';
+    if(t.includes('immortal')) return '#C33E6B';
+    if(t.includes('radiant')) return '#E9DE8E';
+    return '#6366F1';
+  }
+
+  async function fetchValorantAccount(accId){
+    const acc = state.valorant.accounts.find(a=>a.id===accId);
+    if(!acc) return;
+    acc.loading = true; acc.error = '';
+    renderValorant();
+    try{
+      const enc = s => encodeURIComponent(s);
+      const headers = { 'Accept':'application/json' };
+      if(state.valorant.apiKey) headers['Authorization'] = state.valorant.apiKey;
+
+      const mmrUrl = HENRIK_BASE+'/v3/mmr/'+acc.region+'/'+acc.platform+'/'+enc(acc.name)+'/'+enc(acc.tag);
+      const mmrRes = await fetch(mmrUrl, { headers });
+      const mmrJson = await mmrRes.json().catch(()=>null);
+      if(!mmrRes.ok || !mmrJson || !mmrJson.data || !mmrJson.data.current){
+        const apiMsg = mmrJson && mmrJson.errors && mmrJson.errors[0] && mmrJson.errors[0].message;
+        throw new Error(apiMsg || ('Could not fetch rank (HTTP '+mmrRes.status+'). Check the Riot ID, region, and API key.'));
+      }
+      acc.current = {
+        tierName: mmrJson.data.current.tier ? mmrJson.data.current.tier.name : 'Unranked',
+        tierId: (mmrJson.data.current.tier && typeof mmrJson.data.current.tier.id === 'number') ? mmrJson.data.current.tier.id : null,
+        rr: typeof mmrJson.data.current.rr === 'number' ? mmrJson.data.current.rr : 0,
+        lastChange: mmrJson.data.current.last_change || 0,
+        elo: mmrJson.data.current.elo || 0,
+        peakTierName: (mmrJson.data.peak && mmrJson.data.peak.tier) ? mmrJson.data.peak.tier.name : ''
+      };
+      ensureValTierIcons();
+
+      try{
+        const histUrl = HENRIK_BASE+'/v2/mmr-history/'+acc.region+'/'+acc.platform+'/'+enc(acc.name)+'/'+enc(acc.tag);
+        const histRes = await fetch(histUrl, { headers });
+        const histJson = await histRes.json().catch(()=>null);
+        if(histRes.ok && histJson && histJson.data && Array.isArray(histJson.data.history)){
+          acc.history = histJson.data.history
+            .map(h=>({ date: h.date, tier: h.tier ? h.tier.name : '', tierId: (h.tier && typeof h.tier.id === 'number') ? h.tier.id : null, rr: h.rr, lastChange: h.last_change }))
+            .filter(h=>h.date)
+            .sort((a,b)=> new Date(a.date) - new Date(b.date));
+        }
+      }catch(histErr){ /* current rank still succeeded even if history fails — keep whatever we already had */ }
+
+      acc.lastFetched = Date.now();
+    }catch(e){
+      acc.error = (e && e.message) || 'Failed to fetch. Check your Riot ID, region, and API key.';
+    }
+    acc.loading = false;
+    save();
+    renderValorant();
+  }
+
+  function renderValorant(){
+    el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
+    const listEl = el('valAccountList');
+    const accounts = state.valorant.accounts;
+    el('valAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
+    listEl.innerHTML = '';
+
+    accounts.forEach(acc=>{
+      const card = document.createElement('div');
+      card.className = 'val-account-card' + (state.valorant.selectedAccountId===acc.id ? ' selected' : '');
+      const cur = acc.current;
+      let bodyHtml = '';
+      if(acc.error){
+        bodyHtml = '<div class="val-err">'+escapeHtml(acc.error)+'</div>';
+      } else if(cur){
+        const color = valTierColor(cur.tierName);
+        const rrPct = Math.max(0, Math.min(100, cur.rr));
+        const changeCls = cur.lastChange > 0 ? 'up' : (cur.lastChange < 0 ? 'down' : '');
+        const changeTxt = cur.lastChange > 0 ? ('+'+cur.lastChange) : String(cur.lastChange||0);
+        const iconInfo = (valTierIconCache && cur.tierId!=null) ? valTierIconCache[cur.tierId] : null;
+        const iconHtml = (iconInfo && iconInfo.large) ? '<img class="val-rank-icon" src="'+iconInfo.large+'" alt="'+escapeHtml(cur.tierName||'')+'">' : '';
+        bodyHtml = '<div class="val-account-body">'
+          + '<span class="val-rank-cluster">' + iconHtml
+          + '<span class="val-rank-badge" style="background:'+color+';">'+escapeHtml(cur.tierName||'Unranked')+'</span></span>'
+          + '<div class="val-rr-wrap"><div class="val-rr-top"><span>RR</span><b>'+cur.rr+' / 100</b></div>'
+          + '<div class="val-rr-track"><div class="val-rr-fill" style="width:'+rrPct+'%;background:'+color+';"></div></div></div>'
+          + '<div class="val-stat-mini"><div class="num '+changeCls+'">'+changeTxt+'</div><div class="lbl">Last Game</div></div>'
+          + '<div class="val-stat-mini"><div class="num">'+cur.elo+'</div><div class="lbl">Elo</div></div>'
+          + '</div>'
+          + (cur.peakTierName ? '<div class="val-peak-note">Peak this act: '+escapeHtml(cur.peakTierName)+'</div>' : '');
+      } else {
+        bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
+      }
+      card.innerHTML = '<div class="val-account-top">'
+        + '<span class="val-riotid" data-select="'+acc.id+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
+        + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+'</span>'
+        + '<span class="val-acc-actions">'
+        + '<button class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'" title="Refresh rank">⟳</button>'
+        + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
+        + '</span></div>' + bodyHtml;
+      listEl.appendChild(card);
+    });
+
+    listEl.querySelectorAll('[data-select]').forEach(x=>{
+      x.addEventListener('click', ()=>{
+        state.valorant.selectedAccountId = x.dataset.select;
+        save(); renderValorant();
+      });
+    });
+    listEl.querySelectorAll('[data-refresh]').forEach(x=>{
+      x.addEventListener('click', (e)=>{ e.stopPropagation(); fetchValorantAccount(x.dataset.refresh); });
+    });
+    listEl.querySelectorAll('[data-del]').forEach(x=>{
+      x.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const id = x.dataset.del;
+        state.valorant.accounts = state.valorant.accounts.filter(a=>a.id!==id);
+        if(state.valorant.selectedAccountId===id){
+          state.valorant.selectedAccountId = state.valorant.accounts.length ? state.valorant.accounts[0].id : null;
+        }
+        save(); renderValorant();
+      });
+    });
+
+    renderValorantChartSelector();
+    renderValorantChart();
+  }
+
+  function renderValorantChartSelector(){
+    const row = el('valChartAccountRow');
+    const accounts = state.valorant.accounts;
+    if(!accounts.length){
+      row.style.display = 'none';
+      el('valChartLbl').style.display = 'none';
+      el('valChartCard').style.display = 'none';
+      return;
+    }
+    if(!state.valorant.selectedAccountId || !accounts.find(a=>a.id===state.valorant.selectedAccountId)){
+      state.valorant.selectedAccountId = accounts[0].id;
+    }
+    el('valChartLbl').style.display = 'block';
+    el('valChartCard').style.display = 'block';
+    row.style.display = accounts.length > 1 ? 'flex' : 'none';
+    row.innerHTML = accounts.map(a=>
+      '<button class="chart-zoom-btn'+(state.valorant.selectedAccountId===a.id?' active':'')+'" data-acc="'+a.id+'">'+escapeHtml(a.name)+'#'+escapeHtml(a.tag)+'</button>'
+    ).join('');
+    row.querySelectorAll('[data-acc]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        state.valorant.selectedAccountId = btn.dataset.acc;
+        save(); renderValorant();
+      });
+    });
+  }
+
+  function renderValorantChart(){
+    const wrap = el('valChartWrap');
+    const accounts = state.valorant.accounts;
+    if(!accounts.length){ wrap.innerHTML=''; return; }
+    const acc = accounts.find(a=>a.id===state.valorant.selectedAccountId) || accounts[0];
+    const hist = (acc.history||[]).filter(h=> typeof h.rr === 'number');
+    if(hist.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough match history yet for '+escapeHtml(acc.name)+' — refresh after a competitive match to build the graph.</div>';
+      return;
+    }
+    const W = 780, H = 220, padL = 40, padR = 14, padT = 14, padB = 26;
+    const vals = hist.map(h=>h.rr);
+    let minV = Math.max(0, Math.min(...vals) - 5);
+    let maxV = Math.min(100, Math.max(...vals) + 5);
+    if(minV >= maxV){ minV = 0; maxV = 100; }
+    const xOf = i => padL + (hist.length===1 ? 0 : (i/(hist.length-1)) * (W-padL-padR));
+    const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+
+    // Color each line segment by the rank tier of its destination point, so the line visually
+    // tracks rank changes (e.g. a climb into Diamond turns the line diamond-blue) instead of a flat color.
+    let lineSvg = '';
+    for(let i=1;i<hist.length;i++){
+      const segColor = valTierColor(hist[i].tier || hist[i-1].tier);
+      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(hist[i-1].rr).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(hist[i].rr).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2.5" stroke-linecap="round"/>';
+    }
+    const dotsSvg = hist.map((h,i)=>
+      '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(h.rr).toFixed(1)+'" r="3.5" fill="'+valTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(h.tier||'')+' — '+h.rr+' RR</title></circle>'
+    ).join('');
+
+    let gridSvg = '';
+    const steps = 4;
+    for(let i=0;i<=steps;i++){
+      const v = minV + (maxV-minV)*(i/steps);
+      const y = yOf(v);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
+      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="10" fill="var(--muted)" text-anchor="end">'+Math.round(v)+'</text>';
+    }
+    const labelIdxs = [0, Math.floor((hist.length-1)/2), hist.length-1];
+    let xLabelSvg = '';
+    labelIdxs.forEach(i=>{
+      xLabelSvg += '<text x="'+xOf(i).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+escapeHtml(fmtDate(new Date(hist[i].date).getTime()))+'</text>';
+    });
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+      + gridSvg + xLabelSvg
+      + lineSvg
+      + dotsSvg
+      + '</svg>';
+  }
+
+  function showValAddErr(msg){
+    const e2 = el('valAddErr');
+    e2.textContent = msg;
+    e2.style.display = 'block';
+  }
+
+  el('valSaveKeyBtn').addEventListener('click', ()=>{
+    state.valorant.apiKey = el('valApiKey').value.trim();
+    save(); renderValorant();
+  });
+
+  el('valAddAccountBtn').addEventListener('click', ()=>{
+    el('valAddErr').style.display = 'none';
+    const raw = el('valNewRiotId').value.trim();
+    const region = el('valNewRegion').value;
+    const platform = el('valNewPlatform').value;
+    if(!raw.includes('#')){ showValAddErr('Enter a Riot ID in the form Name#Tag, e.g. "Henrik3#VALO".'); return; }
+    const hashIdx = raw.indexOf('#');
+    const name = raw.slice(0, hashIdx).trim();
+    const tag = raw.slice(hashIdx+1).trim();
+    if(!name || !tag){ showValAddErr('Enter a Riot ID in the form Name#Tag, e.g. "Henrik3#VALO".'); return; }
+    if(state.valorant.accounts.some(a=> a.name.toLowerCase()===name.toLowerCase() && a.tag.toLowerCase()===tag.toLowerCase() && a.region===region)){
+      showValAddErr('That account is already being tracked.'); return;
+    }
+    const acc = { id: uid(), name, tag, region, platform, history: [], current: null, error: '', lastFetched: null, loading: false };
+    state.valorant.accounts.push(acc);
+    state.valorant.selectedAccountId = acc.id;
+    el('valNewRiotId').value = '';
+    save(); renderValorant();
+    fetchValorantAccount(acc.id);
+  });
+  el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valAddAccountBtn').click(); });
+
   function renderAll(){
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
-    renderFinance(); renderFitness();
+    renderFinance(); renderFitness(); renderValorant();
   }
 
   function applyDarkMode(){

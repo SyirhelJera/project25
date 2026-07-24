@@ -369,6 +369,8 @@
     .habit-link-btn{max-width:130px;}
     /* drag-to-reorder relies on HTML5 drag events, which don't work on touch — hide the handle so it isn't dead clutter */
     .drag-handle{display:none;}
+    .val-drag-handle{display:none !important;}
+    #valAccountList{grid-template-columns:1fr;}
     .goal-head{padding:12px 14px;gap:7px;}
     .goal-title{font-size:14px;}
     .working-btn{padding:5px 9px;font-size:10px;}
@@ -503,33 +505,62 @@
   .val-add-row input:focus, .val-add-row select:focus{border-color:var(--violet);}
   .val-add-row input.val-riotid-input{flex:2;min-width:160px;}
   .val-add-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
-  .val-account-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px 17px;margin-bottom:12px;transition:border-color .12s ease;}
-  .val-account-card.selected{border-color:var(--violet);}
-  .val-account-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
-  .val-riotid{font-family:'Manrope',sans-serif;font-weight:800;font-size:15px;cursor:pointer;}
-  .val-riotid:hover{color:var(--violet-dark);}
+
+  /* account list as a grid of compact "cube" tiles instead of one long stacked list */
+  #valAccountList{display:grid;grid-template-columns:repeat(auto-fill, minmax(215px, 1fr));gap:12px;}
+  .val-account-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;
+    transition:border-color .12s ease,box-shadow .12s ease;cursor:pointer;display:flex;flex-direction:column;
+  }
+  .val-account-card:hover{box-shadow:0 2px 10px rgba(20,22,31,0.07);}
+  .val-account-card.selected{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset;}
+  .val-account-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .val-account-card.val-recent-up{border-left:3px solid var(--success);}
+  .val-account-card.val-recent-down{border-left:3px solid var(--danger);}
+
+  .val-account-top{display:flex;align-items:flex-start;gap:6px;}
+  .val-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .val-riotid{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .val-tag{font-size:10px;color:var(--violet-dark);font-weight:700;}
-  .val-region-chip{font-size:10px;color:var(--muted);text-transform:uppercase;background:var(--surface-alt);border:1px solid var(--border);padding:2px 8px;border-radius:999px;font-weight:700;letter-spacing:0.3px;}
-  .val-acc-actions{margin-left:auto;display:flex;gap:6px;align-items:center;}
-  .val-icon-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:8px;width:30px;height:30px;cursor:pointer;font-size:13px;display:flex;align-items:center;justify-content:center;}
+  .val-region-chip{font-size:9.5px;color:var(--muted);text-transform:uppercase;background:var(--surface-alt);border:1px solid var(--border);padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:0.3px;align-self:flex-start;}
+  .val-acc-actions{display:flex;gap:5px;align-items:center;flex:none;}
+  .val-icon-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;}
   .val-icon-btn:hover{border-color:var(--violet);color:var(--violet-dark);}
   .val-icon-btn.spinning{animation:val-spin 0.8s linear infinite;}
   @keyframes val-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-  .val-account-body{display:flex;align-items:center;gap:16px;margin-top:12px;flex-wrap:wrap;}
-  .val-rank-cluster{display:inline-flex;align-items:center;gap:10px;}
-  .val-rank-icon{width:38px;height:38px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));}
-  .val-rank-badge{display:inline-flex;align-items:center;gap:8px;padding:7px 14px;border-radius:10px;font-weight:800;font-size:13px;color:#fff;white-space:nowrap;}
-  .val-rr-wrap{flex:1;min-width:160px;}
-  .val-rr-top{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:5px;}
-  .val-rr-top b{color:var(--text);font-family:'Manrope',sans-serif;font-size:12.5px;}
-  .val-rr-track{position:relative;height:9px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
+  .val-recent-chip{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;border-radius:999px;padding:2px 6px;flex:none;align-self:flex-start;}
+  .val-recent-chip.up{background:var(--success-pale);color:var(--success);}
+  .val-recent-chip.down{background:#FCE8E8;color:var(--danger);}
+  body.dark-mode .val-recent-chip.down{background:#3B1A1A;}
+  .val-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+  .val-toolbar .val-sort-lbl{font-size:11.5px;color:var(--muted);font-weight:700;}
+  .val-toolbar select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .val-toolbar select:focus{border-color:var(--violet);}
+  .val-refresh-all-btn{margin-left:auto;}
+  .val-drag-handle{display:none;color:var(--faint);font-size:13px;padding:1px 4px 1px 0;flex:none;letter-spacing:-1px;cursor:grab;}
+  .val-drag-handle.active{display:inline-block;}
+  .val-drag-handle:active{cursor:grabbing;}
+  .val-tier-label{font-size:9px;font-weight:700;font-family:'Inter',sans-serif;}
+  .habit-badge.habit-restores{color:var(--muted);background:var(--surface-alt);}
+  .habit-badge.habit-restores.habit-restores-empty{color:#B45309;background:#FEF3C7;border:1px solid #FBBF24;}
+  body.dark-mode .habit-badge.habit-restores.habit-restores-empty{color:#FBBF24;background:#3A2F14;border-color:#7A5A12;}
+
+  .val-account-body{display:flex;flex-direction:column;gap:9px;margin-top:11px;}
+  .val-rank-cluster{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .val-rank-icon{width:30px;height:30px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));}
+  .val-rank-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;font-weight:800;font-size:11.5px;color:#fff;white-space:nowrap;}
+  .val-rr-wrap{width:100%;}
+  .val-rr-top{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:5px;}
+  .val-rr-top b{color:var(--text);font-family:'Manrope',sans-serif;font-size:12px;}
+  .val-rr-track{position:relative;height:8px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
   .val-rr-fill{height:100%;border-radius:8px;transition:width .4s ease;}
-  .val-stat-mini{text-align:center;flex:none;}
-  .val-stat-mini .num{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;}
+  .val-card-stats{display:flex;gap:8px;}
+  .val-stat-mini{text-align:center;flex:1;background:var(--surface-alt);border-radius:8px;padding:6px 4px;}
+  .val-stat-mini .num{font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;}
   .val-stat-mini .num.up{color:var(--success);}
   .val-stat-mini .num.down{color:var(--danger);}
-  .val-stat-mini .lbl{font-size:9.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;}
-  .val-peak-note{font-size:10.5px;color:var(--faint);margin-top:8px;}
+  .val-stat-mini .lbl{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;}
+  .val-peak-note{font-size:10px;color:var(--faint);margin-top:2px;}
   .val-err{font-size:11.5px;color:var(--danger);margin-top:8px;}
   .val-empty-accounts{text-align:center;padding:30px 20px;color:var(--faint);border:1px dashed var(--border);border-radius:14px;font-size:13px;margin-bottom:16px;}
 
@@ -800,6 +831,16 @@
     <div class="view-title">Valorant</div>
     <div class="view-sub">Track competitive rank and RR history across one or more Riot accounts.</div>
 
+    <div class="section-lbl" id="valChartLbl" style="margin-top:4px;display:none;">RR History</div>
+    <div class="chart-zoom-row" id="valChartAccountRow" style="display:none;"></div>
+    <div class="chart-zoom-row" id="valChartZoomRow" style="display:none;"></div>
+    <div class="chart-card" id="valChartCard" style="display:none;">
+      <div id="valChartWrap"></div>
+      <div class="chart-legend" id="valChartLegend">
+        <span><span class="dot" style="background:var(--violet);"></span>RR at match end</span>
+      </div>
+    </div>
+
     <div id="valApiBanner" class="setup-banner" style="display:none;">
       Rank lookups use the unofficial HenrikDev Valorant API, which requires a free API key.
       Get one at <code>https://discord.com/invite/X3GaVkX2YN</code> (join the Discord, then generate a key on the
@@ -832,17 +873,19 @@
     </div>
     <div class="val-err" id="valAddErr" style="display:none;"></div>
 
+    <div class="val-toolbar" id="valToolbar" style="display:none;">
+      <span class="val-sort-lbl">Sort by</span>
+      <select id="valSortMode">
+        <option value="manual">Custom order (drag to reorder)</option>
+        <option value="rank">Rank (high to low)</option>
+        <option value="name">Name (A–Z)</option>
+        <option value="recent">Recent activity</option>
+      </select>
+      <button class="btn btn-ghost btn-sm val-refresh-all-btn" id="valRefreshAllBtn">⟳ Refresh All</button>
+    </div>
+
     <div id="valAccountList"></div>
     <div class="val-empty-accounts" id="valAccountsEmpty" style="display:none;">No accounts yet. Add a Riot ID above (e.g. "Henrik3#VALO") to start tracking rank.</div>
-
-    <div class="section-lbl" id="valChartLbl" style="margin-top:8px;display:none;">RR History</div>
-    <div class="chart-zoom-row" id="valChartAccountRow" style="display:none;"></div>
-    <div class="chart-card" id="valChartCard" style="display:none;">
-      <div id="valChartWrap"></div>
-      <div class="chart-legend">
-        <span><span class="dot" style="background:var(--violet);"></span>RR at match end</span>
-      </div>
-    </div>
   </div>
 
   <!-- CHECKLISTS -->
@@ -1003,9 +1046,10 @@
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
-    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null };
+    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual' };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];
+    if(!state.valorant.sortMode) state.valorant.sortMode = 'manual';
     state.valorant.accounts.forEach(a=>{
       if(!a.platform) a.platform = 'pc';
       if(!a.history) a.history = [];
@@ -1937,6 +1981,7 @@
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
+        + '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
         + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist">🔗 '+escapeHtml(c.name)+'</button>').join('') : '')
         + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
         + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>';
@@ -3100,6 +3145,11 @@
     if(t.includes('radiant')) return '#E9DE8E';
     return '#6366F1';
   }
+  function hexToRgba(hex, alpha){
+    const h = hex.replace('#','');
+    const r = parseInt(h.substring(0,2),16), g = parseInt(h.substring(2,4),16), b = parseInt(h.substring(4,6),16);
+    return 'rgba('+r+','+g+','+b+','+alpha+')';
+  }
 
   async function fetchValorantAccount(accId){
     const acc = state.valorant.accounts.find(a=>a.id===accId);
@@ -3149,16 +3199,101 @@
     renderValorant();
   }
 
+  // Higher tierId = higher rank (per valorant-api competitivetiers ordering). Accounts with no
+  // fetched rank yet sort to the bottom regardless of sort mode.
+  function valRankSortValue(acc){
+    if(!acc.current) return -1;
+    const tierId = typeof acc.current.tierId === 'number' ? acc.current.tierId : 0;
+    return tierId * 1000 + (acc.current.rr||0);
+  }
+  // "Recent activity": the account's last fetched match changed RR — up or down — so the card
+  // gets a colored accent to draw the eye without the user having to open every account.
+  function valRecentActivityClass(acc){
+    if(!acc.current || !acc.current.lastChange) return '';
+    return acc.current.lastChange > 0 ? 'val-recent-up' : 'val-recent-down';
+  }
+  // Timestamp of the account's most recent competitive match, taken from its RR history (not
+  // from when the app last refreshed the data) — so "played July 24" always outranks "played
+  // July 23," regardless of which one was refreshed more recently in the app.
+  function valLastMatchTime(acc){
+    const hist = acc.history || [];
+    if(!hist.length) return 0;
+    const last = hist[hist.length-1]; // history is stored sorted ascending by date
+    const t = last && last.date ? new Date(last.date).getTime() : 0;
+    return isNaN(t) ? 0 : t;
+  }
+  function sortedValorantAccounts(){
+    const accounts = state.valorant.accounts.slice();
+    if(state.valorant.sortMode === 'rank'){
+      accounts.sort((a,b)=> valRankSortValue(b) - valRankSortValue(a));
+    } else if(state.valorant.sortMode === 'name'){
+      accounts.sort((a,b)=> a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    } else if(state.valorant.sortMode === 'recent'){
+      // whoever played their last match most recently (e.g. Jul 24) shows before someone whose
+      // last match was earlier (e.g. Jul 23); accounts with no match history sink to the bottom
+      accounts.sort((a,b)=> valLastMatchTime(b) - valLastMatchTime(a));
+    }
+    return accounts;
+  }
+
+  /* drag-to-reorder valorant accounts — only active while sort mode is "manual" */
+  let draggedValAccId = null;
+  const valAccountListEl = el('valAccountList');
+  valAccountListEl.addEventListener('dragstart', e=>{
+    const handle = e.target.closest('.val-drag-handle');
+    if(!handle || state.valorant.sortMode !== 'manual') return;
+    const card = handle.closest('.val-account-card');
+    draggedValAccId = card ? card.dataset.accId : null;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  valAccountListEl.addEventListener('dragover', e=>{
+    if(!draggedValAccId) return;
+    e.preventDefault();
+    const overCard = e.target.closest('.val-account-card');
+    valAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    if(overCard && overCard.dataset.accId !== draggedValAccId) overCard.classList.add('drag-over');
+  });
+  valAccountListEl.addEventListener('drop', e=>{
+    if(!draggedValAccId) return;
+    e.preventDefault();
+    valAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    const overCard = e.target.closest('.val-account-card');
+    const toId = overCard ? overCard.dataset.accId : null;
+    const fromId = draggedValAccId; draggedValAccId = null;
+    if(!toId || toId === fromId) return;
+    const fromIdx = state.valorant.accounts.findIndex(x=>x.id===fromId);
+    const toIdx = state.valorant.accounts.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const [moved] = state.valorant.accounts.splice(fromIdx,1);
+    state.valorant.accounts.splice(toIdx,0,moved);
+    save(); renderValorant();
+  });
+  valAccountListEl.addEventListener('dragend', ()=>{ draggedValAccId = null; valAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
+
+  el('valSortMode').addEventListener('change', e=>{
+    state.valorant.sortMode = e.target.value;
+    save(); renderValorant();
+  });
+  el('valRefreshAllBtn').addEventListener('click', ()=>{
+    state.valorant.accounts.forEach(acc=> fetchValorantAccount(acc.id));
+  });
+
   function renderValorant(){
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;
     el('valAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
+    el('valToolbar').style.display = accounts.length > 1 ? 'flex' : 'none';
+    el('valSortMode').value = state.valorant.sortMode;
     listEl.innerHTML = '';
 
-    accounts.forEach(acc=>{
+    const manualOrder = state.valorant.sortMode === 'manual';
+    sortedValorantAccounts().forEach(acc=>{
       const card = document.createElement('div');
-      card.className = 'val-account-card' + (state.valorant.selectedAccountId===acc.id ? ' selected' : '');
+      card.className = 'val-account-card'
+        + (state.valorant.selectedAccountId===acc.id ? ' selected' : '')
+        + (' '+valRecentActivityClass(acc));
+      card.dataset.accId = acc.id;
       const cur = acc.current;
       let bodyHtml = '';
       if(acc.error){
@@ -3170,21 +3305,29 @@
         const changeTxt = cur.lastChange > 0 ? ('+'+cur.lastChange) : String(cur.lastChange||0);
         const iconInfo = (valTierIconCache && cur.tierId!=null) ? valTierIconCache[cur.tierId] : null;
         const iconHtml = (iconInfo && iconInfo.large) ? '<img class="val-rank-icon" src="'+iconInfo.large+'" alt="'+escapeHtml(cur.tierName||'')+'">' : '';
+        const recentCls = valRecentActivityClass(acc);
+        const recentChip = recentCls ? '<span class="val-recent-chip '+(recentCls==='val-recent-up'?'up':'down')+'" title="RR changed on the last refreshed match">'+(recentCls==='val-recent-up'?'▲ Recent gain':'▼ Recent loss')+'</span>' : '';
         bodyHtml = '<div class="val-account-body">'
           + '<span class="val-rank-cluster">' + iconHtml
           + '<span class="val-rank-badge" style="background:'+color+';">'+escapeHtml(cur.tierName||'Unranked')+'</span></span>'
+          + recentChip
           + '<div class="val-rr-wrap"><div class="val-rr-top"><span>RR</span><b>'+cur.rr+' / 100</b></div>'
           + '<div class="val-rr-track"><div class="val-rr-fill" style="width:'+rrPct+'%;background:'+color+';"></div></div></div>'
+          + '<div class="val-card-stats">'
           + '<div class="val-stat-mini"><div class="num '+changeCls+'">'+changeTxt+'</div><div class="lbl">Last Game</div></div>'
           + '<div class="val-stat-mini"><div class="num">'+cur.elo+'</div><div class="lbl">Elo</div></div>'
+          + '</div>'
           + '</div>'
           + (cur.peakTierName ? '<div class="val-peak-note">Peak this act: '+escapeHtml(cur.peakTierName)+'</div>' : '');
       } else {
         bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
       }
       card.innerHTML = '<div class="val-account-top">'
-        + '<span class="val-riotid" data-select="'+acc.id+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
+        + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder">⠿</span>'
+        + '<div class="val-card-id">'
+        + '<span class="val-riotid" title="'+escapeHtml(acc.name)+'#'+escapeHtml(acc.tag)+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
         + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+'</span>'
+        + '</div>'
         + '<span class="val-acc-actions">'
         + '<button class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'" title="Refresh rank">⟳</button>'
         + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
@@ -3192,10 +3335,15 @@
       listEl.appendChild(card);
     });
 
-    listEl.querySelectorAll('[data-select]').forEach(x=>{
-      x.addEventListener('click', ()=>{
-        state.valorant.selectedAccountId = x.dataset.select;
+    // clicking anywhere on the card (outside the drag handle / action buttons) selects that
+    // account and scrolls the RR History graph above into view for it
+    listEl.querySelectorAll('.val-account-card').forEach(card=>{
+      card.addEventListener('click', (e)=>{
+        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle')) return;
+        state.valorant.selectedAccountId = card.dataset.accId;
         save(); renderValorant();
+        const chartCard = el('valChartCard');
+        if(chartCard && chartCard.style.display !== 'none') chartCard.scrollIntoView({behavior:'smooth', block:'start'});
       });
     });
     listEl.querySelectorAll('[data-refresh]').forEach(x=>{
@@ -3243,42 +3391,134 @@
     });
   }
 
+  // RR history is per-match, not per-day, so "zoom" narrows to the N most recent matches
+  // rather than a calendar range — more useful when matches are played in bursts.
+  const VAL_CHART_ZOOMS = [
+    {key:'10', label:'Last 10', count:10},
+    {key:'25', label:'Last 25', count:25},
+    {key:'50', label:'Last 50', count:50},
+    {key:'all', label:'All', count:null}
+  ];
+  let valChartZoom = 'all'; // not persisted — resets to a sensible default each page load
+
   function renderValorantChart(){
     const wrap = el('valChartWrap');
     const accounts = state.valorant.accounts;
-    if(!accounts.length){ wrap.innerHTML=''; return; }
+    const zoomRow = el('valChartZoomRow');
+    const legendEl = el('valChartLegend');
+    if(!accounts.length){ wrap.innerHTML=''; zoomRow.style.display='none'; return; }
     const acc = accounts.find(a=>a.id===state.valorant.selectedAccountId) || accounts[0];
-    const hist = (acc.history||[]).filter(h=> typeof h.rr === 'number');
-    if(hist.length < 2){
+    const fullHist = (acc.history||[]).filter(h=> typeof h.rr === 'number');
+    if(fullHist.length < 2){
       wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough match history yet for '+escapeHtml(acc.name)+' — refresh after a competitive match to build the graph.</div>';
+      zoomRow.style.display = 'none';
       return;
     }
-    const W = 780, H = 220, padL = 40, padR = 14, padT = 14, padB = 26;
-    const vals = hist.map(h=>h.rr);
+
+    zoomRow.style.display = 'flex';
+    zoomRow.innerHTML = VAL_CHART_ZOOMS.map(z=>
+      '<button class="chart-zoom-btn'+(valChartZoom===z.key?' active':'')+'" data-vzoom="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    zoomRow.querySelectorAll('[data-vzoom]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ valChartZoom = btn.dataset.vzoom; renderValorantChart(); });
+    });
+
+    const zoomOpt = VAL_CHART_ZOOMS.find(z=>z.key===valChartZoom) || VAL_CHART_ZOOMS[3];
+    const hist = zoomOpt.count ? fullHist.slice(-zoomOpt.count) : fullHist;
+    if(hist.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough matches in this range — try a wider zoom.</div>';
+      return;
+    }
+
+    // Raw RR resets to a low number every time a tier is gained (e.g. Platinum 2 @ 88 RR ->
+    // Platinum 3 @ 10 RR), which made rank-ups look like drops on the old chart. Riot's tier IDs
+    // increase by exactly 1 per sub-tier, so combining tierId*100 + RR gives one continuous,
+    // monotonic "rank power" scale: a promotion always moves the line up, a demotion always
+    // moves it down, matching what actually happened to the player's rank.
+    const tierIdOf = h => (typeof h.tierId === 'number' ? h.tierId : null);
+    let lastKnownTierId = 0;
+    const valOf = h => {
+      const tid = tierIdOf(h);
+      if(tid != null) lastKnownTierId = tid;
+      return lastKnownTierId * 100 + (typeof h.rr === 'number' ? h.rr : 0);
+    };
+    // map tierId -> tier name, used to label the y-axis in rank terms instead of a raw number
+    const tierIdToName = {};
+    hist.forEach(h=>{ const tid = tierIdOf(h); if(tid != null && h.tier) tierIdToName[tid] = h.tier; });
+    if(acc.current && typeof acc.current.tierId === 'number' && acc.current.tierName) tierIdToName[acc.current.tierId] = acc.current.tierName;
+
+    const W = 780, H = 250, padL = 46, padR = 14, padT = 26, padB = 26;
+    const vals = hist.map(valOf);
+    // Y-axis is dynamic rather than hard-clamped to 0-100: Radiant accounts can carry RR well
+    // past 100 (Riot's "combined rating" used to separate Radiant players), so capping at 100
+    // used to flatten/crop those graphs. We still never go below 0.
     let minV = Math.max(0, Math.min(...vals) - 5);
-    let maxV = Math.min(100, Math.max(...vals) + 5);
+    let maxV = Math.max(...vals) + 5;
     if(minV >= maxV){ minV = 0; maxV = 100; }
     const xOf = i => padL + (hist.length===1 ? 0 : (i/(hist.length-1)) * (W-padL-padR));
     const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+
+    // background bands: one colored strip per 100-unit tier segment on the y-axis, tinted with
+    // that tier's color, so it's immediately obvious which rank band each part of the line sits
+    // in — not just from the on-line labels, but as a constant visual backdrop.
+    function valTierBandsSvg(){
+      const tidLo = Math.floor(minV/100);
+      const tidHi = Math.floor((maxV - 0.0001)/100);
+      let svg = '';
+      for(let tid=tidLo; tid<=tidHi; tid++){
+        const bandLo = Math.max(minV, tid*100);
+        const bandHi = Math.min(maxV, (tid+1)*100);
+        if(bandHi <= bandLo) continue;
+        const name = tierIdToName[tid];
+        if(!name) continue; // unknown tier in this range — leave it as plain background rather than guessing
+        const yTop = yOf(bandHi), yBot = yOf(bandLo);
+        svg += '<rect x="'+padL+'" y="'+yTop.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yBot-yTop).toFixed(1)+'" fill="'+hexToRgba(valTierColor(name), 0.13)+'"/>';
+      }
+      return svg;
+    }
+    const bandsSvg = valTierBandsSvg();
 
     // Color each line segment by the rank tier of its destination point, so the line visually
     // tracks rank changes (e.g. a climb into Diamond turns the line diamond-blue) instead of a flat color.
     let lineSvg = '';
     for(let i=1;i<hist.length;i++){
       const segColor = valTierColor(hist[i].tier || hist[i-1].tier);
-      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(hist[i-1].rr).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(hist[i].rr).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2.5" stroke-linecap="round"/>';
+      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(vals[i-1]).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(vals[i]).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2.5" stroke-linecap="round"/>';
     }
     const dotsSvg = hist.map((h,i)=>
-      '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(h.rr).toFixed(1)+'" r="3.5" fill="'+valTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(h.tier||'')+' — '+h.rr+' RR</title></circle>'
+      '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="3.5" fill="'+valTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(h.tier||'')+' — '+h.rr+' RR</title></circle>'
     ).join('');
 
+    // Visible tier labels: rather than relying on hover-only tooltips, print the tier name
+    // directly on the chart at the first point and at every point where the tier actually
+    // changes from the previous one (e.g. climbing from "Gold 2" into "Gold 3").
+    let tierLabelSvg = '';
+    hist.forEach((h,i)=>{
+      const isFirst = i===0;
+      const changed = i>0 && h.tier && h.tier !== hist[i-1].tier;
+      if((isFirst && h.tier) || changed){
+        const y = yOf(vals[i]);
+        const above = y > padT + 14;
+        const ly = above ? y - 9 : y + 16;
+        tierLabelSvg += '<text class="val-tier-label" x="'+xOf(i).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" fill="'+valTierColor(h.tier)+'">'+escapeHtml(h.tier)+'</text>';
+      }
+    });
+
+    // y-axis gridline labels: express each line in "tier name + RR-in-tier" terms rather than a
+    // raw combined number, since the combined value itself has no meaning to the player.
+    function combinedLabel(v){
+      const tid = Math.floor(v/100);
+      const rrPart = Math.max(0, Math.min(99, Math.round(v - tid*100)));
+      const name = tierIdToName[tid];
+      return name ? (name+' · '+rrPart) : String(Math.round(v));
+    }
     let gridSvg = '';
     const steps = 4;
     for(let i=0;i<=steps;i++){
       const v = minV + (maxV-minV)*(i/steps);
       const y = yOf(v);
       gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
-      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="10" fill="var(--muted)" text-anchor="end">'+Math.round(v)+'</text>';
+      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="9.5" fill="var(--muted)" text-anchor="end">'+escapeHtml(combinedLabel(v))+'</text>';
     }
     const labelIdxs = [0, Math.floor((hist.length-1)/2), hist.length-1];
     let xLabelSvg = '';
@@ -3287,10 +3527,18 @@
     });
 
     wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+      + bandsSvg
       + gridSvg + xLabelSvg
       + lineSvg
       + dotsSvg
+      + tierLabelSvg
       + '</svg>';
+
+    // legend: one chip per distinct rank tier that appears in the currently zoomed range
+    const seenTiers = [];
+    hist.forEach(h=>{ if(h.tier && !seenTiers.includes(h.tier)) seenTiers.push(h.tier); });
+    legendEl.innerHTML = '<span><span class="dot" style="background:var(--violet);"></span>RR at match end (rank-adjusted)</span>'
+      + seenTiers.map(t=>'<span><span class="dot" style="background:'+valTierColor(t)+';"></span>'+escapeHtml(t)+'</span>').join('');
   }
 
   function showValAddErr(msg){

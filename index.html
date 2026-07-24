@@ -512,12 +512,23 @@
   .val-account-card{
     background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;
     transition:border-color .12s ease,box-shadow .12s ease;cursor:pointer;display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
   }
   .val-account-card:hover{box-shadow:0 2px 10px rgba(20,22,31,0.07);}
   .val-account-card.selected{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset;}
   .val-account-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .val-account-card.val-recent-up{border-left:3px solid var(--success);}
   .val-account-card.val-recent-down{border-left:3px solid var(--danger);}
+  .val-account-card > *{position:relative;z-index:1;}
+  .val-account-card > .val-agent-bg{
+    position:absolute;inset:0;z-index:0;background-size:cover;background-position:top center;
+    opacity:.5;pointer-events:none;
+    -webkit-mask-image:linear-gradient(115deg, rgba(0,0,0,0) 8%, rgba(0,0,0,.9) 55%);
+    mask-image:linear-gradient(115deg, rgba(0,0,0,0) 8%, rgba(0,0,0,.9) 55%);
+  }
+  .val-group-header{grid-column:1/-1;}
+  .val-group-field{display:block;margin-top:3px;}
+  .val-group-field input{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 8px;font-size:11px;outline:none;font-family:'Inter',sans-serif;width:110px;}
 
   .val-account-top{display:flex;align-items:flex-start;gap:6px;}
   .val-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
@@ -1088,6 +1099,8 @@
       if(!a.history) a.history = [];
       if(a.current===undefined) a.current = null;
       if(a.error===undefined) a.error = '';
+      if(a.group===undefined) a.group = '';
+      if(a.lastAgent===undefined) a.lastAgent = '';
     });
     if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
@@ -3329,6 +3342,30 @@
   }
   ensureValTierIcons();
 
+  // Agent reference art (name lowercased -> {name, icon, background}), used to paint a faint
+  // watermark of the last-played agent behind an account's card. Same no-key public API as tiers.
+  let valAgentCache = null;
+  let valAgentPromise = null;
+  function ensureValAgentIcons(){
+    if(valAgentCache) return Promise.resolve(valAgentCache);
+    if(valAgentPromise) return valAgentPromise;
+    valAgentPromise = fetch(VALORANT_API_BASE+'/agents?isPlayableCharacter=true')
+      .then(r=>r.json())
+      .then(json=>{
+        const map = {};
+        (json && Array.isArray(json.data) ? json.data : []).forEach(a=>{
+          if(!a.displayName) return;
+          map[a.displayName.toLowerCase()] = { name: a.displayName, icon: a.displayIcon, background: a.fullPortrait || a.background };
+        });
+        valAgentCache = map;
+        renderValorant();
+        return map;
+      })
+      .catch(()=>{ valAgentCache = {}; return valAgentCache; });
+    return valAgentPromise;
+  }
+  ensureValAgentIcons();
+
   function valTierColor(tierName){
     if(!tierName) return '#8B92A8';
     const t = tierName.toLowerCase();
@@ -3387,6 +3424,21 @@
             .sort((a,b)=> new Date(a.date) - new Date(b.date));
         }
       }catch(histErr){ /* current rank still succeeded even if history fails — keep whatever we already had */ }
+
+      try{
+        // last-played agent, used only to paint a faint background watermark on the card —
+        // best-effort, so any failure here is silently ignored rather than surfaced as an error
+        const matchUrl = HENRIK_BASE+'/v3/matches/'+acc.region+'/'+enc(acc.name)+'/'+enc(acc.tag)+'?size=1';
+        const matchRes = await fetch(matchUrl, { headers });
+        const matchJson = await matchRes.json().catch(()=>null);
+        if(matchRes.ok && matchJson && Array.isArray(matchJson.data) && matchJson.data.length){
+          const players = (matchJson.data[0].players && matchJson.data[0].players.all_players) || [];
+          const me = players.find(p => p.name && p.tag
+            && p.name.toLowerCase()===acc.name.toLowerCase() && p.tag.toLowerCase()===acc.tag.toLowerCase());
+          if(me && me.character) acc.lastAgent = me.character;
+        }
+        ensureValAgentIcons();
+      }catch(agentErr){ /* background art is a nice-to-have — skip it if this endpoint fails */ }
 
       acc.lastFetched = Date.now();
     }catch(e){
@@ -3450,6 +3502,9 @@
     return accounts;
   }
 
+  // subgroup collapse state — session-only, like the checklist subgroup headers
+  const valGroupCollapsed = {};
+
   /* drag-to-reorder valorant accounts — only active while sort mode is "manual" */
   let draggedValAccId = null;
   const valAccountListEl = el('valAccountList');
@@ -3502,7 +3557,28 @@
     listEl.innerHTML = '';
 
     const manualOrder = state.valorant.sortMode === 'manual';
+
+    // group accounts into subgroups (by acc.group), preserving the active sort order within each
+    // group and the order groups were first seen; ungrouped accounts render with no header at all
+    const groupsMap = {}; const groupOrder = [];
     sortedValorantAccounts().forEach(acc=>{
+      if(acc.group===undefined) acc.group = '';
+      const gkey = acc.group || '';
+      if(!(gkey in groupsMap)){ groupsMap[gkey] = []; groupOrder.push(gkey); }
+      groupsMap[gkey].push(acc);
+    });
+
+    groupOrder.forEach(gkey=>{
+      if(gkey){
+        const collapsed = !!valGroupCollapsed[gkey];
+        const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header val-group-header';
+        lbl.style.cursor = 'pointer';
+        lbl.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
+        lbl.addEventListener('click', ()=>{ valGroupCollapsed[gkey] = !valGroupCollapsed[gkey]; renderValorant(); });
+        listEl.appendChild(lbl);
+        if(collapsed) return; // skip rendering this subgroup's accounts while minimized
+      }
+      groupsMap[gkey].forEach(acc=>{
       const card = document.createElement('div');
       card.className = 'val-account-card'
         + (state.valorant.selectedAccountId===acc.id ? ' selected' : '')
@@ -3545,18 +3621,23 @@
       } else {
         bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
       }
-      card.innerHTML = '<div class="val-account-top">'
+      const agentInfo = (acc.lastAgent && valAgentCache) ? valAgentCache[acc.lastAgent.toLowerCase()] : null;
+      const agentBgHtml = (agentInfo && agentInfo.background)
+        ? '<div class="val-agent-bg" style="background-image:url(\''+agentInfo.background+'\');" title="Last played: '+escapeHtml(agentInfo.name)+'"></div>' : '';
+      card.innerHTML = agentBgHtml + '<div class="val-account-top">'
         + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder">⠿</span>'
         + '<div class="val-card-id">'
         + '<span class="val-riotid" title="'+escapeHtml(acc.name)+'#'+escapeHtml(acc.tag)+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
         + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+'</span>'
+        + '<span class="val-group-field"><input type="text" class="mini-input val-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(acc.group||'')+'" title="Organize this account into a subgroup"></span>'
         + '</div>'
         + '<span class="val-acc-actions">'
         + '<button class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'" title="Refresh rank">⟳</button>'
         + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
         + '</span></div>' + bodyHtml;
       listEl.appendChild(card);
-    });
+      }); // end groupsMap[gkey].forEach
+    }); // end groupOrder.forEach
 
     // trigger the RR fill bars to animate from their pre-change width to the current width —
     // double rAF so the browser paints the starting width first before the transition kicks in
@@ -3572,7 +3653,7 @@
     // account and scrolls the RR History graph above into view for it
     listEl.querySelectorAll('.val-account-card').forEach(card=>{
       card.addEventListener('click', (e)=>{
-        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle')) return;
+        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle') || e.target.closest('.val-group-field')) return;
         state.valorant.selectedAccountId = card.dataset.accId;
         save(); renderValorant();
         const chartCard = el('valChartCard');
@@ -3591,6 +3672,14 @@
           state.valorant.selectedAccountId = state.valorant.accounts.length ? state.valorant.accounts[0].id : null;
         }
         save(); renderValorant();
+      });
+    });
+    listEl.querySelectorAll('.val-group-input').forEach(inp=>{
+      inp.addEventListener('click', e=> e.stopPropagation());
+      inp.addEventListener('change', ()=>{
+        const id = inp.closest('.val-account-card').dataset.accId;
+        const acc2 = state.valorant.accounts.find(x=>x.id===id);
+        if(acc2){ acc2.group = inp.value.trim(); save(); renderValorant(); }
       });
     });
 
@@ -3808,7 +3897,7 @@
     if(state.valorant.accounts.some(a=> a.name.toLowerCase()===name.toLowerCase() && a.tag.toLowerCase()===tag.toLowerCase() && a.region===region)){
       showValAddErr('That account is already being tracked.'); return;
     }
-    const acc = { id: uid(), name, tag, region, platform, history: [], current: null, error: '', lastFetched: null, loading: false };
+    const acc = { id: uid(), name, tag, region, platform, history: [], current: null, error: '', lastFetched: null, loading: false, group: '', lastAgent: '' };
     state.valorant.accounts.push(acc);
     state.valorant.selectedAccountId = acc.id;
     el('valNewRiotId').value = '';

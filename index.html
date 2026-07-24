@@ -25,6 +25,11 @@
     --success-pale:#E6F7EC;
     --danger:#EF4444;
     --gold:#F5A524;
+    --blue:#3B82F6;
+    --orange:#F97316;
+    --teal:#14B8A6;
+    --pink:#EC4899;
+    --slate:#64748B;
   }
   body.dark-mode{
     --bg:#14161F;
@@ -41,6 +46,11 @@
     --success-pale:#123B2C;
     --danger:#F87171;
     --gold:#FBBF24;
+    --blue:#60A5FA;
+    --orange:#FB923C;
+    --teal:#2DD4BF;
+    --pink:#F472B6;
+    --slate:#94A3B8;
   }
   body.dark-mode .goal.done{border-color:#1E4433;border-left-color:var(--success);}
   body.dark-mode .goal.done .goal-title{text-decoration-color:#1E4433;}
@@ -102,6 +112,15 @@
   .nav-item:hover{background:var(--surface-alt);color:var(--text);}
   .nav-item.active{background:var(--violet-pale);color:var(--violet-dark);}
   .nav-item svg{width:16px;height:16px;flex:none;}
+  .nav-item[data-tab="goals"] svg{color:var(--blue);}
+  .nav-item[data-tab="habits"] svg{color:var(--gold);}
+  .nav-item[data-tab="finance"] svg{color:var(--success);}
+  .nav-item[data-tab="fitness"] svg{color:var(--orange);}
+  .nav-item[data-tab="valorant"] svg{color:var(--danger);}
+  .nav-item[data-tab="checklists"] svg{color:var(--teal);}
+  .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
+  .nav-item[data-tab="mantras"] svg{color:var(--violet);}
+  .nav-item[data-tab="settings"] svg{color:var(--slate);}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
   .setup-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#3730A3;line-height:1.6;}
   .setup-banner code{background:#00000010;border-radius:4px;padding:1px 5px;font-size:11.5px;}

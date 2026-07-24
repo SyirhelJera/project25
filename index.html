@@ -412,6 +412,7 @@
   .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
   .finance-ccy-badge{font-size:9.5px;font-weight:800;color:var(--violet-dark);background:var(--violet-pale);border-radius:5px;padding:2px 6px;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;}
+  .chip-danger{background:rgba(239,68,68,.12);color:var(--danger);border-color:var(--danger);}
   .fa-thumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:1px solid var(--border);}
   .finance-account{background:var(--surface);border:1px solid var(--border);border-radius:13px;margin-bottom:8px;overflow:hidden;}
   .finance-account-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;}
@@ -603,8 +604,8 @@
     <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg>Valorant</div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
-    <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Mantras</div>
+    <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
   </div>
 
   <div class="sidebar-footer">Runs in your browser — bookmark this page or use "Install as app" from your browser menu for one-click access.</div>
@@ -699,6 +700,7 @@
     <div class="finance-subnav">
       <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
       <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
+      <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
       <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency Converter</button>
     </div>
 
@@ -742,6 +744,23 @@
       </div>
       <div id="subsList"></div>
       <div class="empty" id="subsEmpty" style="display:none;">No subscriptions tracked yet. <b>Add one above</b> — e.g. Netflix, Claude, Spotify.</div>
+    </div>
+
+    <!-- MONEY GOALS -->
+    <div class="fintab" id="fintab-moneygoals" style="display:none;">
+      <div class="view-sub" style="margin-top:-4px;">Set an amount you need to make by a date, then log contributions as you earn it. Click a goal to edit it or manage contributions.</div>
+      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
+        <div class="stat" style="cursor:default;max-width:300px;" title="Converted to your net worth display currency"><div class="num" id="mgDailyTotal">$0</div><div class="lbl">Total Needed Per Day (all goals)</div></div>
+      </div>
+      <div class="finance-add-row">
+        <input type="text" id="mgName" placeholder="What's this for? (e.g. Rent, Trip fund)" maxlength="60">
+        <input type="number" id="mgTarget" placeholder="Target amount" min="0" step="0.01">
+        <select id="mgCurrency"></select>
+        <input type="date" id="mgDeadline" title="Deadline">
+        <button class="btn btn-primary" id="addMoneyGoalBtn">+ Add Money Goal</button>
+      </div>
+      <div id="moneyGoalList"></div>
+      <div class="empty" id="moneyGoalEmpty" style="display:none;">No money goals yet. <b>Add one above</b> — e.g. "4000 PHP by Aug 24".</div>
     </div>
 
     <!-- CURRENCY CONVERTER -->
@@ -913,17 +932,6 @@
     <div class="empty" id="cdEmpty" style="display:none;">No countdowns yet. Try "End of Year" or a birthday.</div>
   </div>
 
-  <!-- SETTINGS -->
-  <div class="view" id="view-settings">
-    <div class="view-title">Settings</div>
-    <div class="view-sub">App-wide preferences.</div>
-    <div class="section-lbl" style="margin-top:4px;">Net Worth Display Currency</div>
-    <div class="fitness-field" style="max-width:260px;">
-      <label>Shown on your profile card</label>
-      <select id="settingsNetWorthCurrency"></select>
-    </div>
-  </div>
-
   <!-- MANTRAS -->
   <div class="view" id="view-mantras">
     <div class="view-title">Mantras</div>
@@ -934,6 +942,17 @@
     </div>
     <div id="mantraList"></div>
     <div class="empty" id="mantraEmpty" style="display:none;">No mantras yet. Add a phrase that keeps you motivated.</div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div class="view" id="view-settings">
+    <div class="view-title">Settings</div>
+    <div class="view-sub">App-wide preferences.</div>
+    <div class="section-lbl" style="margin-top:4px;">Net Worth Display Currency</div>
+    <div class="fitness-field" style="max-width:260px;">
+      <label>Shown on your profile card</label>
+      <select id="settingsNetWorthCurrency"></select>
+    </div>
   </div>
 
 </div>
@@ -948,7 +967,7 @@
   const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
 
   let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], checklistExp: 0,
-    finance: { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) },
+    finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     valorant: { apiKey:'', accounts:[], selectedAccountId:null },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD'}, focus: null, darkMode: false };
@@ -1026,9 +1045,10 @@
     } else {
       state.checklistExp = parsed.checklistExp;
     }
-    state.finance = parsed.finance || { accounts: [], subscriptions: [], rates: Object.assign({}, DEFAULT_RATES) };
+    state.finance = parsed.finance || { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES) };
     if(!state.finance.accounts) state.finance.accounts = [];
     if(!state.finance.subscriptions) state.finance.subscriptions = [];
+    if(!state.finance.moneyGoals) state.finance.moneyGoals = [];
     if(!state.finance.rates) state.finance.rates = Object.assign({}, DEFAULT_RATES);
     CURRENCIES.forEach(c=>{ if(state.finance.rates[c]===undefined) state.finance.rates[c] = DEFAULT_RATES[c]; });
     state.finance.accounts.forEach(a=>{
@@ -1042,6 +1062,15 @@
       if(s.cycle===undefined) s.cycle = 'monthly';
       if(s.nextDate===undefined) s.nextDate = '';
       if(s.imageUrl===undefined) s.imageUrl = '';
+    });
+    state.finance.moneyGoals.forEach(m=>{
+      if(m.currency===undefined) m.currency = 'USD';
+      if(m.deadline===undefined) m.deadline = '';
+      if(m.open===undefined) m.open = false;
+      if(m.contributions===undefined){
+        // upgrade from the old single "saved" number into an equivalent first contribution entry
+        m.contributions = (m.saved && parseFloat(m.saved)>0) ? [{ id:uid(), amount:parseFloat(m.saved), note:'', createdAt:m.createdAt||Date.now() }] : [];
+      }
     });
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
@@ -1493,6 +1522,7 @@
         +   '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
         +   '<span class="progress-pct">'+pct+'%</span>'
         +   '<div class="goal-actions">'
+        +     '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
         +     '<button class="star-btn ' + (g.starred?'active':'') + '" data-act="star" title="Star">' + (g.starred?'★':'☆') + '</button>'
         +     (pct<100 && !locked ? '<button class="working-btn ' + (g.workingOn?'active':'') + '" data-act="working" title="Mark as actively working on this">' + (g.workingOn?'▶ Working on':'Work on this') + '</button>' : '')
         +   '</div>'
@@ -1500,6 +1530,24 @@
       head.addEventListener('click', (e) => {
         if(e.target.closest('.drag-handle')) return;
         const act = e.target.closest('[data-act]');
+        if(act && act.dataset.act === 'rename'){
+          e.stopPropagation();
+          const titleEl = head.querySelector('.goal-title');
+          const input = document.createElement('input');
+          input.type = 'text'; input.className = 'rename-input'; input.maxLength = 80; input.value = g.title;
+          input.style.width = '100%';
+          titleEl.replaceWith(input);
+          input.focus(); input.select();
+          const commit = () => {
+            const v = input.value.trim();
+            if(v) g.title = v;
+            touchGoal(g); save(); renderGoals();
+          };
+          input.addEventListener('click', e2 => e2.stopPropagation());
+          input.addEventListener('keydown', e2 => { if(e2.key==='Enter') commit(); if(e2.key==='Escape') renderGoals(); });
+          input.addEventListener('blur', commit);
+          return;
+        }
         if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; touchGoal(g); save(); renderGoals(); return; }
         if(act && act.dataset.act === 'working'){ e.stopPropagation(); g.workingOn = !g.workingOn; touchGoal(g); save(); renderGoals(); return; }
         if(act && act.dataset.act === 'check'){
@@ -2416,7 +2464,7 @@
   // one-time population of every currency <select> in the Finance view
   function populateCurrencySelects(){
     const opts = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');
-    ['finCurrency','subCurrency','convFrom','convTo'].forEach(id=>{ const s = el(id); if(s) s.innerHTML = opts; });
+    ['finCurrency','subCurrency','mgCurrency','convFrom','convTo'].forEach(id=>{ const s = el(id); if(s) s.innerHTML = opts; });
     if(el('convFrom')) el('convFrom').value = 'USD';
     if(el('convTo')) el('convTo').value = CURRENCIES.includes('PHP') ? 'PHP' : 'USD';
   }
@@ -2425,6 +2473,7 @@
     renderFinanceAccounts();
     renderFinanceSubs();
     renderFinanceConverter();
+    renderMoneyGoals();
   }
 
   /* drag-to-reorder finance accounts — registered once, delegated over #financeList */
@@ -2698,6 +2747,151 @@
     save(); renderFinanceSubs();
   });
 
+  /* ---- money goals: a target amount by a deadline, editable, with contributions logged toward it ---- */
+  function moneyGoalSaved(m){
+    return (m.contributions||[]).reduce((sum,c)=> sum + (parseFloat(c.amount)||0), 0);
+  }
+
+  function renderMoneyGoals(){
+    const list = el('moneyGoalList'); if(!list) return; list.innerHTML = '';
+    const goals = state.finance.moneyGoals || [];
+    el('moneyGoalEmpty').style.display = goals.length===0 ? 'block' : 'none';
+    const now = new Date(); now.setHours(0,0,0,0);
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    let dailyTotal = 0;
+
+    goals.slice().sort((a,b)=> (a.deadline? new Date(a.deadline).getTime(): Infinity) - (b.deadline? new Date(b.deadline).getTime(): Infinity)).forEach(m=>{
+      if(m.contributions===undefined) m.contributions = [];
+      if(m.open===undefined) m.open = false;
+      const target = parseFloat(m.target)||0;
+      const saved = moneyGoalSaved(m);
+      const pct = target>0 ? Math.min(100, Math.round((saved/target)*100)) : 0;
+      const met = target>0 && saved>=target;
+      let daysLeft = null, overdue = false;
+      if(m.deadline){
+        const d = new Date(m.deadline); d.setHours(0,0,0,0);
+        daysLeft = Math.round((d-now)/(1000*3600*24));
+        overdue = daysLeft < 0 && !met;
+      }
+      if(!met && target>0 && m.deadline){
+        const remaining = target - saved;
+        const effDays = Math.max(1, daysLeft);
+        dailyTotal += convertAmt(remaining/effDays, m.currency||'USD', nwCcy);
+      }
+
+      const card = document.createElement('div');
+      card.className = 'goal' + (met?' done':'') + (m.open?' open':'');
+      card.dataset.moneyGoalId = m.id;
+
+      let metaHtml = '<span class="chip">'+escapeHtml(fmtMoney(saved,m.currency)+' of '+fmtMoney(target,m.currency))+'</span>';
+      if(m.deadline){
+        metaHtml += '<span class="chip">'+escapeHtml('By '+fmtDate(new Date(m.deadline).getTime()))+'</span>';
+        metaHtml += '<span class="chip'+(overdue?' chip-danger':'')+'">'+escapeHtml(met ? 'Goal met' : (overdue ? 'Past due' : daysLeft+' days left'))+'</span>';
+      }
+      if(!met && target>0 && daysLeft!==null && daysLeft>0){
+        metaHtml += '<span class="chip">'+escapeHtml('~'+fmtMoney((target-saved)/daysLeft, m.currency)+'/day')+'</span>';
+      }
+
+      const head = document.createElement('div'); head.className = 'goal-head';
+      head.innerHTML = '<div class="goal-head-top">'
+        +   '<div class="goal-title-wrap"><div class="goal-title">' + escapeHtml(m.name) + '</div></div>'
+        +   '<div class="chevron">▶</div>'
+        + '</div>'
+        + '<div class="goal-meta">' + metaHtml + '</div>'
+        + '<div class="goal-foot-row">'
+        +   '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
+        +   '<span class="progress-pct">'+pct+'%</span>'
+        + '</div>';
+      head.addEventListener('click', ()=>{ m.open = !m.open; save(); renderMoneyGoals(); });
+      card.appendChild(head);
+
+      const detail = document.createElement('div'); detail.className = 'goal-detail';
+      const inner = document.createElement('div'); inner.className = 'goal-detail-inner';
+
+      // name
+      const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Goal Name'; inner.appendChild(nameLbl);
+      const nameRow = document.createElement('div'); nameRow.className='inline-fields';
+      const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=m.name; nameInput.maxLength=60; nameInput.style.width='220px';
+      nameInput.addEventListener('change', ()=>{ const v=nameInput.value.trim(); if(v){ m.name=v; save(); renderMoneyGoals(); } });
+      nameRow.appendChild(nameInput); inner.appendChild(nameRow);
+
+      // target, currency, deadline
+      const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Target, Currency & Deadline'; inner.appendChild(tLbl);
+      const tRow = document.createElement('div'); tRow.className='inline-fields';
+      const targetInput = document.createElement('input'); targetInput.type='number'; targetInput.min='0'; targetInput.step='0.01'; targetInput.value=m.target; targetInput.style.width='110px';
+      targetInput.addEventListener('change', ()=>{ m.target = parseFloat(targetInput.value)||0; save(); renderMoneyGoals(); });
+      const ccySel = document.createElement('select');
+      ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(m.currency===c?'selected':'')+'>'+c+'</option>').join('');
+      ccySel.addEventListener('change', ()=>{ m.currency = ccySel.value; save(); renderMoneyGoals(); });
+      const deadlineInput = document.createElement('input'); deadlineInput.type='date'; deadlineInput.value=m.deadline||'';
+      deadlineInput.addEventListener('change', ()=>{ m.deadline = deadlineInput.value||''; save(); renderMoneyGoals(); });
+      tRow.appendChild(targetInput); tRow.appendChild(ccySel); tRow.appendChild(deadlineInput);
+      inner.appendChild(tRow);
+
+      // contributions
+      const cLbl = document.createElement('div'); cLbl.className='section-lbl'; cLbl.textContent='Contributions'; inner.appendChild(cLbl);
+      const cList = document.createElement('div');
+      const contribs = (m.contributions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
+      if(!contribs.length){
+        const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;'; noneRow.textContent='No contributions logged yet.';
+        cList.appendChild(noneRow);
+      }
+      contribs.forEach(c=>{
+        const row = document.createElement('div'); row.className='tx-row';
+        row.innerHTML = '<span class="tx-date">'+fmtDate(c.createdAt)+'</span>'
+          + '<span class="tx-note">'+escapeHtml(c.note||'')+'</span>'
+          + '<input type="number" step="0.01" class="contrib-amt-input" style="width:90px;">'
+          + '<button class="del-goal" style="padding:2px 8px;font-size:11px;">✕</button>';
+        const amtInput = row.querySelector('.contrib-amt-input'); amtInput.value = c.amount;
+        amtInput.addEventListener('change', ()=>{ c.amount = parseFloat(amtInput.value)||0; save(); renderMoneyGoals(); });
+        row.querySelector('.del-goal').addEventListener('click', ()=>{
+          m.contributions = (m.contributions||[]).filter(x=>x.id!==c.id);
+          save(); renderMoneyGoals();
+        });
+        cList.appendChild(row);
+      });
+      inner.appendChild(cList);
+
+      const addC = document.createElement('div'); addC.className='add-tx-row';
+      addC.innerHTML = '<input type="text" placeholder="Note (e.g. Freelance gig)" maxlength="80">'
+        + '<input type="number" step="0.01" placeholder="Amount made">'
+        + '<button class="btn btn-primary" type="button">+ Log Contribution</button>';
+      const cInputs = addC.querySelectorAll('input');
+      const cNoteInput = cInputs[0], cAmtInput = cInputs[1];
+      addC.querySelector('button').addEventListener('click', ()=>{
+        const amt = parseFloat(cAmtInput.value);
+        if(!amt || amt<=0) return;
+        m.contributions = m.contributions || [];
+        m.contributions.push({ id:uid(), amount:amt, note:cNoteInput.value.trim(), createdAt:Date.now() });
+        cNoteInput.value=''; cAmtInput.value='';
+        save(); renderMoneyGoals();
+      });
+      inner.appendChild(addC);
+
+      const footer = document.createElement('div'); footer.className='goal-footer'; footer.style.marginTop='12px';
+      footer.innerHTML = '<span class="completed-tag">'+(met?'✦ Goal met':'')+'</span><button class="del-goal">Delete goal</button>';
+      footer.querySelector('.del-goal').addEventListener('click', ()=>{
+        state.finance.moneyGoals = state.finance.moneyGoals.filter(x=>x.id!==m.id);
+        save(); renderMoneyGoals();
+      });
+      inner.appendChild(footer);
+
+      detail.appendChild(inner);
+      card.appendChild(detail);
+      list.appendChild(card);
+    });
+
+    el('mgDailyTotal').textContent = fmtMoney(dailyTotal, nwCcy);
+  }
+  el('addMoneyGoalBtn').addEventListener('click', ()=>{
+    const name = el('mgName').value.trim();
+    const target = parseFloat(el('mgTarget').value);
+    if(!name || isNaN(target) || target<=0) return;
+    state.finance.moneyGoals.push({ id:uid(), name, target, currency: el('mgCurrency').value||'USD', deadline: el('mgDeadline').value||'', contributions:[], open:true, createdAt: Date.now() });
+    el('mgName').value=''; el('mgTarget').value=''; el('mgDeadline').value='';
+    save(); renderMoneyGoals();
+  });
+
   /* ---- currency converter ---- */
   function renderFinanceConverter(){
     const rt = el('ratesTable'); if(!rt) return;
@@ -2757,6 +2951,7 @@
       btn.classList.add('active');
       el('fintab-'+btn.dataset.fintab).style.display = '';
       if(btn.dataset.fintab==='subs') renderFinanceSubs();
+      if(btn.dataset.fintab==='moneygoals') renderMoneyGoals();
       if(btn.dataset.fintab==='convert') renderFinanceConverter();
     });
   });

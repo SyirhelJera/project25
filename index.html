@@ -554,7 +554,11 @@
   .val-rr-top{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:5px;}
   .val-rr-top b{color:var(--text);font-family:'Manrope',sans-serif;font-size:12px;}
   .val-rr-track{position:relative;height:8px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
-  .val-rr-fill{height:100%;border-radius:8px;transition:width .4s ease;}
+  .val-rr-fill{height:100%;border-radius:8px;transition:width .6s ease;}
+  @keyframes valRRPulseUp{0%{box-shadow:0 0 0 0 rgba(34,197,94,.65);}70%{box-shadow:0 0 7px 4px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}
+  @keyframes valRRPulseDown{0%{box-shadow:0 0 0 0 rgba(239,68,68,.65);}70%{box-shadow:0 0 7px 4px rgba(239,68,68,0);}100%{box-shadow:0 0 0 0 rgba(239,68,68,0);}}
+  .val-rr-fill.val-rr-anim-up{animation:valRRPulseUp 1.1s ease-out .6s;}
+  .val-rr-fill.val-rr-anim-down{animation:valRRPulseDown 1.1s ease-out .6s;}
   .val-card-stats{display:flex;gap:8px;}
   .val-stat-mini{text-align:center;flex:1;background:var(--surface-alt);border-radius:8px;padding:6px 4px;}
   .val-stat-mini .num{font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;}
@@ -698,14 +702,14 @@
     </div>
 
     <div class="finance-subnav">
-      <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
+      <button class="finance-subnav-btn" data-fintab="accounts" type="button">Accounts</button>
       <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
-      <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
+      <button class="finance-subnav-btn active" data-fintab="moneygoals" type="button">Money Goals</button>
       <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency Converter</button>
     </div>
 
     <!-- ACCOUNTS -->
-    <div class="fintab" id="fintab-accounts">
+    <div class="fintab" id="fintab-accounts" style="display:none;">
       <div class="finance-add-row">
         <select id="finType">
           <option value="savings">Savings account</option>
@@ -747,7 +751,7 @@
     </div>
 
     <!-- MONEY GOALS -->
-    <div class="fintab" id="fintab-moneygoals" style="display:none;">
+    <div class="fintab" id="fintab-moneygoals">
       <div class="view-sub" style="margin-top:-4px;">Set an amount you need to make by a date, then log contributions as you earn it. Click a goal to edit it or manage contributions.</div>
       <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
         <div class="stat" style="cursor:default;max-width:300px;" title="Converted to your net worth display currency"><div class="num" id="mgDailyTotal">$0</div><div class="lbl">Total Needed Per Day (all goals)</div></div>
@@ -1196,7 +1200,7 @@
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='checklists') renderChecklists();
-      if(t.dataset.tab==='finance') renderFinance();
+      if(t.dataset.tab==='finance'){ showFinanceSubTab('moneygoals'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
     });
@@ -2943,17 +2947,16 @@
     setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
   });
 
-  /* ---- finance sub-nav (Accounts / Subscriptions / Currency Converter) ---- */
+  /* ---- finance sub-nav (Accounts / Subscriptions / Money Goals / Currency Converter) ---- */
+  function showFinanceSubTab(key){
+    document.querySelectorAll('.finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.fintab===key));
+    document.querySelectorAll('.fintab').forEach(t=>t.style.display = (t.id==='fintab-'+key) ? '' : 'none');
+    if(key==='subs') renderFinanceSubs();
+    if(key==='moneygoals') renderMoneyGoals();
+    if(key==='convert') renderFinanceConverter();
+  }
   document.querySelectorAll('.finance-subnav-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.finance-subnav-btn').forEach(b=>b.classList.remove('active'));
-      document.querySelectorAll('.fintab').forEach(t=>t.style.display='none');
-      btn.classList.add('active');
-      el('fintab-'+btn.dataset.fintab).style.display = '';
-      if(btn.dataset.fintab==='subs') renderFinanceSubs();
-      if(btn.dataset.fintab==='moneygoals') renderMoneyGoals();
-      if(btn.dataset.fintab==='convert') renderFinanceConverter();
-    });
+    btn.addEventListener('click', ()=> showFinanceSubTab(btn.dataset.fintab));
   });
   populateCurrencySelects();
 
@@ -3417,6 +3420,22 @@
     const t = last && last.date ? new Date(last.date).getTime() : 0;
     return isNaN(t) ? 0 : t;
   }
+  // human-readable "how long ago" for a timestamp, e.g. "30 mins ago", "2 hrs ago", "1 day ago"
+  function valTimeAgo(ts){
+    if(!ts) return '';
+    const diff = Date.now() - ts;
+    if(diff < 60000) return 'just now';
+    const mins = Math.floor(diff/60000);
+    if(mins < 60) return mins+' min'+(mins===1?'':'s')+' ago';
+    const hrs = Math.floor(mins/60);
+    if(hrs < 24) return hrs+' hr'+(hrs===1?'':'s')+' ago';
+    const days = Math.floor(hrs/24);
+    if(days < 30) return days+' day'+(days===1?'':'s')+' ago';
+    const months = Math.floor(days/30);
+    if(months < 12) return months+' month'+(months===1?'':'s')+' ago';
+    const years = Math.floor(months/12);
+    return years+' year'+(years===1?'':'s')+' ago';
+  }
   function sortedValorantAccounts(){
     const accounts = state.valorant.accounts.slice();
     if(state.valorant.sortMode === 'rank'){
@@ -3502,18 +3521,27 @@
         const iconHtml = (iconInfo && iconInfo.large) ? '<img class="val-rank-icon" src="'+iconInfo.large+'" alt="'+escapeHtml(cur.tierName||'')+'">' : '';
         const recentCls = valRecentActivityClass(acc);
         const recentChip = recentCls ? '<span class="val-recent-chip '+(recentCls==='val-recent-up'?'up':'down')+'" title="RR changed on the last refreshed match">'+(recentCls==='val-recent-up'?'▲ Recent gain':'▼ Recent loss')+'</span>' : '';
+        // if RR changed on the last refreshed match, start the fill bar at its pre-change width and
+        // animate it up to the current width (plus a brief color pulse) instead of jumping straight there
+        const prevPct = recentCls ? Math.max(0, Math.min(100, cur.rr - (cur.lastChange||0))) : rrPct;
+        const fillAnimCls = recentCls ? (recentCls==='val-recent-up' ? ' val-rr-anim-up' : ' val-rr-anim-down') : '';
+        const lastMatchTxt = valTimeAgo(valLastMatchTime(acc));
         bodyHtml = '<div class="val-account-body">'
           + '<span class="val-rank-cluster">' + iconHtml
           + '<span class="val-rank-badge" style="background:'+color+';">'+escapeHtml(cur.tierName||'Unranked')+'</span></span>'
           + recentChip
           + '<div class="val-rr-wrap"><div class="val-rr-top"><span>RR</span><b>'+cur.rr+' / 100</b></div>'
-          + '<div class="val-rr-track"><div class="val-rr-fill" style="width:'+rrPct+'%;background:'+color+';"></div></div></div>'
+          + '<div class="val-rr-track"><div class="val-rr-fill'+fillAnimCls+'" style="width:'+prevPct+'%;background:'+color+';" data-target-pct="'+rrPct+'"></div></div></div>'
           + '<div class="val-card-stats">'
           + '<div class="val-stat-mini"><div class="num '+changeCls+'">'+changeTxt+'</div><div class="lbl">Last Game</div></div>'
           + '<div class="val-stat-mini"><div class="num">'+cur.elo+'</div><div class="lbl">Elo</div></div>'
           + '</div>'
           + '</div>'
-          + (cur.peakTierName ? '<div class="val-peak-note">Peak this act: '+escapeHtml(cur.peakTierName)+'</div>' : '');
+          + ((lastMatchTxt || cur.peakTierName) ? '<div class="val-peak-note">'
+              + (lastMatchTxt ? 'Last match '+escapeHtml(lastMatchTxt) : '')
+              + (lastMatchTxt && cur.peakTierName ? ' · ' : '')
+              + (cur.peakTierName ? 'Peak this act: '+escapeHtml(cur.peakTierName) : '')
+              + '</div>' : '');
       } else {
         bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
       }
@@ -3528,6 +3556,16 @@
         + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
         + '</span></div>' + bodyHtml;
       listEl.appendChild(card);
+    });
+
+    // trigger the RR fill bars to animate from their pre-change width to the current width —
+    // double rAF so the browser paints the starting width first before the transition kicks in
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        listEl.querySelectorAll('.val-rr-fill[data-target-pct]').forEach(fillEl=>{
+          fillEl.style.width = fillEl.dataset.targetPct+'%';
+        });
+      });
     });
 
     // clicking anywhere on the card (outside the drag handle / action buttons) selects that
@@ -3684,18 +3722,28 @@
       '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="3.5" fill="'+valTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(h.tier||'')+' — '+h.rr+' RR</title></circle>'
     ).join('');
 
-    // Visible tier labels: rather than relying on hover-only tooltips, print the tier name
+    // Visible tier labels: rather than relying on hover-only tooltips, show the rank icon
     // directly on the chart at the first point and at every point where the tier actually
-    // changes from the previous one (e.g. climbing from "Gold 2" into "Gold 3").
+    // changes from the previous one (e.g. climbing from "Gold 2" into "Gold 3"). Falls back to
+    // the tier name as text if the icon hasn't been fetched/cached yet.
     let tierLabelSvg = '';
+    const tierLabelSize = 20;
     hist.forEach((h,i)=>{
       const isFirst = i===0;
       const changed = i>0 && h.tier && h.tier !== hist[i-1].tier;
       if((isFirst && h.tier) || changed){
         const y = yOf(vals[i]);
         const above = y > padT + 14;
-        const ly = above ? y - 9 : y + 16;
-        tierLabelSvg += '<text class="val-tier-label" x="'+xOf(i).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" fill="'+valTierColor(h.tier)+'">'+escapeHtml(h.tier)+'</text>';
+        const iconInfo = (valTierIconCache && h.tierId!=null) ? valTierIconCache[h.tierId] : null;
+        const iconUrl = iconInfo && (iconInfo.small || iconInfo.large);
+        if(iconUrl){
+          const iy = above ? y - 9 - tierLabelSize : y + 8;
+          const ix = xOf(i) - tierLabelSize/2;
+          tierLabelSvg += '<image href="'+iconUrl+'" x="'+ix.toFixed(1)+'" y="'+iy.toFixed(1)+'" width="'+tierLabelSize+'" height="'+tierLabelSize+'"><title>'+escapeHtml(h.tier||'')+'</title></image>';
+        } else {
+          const ly = above ? y - 9 : y + 16;
+          tierLabelSvg += '<text class="val-tier-label" x="'+xOf(i).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" fill="'+valTierColor(h.tier)+'">'+escapeHtml(h.tier)+'</text>';
+        }
       }
     });
 

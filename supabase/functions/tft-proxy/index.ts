@@ -24,6 +24,9 @@ const PLATFORM_TO_REGIONAL: Record<string, string> = {
   na1: "americas", br1: "americas", la1: "americas", la2: "americas", oc1: "americas",
   euw1: "europe", eun1: "europe", tr1: "europe", ru: "europe", me1: "europe",
   kr: "asia", jp1: "asia",
+  // Riot's newer Southeast Asia platform shards, confirmed by Riot Developer Relations to
+  // route through the "sea" regional cluster: https://x.com/RiotGamesDevRel/status/1611171470012739584
+  ph2: "sea", sg2: "sea", th2: "sea", tw2: "sea", vn2: "sea",
 };
 
 const MATCH_ID_RE = /^[A-Za-z0-9_-]+$/;

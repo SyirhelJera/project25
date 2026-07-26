@@ -998,6 +998,11 @@
         <option value="tr1">TR</option>
         <option value="ru">RU</option>
         <option value="me1">ME</option>
+        <option value="ph2">Philippines</option>
+        <option value="sg2">Singapore</option>
+        <option value="th2">Thailand</option>
+        <option value="tw2">Taiwan</option>
+        <option value="vn2">Vietnam</option>
       </select>
       <button class="btn btn-primary" id="tftAddAccountBtn">+ Add Account</button>
     </div>
@@ -4163,7 +4168,7 @@
   // grid, RR/LP history chart) but talks to Riot's official API instead of an unofficial
   // one. That API doesn't send CORS headers, so calls go through the tft-proxy Supabase
   // Edge Function rather than straight from the browser (see that function's comment).
-  const TFT_PLATFORM_LABELS = { na1:'NA', euw1:'EUW', eun1:'EUNE', kr:'KR', jp1:'JP', br1:'BR', la1:'LAN', la2:'LAS', oc1:'OCE', tr1:'TR', ru:'RU', me1:'ME' };
+  const TFT_PLATFORM_LABELS = { na1:'NA', euw1:'EUW', eun1:'EUNE', kr:'KR', jp1:'JP', br1:'BR', la1:'LAN', la2:'LAS', oc1:'OCE', tr1:'TR', ru:'RU', me1:'ME', ph2:'PH', sg2:'SG', th2:'TH', tw2:'TW', vn2:'VN' };
   const TFT_TIER_ORDER = ['IRON','BRONZE','SILVER','GOLD','PLATINUM','EMERALD','DIAMOND','MASTER','GRANDMASTER','CHALLENGER'];
   const TFT_DIVISION_VALUE = { IV:0, III:1, II:2, I:3 };
   const TFT_RECENT_MATCH_COUNT = 5;

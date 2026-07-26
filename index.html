@@ -30,6 +30,7 @@
     --teal:#14B8A6;
     --pink:#EC4899;
     --slate:#64748B;
+    --tft:#8B5CF6;
   }
   body.dark-mode{
     --bg:#14161F;
@@ -51,6 +52,7 @@
     --teal:#2DD4BF;
     --pink:#F472B6;
     --slate:#94A3B8;
+    --tft:#A78BFA;
   }
   body.dark-mode .goal.done{border-color:#1E4433;border-left-color:var(--success);}
   body.dark-mode .goal.done .goal-title{text-decoration-color:#1E4433;}
@@ -117,6 +119,7 @@
   .nav-item[data-tab="finance"] svg{color:var(--success);}
   .nav-item[data-tab="fitness"] svg{color:var(--orange);}
   .nav-item[data-tab="valorant"] svg{color:var(--danger);}
+  .nav-item[data-tab="tft"] svg{color:var(--tft);}
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
   .nav-item[data-tab="mantras"] svg{color:var(--violet);}
@@ -599,6 +602,14 @@
   .val-err{font-size:11.5px;color:var(--danger);margin-top:8px;}
   .val-empty-accounts{text-align:center;padding:30px 20px;color:var(--faint);border:1px dashed var(--border);border-radius:14px;font-size:13px;margin-bottom:16px;}
 
+  /* ---------- tft ---------- */
+  /* TFT's account tracker is structurally identical to Valorant's (Riot ID + region ->
+     rank card, in a reorderable grid), so it reuses the .val-* card/list/toolbar styling
+     above rather than duplicating it. Only what's actually different gets its own rules. */
+  #tftAccountList{display:grid;grid-template-columns:repeat(auto-fill, minmax(215px, 1fr));gap:12px;}
+  .tft-placement-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px;}
+  .tft-placement{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;flex:none;}
+
   @media (max-width:720px){
     .finance-summary{grid-template-columns:repeat(3,1fr);}
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
@@ -636,6 +647,7 @@
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg>Finance</div>
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg>Fitness<span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
     <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg>Valorant</div>
+    <div class="nav-item" data-tab="tft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 5 5.5 1-4 4 1 5.5L12 15l-5.5 2.5 1-5.5-4-4L9 7z"/></svg>TFT</div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Mantras</div>
@@ -942,6 +954,70 @@
     <div class="val-empty-accounts" id="valAccountsEmpty" style="display:none;">No accounts yet. Add a Riot ID above (e.g. "Henrik3#VALO") to start tracking rank.</div>
   </div>
 
+  <!-- TFT -->
+  <div class="view" id="view-tft">
+    <div class="view-title">Teamfight Tactics</div>
+    <div class="view-sub">Track ranked tier and LP across one or more Riot accounts.</div>
+
+    <div class="section-lbl" id="tftChartLbl" style="margin-top:4px;display:none;">Rank History</div>
+    <div class="chart-zoom-row" id="tftChartAccountRow" style="display:none;"></div>
+    <div class="chart-zoom-row" id="tftChartZoomRow" style="display:none;"></div>
+    <div class="chart-card" id="tftChartCard" style="display:none;">
+      <div id="tftChartWrap"></div>
+      <div class="chart-legend" id="tftChartLegend">
+        <span><span class="dot" style="background:var(--violet);"></span>Rank at snapshot</span>
+      </div>
+    </div>
+
+    <div id="tftApiBanner" class="setup-banner" style="display:none;">
+      Rank lookups use Riot's official API, which requires a free developer API key.
+      Get one at <code>https://developer.riotgames.com</code> (sign in, generate a "Development API Key")
+      and paste it below. Personal development keys expire every 24 hours and need refreshing here.
+    </div>
+    <div class="val-api-row">
+      <div class="fitness-field">
+        <label>Riot API Key</label>
+        <input type="password" id="tftApiKey" placeholder="Paste your API key">
+      </div>
+      <button class="btn btn-ghost" id="tftSaveKeyBtn" style="margin-bottom:0;">Save Key</button>
+    </div>
+
+    <div class="section-lbl" style="margin-top:4px;">Add Account</div>
+    <div class="val-add-row">
+      <input type="text" id="tftNewRiotId" class="val-riotid-input" placeholder='Riot ID, e.g. "Name#TAG1"' maxlength="40">
+      <select id="tftNewRegion">
+        <option value="na1">NA</option>
+        <option value="euw1">EUW</option>
+        <option value="eun1">EUNE</option>
+        <option value="kr">KR</option>
+        <option value="jp1">JP</option>
+        <option value="br1">BR</option>
+        <option value="la1">LAN</option>
+        <option value="la2">LAS</option>
+        <option value="oc1">OCE</option>
+        <option value="tr1">TR</option>
+        <option value="ru">RU</option>
+        <option value="me1">ME</option>
+      </select>
+      <button class="btn btn-primary" id="tftAddAccountBtn">+ Add Account</button>
+    </div>
+    <div class="val-err" id="tftAddErr" style="display:none;"></div>
+
+    <div class="val-toolbar" id="tftToolbar" style="display:none;">
+      <span class="val-sort-lbl">Sort by</span>
+      <select id="tftSortMode">
+        <option value="manual">Custom order (drag to reorder)</option>
+        <option value="rank">Rank (high to low)</option>
+        <option value="name">Name (A–Z)</option>
+        <option value="recent">Recent activity</option>
+      </select>
+      <button class="btn btn-ghost btn-sm val-refresh-all-btn" id="tftRefreshAllBtn">⟳ Refresh All</button>
+    </div>
+
+    <div id="tftAccountList"></div>
+    <div class="val-empty-accounts" id="tftAccountsEmpty" style="display:none;">No accounts yet. Add a Riot ID above (e.g. "Name#TAG1") to start tracking rank.</div>
+  </div>
+
   <!-- CHECKLISTS -->
   <div class="view" id="view-checklists">
     <div class="view-title">Checklists</div>
@@ -1011,6 +1087,7 @@
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     valorant: { apiKey:'', accounts:[], selectedAccountId:null },
+    tft: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual' },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD'}, focus: null, darkMode: false };
   let goalFilter = 'working';
   let starredFirst = false;
@@ -1157,6 +1234,19 @@
       if(a.lastAgent===undefined) a.lastAgent = '';
     });
     if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
+    state.tft = parsed.tft || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual' };
+    if(!state.tft.apiKey) state.tft.apiKey = '';
+    if(!state.tft.accounts) state.tft.accounts = [];
+    if(!state.tft.sortMode) state.tft.sortMode = 'manual';
+    state.tft.accounts.forEach(a=>{
+      if(!a.history) a.history = [];
+      if(!a.placements) a.placements = [];
+      if(a.current===undefined) a.current = null;
+      if(a.error===undefined) a.error = '';
+      if(a.group===undefined) a.group = '';
+      if(a.lastMatchAt===undefined) a.lastMatchAt = null;
+    });
+    if(state.tft.selectedAccountId===undefined) state.tft.selectedAccountId = null;
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     state.focus = parsed.focus || null;
@@ -1260,6 +1350,7 @@
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
+    el('tftApiKey').value = state.tft.apiKey || '';
     applyDarkMode();
     renderAll();
   }
@@ -1310,6 +1401,7 @@
       if(t.dataset.tab==='finance'){ showFinanceSubTab('moneygoals'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
+      if(t.dataset.tab==='tft') renderTFT();
     });
   });
 
@@ -4066,9 +4158,502 @@
   });
   el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valAddAccountBtn').click(); });
 
+  /* ================= TFT ================= */
+  // TFT's account tracker mirrors Valorant's (Riot ID + region -> rank card, reorderable
+  // grid, RR/LP history chart) but talks to Riot's official API instead of an unofficial
+  // one. That API doesn't send CORS headers, so calls go through the tft-proxy Supabase
+  // Edge Function rather than straight from the browser (see that function's comment).
+  const TFT_PLATFORM_LABELS = { na1:'NA', euw1:'EUW', eun1:'EUNE', kr:'KR', jp1:'JP', br1:'BR', la1:'LAN', la2:'LAS', oc1:'OCE', tr1:'TR', ru:'RU', me1:'ME' };
+  const TFT_TIER_ORDER = ['IRON','BRONZE','SILVER','GOLD','PLATINUM','EMERALD','DIAMOND','MASTER','GRANDMASTER','CHALLENGER'];
+  const TFT_DIVISION_VALUE = { IV:0, III:1, II:2, I:3 };
+  const TFT_RECENT_MATCH_COUNT = 5;
+
+  function tftTierColor(tier){
+    switch(tier){
+      case 'IRON': return '#6B7280';
+      case 'BRONZE': return '#A9714B';
+      case 'SILVER': return '#9CA6AF';
+      case 'GOLD': return '#E8B94B';
+      case 'PLATINUM': return '#2FB6B0';
+      case 'EMERALD': return '#2ECC71';
+      case 'DIAMOND': return '#4FA3E3';
+      case 'MASTER': return '#9B59B6';
+      case 'GRANDMASTER': return '#E74C3C';
+      case 'CHALLENGER': return '#66E5FF';
+      default: return '#8B92A8';
+    }
+  }
+  function tftTierLabel(tier){
+    if(!tier) return 'Unranked';
+    return tier.charAt(0) + tier.slice(1).toLowerCase();
+  }
+  // Combines tier + division + LP into one monotonic number (higher = higher rank), the
+  // same trick the Valorant chart uses for RR — Riot's TFT API doesn't expose historical
+  // LP the way HenrikDev does for Valorant, so this app builds its own history by
+  // snapshotting this value on every refresh instead of pulling it from an endpoint.
+  function tftSnapshot(cur){
+    const tierIdx = Math.max(0, TFT_TIER_ORDER.indexOf(cur.tier));
+    const divVal = TFT_DIVISION_VALUE[cur.rank] || 0;
+    return { tier: cur.tier, rank: cur.rank, lp: cur.lp, combined: tierIdx*1000 + divVal*250 + (cur.lp||0) };
+  }
+
+  async function tftProxyCall(payload){
+    const { data, error } = await supa.functions.invoke('tft-proxy', {
+      body: Object.assign({ apiKey: state.tft.apiKey }, payload)
+    });
+    if(error) throw error;
+    if(data && data.error) throw new Error(data.error);
+    return data;
+  }
+
+  async function fetchTFTAccount(accId){
+    const acc = state.tft.accounts.find(a=>a.id===accId);
+    if(!acc) return;
+    acc.loading = true; acc.error = '';
+    renderTFT();
+    try{
+      if(!state.tft.apiKey) throw new Error('Add your Riot API key above first.');
+      initSupabaseIfNeeded();
+      if(!supa) throw new Error('TFT lookups need this app connected to Supabase (Riot’s API can’t be called directly from a browser) — see the setup banner.');
+
+      const accJson = await tftProxyCall({ kind:'account', platform: acc.platform, name: acc.name, tag: acc.tag });
+      if(!accJson || !accJson.puuid) throw new Error('Could not find that Riot ID. Check the name, tag, and region.');
+      const puuid = accJson.puuid;
+
+      const leagueJson = await tftProxyCall({ kind:'league', platform: acc.platform, puuid });
+      if(!Array.isArray(leagueJson)) throw new Error('Could not fetch rank. Check your API key.');
+      const entry = leagueJson.find(e=>e.queueType==='RANKED_TFT');
+      if(entry){
+        const cur = { tier: entry.tier || 'UNRANKED', rank: entry.rank || '', lp: typeof entry.leaguePoints==='number'?entry.leaguePoints:0, wins: entry.wins||0, losses: entry.losses||0 };
+        const snap = tftSnapshot(cur);
+        const lastHist = acc.history[acc.history.length-1];
+        cur.lastChange = lastHist ? (snap.combined - lastHist.combined) : 0;
+        acc.current = cur;
+        // only append a new history point when the rank actually changed since the last
+        // snapshot, so repeated refreshes without playing don't pad the chart with flat points
+        if(!lastHist || lastHist.combined !== snap.combined){
+          acc.history.push(Object.assign({date:new Date().toISOString()}, snap));
+        }
+      } else {
+        acc.current = null;
+      }
+
+      try{
+        // recent placements + last-match time are a nice-to-have — current rank above already
+        // succeeded, so any failure here is silently ignored rather than surfaced as an error
+        const idsJson = await tftProxyCall({ kind:'matchIds', platform: acc.platform, puuid, count: TFT_RECENT_MATCH_COUNT });
+        if(Array.isArray(idsJson) && idsJson.length){
+          const placements = [];
+          for(let i=0;i<idsJson.length;i++){
+            try{
+              const matchJson = await tftProxyCall({ kind:'match', platform: acc.platform, matchId: idsJson[i] });
+              const participants = matchJson && matchJson.info && matchJson.info.participants;
+              const me = Array.isArray(participants) ? participants.find(p=>p.puuid===puuid) : null;
+              if(me && typeof me.placement === 'number'){
+                placements.unshift(me.placement); // ids arrive most-recent-first; unshift keeps history oldest-first
+                if(i===0 && matchJson.info.game_datetime) acc.lastMatchAt = matchJson.info.game_datetime;
+              }
+            }catch(matchErr){ /* skip this one match — best effort */ }
+          }
+          if(placements.length) acc.placements = placements;
+        }
+      }catch(histErr){ /* recent-placements strip is a nice-to-have — skip it if this endpoint fails */ }
+
+      acc.lastFetched = Date.now();
+    }catch(e){
+      acc.error = (e && e.message) || 'Failed to fetch. Check your Riot ID, region, and API key.';
+    }
+    acc.loading = false;
+    save();
+    renderTFT();
+  }
+
+  function tftRankSortValue(acc){
+    return acc.current ? tftSnapshot(acc.current).combined : -1;
+  }
+  function tftLastMatchTime(acc){
+    if(acc.lastMatchAt) return acc.lastMatchAt;
+    const hist = acc.history || [];
+    if(!hist.length) return 0;
+    const t = new Date(hist[hist.length-1].date).getTime();
+    return isNaN(t) ? 0 : t;
+  }
+  function sortedTFTAccounts(){
+    const accounts = state.tft.accounts.slice();
+    if(state.tft.sortMode === 'rank'){
+      accounts.sort((a,b)=> tftRankSortValue(b) - tftRankSortValue(a));
+    } else if(state.tft.sortMode === 'name'){
+      accounts.sort((a,b)=> a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+    } else if(state.tft.sortMode === 'recent'){
+      accounts.sort((a,b)=> tftLastMatchTime(b) - tftLastMatchTime(a));
+    }
+    return accounts;
+  }
+
+  const tftGroupCollapsed = {};
+
+  /* drag-to-reorder tft accounts — only active while sort mode is "manual" */
+  let draggedTftAccId = null;
+  const tftAccountListEl = el('tftAccountList');
+  tftAccountListEl.addEventListener('dragstart', e=>{
+    const handle = e.target.closest('.val-drag-handle');
+    if(!handle || state.tft.sortMode !== 'manual') return;
+    const card = handle.closest('.val-account-card');
+    draggedTftAccId = card ? card.dataset.accId : null;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  tftAccountListEl.addEventListener('dragover', e=>{
+    if(!draggedTftAccId) return;
+    e.preventDefault();
+    const overCard = e.target.closest('.val-account-card');
+    tftAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    if(overCard && overCard.dataset.accId !== draggedTftAccId) overCard.classList.add('drag-over');
+  });
+  tftAccountListEl.addEventListener('drop', e=>{
+    if(!draggedTftAccId) return;
+    e.preventDefault();
+    tftAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    const overCard = e.target.closest('.val-account-card');
+    const toId = overCard ? overCard.dataset.accId : null;
+    const fromId = draggedTftAccId; draggedTftAccId = null;
+    if(!toId || toId === fromId) return;
+    const fromIdx = state.tft.accounts.findIndex(x=>x.id===fromId);
+    const toIdx = state.tft.accounts.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const [moved] = state.tft.accounts.splice(fromIdx,1);
+    state.tft.accounts.splice(toIdx,0,moved);
+    save(); renderTFT();
+  });
+  tftAccountListEl.addEventListener('dragend', ()=>{ draggedTftAccId = null; tftAccountListEl.querySelectorAll('.val-account-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
+
+  el('tftSortMode').addEventListener('change', e=>{
+    state.tft.sortMode = e.target.value;
+    save(); renderTFT();
+  });
+  el('tftRefreshAllBtn').addEventListener('click', ()=>{
+    state.tft.accounts.forEach(acc=> fetchTFTAccount(acc.id));
+  });
+
+  function renderTFT(){
+    el('tftApiBanner').style.display = state.tft.apiKey ? 'none' : 'block';
+    const listEl = el('tftAccountList');
+    const accounts = state.tft.accounts;
+    el('tftAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
+    el('tftToolbar').style.display = accounts.length > 1 ? 'flex' : 'none';
+    el('tftSortMode').value = state.tft.sortMode;
+    listEl.innerHTML = '';
+
+    const manualOrder = state.tft.sortMode === 'manual';
+
+    const groupsMap = {}; const groupOrder = [];
+    sortedTFTAccounts().forEach(acc=>{
+      if(acc.group===undefined) acc.group = '';
+      const gkey = acc.group || '';
+      if(!(gkey in groupsMap)){ groupsMap[gkey] = []; groupOrder.push(gkey); }
+      groupsMap[gkey].push(acc);
+    });
+
+    groupOrder.forEach(gkey=>{
+      if(gkey){
+        const collapsed = !!tftGroupCollapsed[gkey];
+        const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header val-group-header';
+        lbl.style.cursor = 'pointer';
+        lbl.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
+        lbl.addEventListener('click', ()=>{ tftGroupCollapsed[gkey] = !tftGroupCollapsed[gkey]; renderTFT(); });
+        listEl.appendChild(lbl);
+        if(collapsed) return;
+      }
+      groupsMap[gkey].forEach(acc=>{
+      const card = document.createElement('div');
+      card.className = 'val-account-card'
+        + (state.tft.selectedAccountId===acc.id ? ' selected' : '')
+        + (' '+valRecentActivityClass(acc));
+      card.dataset.accId = acc.id;
+      const cur = acc.current;
+      let bodyHtml = '';
+      if(acc.error){
+        bodyHtml = '<div class="val-err">'+escapeHtml(acc.error)+'</div>';
+      } else if(cur){
+        const color = tftTierColor(cur.tier);
+        const badgeText = tftTierLabel(cur.tier) + (cur.rank ? ' '+cur.rank : '');
+        const changeCls = cur.lastChange > 0 ? 'up' : (cur.lastChange < 0 ? 'down' : '');
+        const changeTxt = cur.lastChange > 0 ? ('+'+cur.lastChange) : String(cur.lastChange||0);
+        const recentCls = valRecentActivityClass(acc);
+        const recentChip = recentCls ? '<span class="val-recent-chip '+(recentCls==='val-recent-up'?'up':'down')+'" title="Rank changed on the last refresh">'+(recentCls==='val-recent-up'?'▲ Recent gain':'▼ Recent loss')+'</span>' : '';
+        const lpPct = Math.max(0, Math.min(100, cur.lp));
+        const prevPct = recentCls ? Math.max(0, Math.min(100, cur.lp - (cur.lastChange||0))) : lpPct;
+        const fillAnimCls = recentCls ? (recentCls==='val-recent-up' ? ' val-rr-anim-up' : ' val-rr-anim-down') : '';
+        const winRateTxt = (cur.wins+cur.losses) > 0 ? Math.round(cur.wins/(cur.wins+cur.losses)*100)+'%' : '—';
+        const lastMatchTxt = valTimeAgo(tftLastMatchTime(acc));
+        const placementsHtml = (acc.placements||[]).slice(-8).map(p=>{
+          const bg = p<=2 ? 'var(--success)' : (p>=7 ? 'var(--danger)' : 'var(--slate)');
+          return '<span class="tft-placement" style="background:'+bg+';" title="Placement '+p+'">'+p+'</span>';
+        }).join('');
+        bodyHtml = '<div class="val-account-body">'
+          + '<span class="val-rank-cluster"><span class="val-rank-badge" style="background:'+color+';">'+escapeHtml(badgeText)+'</span></span>'
+          + recentChip
+          + (cur.rank
+              ? ('<div class="val-rr-wrap"><div class="val-rr-top"><span>LP</span><b>'+cur.lp+' / 100</b></div>'
+                + '<div class="val-rr-track"><div class="val-rr-fill'+fillAnimCls+'" style="width:'+prevPct+'%;background:'+color+';" data-target-pct="'+lpPct+'"></div></div></div>')
+              : '<div class="val-rr-wrap"><div class="val-rr-top"><span>LP</span><b>'+cur.lp+'</b></div></div>')
+          + '<div class="val-card-stats">'
+          + '<div class="val-stat-mini"><div class="num '+changeCls+'">'+changeTxt+'</div><div class="lbl">Last Change</div></div>'
+          + '<div class="val-stat-mini"><div class="num">'+winRateTxt+'</div><div class="lbl">Win Rate</div></div>'
+          + '</div>'
+          + (placementsHtml ? '<div class="tft-placement-row">'+placementsHtml+'</div>' : '')
+          + '</div>'
+          + '<div class="val-peak-note">'
+          + (lastMatchTxt ? 'Last match '+escapeHtml(lastMatchTxt)+' · ' : '')
+          + cur.wins+'W '+cur.losses+'L'
+          + '</div>';
+      } else {
+        bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
+      }
+      card.innerHTML = '<div class="val-account-top">'
+        + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder">⠿</span>'
+        + '<div class="val-card-id">'
+        + '<span class="val-riotid" title="'+escapeHtml(acc.name)+'#'+escapeHtml(acc.tag)+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
+        + '<span class="val-region-chip">'+escapeHtml(TFT_PLATFORM_LABELS[acc.platform]||acc.platform)+'</span>'
+        + '<span class="val-group-field"><input type="text" class="mini-input val-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(acc.group||'')+'" title="Organize this account into a subgroup"></span>'
+        + '</div>'
+        + '<span class="val-acc-actions">'
+        + '<button class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'" title="Refresh rank">⟳</button>'
+        + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
+        + '</span></div>' + bodyHtml;
+      listEl.appendChild(card);
+      });
+    });
+
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        listEl.querySelectorAll('.val-rr-fill[data-target-pct]').forEach(fillEl=>{
+          fillEl.style.width = fillEl.dataset.targetPct+'%';
+        });
+      });
+    });
+
+    listEl.querySelectorAll('.val-account-card').forEach(card=>{
+      card.addEventListener('click', (e)=>{
+        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle') || e.target.closest('.val-group-field')) return;
+        state.tft.selectedAccountId = card.dataset.accId;
+        save(); renderTFT();
+        const chartCard = el('tftChartCard');
+        if(chartCard && chartCard.style.display !== 'none') chartCard.scrollIntoView({behavior:'smooth', block:'start'});
+      });
+    });
+    listEl.querySelectorAll('[data-refresh]').forEach(x=>{
+      x.addEventListener('click', (e)=>{ e.stopPropagation(); fetchTFTAccount(x.dataset.refresh); });
+    });
+    listEl.querySelectorAll('[data-del]').forEach(x=>{
+      x.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const id = x.dataset.del;
+        state.tft.accounts = state.tft.accounts.filter(a=>a.id!==id);
+        if(state.tft.selectedAccountId===id){
+          state.tft.selectedAccountId = state.tft.accounts.length ? state.tft.accounts[0].id : null;
+        }
+        save(); renderTFT();
+      });
+    });
+    listEl.querySelectorAll('.val-group-input').forEach(inp=>{
+      inp.addEventListener('click', e=> e.stopPropagation());
+      inp.addEventListener('change', ()=>{
+        const id = inp.closest('.val-account-card').dataset.accId;
+        const acc2 = state.tft.accounts.find(x=>x.id===id);
+        if(acc2){ acc2.group = inp.value.trim(); save(); renderTFT(); }
+      });
+    });
+
+    renderTFTChartSelector();
+    renderTFTChart();
+  }
+
+  function renderTFTChartSelector(){
+    const row = el('tftChartAccountRow');
+    const accounts = state.tft.accounts;
+    if(!accounts.length){
+      row.style.display = 'none';
+      el('tftChartLbl').style.display = 'none';
+      el('tftChartCard').style.display = 'none';
+      return;
+    }
+    if(!state.tft.selectedAccountId || !accounts.find(a=>a.id===state.tft.selectedAccountId)){
+      state.tft.selectedAccountId = accounts[0].id;
+    }
+    el('tftChartLbl').style.display = 'block';
+    el('tftChartCard').style.display = 'block';
+    row.style.display = accounts.length > 1 ? 'flex' : 'none';
+    row.innerHTML = accounts.map(a=>
+      '<button class="chart-zoom-btn'+(state.tft.selectedAccountId===a.id?' active':'')+'" data-acc="'+a.id+'">'+escapeHtml(a.name)+'#'+escapeHtml(a.tag)+'</button>'
+    ).join('');
+    row.querySelectorAll('[data-acc]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        state.tft.selectedAccountId = btn.dataset.acc;
+        save(); renderTFT();
+      });
+    });
+  }
+
+  const TFT_CHART_ZOOMS = [
+    {key:'10', label:'Last 10', count:10},
+    {key:'25', label:'Last 25', count:25},
+    {key:'50', label:'Last 50', count:50},
+    {key:'all', label:'All', count:null}
+  ];
+  let tftChartZoom = 'all';
+
+  function tftCombinedLabel(v){
+    const tierIdx = Math.floor(v/1000);
+    const rem = Math.max(0, v - tierIdx*1000);
+    const divVal = Math.floor(rem/250);
+    const lp = Math.round(rem - divVal*250);
+    const tierName = TFT_TIER_ORDER[tierIdx];
+    if(!tierName) return String(Math.round(v));
+    const divName = Object.keys(TFT_DIVISION_VALUE).find(k=>TFT_DIVISION_VALUE[k]===divVal);
+    const showDiv = tierIdx < TFT_TIER_ORDER.indexOf('MASTER');
+    return tftTierLabel(tierName) + (showDiv && divName ? ' '+divName : '') + ' · ' + lp;
+  }
+
+  function renderTFTChart(){
+    const wrap = el('tftChartWrap');
+    const accounts = state.tft.accounts;
+    const zoomRow = el('tftChartZoomRow');
+    const legendEl = el('tftChartLegend');
+    if(!accounts.length){ wrap.innerHTML=''; zoomRow.style.display='none'; return; }
+    const acc = accounts.find(a=>a.id===state.tft.selectedAccountId) || accounts[0];
+    const fullHist = (acc.history||[]).filter(h=> typeof h.combined === 'number');
+    if(fullHist.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough rank history yet for '+escapeHtml(acc.name)+' — refresh again after your rank changes to build the graph.</div>';
+      zoomRow.style.display = 'none';
+      return;
+    }
+
+    zoomRow.style.display = 'flex';
+    zoomRow.innerHTML = TFT_CHART_ZOOMS.map(z=>
+      '<button class="chart-zoom-btn'+(tftChartZoom===z.key?' active':'')+'" data-tzoom="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    zoomRow.querySelectorAll('[data-tzoom]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ tftChartZoom = btn.dataset.tzoom; renderTFTChart(); });
+    });
+
+    const zoomOpt = TFT_CHART_ZOOMS.find(z=>z.key===tftChartZoom) || TFT_CHART_ZOOMS[3];
+    const hist = zoomOpt.count ? fullHist.slice(-zoomOpt.count) : fullHist;
+    if(hist.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough history in this range — try a wider zoom.</div>';
+      return;
+    }
+
+    const W = 780, H = 250, padL = 46, padR = 14, padT = 26, padB = 26;
+    const vals = hist.map(h=>h.combined);
+    let minV = Math.max(0, Math.min(...vals) - 50);
+    let maxV = Math.max(...vals) + 50;
+    if(minV >= maxV){ minV = 0; maxV = 1000; }
+    const xOf = i => padL + (hist.length===1 ? 0 : (i/(hist.length-1)) * (W-padL-padR));
+    const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+
+    function tftTierBandsSvg(){
+      const tidLo = Math.floor(minV/1000);
+      const tidHi = Math.floor((maxV - 0.0001)/1000);
+      let svg = '';
+      for(let tid=tidLo; tid<=tidHi; tid++){
+        const bandLo = Math.max(minV, tid*1000);
+        const bandHi = Math.min(maxV, (tid+1)*1000);
+        if(bandHi <= bandLo) continue;
+        const name = TFT_TIER_ORDER[tid];
+        if(!name) continue;
+        const yTop = yOf(bandHi), yBot = yOf(bandLo);
+        svg += '<rect x="'+padL+'" y="'+yTop.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yBot-yTop).toFixed(1)+'" fill="'+hexToRgba(tftTierColor(name), 0.13)+'"/>';
+      }
+      return svg;
+    }
+    const bandsSvg = tftTierBandsSvg();
+
+    let lineSvg = '';
+    for(let i=1;i<hist.length;i++){
+      const segColor = tftTierColor(hist[i].tier);
+      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(vals[i-1]).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(vals[i]).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2.5" stroke-linecap="round"/>';
+    }
+    const dotsSvg = hist.map((h,i)=>
+      '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="3.5" fill="'+tftTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(tftTierLabel(h.tier)+(h.rank?' '+h.rank:''))+' — '+h.lp+' LP</title></circle>'
+    ).join('');
+
+    let tierLabelSvg = '';
+    hist.forEach((h,i)=>{
+      const key = h.tier+(h.rank||'');
+      const prevKey = i>0 ? (hist[i-1].tier+(hist[i-1].rank||'')) : null;
+      const isFirst = i===0;
+      const changed = i>0 && key !== prevKey;
+      if((isFirst && h.tier) || changed){
+        const y = yOf(vals[i]);
+        const above = y > padT + 14;
+        const ly = above ? y - 9 : y + 16;
+        tierLabelSvg += '<text class="val-tier-label" x="'+xOf(i).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" fill="'+tftTierColor(h.tier)+'">'+escapeHtml(tftTierLabel(h.tier)+(h.rank?' '+h.rank:''))+'</text>';
+      }
+    });
+
+    let gridSvg = '';
+    const steps = 4;
+    for(let i=0;i<=steps;i++){
+      const v = minV + (maxV-minV)*(i/steps);
+      const y = yOf(v);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
+      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="9.5" fill="var(--muted)" text-anchor="end">'+escapeHtml(tftCombinedLabel(v))+'</text>';
+    }
+    const labelIdxs = [0, Math.floor((hist.length-1)/2), hist.length-1];
+    let xLabelSvg = '';
+    labelIdxs.forEach(i=>{
+      xLabelSvg += '<text x="'+xOf(i).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+escapeHtml(fmtDate(new Date(hist[i].date).getTime()))+'</text>';
+    });
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+      + bandsSvg
+      + gridSvg + xLabelSvg
+      + lineSvg
+      + dotsSvg
+      + tierLabelSvg
+      + '</svg>';
+
+    const seenTiers = [];
+    hist.forEach(h=>{ if(h.tier && !seenTiers.includes(h.tier)) seenTiers.push(h.tier); });
+    legendEl.innerHTML = '<span><span class="dot" style="background:var(--violet);"></span>Rank at snapshot</span>'
+      + seenTiers.map(t=>'<span><span class="dot" style="background:'+tftTierColor(t)+';"></span>'+escapeHtml(tftTierLabel(t))+'</span>').join('');
+  }
+
+  function showTftAddErr(msg){
+    const e2 = el('tftAddErr');
+    e2.textContent = msg;
+    e2.style.display = 'block';
+  }
+
+  el('tftSaveKeyBtn').addEventListener('click', ()=>{
+    state.tft.apiKey = el('tftApiKey').value.trim();
+    save(); renderTFT();
+  });
+
+  el('tftAddAccountBtn').addEventListener('click', ()=>{
+    el('tftAddErr').style.display = 'none';
+    const raw = el('tftNewRiotId').value.trim();
+    const platform = el('tftNewRegion').value;
+    if(!raw.includes('#')){ showTftAddErr('Enter a Riot ID in the form Name#Tag, e.g. "Name#TAG1".'); return; }
+    const hashIdx = raw.indexOf('#');
+    const name = raw.slice(0, hashIdx).trim();
+    const tag = raw.slice(hashIdx+1).trim();
+    if(!name || !tag){ showTftAddErr('Enter a Riot ID in the form Name#Tag, e.g. "Name#TAG1".'); return; }
+    if(state.tft.accounts.some(a=> a.name.toLowerCase()===name.toLowerCase() && a.tag.toLowerCase()===tag.toLowerCase() && a.platform===platform)){
+      showTftAddErr('That account is already being tracked.'); return;
+    }
+    const acc = { id: uid(), name, tag, platform, history: [], placements: [], current: null, error: '', lastFetched: null, lastMatchAt: null, loading: false, group: '' };
+    state.tft.accounts.push(acc);
+    state.tft.selectedAccountId = acc.id;
+    el('tftNewRiotId').value = '';
+    save(); renderTFT();
+    fetchTFTAccount(acc.id);
+  });
+  el('tftNewRiotId').addEventListener('keydown', e=>{ if(e.key==='Enter') el('tftAddAccountBtn').click(); });
+
   function renderAll(){
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
-    renderFinance(); renderFitness(); renderValorant();
+    renderFinance(); renderFitness(); renderValorant(); renderTFT();
   }
 
   function applyDarkMode(){

@@ -103,6 +103,15 @@
   .profile-row input:focus{border-color:var(--violet);}
   .profile-stat{display:flex;justify-content:space-between;align-items:center;font-size:12.5px;}
   .profile-stat b{color:var(--violet-dark);font-family:'Manrope',sans-serif;font-size:15px;}
+  .avatar-wrap{display:flex;justify-content:center;margin-bottom:12px;}
+  .avatar-ring{position:relative;width:168px;height:168px;border-radius:18px;overflow:hidden;background:var(--surface-alt);border:3px solid var(--border);transition:border-color .3s;}
+  .avatar-ring svg{display:block;width:100%;height:100%;}
+  .avatar-ring img{display:block;width:100%;height:100%;object-fit:cover;}
+  .avatar-gen-row{display:flex;flex-direction:column;align-items:center;gap:4px;margin-bottom:12px;margin-top:-4px;}
+  .avatar-gen-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:8px;padding:5px 10px;font-size:10.5px;font-weight:700;cursor:pointer;}
+  .avatar-gen-btn:hover{background:var(--violet-pale);}
+  .avatar-gen-btn:disabled{opacity:.6;cursor:default;}
+  .avatar-gen-err{font-size:10px;color:var(--danger);text-align:center;max-width:180px;}
 
   .nav{display:flex;flex-direction:column;gap:3px;margin-bottom:auto;}
   .nav-item{
@@ -120,6 +129,7 @@
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
   .nav-item[data-tab="mantras"] svg{color:var(--violet);}
+  .nav-item[data-tab="aboutme"] svg{color:var(--violet-dark);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
   .setup-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#3730A3;line-height:1.6;}
@@ -619,6 +629,16 @@
   </div>
 
   <div class="profile-card">
+    <div class="avatar-wrap">
+      <div class="avatar-ring" id="pfAvatarRing" title="Your avatar changes with age, level, fitness, and net worth">
+        <svg id="pfAvatarSvg" viewBox="0 0 100 100"></svg>
+        <img id="pfAvatarImg" style="display:none;" alt="Your avatar">
+      </div>
+    </div>
+    <div class="avatar-gen-row">
+      <button class="avatar-gen-btn" id="pfAvatarGenBtn" type="button">✦ Generate AI Avatar</button>
+      <div class="avatar-gen-err" id="pfAvatarGenErr" style="display:none;"></div>
+    </div>
     <div class="profile-row"><div class="profile-lbl">Name</div><input id="pfName" type="text" placeholder="Your name" maxlength="40"></div>
     <div class="profile-row"><div class="profile-lbl">Age</div><input id="pfAge" type="number" min="0" placeholder="Age"></div>
     <div class="profile-row profile-stat"><span>Goals Completed</span><b id="pfGoalsCompleted">0</b></div>
@@ -639,6 +659,7 @@
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Checklists</div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>Countdowns</div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg>Mantras</div>
+    <div class="nav-item" data-tab="aboutme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg>About Me</div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>Settings</div>
   </div>
 
@@ -979,6 +1000,21 @@
     <div class="empty" id="mantraEmpty" style="display:none;">No mantras yet. Add a phrase that keeps you motivated.</div>
   </div>
 
+  <!-- ABOUT ME -->
+  <div class="view" id="view-aboutme">
+    <div class="view-title">About Me</div>
+    <div class="view-sub">Appearance details used to shape your AI-generated avatar. Type in your own words and leave anything blank if you'd rather not say — the avatar will just skip it. Your age, fitness, and net worth stats always come through too (net worth shapes clothing quality and surroundings even if you describe your own).</div>
+    <div class="fitness-fields">
+      <div class="fitness-field"><label>Race / Ethnicity</label><input type="text" id="amRace" maxlength="40" placeholder="e.g. Filipino, Black, mixed"></div>
+      <div class="fitness-field"><label>Skin Tone</label><input type="text" id="amSkinTone" maxlength="40" placeholder="e.g. tan, fair, dark"></div>
+      <div class="fitness-field"><label>Hair Color</label><input type="text" id="amHairColor" maxlength="40" placeholder="e.g. jet black, blonde"></div>
+      <div class="fitness-field"><label>Hair Style</label><input type="text" id="amHairStyle" maxlength="40" placeholder="e.g. short and curly, bald"></div>
+      <div class="fitness-field"><label>Eye Color</label><input type="text" id="amEyeColor" maxlength="40" placeholder="e.g. brown, green"></div>
+      <div class="fitness-field"><label>Clothing</label><input type="text" id="amClothing" maxlength="80" placeholder="e.g. leather jacket and sunglasses"></div>
+      <div class="fitness-field" style="grid-column:1/-1;"><label>Background</label><input type="text" id="amBackground" maxlength="80" placeholder="e.g. a cozy home office, a city skyline at night"></div>
+    </div>
+  </div>
+
   <!-- SETTINGS -->
   <div class="view" id="view-settings">
     <div class="view-title">Settings</div>
@@ -1011,7 +1047,7 @@
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES) },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] },
     valorant: { apiKey:'', accounts:[], selectedAccountId:null },
-    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD'}, focus: null, darkMode: false };
+    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''}, focus: null, darkMode: false };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';
@@ -1157,8 +1193,11 @@
       if(a.lastAgent===undefined) a.lastAgent = '';
     });
     if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
-    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
+    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
+    if(!state.profile.avatarImage) state.profile.avatarImage = '';
+    if(state.profile.avatarGeneratedAt === undefined) state.profile.avatarGeneratedAt = null;
+    ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=>{ if(!state.profile[k]) state.profile[k] = ''; });
     state.focus = parsed.focus || null;
     state.darkMode = !!parsed.darkMode;
   }
@@ -1260,6 +1299,7 @@
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
+    renderAboutMe();
     applyDarkMode();
     renderAll();
   }
@@ -1294,6 +1334,29 @@
     });
   });
 
+  /* ---------- about me (appearance details used by AI avatar generation) ---------- */
+  function renderAboutMe(){
+    el('amRace').value = state.profile.race || '';
+    el('amSkinTone').value = state.profile.skinTone || '';
+    el('amHairColor').value = state.profile.hairColor || '';
+    el('amHairStyle').value = state.profile.hairStyle || '';
+    el('amEyeColor').value = state.profile.eyeColor || '';
+    el('amClothing').value = state.profile.clothing || '';
+    el('amBackground').value = state.profile.background || '';
+  }
+  ['amRace','amSkinTone','amHairColor','amHairStyle','amEyeColor','amClothing','amBackground'].forEach(id=>{
+    el(id).addEventListener('change', ()=>{
+      state.profile.race = el('amRace').value;
+      state.profile.skinTone = el('amSkinTone').value;
+      state.profile.hairColor = el('amHairColor').value;
+      state.profile.hairStyle = el('amHairStyle').value;
+      state.profile.eyeColor = el('amEyeColor').value;
+      state.profile.clothing = el('amClothing').value;
+      state.profile.background = el('amBackground').value;
+      save();
+    });
+  });
+
   /* ---------- nav ---------- */
   document.querySelectorAll('.nav-item').forEach(t => {
     t.addEventListener('click', () => {
@@ -1310,6 +1373,7 @@
       if(t.dataset.tab==='finance'){ showFinanceSubTab('moneygoals'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
+      if(t.dataset.tab==='aboutme') renderAboutMe();
     });
   });
 
@@ -1926,6 +1990,7 @@
       el('pfNetWorthCalc').textContent = ccySymbol(nwCcy)+Math.round(nwConverted).toLocaleString();
     }
     updateExpUI();
+    updateAvatar();
 
     document.querySelectorAll('.stat').forEach(s=>s.classList.remove('active-filter'));
     if(goalFilter !== 'all'){
@@ -3149,23 +3214,192 @@
     return 'Obese';
   }
 
-  // Fitness Level shown on the profile card — a simplified read of BMI (Underweight / Fit / Overweight / Obese),
-  // color-coded so it's readable at a glance: green when normal, amber when under/overweight, red when obese.
+  // Simplified read of BMI (Underweight / Fit / Overweight / Obese), color-coded so it's readable
+  // at a glance: green when normal, amber when under/overweight, red when obese.
+  function getFitnessTier(){
+    const f = state.fitness;
+    const cw = parseFloat(f.currentWeight), h = parseFloat(f.height);
+    if(isNaN(cw) || isNaN(h) || h<=0) return null;
+    const heightM = h/100;
+    const bmi = cw / (heightM*heightM);
+    if(bmi < 18.5) return { label:'Underweight', color:'var(--gold)' };
+    if(bmi >= 30) return { label:'Obese', color:'var(--danger)' };
+    if(bmi >= 25) return { label:'Overweight', color:'var(--gold)' };
+    return { label:'Fit', color:'var(--success)' };
+  }
+
+  // Fitness Level shown on the profile card
   function updateFitnessLevelUI(){
     const lvlEl = el('pfFitnessLevel');
     if(!lvlEl) return;
-    const f = state.fitness;
-    const cw = parseFloat(f.currentWeight), h = parseFloat(f.height);
-    if(isNaN(cw) || isNaN(h) || h<=0){ lvlEl.textContent = '—'; lvlEl.style.color = ''; return; }
-    const heightM = h/100;
-    const bmi = cw / (heightM*heightM);
-    let level = 'Fit', color = 'var(--success)';
-    if(bmi < 18.5){ level = 'Underweight'; color = 'var(--gold)'; }
-    else if(bmi >= 30){ level = 'Obese'; color = 'var(--danger)'; }
-    else if(bmi >= 25){ level = 'Overweight'; color = 'var(--gold)'; }
-    lvlEl.textContent = level;
-    lvlEl.style.color = color;
+    const tier = getFitnessTier();
+    lvlEl.textContent = tier ? tier.label : '—';
+    lvlEl.style.color = tier ? tier.color : '';
+    updateAvatar();
   }
+
+  // Hair size/shape and color by age bracket — bigger head + higher hairline reads as younger,
+  // grey hair + glasses reads as older. Kept to broad, respectful brackets rather than exact age.
+  function avatarAgeProfile(age){
+    if(isNaN(age)) return { headR:21, hairR:24, hairCy:36, hairColor:'#3D2B1F', glasses:false };
+    if(age < 18) return { headR:23, hairR:21, hairCy:32, hairColor:'#6B4226', glasses:false };
+    if(age < 60) return { headR:21, hairR:24, hairCy:36, hairColor:'#3D2B1F', glasses:false };
+    return { headR:21, hairR:22, hairCy:37, hairColor:'#B8BCC4', glasses:true };
+  }
+  // Chest-pin color by XP level tier — same bronze/silver/gold/platinum/diamond progression
+  // used elsewhere for level tiers.
+  function avatarLevelColor(level){
+    if(level >= 30) return '#EC4899';
+    if(level >= 20) return '#3B82F6';
+    if(level >= 10) return '#F5A524';
+    if(level >= 5) return '#B7C0CC';
+    return '#CD7F32';
+  }
+  // Outfit color (and a crown at the top tier) by net worth — richer colors as net worth climbs.
+  function avatarWorthTier(nw){
+    if(nw >= 1000000) return { color:'#A855F7', crown:true };
+    if(nw >= 100000) return { color:'#F5A524', crown:false };
+    if(nw >= 10000) return { color:'#818CF8', crown:false };
+    if(nw >= 1000) return { color:'#60A5FA', crown:false };
+    return { color:'#94A3B8', crown:false };
+  }
+
+  // Player-card avatar: either the AI-generated image (once the user has manually generated
+  // one — see generateAiAvatar()), or a fallback hand-drawn SVG character (no external
+  // images/fonts) whose hair/build reflects age, ring color reflects fitness, chest pin
+  // reflects level tier, and outfit color (plus a crown at the top tier) reflects net worth —
+  // all redrawn from current state. The AI image is never (re)generated automatically; it's
+  // only ever replaced when the user presses the generate/regenerate button.
+  function updateAvatar(){
+    const ringEl = el('pfAvatarRing'), svg = el('pfAvatarSvg'), img = el('pfAvatarImg');
+    if(!ringEl || !svg) return;
+
+    const fitTier = getFitnessTier();
+    ringEl.style.borderColor = fitTier ? fitTier.color : 'var(--border)';
+
+    const genBtn = el('pfAvatarGenBtn');
+    if(genBtn && !genBtn.disabled){
+      genBtn.textContent = state.profile.avatarImage ? '↻ Regenerate Avatar' : '✦ Generate AI Avatar';
+    }
+
+    if(state.profile.avatarImage){
+      img.src = state.profile.avatarImage;
+      img.style.display = 'block';
+      svg.style.display = 'none';
+    } else {
+      img.style.display = 'none';
+      svg.style.display = 'block';
+    }
+
+    const ap = avatarAgeProfile(parseFloat(state.profile.age));
+    const { level } = levelInfo(totalExp());
+    const emblemColor = avatarLevelColor(level);
+    const worthTier = avatarWorthTier(getNetWorthNum());
+    const skin = '#F2C79E';
+    const headCx = 50, headCy = 44;
+    const hairTop = ap.hairCy - ap.hairR;
+
+    const parts = [];
+    parts.push('<path d="M14,100 Q14,66 50,66 Q86,66 86,100 Z" fill="'+worthTier.color+'"/>');
+    parts.push('<path d="M50,66 L42,80 L50,74 L58,80 Z" fill="#fff" opacity="0.35"/>');
+    parts.push('<rect x="43" y="54" width="14" height="16" rx="5" fill="'+skin+'"/>');
+    parts.push('<circle cx="'+headCx+'" cy="'+ap.hairCy+'" r="'+ap.hairR+'" fill="'+ap.hairColor+'"/>');
+    parts.push('<circle cx="'+headCx+'" cy="'+headCy+'" r="'+ap.headR+'" fill="'+skin+'"/>');
+    parts.push('<circle cx="'+(headCx-8)+'" cy="'+headCy+'" r="2.3" fill="#2B2B2B"/>');
+    parts.push('<circle cx="'+(headCx+8)+'" cy="'+headCy+'" r="2.3" fill="#2B2B2B"/>');
+    parts.push('<path d="M'+(headCx-8)+','+(headCy+8)+' Q'+headCx+','+(headCy+14)+' '+(headCx+8)+','+(headCy+8)+'" stroke="#2B2B2B" stroke-width="2" fill="none" stroke-linecap="round"/>');
+    if(ap.glasses){
+      parts.push('<circle cx="'+(headCx-8)+'" cy="'+headCy+'" r="6" fill="none" stroke="#4B5563" stroke-width="1.6"/>');
+      parts.push('<circle cx="'+(headCx+8)+'" cy="'+headCy+'" r="6" fill="none" stroke="#4B5563" stroke-width="1.6"/>');
+      parts.push('<line x1="'+(headCx-2)+'" y1="'+headCy+'" x2="'+(headCx+2)+'" y2="'+headCy+'" stroke="#4B5563" stroke-width="1.6"/>');
+    }
+    if(level >= 10 && !worthTier.crown){
+      parts.push('<path d="M46,'+(hairTop+2)+' L50,'+(hairTop-6)+' L54,'+(hairTop+2)+' Z" fill="'+ap.hairColor+'"/>');
+    }
+    const emblemSize = 6 + Math.min(4, Math.floor(level/10));
+    parts.push('<rect x="'+(50-emblemSize/2)+'" y="'+(84-emblemSize/2)+'" width="'+emblemSize+'" height="'+emblemSize+'" transform="rotate(45 50 84)" fill="'+emblemColor+'" stroke="#fff" stroke-width="0.8"/>');
+    if(worthTier.crown){
+      parts.push('<path d="M36,20 L40,28 L50,17 L60,28 L64,20 L61,30 L39,30 Z" fill="#FFD700" stroke="#B8860B" stroke-width="0.8"/>');
+    }
+    if(level >= 30){
+      parts.push('<rect x="16" y="70" width="4" height="4" transform="rotate(45 18 72)" fill="#EC4899"/>');
+      parts.push('<rect x="80" y="70" width="4" height="4" transform="rotate(45 82 72)" fill="#EC4899"/>');
+    }
+    svg.innerHTML = parts.join('');
+    ringEl.title = 'Lv.'+level+' · '+(fitTier?fitTier.label:'Fitness not set')+' · $'+Math.round(getNetWorthNum()).toLocaleString()+' net worth';
+  }
+
+  // Reduce the current stats down to small fixed vocabularies before they ever leave the
+  // browser — the edge function maps these keys to its own prompt text server-side, so no
+  // free-form profile text (name, etc.) is ever sent to the image model.
+  function avatarAgeBracketKey(age){
+    if(isNaN(age)) return 'unknown';
+    if(age < 18) return 'young';
+    if(age < 60) return 'adult';
+    return 'senior';
+  }
+  function avatarFitnessKey(){
+    const t = getFitnessTier();
+    if(!t) return 'unknown';
+    if(t.label === 'Fit') return 'fit';
+    if(t.label === 'Underweight') return 'underweight';
+    if(t.label === 'Overweight') return 'overweight';
+    return 'obese'; // only remaining tier from getFitnessTier()
+  }
+  function avatarWorthKey(nw){
+    if(nw >= 1000000) return 'elite';
+    if(nw >= 100000) return 'wealthy';
+    if(nw >= 10000) return 'comfortable';
+    if(nw >= 1000) return 'stable';
+    return 'starter';
+  }
+
+  // Manual only, by design: this never runs on page load or on a stat change — only a direct
+  // button click calls it, and the resulting image is saved into state.profile.avatarImage so
+  // it persists as-is across visits until the user presses the button again.
+  async function generateAiAvatar(){
+    const btn = el('pfAvatarGenBtn'), errEl = el('pfAvatarGenErr');
+    if(!btn) return;
+    errEl.style.display = 'none';
+    if(usingClaudeStorage){
+      errEl.textContent = 'AI avatar generation isn’t available in this mode — it only works on the Supabase-hosted deployment.';
+      errEl.style.display = 'block';
+      return;
+    }
+    if(!initSupabaseIfNeeded()) return;
+    btn.textContent = '✦ Generating...'; btn.disabled = true;
+    try{
+      const payload = {
+        ageBracket: avatarAgeBracketKey(parseFloat(state.profile.age)),
+        fitnessTier: avatarFitnessKey(),
+        worthTier: avatarWorthKey(getNetWorthNum()),
+        // Optional free-text appearance details from the About Me tab — the edge function
+        // sanitizes/truncates these itself; net worth still always shapes clothing quality
+        // and surroundings server-side even when these are filled in.
+        race: state.profile.race || '',
+        skinTone: state.profile.skinTone || '',
+        hairColor: state.profile.hairColor || '',
+        hairStyle: state.profile.hairStyle || '',
+        eyeColor: state.profile.eyeColor || '',
+        clothing: state.profile.clothing || '',
+        background: state.profile.background || '',
+      };
+      const { data, error } = await supa.functions.invoke('generate-avatar', { body: payload });
+      if(error) throw error;
+      if(data && data.error) throw new Error(data.error);
+      if(!data || !data.image) throw new Error('No image came back, try again.');
+      state.profile.avatarImage = data.image;
+      state.profile.avatarGeneratedAt = Date.now();
+      save();
+    }catch(e){
+      const msg = (e && e.message) ? e.message : 'Could not generate an avatar right now, try again shortly.';
+      errEl.textContent = msg;
+      errEl.style.display = 'block';
+    }
+    btn.disabled = false;
+    updateAvatar();
+  }
+  el('pfAvatarGenBtn').addEventListener('click', generateAiAvatar);
 
   function calcFitness(){
     const f = state.fitness;

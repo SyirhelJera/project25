@@ -15,21 +15,10 @@
 // Net worth's clothing/setting phrase is always layered in below even when the user supplies
 // their own clothing/background text, so wealth level stays visible either way.
 //
-// One-time setup:
-//  1) Supabase SQL editor — create the daily usage counter table (already created if you
-//     followed the original setup steps; no change needed here):
-//       create table avatar_usage (
-//         day text primary key,
-//         count int not null default 0
-//       );
-//       alter table avatar_usage enable row level security;
-//       create policy "Service role only" on avatar_usage for all using (false);
-//  2) No secrets needed — Pollinations' image endpoint is public and keyless.
+// No secrets needed — Pollinations' image endpoint is public, keyless, and unlimited, so this
+// function doesn't rate-limit or track usage.
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { encodeBase64 } from "https://deno.land/std@0.224.0/encoding/base64.ts";
-
-const DAILY_LIMIT = 30; // no cost involved, this is just courtesy rate-limiting on a shared free API
 
 const CORS_HEADERS = {
   // Lock this down to your actual GitHub Pages origin once deployed, e.g.
@@ -131,25 +120,6 @@ Deno.serve(async (req) => {
       ? `Set in ${backgroundText}, with an overall ${qualityWord} atmosphere reflecting their wealth`
       : `Set in ${settingDefault}`;
 
-    // Service-role client, used ONLY inside this server-side function to check/update
-    // the daily usage counter. This key is a Supabase secret, never exposed to the browser.
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
-
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-
-    const { data: usageRow } = await supabase
-      .from("avatar_usage")
-      .select("count")
-      .eq("day", today)
-      .maybeSingle();
-
-    if (usageRow && usageRow.count >= DAILY_LIMIT) {
-      return json({ error: "Daily avatar generation limit reached. Try again tomorrow." }, 429);
-    }
-
     const traits = [fitnessPhrase, skinPhrase, hairPhrase, eyePhrase].filter(Boolean).join(", ");
     const prompt = `A photorealistic portrait photograph of ${agePhrase}`
       + (racePhrase ? `, ${racePhrase}` : "")
@@ -178,12 +148,6 @@ Deno.serve(async (req) => {
       return json({ error: "The AI didn't return an image, try again." }, 502);
     }
     const image = `data:${contentType};base64,${encodeBase64(bytes)}`;
-
-    // Only bump the counter after a successful call.
-    await supabase.from("avatar_usage").upsert(
-      { day: today, count: (usageRow?.count || 0) + 1 },
-      { onConflict: "day" },
-    );
 
     return json({ image });
   } catch (err) {

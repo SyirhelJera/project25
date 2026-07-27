@@ -3385,7 +3385,16 @@
         background: state.profile.background || '',
       };
       const { data, error } = await supa.functions.invoke('generate-avatar', { body: payload });
-      if(error) throw error;
+      if(error){
+        // supabase-js's default error.message is just "Edge Function returned a non-2xx
+        // status code" — the real reason (rate limit, upstream failure, etc.) is in the
+        // response body, so pull it out when available instead of showing the generic text.
+        let detail = '';
+        if(error.context && typeof error.context.json === 'function'){
+          try{ detail = (await error.context.json())?.error || ''; }catch(_){}
+        }
+        throw new Error(detail || error.message);
+      }
       if(data && data.error) throw new Error(data.error);
       if(!data || !data.image) throw new Error('No image came back, try again.');
       state.profile.avatarImage = data.image;

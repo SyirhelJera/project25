@@ -66,8 +66,8 @@
 
   // Player-card avatar: either the AI-generated image (once the user has manually generated
   // one — see generateAiAvatar()), or a fallback hand-drawn SVG character (no external
-  // images/fonts) whose hair/build reflects age, ring color reflects fitness, chest pin
-  // reflects level tier, and outfit color (plus a crown at the top tier) reflects net worth —
+  // images/fonts) whose hair/build reflects age, chest pin reflects level tier, and outfit
+  // color (plus a crown at the top tier) reflects net worth —
   // all redrawn from current state. The AI image is never (re)generated automatically; it's
   // only ever replaced when the user presses the generate/regenerate button.
   function updateAvatar(){
@@ -75,7 +75,6 @@
     if(!ringEl || !svg) return;
 
     const fitTier = getFitnessTier();
-    ringEl.style.borderColor = fitTier ? fitTier.color : 'var(--border)';
 
     const genBtn = el('pfAvatarGenBtn');
     if(genBtn && !genBtn.disabled){

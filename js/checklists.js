@@ -157,7 +157,10 @@
         c.lastResetKey = resetKeyFor(c.resetFreq);
         save(); renderChecklists();
       });
-      top.querySelector('.del-goal').addEventListener('click', ()=>{ state.checklists = state.checklists.filter(x=>x.id!==c.id); save(); renderChecklists(); });
+      top.querySelector('.del-goal').addEventListener('click', ()=>{
+        if(!window.confirm('Delete checklist "'+c.name+'"? This can\'t be undone.')) return;
+        state.checklists = state.checklists.filter(x=>x.id!==c.id); save(); renderChecklists();
+      });
       card.appendChild(top);
 
       if(!c.collapsed){

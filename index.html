@@ -17,7 +17,6 @@
   <div class="brand">
     <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 12.5l2 2 4-5" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#fff" stroke-width="2"/></svg></div>
     <div class="brand-name">Project 25</div>
-    <button id="darkModeToggle" class="dark-toggle" title="Toggle dark mode">🌙</button>
   </div>
 
   <div class="profile-card">
@@ -411,7 +410,28 @@
   <div class="view" id="view-settings">
     <div class="view-title">Settings</div>
     <div class="view-sub">App-wide preferences.</div>
-    <div class="section-lbl" style="margin-top:4px;">Net Worth Display Currency</div>
+
+    <div class="section-lbl" style="margin-top:4px;">Appearance</div>
+    <div class="theme-picker" id="themePicker">
+      <div class="theme-option" data-theme="light">
+        <div class="theme-swatch" style="background:#F5F6FA;"><span style="background:#6366F1;"></span></div>
+        <div class="theme-option-label">Light</div>
+      </div>
+      <div class="theme-option" data-theme="dark">
+        <div class="theme-swatch" style="background:#14161F;"><span style="background:#818CF8;"></span></div>
+        <div class="theme-option-label">Dark</div>
+      </div>
+      <div class="theme-option" data-theme="ios-light">
+        <div class="theme-swatch" style="background:#F2F2F7;"><span style="background:#007AFF;"></span></div>
+        <div class="theme-option-label">iOS Light</div>
+      </div>
+      <div class="theme-option" data-theme="ios-dark">
+        <div class="theme-swatch" style="background:#000000;"><span style="background:#0A84FF;"></span></div>
+        <div class="theme-option-label">iOS Dark</div>
+      </div>
+    </div>
+
+    <div class="section-lbl" style="margin-top:22px;">Net Worth Display Currency</div>
     <div class="fitness-field" style="max-width:260px;">
       <label>Shown on your profile card</label>
       <select id="settingsNetWorthCurrency"></select>

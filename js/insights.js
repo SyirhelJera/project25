@@ -1,5 +1,6 @@
   /* ================= INSIGHTS ================= */
   function renderSettings(){
+    applyTheme();
     const sel = el('settingsNetWorthCurrency');
     if(!sel.options.length){
       sel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');

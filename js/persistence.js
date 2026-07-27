@@ -136,7 +136,7 @@
     if(state.profile.avatarGeneratedAt === undefined) state.profile.avatarGeneratedAt = null;
     ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=>{ if(!state.profile[k]) state.profile[k] = ''; });
     state.focus = parsed.focus || null;
-    state.darkMode = !!parsed.darkMode;
+    state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
   }
 
   // force=true skips the conflict check and overwrites unconditionally — only used when the user
@@ -237,7 +237,7 @@
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
     renderAboutMe();
-    applyDarkMode();
+    applyTheme();
     renderAll();
   }
 

@@ -3,13 +3,17 @@
     renderFinance(); renderFitness(); renderValorant();
   }
 
-  function applyDarkMode(){
-    document.body.classList.toggle('dark-mode', !!state.darkMode);
-    el('darkModeToggle').textContent = state.darkMode ? '☀️' : '🌙';
+  function applyTheme(){
+    document.body.setAttribute('data-theme', state.theme || 'light');
+    document.querySelectorAll('#themePicker .theme-option').forEach(o=>{
+      o.classList.toggle('selected', o.dataset.theme === (state.theme || 'light'));
+    });
   }
-  el('darkModeToggle').addEventListener('click', ()=>{
-    state.darkMode = !state.darkMode;
-    applyDarkMode();
+  el('themePicker').addEventListener('click', (e)=>{
+    const opt = e.target.closest('.theme-option');
+    if(!opt) return;
+    state.theme = opt.dataset.theme;
+    applyTheme();
     save();
   });
 

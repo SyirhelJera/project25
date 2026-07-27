@@ -9,9 +9,9 @@ cd "$(dirname "$0")/.."
 
 : "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY env var must be set}"
 
-SUPABASE_URL=$(sed -n "s/.*const SUPABASE_URL = '\([^']*\)'.*/\1/p" index.html | head -1)
+SUPABASE_URL=$(sed -n "s/.*const SUPABASE_URL = '\([^']*\)'.*/\1/p" js/persistence.js | head -1)
 if [[ -z "$SUPABASE_URL" ]]; then
-  echo "Could not extract SUPABASE_URL from index.html" >&2
+  echo "Could not extract SUPABASE_URL from js/persistence.js" >&2
   exit 1
 fi
 

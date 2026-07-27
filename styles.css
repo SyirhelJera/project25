@@ -255,8 +255,8 @@
   .sub-row.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;border-radius:6px;}
   .finance-account.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .habit-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .habit-card.habit-pending{border-color:var(--danger);background:linear-gradient(180deg,rgba(239,68,68,0.10) 0%, var(--surface) 60px);}
   .habit-status-mark{width:16px;height:16px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;}
-  .habit-status-mark.pending{background:var(--danger);}
   .habit-status-mark.done{background:var(--success);}
   .habit-restore-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .habit-restore-btn:hover{background:var(--violet-pale);}
@@ -361,9 +361,11 @@
   /* habits */
   .habit-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;overflow:hidden;cursor:pointer;}
   .habit-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
-  .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
-  .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
-  .habit-recap{color:var(--violet-dark);background:var(--violet-pale);}
+  .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;text-align:center;}
+  .habit-streak{min-width:108px;}
+  .habit-recap{color:var(--violet-dark);background:var(--violet-pale);min-width:64px;}
+  .habit-restores{min-width:126px;}
   .habit-streak.streak-t0{color:var(--muted);background:var(--surface-alt);}
   .habit-streak.streak-t1{color:#B45309;background:#FDEBD3;}
   .habit-streak.streak-t2{color:#475569;background:#E2E8F0;}
@@ -435,8 +437,9 @@
     .main{padding:20px 16px 70px;}
     .habit-card{padding:12px;}
     .habit-top{gap:6px;}
-    .habit-name{flex:1 1 100%;font-size:13.5px;}
+    .habit-name{flex:1 1 100%;font-size:13.5px;white-space:normal;overflow-wrap:break-word;word-break:break-word;}
     .habit-badge,.habit-restore-btn,.habit-link-btn,.del-goal{font-size:10px;}
+    .habit-streak,.habit-recap,.habit-restores{min-width:0;}
     .habit-link-btn{max-width:130px;}
     /* drag-to-reorder relies on HTML5 drag events, which don't work on touch — hide the handle so it isn't dead clutter */
     .drag-handle{display:none;}

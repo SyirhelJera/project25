@@ -111,12 +111,12 @@
       const linkedChecklists = state.checklists.filter(c=>c.linkedHabitId===h.id);
       const doneToday = !!h.completions[localDateStr(today)];
 
-      const card = document.createElement('div'); card.className='habit-card';
+      const card = document.createElement('div'); card.className='habit-card'+(doneToday?'':' habit-pending');
       card.dataset.habitId = h.id;
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
-        + '<span class="habit-status-mark '+(doneToday?'done':'pending')+'" title="'+(doneToday?'Completed today':'Not completed yet today')+'">'+(doneToday?'✓':'')+'</span>'
+        + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'

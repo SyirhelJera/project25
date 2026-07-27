@@ -145,14 +145,14 @@
     </div>
 
     <div class="finance-subnav">
-      <button class="finance-subnav-btn" data-fintab="accounts" type="button">Accounts</button>
+      <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
       <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
-      <button class="finance-subnav-btn active" data-fintab="moneygoals" type="button">Money Goals</button>
+      <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
       <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency Converter</button>
     </div>
 
     <!-- ACCOUNTS -->
-    <div class="fintab" id="fintab-accounts" style="display:none;">
+    <div class="fintab" id="fintab-accounts">
       <div class="finance-add-row">
         <select id="finType">
           <option value="savings">Savings account</option>
@@ -194,7 +194,7 @@
     </div>
 
     <!-- MONEY GOALS -->
-    <div class="fintab" id="fintab-moneygoals">
+    <div class="fintab" id="fintab-moneygoals" style="display:none;">
       <div class="view-sub" style="margin-top:-4px;">Set an amount you need to make by a date, then log contributions as you earn it. Click a goal to edit it or manage contributions.</div>
       <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
         <div class="stat" style="cursor:default;max-width:300px;" title="Converted to your net worth display currency"><div class="num" id="mgDailyTotal">$0</div><div class="lbl">Total Needed Per Day (all goals)</div></div>

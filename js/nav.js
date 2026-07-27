@@ -11,7 +11,7 @@
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='checklists') renderChecklists();
-      if(t.dataset.tab==='finance'){ showFinanceSubTab('moneygoals'); renderFinance(); }
+      if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
       if(t.dataset.tab==='aboutme') renderAboutMe();

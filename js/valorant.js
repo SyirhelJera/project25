@@ -273,6 +273,7 @@
         + (' '+valRecentActivityClass(acc));
       card.dataset.accId = acc.id;
       const cur = acc.current;
+      const updatedTxt = acc.lastFetched ? ('Updated '+valTimeAgo(acc.lastFetched)) : '';
       let bodyHtml = '';
       if(acc.error){
         bodyHtml = '<div class="val-err">'+escapeHtml(acc.error)+'</div>';
@@ -316,7 +317,7 @@
         + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder">⠿</span>'
         + '<div class="val-card-id">'
         + '<span class="val-riotid" title="'+escapeHtml(acc.name)+'#'+escapeHtml(acc.tag)+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
-        + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+'</span>'
+        + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+(updatedTxt?' · '+escapeHtml(updatedTxt):'')+'</span>'
         + '<span class="val-group-field"><input type="text" class="mini-input val-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(acc.group||'')+'" title="Organize this account into a subgroup"></span>'
         + '</div>'
         + '<span class="val-acc-actions">'

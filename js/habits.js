@@ -98,7 +98,6 @@
 
     const today = new Date(); today.setHours(0,0,0,0);
     const weekStart = new Date(today); const wd=(weekStart.getDay()+6)%7; weekStart.setDate(weekStart.getDate()-wd);
-    const atRiskIds = new Set(habitsAtRisk().map(h=>h.id));
 
     state.habits.forEach(h => {
       if(!h.completions) h.completions = {};
@@ -110,17 +109,19 @@
       const gapDate = habitBrokenGapDate(h);
       const restoresLeft = 3 - restoresUsedThisMonth(h);
       const linkedChecklists = state.checklists.filter(c=>c.linkedHabitId===h.id);
+      const doneToday = !!h.completions[localDateStr(today)];
 
-      const card = document.createElement('div'); card.className='habit-card' + (atRiskIds.has(h.id) ? ' at-risk' : '');
+      const card = document.createElement('div'); card.className='habit-card';
       card.dataset.habitId = h.id;
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
+        + '<span class="habit-status-mark '+(doneToday?'done':'pending')+'" title="'+(doneToday?'Completed today':'Not completed yet today')+'">'+(doneToday?'✓':'')+'</span>'
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
         + '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
-        + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist">🔗 '+escapeHtml(c.name)+'</button>').join('') : '')
+        + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist: '+escapeHtml(c.name)+'">🔗</button>').join('') : '')
         + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
         + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>';
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ h.collapsed = !h.collapsed; save(); renderHabits(); });
@@ -157,6 +158,10 @@
             }
           }, 60);
         });
+      });
+      card.addEventListener('click', e=>{
+        if(e.target.closest('button, input, select, a, .drag-handle, .day-box, .month-cell')) return;
+        h.collapsed = !h.collapsed; save(); renderHabits();
       });
       card.appendChild(top);
 

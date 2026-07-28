@@ -29,6 +29,7 @@ const SHELL_ASSETS = [
   './js/fitness.js',
   './js/valorant.js',
   './js/main.js',
+  './favicon.ico',
   './icons/icon-180.png',
   './icons/icon-192.png',
   './icons/icon-512.png',

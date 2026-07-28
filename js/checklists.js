@@ -298,6 +298,7 @@
           + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
         + '</select>'
         + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
+        + '<button class="reset-chk-btn" data-act="reset" title="Reset all items now">↺</button>'
         + (c.items.some(i=>!i.done) ? '<button class="btn btn-primary" data-act="play">▶ Play</button>' : '')
         + '<button class="del-goal">Delete</button>';
       top.querySelector('.checklist-group-input').addEventListener('change', e=>{
@@ -328,6 +329,11 @@
         c.resetFreq = e.target.value;
         c.lastResetKey = resetKeyFor(c.resetFreq);
         save(); renderChecklists();
+      });
+      top.querySelector('[data-act="reset"]').addEventListener('click', ()=>{
+        if(!window.confirm('Reset all items in "'+c.name+'"? This marks every item as not done.')) return;
+        c.items.forEach(it=>{ it.done = false; });
+        save(); renderChecklists(); renderHabits(); updateExpUI();
       });
       top.querySelector('.del-goal').addEventListener('click', ()=>{
         if(!window.confirm('Delete checklist "'+c.name+'"? This can\'t be undone.')) return;

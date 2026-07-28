@@ -78,6 +78,7 @@
     state.goals = parsed.goals || [];
     state.habits = parsed.habits || [];
     state.countdowns = parsed.countdowns || [];
+    state.countdowns.forEach(c=>{ if(c.pinned===undefined) c.pinned=false; if(c.createdAt===undefined) c.createdAt=Date.now(); });
     state.mantras = parsed.mantras || [];
     state.checklists = parsed.checklists || [];
     if(parsed.checklistExp === undefined){

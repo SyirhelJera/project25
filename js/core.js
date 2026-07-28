@@ -14,7 +14,6 @@
   let starredFirst = false;
   let sortMode = 'none';
   let sortDir = 'desc';
-  let pendingImport = null;
   let mantraIdx = 0;
 
   const el = id => document.getElementById(id);

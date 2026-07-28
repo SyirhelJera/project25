@@ -7,7 +7,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -82,6 +81,8 @@
       </div>
     </div>
 
+    <div id="pinnedCdSlot"></div>
+
     <div class="mana-card">
       <div class="mana-top"><span class="mana-label">Overall Progress</span><span class="mana-pct" id="overallPct">0%</span></div>
       <div class="mana-track"><div class="mana-fill" id="manaFill" style="width:0%"></div></div>
@@ -96,7 +97,6 @@
     </div>
 
     <div id="checkinSlot"></div>
-    <div id="importSlot"></div>
 
     <div class="toolbar">
       <button class="btn btn-ghost btn-sm" id="starredFirstBtn">★ Starred first</button>
@@ -109,8 +109,6 @@
       </select>
       <button class="sort-dir-btn" id="goalSortDirBtn" title="Toggle ascending/descending">↓</button>
       <div class="spacer"></div>
-      <button class="btn btn-ghost" id="exportBtn">⬇ Export .xlsx</button>
-      <label class="btn btn-ghost" style="margin:0;">⬆ Import .xlsx<input type="file" id="importFile" accept=".xlsx,.xls" style="display:none;"></label>
     </div>
 
     <div class="add-row">

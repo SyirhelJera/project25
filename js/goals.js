@@ -191,6 +191,29 @@
     renderMantra();
   });
 
+  function renderPinnedCountdown(){
+    const slot = el('pinnedCdSlot');
+    const c = state.countdowns.find(x=>x.pinned);
+    if(!c){ slot.innerHTML = ''; return; }
+    const diff = daysLeft(c.date);
+    const numHtml = '<div class="pinned-cd-num-wrap">'
+      + '<div class="pinned-cd-num '+(diff<0?'past':'')+'">'+(diff<0 ? 'past' : diff)+'</div>'
+      + (diff>=0 ? '<div class="pinned-cd-sub">days left</div>' : '')
+      + '</div>';
+    let bodyHtml = numHtml;
+    if(diff>=0){
+      const { total, filled } = mosaicDots(c);
+      let dots = '';
+      for(let i=0;i<total;i++) dots += '<div class="cd-mosaic-dot'+(i<filled?' filled':'')+'"></div>';
+      bodyHtml = '<div class="pinned-cd-row">'+numHtml+'<div class="cd-mosaic">'+dots+'</div></div>';
+    }
+    slot.innerHTML = '<div class="pinned-cd-card">'
+      + '<div class="pinned-cd-name">'+escapeHtml(c.label)+'</div>'
+      + bodyHtml
+      + '<div class="pinned-cd-date">'+fmtDate(new Date(c.date).getTime())+'</div>'
+      + '</div>';
+  }
+
   function renderCheckin(){
     const slot = el('checkinSlot');
     const stale = state.goals.find(g => goalProgress(g) < 100 && !isGoalLocked(g) && (!g.checkin || (Date.now() - g.checkin.at) > 3*24*3600*1000));
@@ -255,6 +278,7 @@
     pickFocusTask(false);
     renderFocus();
     renderMantra();
+    renderPinnedCountdown();
 
     const list = el('goalList');
     const empty = el('emptyState');
@@ -651,57 +675,4 @@
   }
   el('addGoalBtn').addEventListener('click', addGoal);
   el('newGoalInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addGoal(); });
-
-  /* ---------- export / import ---------- */
-  function subtasksToStr(subtasks){ return subtasks.map(s=>s.title+'::'+(s.done?1:0)).join(' | '); }
-  function strToSubtasks(str){
-    if(!str) return [];
-    return String(str).split('|').map(chunk=>{
-      const parts = chunk.trim().split('::');
-      const title = (parts[0]||'').trim();
-      if(!title) return null;
-      return { id:uid(), title, done: parts[1]==='1' };
-    }).filter(Boolean);
-  }
-  el('exportBtn').addEventListener('click', () => {
-    const rows = state.goals.map(g => ({
-      Title: g.title, Starred: g.starred?'Yes':'No', WorkingOn: g.workingOn?'Yes':'No', Progress: goalProgress(g)+'%',
-      TargetDate: g.targetDate||'', FinanceTarget: g.financeTarget??'', FinanceSaved: g.financeSaved||0,
-      Tier: g.tier||'', RequiredNetWorth: g.requiredNetWorth??'',
-      CreatedAt: fmtDate(g.createdAt), CompletedAt: fmtDate(g.completedAt), Subtasks: subtasksToStr(g.subtasks)
-    }));
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Goals');
-    if(state.habits.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.habits.map(h=>({Name:h.name}))), 'Habits');
-    if(state.countdowns.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.countdowns.map(c=>({Label:c.label,Date:c.date}))), 'Countdowns');
-    XLSX.writeFile(wb, 'project-25-export.xlsx');
-  });
-  el('importFile').addEventListener('change', (e) => {
-    const file = e.target.files[0]; if(!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try{
-        const wb = XLSX.read(ev.target.result, {type:'array'});
-        const sheet = wb.Sheets['Goals'] || wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet);
-        const imported = rows.map(r => ({
-          id:uid(), title: r.Title || 'Untitled goal', starred: r.Starred==='Yes', workingOn: r.WorkingOn==='Yes',
-          manualDone: String(r.Progress).replace('%','')==='100', subtasks: strToSubtasks(r.Subtasks),
-          open:false, createdAt: Date.now(), completedAt: null, targetDate: r.TargetDate || '',
-          financeTarget: r.FinanceTarget===''||r.FinanceTarget===undefined ? null : parseFloat(r.FinanceTarget),
-          financeSaved: parseFloat(r.FinanceSaved)||0, checkin:null, color:'', imageUrl:'',
-          tier: r.Tier || '',
-          requiredNetWorth: r.RequiredNetWorth===''||r.RequiredNetWorth===undefined ? null : parseFloat(r.RequiredNetWorth)
-        }));
-        pendingImport = imported;
-        el('importSlot').innerHTML = '<div class="confirm-banner"><span>Importing will replace all '+state.goals.length+' current goals with '+imported.length+' goals from the file.</span><button class="btn btn-sm btn-primary" id="confirmImport">Replace goals</button><button class="btn btn-sm btn-ghost" id="cancelImport">Cancel</button></div>';
-        el('confirmImport').addEventListener('click', () => { state.goals = pendingImport; pendingImport = null; el('importSlot').innerHTML=''; save(); renderGoals(); });
-        el('cancelImport').addEventListener('click', () => { pendingImport = null; el('importSlot').innerHTML=''; });
-      }catch(err){
-        el('importSlot').innerHTML = '<div class="confirm-banner"><span>Could not read that file. Make sure it is an .xlsx exported from this app.</span></div>';
-      }
-      e.target.value = '';
-    };
-    reader.readAsArrayBuffer(file);
-  });
 

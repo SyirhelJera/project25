@@ -79,6 +79,86 @@
      the pattern used for weight-log month groups */
   const checklistGroupCollapsed = {};
 
+  /* shared done/undone toggle so the normal checklist row and the Play overlay's ✓ button
+     apply the same XP + habit-link side effects instead of duplicating them */
+  function setItemDone(c, it, done){
+    if(it.done === done) return;
+    it.done = done;
+    state.checklistExp = done
+      ? (state.checklistExp||0) + CHECKLIST_ITEM_EXP
+      : Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP);
+    syncChecklistHabitLink(c);
+    save();
+  }
+
+  /* ---------- Play Checklist (pomodoro-style task runner) ---------- */
+  let playState = null; // {checklist, item, remainingSec, timerHandle}
+
+  function startPlaySession(c){
+    const first = c.items.find(i=>!i.done);
+    if(!first) return;
+    if(playState && playState.timerHandle) clearInterval(playState.timerHandle);
+    playState = { checklist: c, item: first, remainingSec: (first.durationMin||5)*60, timerHandle: null };
+    el('playBody').style.display = '';
+    el('playComplete').style.display = 'none';
+    el('playOverlay').style.display = 'flex';
+    renderPlayOverlay();
+    playState.timerHandle = setInterval(tickPlayTimer, 1000);
+  }
+
+  function tickPlayTimer(){
+    if(!playState || playState.remainingSec<=0) return;
+    playState.remainingSec--;
+    updatePlayTimerDisplay();
+  }
+
+  function updatePlayTimerDisplay(){
+    if(!playState) return;
+    const m = Math.floor(playState.remainingSec/60), s = playState.remainingSec%60;
+    const timerEl = el('playTimer');
+    timerEl.textContent = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    timerEl.classList.toggle('play-timer-zero', playState.remainingSec===0);
+  }
+
+  function renderPlayOverlay(){
+    if(!playState) return;
+    const c = playState.checklist, it = playState.item;
+    const doneCt = c.items.filter(i=>i.done).length;
+    el('playChecklistName').textContent = c.name;
+    el('playProgress').textContent = 'Task '+(doneCt+1)+' of '+c.items.length;
+    el('playTaskText').textContent = it.text;
+    updatePlayTimerDisplay();
+  }
+
+  function handlePlayCheck(){
+    if(!playState) return;
+    const c = playState.checklist, it = playState.item;
+    setItemDone(c, it, true);
+    renderChecklists(); renderHabits(); updateExpUI();
+    const next = c.items.find(i=>!i.done);
+    if(!next){ showPlayComplete(); return; }
+    playState.item = next;
+    playState.remainingSec = (next.durationMin||5)*60;
+    renderPlayOverlay();
+  }
+
+  function showPlayComplete(){
+    if(playState && playState.timerHandle){ clearInterval(playState.timerHandle); playState.timerHandle = null; }
+    el('playBody').style.display = 'none';
+    el('playProgress').textContent = '';
+    el('playComplete').style.display = 'block';
+  }
+
+  function stopPlaySession(){
+    if(playState && playState.timerHandle) clearInterval(playState.timerHandle);
+    playState = null;
+    el('playOverlay').style.display = 'none';
+  }
+
+  el('playXBtn').addEventListener('click', stopPlaySession);
+  el('playCheckBtn').addEventListener('click', handlePlayCheck);
+  el('playCompleteCloseBtn').addEventListener('click', stopPlaySession);
+
   function renderChecklists(){
     applyChecklistResets();
     const list = el('checklistList'); list.innerHTML = '';
@@ -127,6 +207,7 @@
           + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
         + '</select>'
         + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
+        + (c.items.some(i=>!i.done) ? '<button class="btn btn-primary" data-act="play">▶ Play</button>' : '')
         + '<button class="del-goal">Delete</button>';
       top.querySelector('.checklist-group-input').addEventListener('change', e=>{
         c.group = e.target.value.trim(); save(); renderChecklists();
@@ -161,19 +242,27 @@
         if(!window.confirm('Delete checklist "'+c.name+'"? This can\'t be undone.')) return;
         state.checklists = state.checklists.filter(x=>x.id!==c.id); save(); renderChecklists();
       });
+      const playBtn = top.querySelector('[data-act="play"]');
+      if(playBtn) playBtn.addEventListener('click', ()=> startPlaySession(c));
       card.appendChild(top);
 
       if(!c.collapsed){
         const itemsWrap = document.createElement('div');
         c.items.forEach(it=>{
+          if(it.durationMin === undefined) it.durationMin = 5;
           const row = document.createElement('div'); row.className='sub-row'; row.dataset.itemId = it.id;
           row.innerHTML = '<span class="drag-handle sub-drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
-            + '<div class="sub-check '+(it.done?'checked':'')+'">'+(it.done?'✓':'')+'</div><div class="sub-title '+(it.done?'done':'')+'">'+escapeHtml(it.text)+'</div><button class="sub-del">✕</button>';
+            + '<div class="sub-check '+(it.done?'checked':'')+'">'+(it.done?'✓':'')+'</div><div class="sub-title '+(it.done?'done':'')+'">'+escapeHtml(it.text)+'</div>'
+            + '<input type="number" class="mini-input sub-duration" min="1" max="180" value="'+it.durationMin+'" title="Minutes for Play timer">'
+            + '<button class="sub-del">✕</button>';
           row.querySelector('.sub-check').addEventListener('click', ()=>{
-            if(it.done){ it.done = false; state.checklistExp = Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP); }
-            else { it.done = true; state.checklistExp = (state.checklistExp||0) + CHECKLIST_ITEM_EXP; }
-            syncChecklistHabitLink(c);
-            save(); renderChecklists(); renderHabits(); updateExpUI();
+            setItemDone(c, it, !it.done);
+            renderChecklists(); renderHabits(); updateExpUI();
+          });
+          row.querySelector('.sub-duration').addEventListener('change', e=>{
+            let v = parseInt(e.target.value, 10);
+            if(!v || v<1) v = 1; if(v>180) v = 180;
+            it.durationMin = v; e.target.value = v; save();
           });
           row.querySelector('.sub-del').addEventListener('click', ()=>{
             if(it.done) state.checklistExp = Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP);
@@ -222,7 +311,7 @@
         const itemInput = addRow.querySelector('input');
         const doAddItem = () => {
           const v=itemInput.value.trim(); if(!v) return;
-          c.items.push({id:uid(), text:v, done:false});
+          c.items.push({id:uid(), text:v, done:false, durationMin:5});
           save(); renderChecklists();
           // renderChecklists() rebuilds the DOM, so re-find and re-focus this checklist's input
           // to let the user keep adding items just by pressing Enter

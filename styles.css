@@ -180,6 +180,10 @@
   .main{flex:1;min-width:0;padding:30px 32px 90px;max-width:920px;}
   .view{display:none;}
   .view.active{display:block;}
+  .view.swipe-in-right{animation:swipeInFromRight .22s ease;}
+  .view.swipe-in-left{animation:swipeInFromLeft .22s ease;}
+  @keyframes swipeInFromRight{from{opacity:0;transform:translateX(28px);}to{opacity:1;transform:translateX(0);}}
+  @keyframes swipeInFromLeft{from{opacity:0;transform:translateX(-28px);}to{opacity:1;transform:translateX(0);}}
   .view-title{font-size:21px;font-weight:800;margin-bottom:4px;}
   .view-sub{font-size:13px;color:var(--muted);margin-bottom:20px;}
 

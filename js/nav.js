@@ -56,6 +56,14 @@
       const nextIdx = dx < 0 ? curIdx + 1 : curIdx - 1;
       if(nextIdx < 0 || nextIdx >= items.length) return;
       items[nextIdx].click();
+      const newView = document.querySelector('.view.active');
+      if(newView){
+        const cls = dx < 0 ? 'swipe-in-right' : 'swipe-in-left';
+        newView.classList.remove('swipe-in-right','swipe-in-left');
+        void newView.offsetWidth;
+        newView.classList.add(cls);
+        newView.addEventListener('animationend', () => newView.classList.remove(cls), {once:true});
+      }
     }, {passive:true});
   })();
 

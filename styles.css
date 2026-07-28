@@ -508,9 +508,12 @@
     .profile-card{display:none;}
     .sidebar-footer{display:none;}
 
-    /* top nav: icon-only, label shows only for the active tab */
-    .nav{flex-direction:row;flex-wrap:wrap;gap:4px;margin-bottom:0;}
-    .nav-item{padding:8px;border-radius:9px;gap:0;position:relative;}
+    /* top nav: icon-only, label shows only for the active tab, single scrollable row */
+    .nav{
+      flex:1 1 100%;flex-direction:row;flex-wrap:nowrap;gap:4px;margin:8px 0 0;
+      overflow-x:auto;-webkit-overflow-scrolling:touch;
+    }
+    .nav-item{flex:none;padding:8px;border-radius:9px;gap:0;position:relative;}
     .nav-item .nav-label{display:none;}
     .nav-item.active{gap:6px;padding:8px 12px;}
     .nav-item.active .nav-label{display:inline;}

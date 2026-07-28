@@ -4,6 +4,13 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Project 25</title>
+<meta name="theme-color" content="#6366F1">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Project 25">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -62,6 +69,7 @@
   <div id="setupBanner" class="setup-banner" style="display:none;"></div>
   <div id="loadWarningBanner" class="setup-banner" style="display:none;"></div>
   <div id="conflictBanner" class="setup-banner" style="display:none;"></div>
+  <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
 
   <!-- GOALS -->
   <div class="view active" id="view-goals">
@@ -489,5 +497,12 @@
 <script src="js/fitness.js"></script>
 <script src="js/valorant.js"></script>
 <script src="js/main.js"></script>
+<script>
+  if('serviceWorker' in navigator){
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(e => console.error('sw registration failed', e));
+    });
+  }
+</script>
 </body>
 </html>

@@ -54,6 +54,58 @@
     el('conflictBanner').style.display = 'none';
   }
 
+  /* ---------- offline data cache ----------
+     Mirrors the last known-good state into localStorage so the app has something
+     to show when Supabase (or window.storage) can't be reached — e.g. no signal
+     on the iPhone, or the desktop browser is offline. This is a read fallback,
+     not a sync engine: save() still uses the existing optimistic-concurrency
+     check (lastKnownUpdatedAt) once connectivity returns, so a stale offline
+     copy can never silently clobber a newer save made elsewhere.
+  ---------------------------------------- */
+  const OFFLINE_CACHE_KEY = 'p25-offline-data';
+  function cacheStateLocally(){
+    // updatedAt travels with the snapshot so a fresh offline load can restore it into
+    // lastKnownUpdatedAt below — without it, the first save() after reconnecting would
+    // fall through to the unconditional upsert branch and could clobber a newer remote save.
+    try{ localStorage.setItem(OFFLINE_CACHE_KEY, JSON.stringify({ data: state, cachedAt: Date.now(), updatedAt: lastKnownUpdatedAt })); }
+    catch(e){ /* private browsing / storage quota — best effort only */ }
+  }
+  function loadLocalCache(){
+    try{
+      const raw = localStorage.getItem(OFFLINE_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+  function showOfflineBanner(msg){
+    const b = el('offlineBanner');
+    if(!b) return;
+    b.style.display = 'block';
+    b.innerHTML = msg;
+  }
+  function hideOfflineBanner(){
+    const b = el('offlineBanner');
+    if(b) b.style.display = 'none';
+  }
+  // Falls back to the local mirror when a live load fails. Returns true if a cached
+  // copy existed and was applied; the generic load-warning banner is shown otherwise.
+  function fallbackToLocalCache(){
+    const cached = loadLocalCache();
+    if(cached && cached.data){
+      applyLoadedState(cached.data);
+      if(cached.updatedAt !== undefined) lastKnownUpdatedAt = cached.updatedAt;
+      loadedOk = true;
+      const when = cached.cachedAt ? new Date(cached.cachedAt).toLocaleString() : 'earlier';
+      showOfflineBanner('You’re offline — showing your last synced copy (from ' + escapeHtml(when) + '). '
+        + 'Anything you change here is saved on this device and will sync once you’re back online.');
+      return true;
+    }
+    showLoadWarning();
+    return false;
+  }
+  // Retry a pending write once connectivity returns. save() re-checks lastKnownUpdatedAt
+  // itself, so this is safe even if nothing actually changed while offline.
+  window.addEventListener('online', () => { if(loadedOk) save(); });
+
   function showSetupBanner(msg){
     const b = el('setupBanner');
     b.style.display = 'block';
@@ -144,9 +196,10 @@
   // force=true skips the conflict check and overwrites unconditionally — only used when the user
   // explicitly chooses to (the conflict banner's "keep my changes" button, or restoring a backup).
   async function save(force){
+    if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
+    cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
     try{
-      if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
-      if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(state)); return; }
+      if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(state)); hideOfflineBanner(); return; }
       if(!supa) return;
       const nowIso = new Date().toISOString();
       let data, error;
@@ -170,7 +223,12 @@
       }
       lastKnownUpdatedAt = (data && data[0] && data[0].updated_at) || nowIso;
       hideConflictBanner();
-    }catch(e){ console.error('save failed', e); }
+      hideOfflineBanner();
+    }catch(e){
+      console.error('save failed', e);
+      showOfflineBanner('Couldn’t reach the server to save your latest change — it’s saved on this device '
+        + 'and will sync automatically once you’re back online.');
+    }
   }
   // Debounced save — collapses rapid-fire writes (e.g. typing in a number field) into a single
   // network/storage write after the user pauses, instead of one write per keystroke. This keeps
@@ -204,6 +262,8 @@
           const res = await getWithRetry('app-data');
           if(res && res.value) applyLoadedState(JSON.parse(res.value));
           loadedOk = true;
+          cacheStateLocally();
+          hideOfflineBanner();
         }catch(e){
           // A missing key on first-ever run is expected and not a real error — only warn on genuine failures.
           const msg = (e && e.message) || String(e);
@@ -211,7 +271,7 @@
             loadedOk = true;
           } else {
             console.error('load failed', e);
-            showLoadWarning();
+            fallbackToLocalCache();
           }
         }
       } else {
@@ -223,17 +283,19 @@
           const { data, error } = await supa.from('app_data').select('data, updated_at').eq('id', SHARED_ROW_ID).maybeSingle();
           if(error){
             console.error('load failed', error);
-            showLoadWarning();
+            fallbackToLocalCache();
           } else {
             if(data && data.data) applyLoadedState(data.data);
             lastKnownUpdatedAt = data ? data.updated_at : null;
             loadedOk = true;
+            cacheStateLocally();
+            hideOfflineBanner();
           }
         }
       }
     }catch(e){
       console.error('load failed', e);
-      showLoadWarning();
+      fallbackToLocalCache();
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';

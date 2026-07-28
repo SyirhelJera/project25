@@ -136,6 +136,7 @@
     if(state.profile.avatarGeneratedAt === undefined) state.profile.avatarGeneratedAt = null;
     ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=>{ if(!state.profile[k]) state.profile[k] = ''; });
     state.focus = parsed.focus || null;
+    state.playSession = parsed.playSession || null;
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
   }
 
@@ -239,6 +240,7 @@
     renderAboutMe();
     applyTheme();
     renderAll();
+    resumePlaySessionIfAny();
   }
 
   function showLoadWarning(){

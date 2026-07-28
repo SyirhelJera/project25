@@ -91,38 +91,60 @@
     save();
   }
 
-  /* ---------- Play Checklist (pomodoro-style task runner) ---------- */
-  let playState = null; // {checklist, item, remainingSec, timerHandle}
+  /* ---------- Play Checklist (pomodoro-style task runner) ----------
+     The session itself (state.playSession = {checklistId, itemId, startedAt, durationSec})
+     lives in the persisted state, not a local variable, so it survives reloads and shows up
+     on any device that loads this data — remaining time is always derived from startedAt vs.
+     Date.now() rather than decremented by the interval, so it reflects real elapsed time even
+     if the tab/browser was closed for a while. Only the setInterval handle stays local. */
+  let playTimerHandle = null;
 
-  function startPlaySession(c){
-    const first = c.items.find(i=>!i.done);
-    if(!first) return;
-    if(playState && playState.timerHandle) clearInterval(playState.timerHandle);
-    playState = { checklist: c, item: first, remainingSec: (first.durationMin||5)*60, timerHandle: null };
+  function resolvePlaySessionRefs(){
+    if(!state.playSession) return null;
+    const c = state.checklists.find(x=>x.id===state.playSession.checklistId);
+    const it = c && c.items.find(x=>x.id===state.playSession.itemId);
+    return (c && it) ? {c, it} : null;
+  }
+
+  function openPlayOverlay(){
+    if(playTimerHandle) clearInterval(playTimerHandle);
     el('playBody').style.display = '';
     el('playComplete').style.display = 'none';
     el('playOverlay').style.display = 'flex';
     renderPlayOverlay();
-    playState.timerHandle = setInterval(tickPlayTimer, 1000);
+    playTimerHandle = setInterval(tickPlayTimer, 1000);
+  }
+
+  function startPlaySession(c){
+    const first = c.items.find(i=>!i.done);
+    if(!first) return;
+    state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60 };
+    save();
+    openPlayOverlay();
+  }
+
+  function getRemainingSec(){
+    if(!state.playSession) return 0;
+    return Math.max(0, state.playSession.durationSec - Math.floor((Date.now()-state.playSession.startedAt)/1000));
   }
 
   function tickPlayTimer(){
-    if(!playState || playState.remainingSec<=0) return;
-    playState.remainingSec--;
+    if(!resolvePlaySessionRefs()){ stopPlaySession(); return; }
     updatePlayTimerDisplay();
   }
 
   function updatePlayTimerDisplay(){
-    if(!playState) return;
-    const m = Math.floor(playState.remainingSec/60), s = playState.remainingSec%60;
+    const remainingSec = getRemainingSec();
+    const m = Math.floor(remainingSec/60), s = remainingSec%60;
     const timerEl = el('playTimer');
     timerEl.textContent = String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
-    timerEl.classList.toggle('play-timer-zero', playState.remainingSec===0);
+    timerEl.classList.toggle('play-timer-zero', remainingSec===0);
   }
 
   function renderPlayOverlay(){
-    if(!playState) return;
-    const c = playState.checklist, it = playState.item;
+    const refs = resolvePlaySessionRefs();
+    if(!refs) return;
+    const { c, it } = refs;
     const doneCt = c.items.filter(i=>i.done).length;
     el('playChecklistName').textContent = c.name;
     el('playProgress').textContent = 'Task '+(doneCt+1)+' of '+c.items.length;
@@ -131,29 +153,53 @@
   }
 
   function handlePlayCheck(){
-    if(!playState) return;
-    const c = playState.checklist, it = playState.item;
+    const refs = resolvePlaySessionRefs();
+    if(!refs) return;
+    const { c, it } = refs;
     setItemDone(c, it, true);
     renderChecklists(); renderHabits(); updateExpUI();
     const next = c.items.find(i=>!i.done);
-    if(!next){ showPlayComplete(); return; }
-    playState.item = next;
-    playState.remainingSec = (next.durationMin||5)*60;
+    if(!next){ state.playSession = null; save(); showPlayComplete(); return; }
+    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60 };
+    save();
     renderPlayOverlay();
   }
 
   function showPlayComplete(){
-    if(playState && playState.timerHandle){ clearInterval(playState.timerHandle); playState.timerHandle = null; }
+    if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
     el('playBody').style.display = 'none';
     el('playProgress').textContent = '';
     el('playComplete').style.display = 'block';
   }
 
   function stopPlaySession(){
-    if(playState && playState.timerHandle) clearInterval(playState.timerHandle);
-    playState = null;
+    if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
+    state.playSession = null;
+    save();
     el('playOverlay').style.display = 'none';
   }
+
+  // On startup, reopen the overlay on whatever task was in progress when the app was last
+  // closed — the timer picks up from real elapsed time via getRemainingSec(), not a fresh 05:00.
+  function resumePlaySessionIfAny(){
+    if(!state.playSession) return;
+    let refs = resolvePlaySessionRefs();
+    if(!refs){
+      // checklist gone entirely, or the item was already completed/removed elsewhere (e.g.
+      // another device) — fall through to the next undone item on that checklist if any
+      const c = state.checklists.find(x=>x.id===state.playSession.checklistId);
+      if(!c){ state.playSession = null; save(); return; }
+      const next = c.items.find(i=>!i.done);
+      if(!next){ state.playSession = null; save(); return; }
+      state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60 };
+      save();
+    }
+    openPlayOverlay();
+  }
+
+  // Refresh the countdown the instant the tab regains focus, instead of waiting up to 1s for
+  // the next interval tick — reinforces that the timer kept running while the tab was hidden.
+  document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && state.playSession) updatePlayTimerDisplay(); });
 
   el('playXBtn').addEventListener('click', stopPlaySession);
   el('playCheckBtn').addEventListener('click', handlePlayCheck);

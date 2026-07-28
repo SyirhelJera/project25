@@ -467,7 +467,7 @@
 
   
   /* checklists */
-  .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;}
+  .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
   .checklist-name{flex:1;min-width:120px;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
   .checklist-freq,.checklist-habit-link{

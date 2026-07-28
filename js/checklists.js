@@ -341,6 +341,12 @@
       });
       const playBtn = top.querySelector('[data-act="play"]');
       if(playBtn) playBtn.addEventListener('click', ()=> startPlaySession(c));
+      // clicking any non-interactive white space on the card (not a button/input/select/drag
+      // handle/item-check) toggles minimize/maximize, same as the dedicated collapse button
+      card.addEventListener('click', e=>{
+        if(e.target.closest('button, input, select, .drag-handle, .sub-check')) return;
+        c.collapsed = !c.collapsed; save(); renderChecklists();
+      });
       card.appendChild(top);
 
       if(!c.collapsed){

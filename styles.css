@@ -498,10 +498,11 @@
     body{flex-direction:column;}
     .sidebar{
       width:100%;height:auto;position:sticky;top:0;z-index:40;
-      flex-direction:row;flex-wrap:wrap;align-items:center;padding:14px;
+      flex-direction:row;flex-wrap:wrap;align-items:center;
+      padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 14px max(14px,env(safe-area-inset-left));
       background:var(--surface);
     }
-    .sidebar.scrolled{padding:8px 14px;box-shadow:0 2px 10px rgba(0,0,0,.10);}
+    .sidebar.scrolled{padding:max(8px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) 8px max(14px,env(safe-area-inset-left));box-shadow:0 2px 10px rgba(0,0,0,.10);}
     .sidebar.scrolled .brand-icon{width:28px;height:28px;}
     .sidebar.scrolled .brand-icon svg{width:15px;height:15px;}
     .sidebar.scrolled .brand-name{font-size:14px;}

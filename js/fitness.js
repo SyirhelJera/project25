@@ -74,6 +74,9 @@
     const ringEl = el('pfAvatarRing'), svg = el('pfAvatarSvg'), img = el('pfAvatarImg');
     if(!ringEl || !svg) return;
 
+    const blockEl = el('pfAvatarBlock');
+    if(blockEl) blockEl.style.display = state.profile.hideAvatar ? 'none' : '';
+
     const fitTier = getFitnessTier();
 
     const genBtn = el('pfAvatarGenBtn');

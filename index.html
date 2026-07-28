@@ -20,15 +20,17 @@
   </div>
 
   <div class="profile-card">
-    <div class="avatar-wrap">
-      <div class="avatar-ring" id="pfAvatarRing" title="Your avatar changes with age, level, fitness, and net worth">
-        <svg id="pfAvatarSvg" viewBox="0 0 100 100"></svg>
-        <img id="pfAvatarImg" style="display:none;" alt="Your avatar">
+    <div id="pfAvatarBlock">
+      <div class="avatar-wrap">
+        <div class="avatar-ring" id="pfAvatarRing" title="Your avatar changes with age, level, fitness, and net worth">
+          <svg id="pfAvatarSvg" viewBox="0 0 100 100"></svg>
+          <img id="pfAvatarImg" style="display:none;" alt="Your avatar">
+        </div>
       </div>
-    </div>
-    <div class="avatar-gen-row">
-      <button class="avatar-gen-btn" id="pfAvatarGenBtn" type="button">✦ Generate AI Avatar</button>
-      <div class="avatar-gen-err" id="pfAvatarGenErr" style="display:none;"></div>
+      <div class="avatar-gen-row">
+        <button class="avatar-gen-btn" id="pfAvatarGenBtn" type="button">✦ Generate AI Avatar</button>
+        <div class="avatar-gen-err" id="pfAvatarGenErr" style="display:none;"></div>
+      </div>
     </div>
     <div class="profile-row"><div class="profile-lbl">Name</div><input id="pfName" type="text" placeholder="Your name" maxlength="40"></div>
     <div class="profile-row"><div class="profile-lbl">Age</div><input id="pfAge" type="number" min="0" placeholder="Age"></div>
@@ -429,6 +431,13 @@
         <div class="theme-swatch" style="background:#000000;"><span style="background:#0A84FF;"></span></div>
         <div class="theme-option-label">iOS Dark</div>
       </div>
+    </div>
+
+    <div class="section-lbl" style="margin-top:22px;">Profile Avatar</div>
+    <div class="view-sub" style="margin-bottom:10px;">Show or hide your avatar on the profile card.</div>
+    <div class="unit-toggle" id="avatarVisToggle">
+      <button data-vis="show" id="avatarVisBtnShow">Show</button>
+      <button data-vis="hide" id="avatarVisBtnHide">Hide</button>
     </div>
 
     <div class="section-lbl" style="margin-top:22px;">Net Worth Display Currency</div>

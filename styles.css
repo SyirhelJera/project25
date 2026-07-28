@@ -108,6 +108,7 @@
     font-family:'Inter',sans-serif;
     min-height:100vh;
     display:flex;
+    overflow-x:hidden;
   }
   h1,h2,h3{font-family:'Manrope',sans-serif;margin:0;}
 
@@ -451,6 +452,9 @@
     .goal-title{font-size:14px;}
     .working-btn{padding:5px 9px;font-size:10px;}
     .goal-foot-row{flex-wrap:wrap;}
+    .add-row{flex-wrap:wrap;}
+    .add-row input, .add-row .btn{flex:1 1 100% !important; width:100%;}
+    .cd-card{flex-wrap:wrap;}
   }
 
   /* exp bar */
@@ -523,9 +527,9 @@
 
   /* fitness */
   .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}
-  .fitness-field{display:flex;flex-direction:column;gap:5px;}
+  .fitness-field{display:flex;flex-direction:column;gap:5px;min-width:0;}
   .fitness-field label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.4px;color:var(--faint);font-weight:700;}
-  .fitness-field input, .fitness-field select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .fitness-field input, .fitness-field select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;width:100%;min-width:0;}
   .fitness-field input:focus, .fitness-field select:focus{border-color:var(--violet);}
   .fitness-results{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-top:6px;}
   .fitness-result-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 8px;text-align:center;}

@@ -512,7 +512,9 @@
     .nav{
       flex:1 1 100%;flex-direction:row;flex-wrap:nowrap;gap:4px;margin:8px 0 0;
       overflow-x:auto;-webkit-overflow-scrolling:touch;
+      scrollbar-width:none;-ms-overflow-style:none;
     }
+    .nav::-webkit-scrollbar{display:none;}
     .nav-item{flex:none;padding:8px;border-radius:9px;gap:0;position:relative;}
     .nav-item .nav-label{display:none;}
     .nav-item.active{gap:6px;padding:8px 12px;}

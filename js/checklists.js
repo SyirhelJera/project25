@@ -118,9 +118,18 @@
   function startPlaySession(c){
     const first = c.items.find(i=>!i.done);
     if(!first) return;
-    state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60 };
+    state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60, sessionStartedAt: Date.now(), log: [] };
     save();
     openPlayOverlay();
+  }
+
+  // "12m 34s" / "1h 05m" / "42s" — used for the completion screen's total + per-task times
+  function fmtPlayDuration(sec){
+    sec = Math.max(0, Math.round(sec||0));
+    const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = sec%60;
+    if(h>0) return h+'h '+String(m).padStart(2,'0')+'m';
+    if(m>0) return m+'m '+String(s).padStart(2,'0')+'s';
+    return s+'s';
   }
 
   function getRemainingSec(){
@@ -156,20 +165,36 @@
     const refs = resolvePlaySessionRefs();
     if(!refs) return;
     const { c, it } = refs;
+    const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
+    const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec }]);
+    const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
     setItemDone(c, it, true);
     renderChecklists(); renderHabits(); updateExpUI();
     const next = c.items.find(i=>!i.done);
-    if(!next){ state.playSession = null; save(); showPlayComplete(); return; }
-    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60 };
+    if(!next){
+      const totalSec = Math.round((Date.now() - sessionStartedAt)/1000);
+      state.playSession = null; save();
+      showPlayComplete({ log, totalSec });
+      return;
+    }
+    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log };
     save();
     renderPlayOverlay();
   }
 
-  function showPlayComplete(){
+  function showPlayComplete(summary){
     if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
     el('playBody').style.display = 'none';
     el('playProgress').textContent = '';
     el('playComplete').style.display = 'block';
+    const log = (summary && summary.log) || [];
+    const totalSec = (summary && summary.totalSec) || 0;
+    const insights = el('playCompleteInsights');
+    if(!log.length){ insights.innerHTML = ''; return; }
+    insights.innerHTML = '<div class="play-insight-total">Finished in '+fmtPlayDuration(totalSec)+'</div>'
+      + '<div class="play-insight-list">'
+      + log.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time">'+fmtPlayDuration(entry.elapsedSec)+'</span></div>').join('')
+      + '</div>';
   }
 
   function stopPlaySession(){
@@ -191,7 +216,9 @@
       if(!c){ state.playSession = null; save(); return; }
       const next = c.items.find(i=>!i.done);
       if(!next){ state.playSession = null; save(); return; }
-      state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60 };
+      const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
+      const log = state.playSession.log || [];
+      state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log };
       save();
     }
     openPlayOverlay();

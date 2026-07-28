@@ -41,7 +41,7 @@
     const b = el('conflictBanner');
     b.style.display = 'block';
     b.innerHTML = 'Another tab or device saved newer changes to this data after this page loaded its copy. Your latest edit here was <b>not saved</b>, to avoid overwriting theirs.'
-      + '<div style="margin-top:8px;display:flex;gap:8px;">'
+      + '<div class="conflict-actions">'
       + '<button class="btn btn-sm btn-primary" id="conflictReloadBtn">Reload to see their changes</button>'
       + '<button class="btn btn-sm btn-ghost" id="conflictForceBtn">Keep my changes (overwrite theirs)</button>'
       + '</div>';

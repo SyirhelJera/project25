@@ -98,6 +98,14 @@
      Date.now() rather than decremented by the interval, so it reflects real elapsed time even
      if the tab/browser was closed for a while. Only the setInterval handle stays local. */
   let playTimerHandle = null;
+  // Minimize is a local, non-persisted view preference — every fresh open/resume starts expanded
+  // so the user always lands in full focus mode by default and opts into minimizing explicitly.
+  let playMinimized = false;
+
+  function setPlayMinimized(min){
+    playMinimized = min;
+    el('playOverlay').classList.toggle('minimized', min);
+  }
 
   function resolvePlaySessionRefs(){
     if(!state.playSession) return null;
@@ -108,6 +116,7 @@
 
   function openPlayOverlay(){
     if(playTimerHandle) clearInterval(playTimerHandle);
+    setPlayMinimized(false);
     el('playBody').style.display = '';
     el('playComplete').style.display = 'none';
     el('playOverlay').style.display = 'flex';
@@ -201,6 +210,7 @@
     if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
     state.playSession = null;
     save();
+    setPlayMinimized(false);
     el('playOverlay').style.display = 'none';
   }
 
@@ -231,6 +241,14 @@
   el('playXBtn').addEventListener('click', stopPlaySession);
   el('playCheckBtn').addEventListener('click', handlePlayCheck);
   el('playCompleteCloseBtn').addEventListener('click', stopPlaySession);
+  el('playCard').addEventListener('click', ()=>{ if(playMinimized) setPlayMinimized(false); });
+  // clicking the backdrop (outside the card) minimizes instead of doing nothing — only while a
+  // session is actually in progress (not on the completion screen, where there's nothing to pin)
+  el('playOverlay').addEventListener('click', e=>{
+    if(e.target !== el('playOverlay')) return;
+    if(!state.playSession || playMinimized) return;
+    setPlayMinimized(true);
+  });
 
   function renderChecklists(){
     applyChecklistResets();

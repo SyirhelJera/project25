@@ -328,7 +328,19 @@
 
   /* ---- Play Checklist (pomodoro-style task runner) ---- */
   .play-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;}
-  .play-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:32px 28px;width:100%;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .play-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:32px 28px;width:100%;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+
+  /* Minimized: shrink the full-screen takeover to a small, non-blocking floating pill so the
+     rest of the app (e.g. logging a weight entry in Fitness for a checklist task) stays usable
+     while a Play session — and its wall-clock timer — keeps running in the background. Triggered
+     by clicking the backdrop outside the card; click the pill again to restore. */
+  .play-overlay.minimized{inset:auto;bottom:20px;right:20px;left:auto;top:auto;background:none;padding:0;pointer-events:none;display:block;}
+  .play-overlay.minimized .play-card{pointer-events:auto;width:auto;max-width:200px;padding:14px 16px;border-radius:14px;cursor:pointer;text-align:left;}
+  .play-overlay.minimized .play-checklist-name,
+  .play-overlay.minimized .play-progress,
+  .play-overlay.minimized .play-actions{display:none;}
+  .play-overlay.minimized .play-task-text{font-size:12px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .play-overlay.minimized .play-timer{font-size:20px;margin-bottom:0;}
   .play-checklist-name{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
   .play-progress{font-size:11.5px;color:var(--faint);margin-top:4px;margin-bottom:18px;}
   .play-task-text{font-size:19px;font-weight:700;color:var(--text);margin-bottom:22px;line-height:1.4;}

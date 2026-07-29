@@ -221,9 +221,9 @@
       + '</div>';
     let bodyHtml = numHtml;
     if(diff>=0){
-      const { total, filled } = mosaicDots(c);
+      const { total, filled, todayIdx } = mosaicDots(c);
       let dots = '';
-      for(let i=0;i<total;i++) dots += '<div class="cd-mosaic-dot'+(i<filled?' filled':'')+'"></div>';
+      for(let i=0;i<total;i++) dots += '<div class="cd-mosaic-dot'+(i<filled?' filled':'')+(i===todayIdx?' today':'')+'"></div>';
       bodyHtml = '<div class="pinned-cd-row">'+numHtml+'<div class="cd-mosaic">'+dots+'</div></div>';
     }
     slot.innerHTML = '<div class="pinned-cd-card">'

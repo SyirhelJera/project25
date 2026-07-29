@@ -15,7 +15,11 @@
     const elapsedDays = Math.max(0, Math.min(totalDays, Math.round((now-start)/(1000*3600*24))));
     const total = Math.min(totalDays, CD_MOSAIC_MAX_DOTS);
     const filled = Math.round((elapsedDays/totalDays) * total);
-    return { total, filled };
+    // the dot representing "today" — normally the first unfilled dot right after the filled
+    // ones; clamped to the last dot for the edge case where the target date is today itself
+    // (elapsedDays===totalDays, so every dot already reads as filled)
+    const todayIdx = Math.min(filled, total-1);
+    return { total, filled, todayIdx };
   }
   function renderCountdowns(){
     const list = el('cdList'); list.innerHTML='';

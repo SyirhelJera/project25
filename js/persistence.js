@@ -191,6 +191,8 @@
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
+    state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'' };
+    ['filled','today','empty'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
   }
 
   // force=true skips the conflict check and overwrites unconditionally — only used when the user

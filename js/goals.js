@@ -179,6 +179,25 @@
   }
   el('focusReroll').addEventListener('click', ()=>{ pickFocusTask(true); renderFocus(); });
 
+  // a "Working on" goal that hasn't been touched (touchGoal) today — same "falling behind"
+  // signal as habitsAtRisk() in habits.js, but keyed off updatedAt instead of a streak. Exposed
+  // per-goal so both the nav badge count and individual goal cards can use the same condition.
+  function goalNeedsAttention(g){
+    const todayStr = localDateStr(new Date());
+    return g.workingOn && goalProgress(g) < 100 && !isGoalLocked(g)
+      && localDateStr(new Date(g.updatedAt || g.createdAt)) !== todayStr;
+  }
+  function goalsNeedingAttention(){
+    return state.goals.filter(goalNeedsAttention);
+  }
+  function updateGoalReminder(){
+    const atRisk = goalsNeedingAttention();
+    const badge = el('goalRiskBadge');
+    if(!badge) return;
+    if(atRisk.length){ badge.style.display = 'inline-flex'; badge.textContent = atRisk.length; }
+    else { badge.style.display = 'none'; }
+  }
+
   function renderMantra(){
     if(!state.mantras.length){ el('mantraRow').style.display='none'; return; }
     el('mantraRow').style.display='flex';
@@ -279,6 +298,7 @@
     renderFocus();
     renderMantra();
     renderPinnedCountdown();
+    updateGoalReminder();
 
     const list = el('goalList');
     const empty = el('emptyState');
@@ -313,7 +333,7 @@
       const locked = isGoalLocked(g);
 
       const card = document.createElement('div');
-      card.className = 'goal' + (pct===100 ? ' done' : '') + (g.open ? ' open' : '') + (locked ? ' locked' : '');
+      card.className = 'goal' + (pct===100 ? ' done' : '') + (g.open ? ' open' : '') + (locked ? ' locked' : '') + (goalNeedsAttention(g) ? ' needs-attention' : '');
       card.dataset.goalId = g.id;
       if(g.color) card.style.borderLeftColor = g.color;
 
@@ -392,7 +412,7 @@
       function refreshHeadUI(){
         updateCompletionMeta(g);
         const pct2 = goalProgress(g);
-        card.className = 'goal' + (pct2===100 ? ' done' : '') + (g.open ? ' open' : '');
+        card.className = 'goal' + (pct2===100 ? ' done' : '') + (g.open ? ' open' : '') + (goalNeedsAttention(g) ? ' needs-attention' : '');
         if(g.color) card.style.borderLeftColor = g.color;
         const checkEl = head.querySelector('[data-act="check"]');
         if(checkEl){ checkEl.className = 'goal-check ' + (pct2===100?'checked':''); checkEl.textContent = pct2===100?'✓':''; }

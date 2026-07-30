@@ -22,7 +22,13 @@
         return;
       }
       if(c.lastResetKey !== key){
-        c.items.forEach(it=>{ it.done = false; });
+        // record whether each item was completed by the end of the outgoing period before
+        // wiping it — this is the only point where a "miss" for that period is knowable, and
+        // feeds the struggling-tasks panel (see getStrugglingItems()).
+        c.items.forEach(it=>{
+          it.missStreak = it.done ? 0 : (it.missStreak||0) + 1;
+          it.done = false;
+        });
         c.lastResetKey = key;
         changed = true;
       }
@@ -127,7 +133,7 @@
   function startPlaySession(c){
     const first = c.items.find(i=>!i.done);
     if(!first) return;
-    state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60, sessionStartedAt: Date.now(), log: [] };
+    state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60, sessionStartedAt: Date.now(), log: [], skippedIds: [] };
     save();
     openPlayOverlay();
   }
@@ -177,16 +183,43 @@
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
     const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec }]);
     const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
+    const skippedIds = state.playSession.skippedIds || [];
     setItemDone(c, it, true);
     renderChecklists(); renderHabits(); updateExpUI();
-    const next = c.items.find(i=>!i.done);
+    const next = c.items.find(i=>!i.done && !skippedIds.includes(i.id));
     if(!next){
       const totalSec = Math.round((Date.now() - sessionStartedAt)/1000);
       state.playSession = null; save();
       showPlayComplete({ log, totalSec });
       return;
     }
-    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log };
+    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log, skippedIds };
+    save();
+    renderPlayOverlay();
+  }
+
+  // "come back to this later" — leaves the item undone (no XP, no habit-link change) but
+  // tallies it as a skip for the struggling-tasks panel, and moves on to the next task that
+  // hasn't already been skipped this session (so skipping doesn't just re-show the same task).
+  function handlePlaySkip(){
+    const refs = resolvePlaySessionRefs();
+    if(!refs) return;
+    const { c, it } = refs;
+    const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
+    const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec, skipped: true }]);
+    const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
+    const skippedIds = (state.playSession.skippedIds || []).concat([it.id]);
+    it.skipCount = (it.skipCount||0) + 1;
+    save();
+    renderChecklists();
+    const next = c.items.find(i=>!i.done && !skippedIds.includes(i.id));
+    if(!next){
+      const totalSec = Math.round((Date.now() - sessionStartedAt)/1000);
+      state.playSession = null; save();
+      showPlayComplete({ log, totalSec });
+      return;
+    }
+    state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log, skippedIds };
     save();
     renderPlayOverlay();
   }
@@ -202,7 +235,7 @@
     if(!log.length){ insights.innerHTML = ''; return; }
     insights.innerHTML = '<div class="play-insight-total">Finished in '+fmtPlayDuration(totalSec)+'</div>'
       + '<div class="play-insight-list">'
-      + log.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time">'+fmtPlayDuration(entry.elapsedSec)+'</span></div>').join('')
+      + log.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time'+(entry.skipped?' play-insight-skipped':'')+'">'+(entry.skipped?'⏭ Skipped':fmtPlayDuration(entry.elapsedSec))+'</span></div>').join('')
       + '</div>';
   }
 
@@ -224,11 +257,12 @@
       // another device) — fall through to the next undone item on that checklist if any
       const c = state.checklists.find(x=>x.id===state.playSession.checklistId);
       if(!c){ state.playSession = null; save(); return; }
-      const next = c.items.find(i=>!i.done);
+      const skippedIds = state.playSession.skippedIds || [];
+      const next = c.items.find(i=>!i.done && !skippedIds.includes(i.id));
       if(!next){ state.playSession = null; save(); return; }
       const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
       const log = state.playSession.log || [];
-      state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log };
+      state.playSession = { checklistId: c.id, itemId: next.id, startedAt: Date.now(), durationSec: (next.durationMin||5)*60, sessionStartedAt, log, skippedIds };
       save();
     }
     openPlayOverlay();
@@ -239,6 +273,7 @@
   document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible' && state.playSession) updatePlayTimerDisplay(); });
 
   el('playXBtn').addEventListener('click', stopPlaySession);
+  el('playSkipBtn').addEventListener('click', handlePlaySkip);
   el('playCheckBtn').addEventListener('click', handlePlayCheck);
   el('playCompleteCloseBtn').addEventListener('click', stopPlaySession);
   el('playCard').addEventListener('click', ()=>{ if(playMinimized) setPlayMinimized(false); });
@@ -250,8 +285,42 @@
     setPlayMinimized(true);
   });
 
+  // top items across all checklists ranked by "struggle score" — a mix of how many consecutive
+  // reset periods an item was missed (missStreak) and how many times it's been skipped in a Play
+  // Session (skipCount). Only items with a nonzero score are included, so a freshly added item
+  // never shows up here just for existing.
+  function getStrugglingItems(){
+    const rows = [];
+    state.checklists.forEach(c=>{
+      c.items.forEach(it=>{
+        const missStreak = it.missStreak||0, skipCount = it.skipCount||0;
+        const score = missStreak*2 + skipCount;
+        if(score > 0) rows.push({ checklistName: c.name, text: it.text, missStreak, skipCount, score });
+      });
+    });
+    rows.sort((a,b)=> b.score - a.score);
+    return rows.slice(0, 5);
+  }
+
+  function renderStrugglingTasks(){
+    const panel = el('strugglingTasksPanel');
+    const rows = getStrugglingItems();
+    if(!rows.length){ panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    el('strugglingTasksList').innerHTML = rows.map(r=>{
+      const reasons = [];
+      if(r.missStreak>0) reasons.push('missed '+r.missStreak+' reset'+(r.missStreak===1?'':'s')+' in a row');
+      if(r.skipCount>0) reasons.push('skipped '+r.skipCount+'×');
+      return '<div class="struggle-row">'
+        + '<span class="struggle-row-task">'+escapeHtml(r.text)+' <span class="struggle-row-checklist">— '+escapeHtml(r.checklistName)+'</span></span>'
+        + '<span class="struggle-row-reason">'+escapeHtml(reasons.join(', '))+'</span>'
+        + '</div>';
+    }).join('');
+  }
+
   function renderChecklists(){
     applyChecklistResets();
+    renderStrugglingTasks();
     const list = el('checklistList'); list.innerHTML = '';
     el('checklistEmpty').style.display = state.checklists.length===0 ? 'block' : 'none';
 

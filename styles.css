@@ -374,6 +374,8 @@
   .play-action-btn:active{transform:scale(0.94);}
   .play-btn-x{background:var(--surface-alt);color:var(--danger);border:2px solid var(--danger);}
   .play-btn-x:hover{background:var(--danger);color:#fff;}
+  .play-btn-skip{background:var(--surface-alt);color:var(--gold);border:2px solid var(--gold);font-size:20px;}
+  .play-btn-skip:hover{background:var(--gold);color:#fff;}
   .play-btn-check{background:var(--success);color:#fff;}
   .play-btn-check:hover{filter:brightness(1.08);}
   .play-complete-msg{font-size:18px;font-weight:700;color:var(--text);margin-bottom:20px;}
@@ -384,6 +386,16 @@
   .play-insight-row:last-child{border-bottom:none;}
   .play-insight-task{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .play-insight-time{font-size:11.5px;color:var(--muted);font-weight:700;flex:none;}
+  .play-insight-time.play-insight-skipped{color:var(--gold);}
+
+  /* ---- Struggling tasks panel (Checklists tab) ---- */
+  .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+  .struggle-panel-title{font-size:13px;font-weight:700;color:var(--danger);margin-bottom:8px;}
+  .struggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
+  .struggle-row:last-child{border-bottom:none;}
+  .struggle-row-task{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .struggle-row-checklist{color:var(--faint);font-weight:400;}
+  .struggle-row-reason{color:var(--muted);font-size:11.5px;flex:none;}
 
   .ai-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .ai-btn:hover{background:var(--violet-pale);}
@@ -522,7 +534,7 @@
     .sidebar.scrolled .brand-icon{width:28px;height:28px;}
     .sidebar.scrolled .brand-icon svg{width:15px;height:15px;}
     .sidebar.scrolled .brand-name{font-size:14px;}
-    .brand{padding:0;margin-right:12px;}
+    .brand{padding:0;margin-right:12px;width:100%;justify-content:center;}
     .profile-card{display:none;}
     .sidebar-footer{display:none;}
 

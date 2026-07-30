@@ -170,6 +170,7 @@
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
+    if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
     state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual' };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];

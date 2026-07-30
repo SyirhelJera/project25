@@ -276,6 +276,7 @@
     calcFitness();
     renderWeightLog();
     renderWeightChart();
+    renderProgressPhotos();
     updateFitnessReminder();
   }
   el('fitCurrent').addEventListener('input', ()=>{
@@ -398,6 +399,81 @@
       });
     });
   }
+
+  /* ---- progress photos: uploaded straight to Google Drive via the upload-fitness-photo
+     Edge Function; only the Drive file id/link are kept in app state, never the image bytes,
+     so the shared JSON row stays small and the photo itself lives only in Drive. ---- */
+  function renderProgressPhotos(){
+    if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
+    const unavailable = usingClaudeStorage || !supabaseConfigured;
+    el('progressPhotoUnavailable').style.display = unavailable ? 'block' : 'none';
+    el('progressPhotoUploadRow').style.display = unavailable ? 'none' : 'flex';
+    const photos = state.fitness.progressPhotos;
+    const listEl = el('progressPhotoList');
+    el('progressPhotoEmpty').style.display = (unavailable || photos.length) ? 'none' : 'block';
+    listEl.innerHTML = '';
+    photos.slice().reverse().forEach(p=>{
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;';
+      row.innerHTML = '<span>'+escapeHtml(fmtDate(p.uploadedAt))+' — '+escapeHtml(p.filename)+'</span>'
+        + '<span>'
+        + (p.driveViewLink ? '<a href="'+escapeHtml(p.driveViewLink)+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-right:6px;">View in Drive ↗</a>' : '')
+        + '<button class="btn btn-ghost btn-sm" data-id="'+p.id+'" title="Remove from this list (does not delete the file from Drive)">Remove</button>'
+        + '</span>';
+      row.querySelector('button[data-id]').addEventListener('click', ()=>{
+        state.fitness.progressPhotos = state.fitness.progressPhotos.filter(x=>x.id!==p.id);
+        save(); renderProgressPhotos();
+      });
+      listEl.appendChild(row);
+    });
+  }
+
+  async function uploadProgressPhoto(file){
+    const statusEl = el('progressPhotoStatus');
+    if(usingClaudeStorage || !supabaseConfigured){
+      statusEl.textContent = 'Photo upload isn’t available in this mode.';
+      return;
+    }
+    if(!initSupabaseIfNeeded()) return;
+    statusEl.textContent = 'Uploading…';
+    try{
+      const dataUrl = await new Promise((resolve, reject)=>{
+        const reader = new FileReader();
+        reader.onload = ev => resolve(ev.target.result);
+        reader.onerror = () => reject(new Error('Could not read the selected file.'));
+        reader.readAsDataURL(file);
+      });
+      const commaIdx = dataUrl.indexOf(',');
+      const imageBase64 = commaIdx>=0 ? dataUrl.slice(commaIdx+1) : dataUrl;
+      const { data, error } = await supa.functions.invoke('upload-fitness-photo', {
+        body: { imageBase64, filename: file.name, mimeType: file.type || 'image/jpeg' }
+      });
+      if(error){
+        let detail = '';
+        if(error.context && typeof error.context.json === 'function'){
+          try{ detail = (await error.context.json())?.error || ''; }catch(_){}
+        }
+        throw new Error(detail || error.message);
+      }
+      if(data && data.error) throw new Error(data.error);
+      if(!data || !data.fileId) throw new Error('Upload didn’t return a file, try again.');
+      state.fitness.progressPhotos = state.fitness.progressPhotos || [];
+      state.fitness.progressPhotos.push({
+        id: uid(), filename: file.name, driveFileId: data.fileId,
+        driveViewLink: data.webViewLink || '', uploadedAt: Date.now()
+      });
+      save();
+      statusEl.textContent = 'Uploaded to Google Drive.';
+      renderProgressPhotos();
+    }catch(e){
+      statusEl.textContent = (e && e.message) ? e.message : 'Upload failed, try again.';
+    }
+  }
+  el('progressPhotoInput').addEventListener('change', e=>{
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file consecutively
+    if(file) uploadProgressPhoto(file);
+  });
 
   function updateFitnessReminder(){
     const todayStr = localDateStr(new Date());

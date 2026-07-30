@@ -54,8 +54,12 @@ state = {
   habits: [ { id, name, completions:{date:true}, streakRestores:{monthKey:count}, ... } ],
   countdowns: [ { id, label, date, pinned, createdAt } ],
   mantras: [ { id, text } ],
-  checklists: [ { id, name, items:[{id,text,done,durationMin}], resetFreq, lastResetKey,
-                  linkedHabitId, group } ],
+  checklists: [ { id, name, items:[{id,text,done,durationMin,skipCount,missStreak}], resetFreq,
+                  lastResetKey, linkedHabitId, group } ],
+                                       // skipCount = lifetime times skipped in a Play Session;
+                                       // missStreak = consecutive reset periods left undone at
+                                       // reset time — both feed the Checklists tab's "struggling
+                                       // tasks" panel (getStrugglingItems() in checklists.js)
   checklistExp: number,               // running XP total from checklist items (survives resets)
   finance: {
     accounts: [ {id,type,name,balance,currency,transactions:[...],...} ],
@@ -63,12 +67,15 @@ state = {
     moneyGoals: [ {id,name,target,currency,deadline,contributions:[...],...} ],
     rates: { USD:1, PHP:58.5, ... }   // "units per 1 USD", user-editable or live-fetched
   },
-  fitness: { currentWeight, targetWeight, height, age, sex, activity, pace, unit, weightLog:[{date,kg}] },
+  fitness: { currentWeight, targetWeight, height, age, sex, activity, pace, unit, weightLog:[{date,kg}],
+             progressPhotos:[{id,filename,driveFileId,driveViewLink,uploadedAt}] },
+                                       // progressPhotos holds only Drive metadata — the photo
+                                       // itself is uploaded to Google Drive, never stored in state
   valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId },
   profile: { name, age, netWorth, netWorthCurrency, avatarImage, race, skinTone, hairColor,
              hairStyle, eyeColor, clothing, background, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
-  playSession: { checklistId, itemId, startedAt, durationSec, log } | null,
+  playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark'
 }
 ```
@@ -90,11 +97,12 @@ Key mechanics in this layer:
 
 ### Supabase backend
 
-Three Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
+Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
 
 - **`generate-avatar`** — builds a prompt from fixed vocabularies (age bracket / fitness tier / net-worth tier, always derived from real stats) plus optional free-text About Me fields, then proxies to Pollinations.ai's free, keyless image API (`image.pollinations.ai`). Returns a base64 data URL. Manual trigger only (button click), never automatic.
 - **`manage-backups`** — lets the client list/restore daily backups from a private Storage bucket (`backups`) without ever exposing the `service_role` key to the browser. Read-only from the client's perspective.
 - **`suggest-subtasks`** — proxies "suggest subtasks for this goal" to the Anthropic API (`claude-haiku-4-5`) using a server-side `ANTHROPIC_API_KEY` secret, with a shared daily call cap (`ai_usage` table, 30/day) and a 300-token cap per call.
+- **`upload-fitness-photo`** — uploads a Fitness tab progress photo straight to a Google Drive folder on the app owner's behalf. Uses a one-time-obtained Google OAuth refresh token (server secret) to mint a fresh access token per call, so uploads are fully automatic — no per-upload consent prompt. Only the returned Drive file id/link are saved into app state; the image bytes themselves live only in Drive.
 
 **Backups**: `scripts/backup-supabase.sh` (run daily by `.github/workflows/backup-supabase.yml` via cron at 07:00 UTC) pulls the current `app_data` row with the service-role key and uploads it as `<YYYY-MM-DD>.json` to a private Storage bucket. The Settings tab can list and restore from these via the `manage-backups` function.
 
@@ -107,6 +115,7 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Pollinations.ai (via `generate-avatar` function) | AI avatar images | None (public, proxied server-side) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
+| Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
 
 ### PWA / offline
 
@@ -118,9 +127,14 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 2. **If deploying outside Claude** (e.g. GitHub Pages), create a Supabase project and:
    - Run the SQL in the comment at the top of `js/persistence.js` to create the `app_data` table + open RLS policy.
    - Replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `js/persistence.js`.
-   - Deploy the three Edge Functions in `supabase/functions/` (`generate-avatar`, `manage-backups`, `suggest-subtasks`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`).
+   - Deploy the four Edge Functions in `supabase/functions/` (`generate-avatar`, `manage-backups`, `suggest-subtasks`, `upload-fitness-photo`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
    - Create the private `backups` Storage bucket and the `ai_usage` table (`day text primary key, count int`) if you want backups / AI subtask limits to work.
    - For scheduled backups, set the `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret so `.github/workflows/backup-supabase.yml` can run.
+   - **For Fitness progress-photo uploads** (one-time setup, needed for `upload-fitness-photo`):
+     1. In [Google Cloud Console](https://console.cloud.google.com), create a project, enable the **Google Drive API**, and create an **OAuth 2.0 Client ID** (type: Desktop app is simplest).
+     2. Using that client ID/secret, complete an OAuth consent once with scope `https://www.googleapis.com/auth/drive.file` (e.g. via [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground), using your own client ID/secret under its settings gear) and copy the resulting **refresh token**.
+     3. (Optional) create/choose a Drive folder for progress photos and copy its folder ID from the URL.
+     4. Set the Supabase Edge Function secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and optionally `GOOGLE_DRIVE_FOLDER_ID`.
 3. No `npm install`, no bundler — just static files.
 
 ## File map
@@ -141,6 +155,7 @@ supabase/functions/
   generate-avatar/                  AI avatar image proxy (Pollinations)
   manage-backups/                   list/restore daily backups
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
+  upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
 .github/workflows/backup-supabase.yml   cron trigger for the backup script
 ```

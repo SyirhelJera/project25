@@ -242,6 +242,35 @@
 
     <div id="fitnessLogBanner" class="fitness-log-banner" style="display:none;"><span>⚠️ You haven't logged your weight today yet.</span><button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button></div>
 
+    <div class="section-lbl" style="margin-top:4px;">Progress Photos</div>
+    <div class="view-sub" id="progressPhotoUnavailable" style="display:none;">Photo upload needs the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
+    <div id="progressPhotoUploadRow" class="img-row">
+      <label class="ai-btn">📷 Upload Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
+      <span id="progressPhotoStatus" class="fitness-note" style="margin:0;"></span>
+    </div>
+    <div id="progressPhotoList" class="photo-carousel"></div>
+    <div class="empty" id="progressPhotoEmpty" style="display:none;">No progress photos yet — upload one above and it's saved straight to Google Drive.</div>
+
+    <div class="section-lbl" style="margin-top:22px;">Log Today's Weight</div>
+    <div class="weight-log-row-add">
+      <input type="date" id="wlDate">
+      <input type="number" id="wlWeight" step="0.1" min="0" placeholder="Weight">
+      <button class="btn btn-primary" id="wlAddBtn">+ Log Weight</button>
+    </div>
+    <div class="weight-log-list" id="weightLogList"></div>
+    <div class="empty" id="weightLogEmpty" style="display:none;">No weight logged yet. Log your first entry above.</div>
+
+    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
+    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
+    <div class="chart-card">
+      <div id="weightChartWrap"></div>
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--violet);"></span>Weight</span>
+        <span><span class="dot" style="background:var(--gold);"></span>Moving average</span>
+      </div>
+    </div>
+
+    <div class="section-lbl" style="margin-top:22px;">BMI &amp; Calorie Calculator</div>
     <div class="unit-toggle" id="unitToggle">
       <button data-unit="kg" id="unitBtnKg">KG</button>
       <button data-unit="lb" id="unitBtnLb">LB</button>
@@ -280,34 +309,6 @@
       <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Estimated Weeks</div></div>
     </div>
     <div class="fitness-note" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
-
-    <div class="section-lbl" style="margin-top:22px;">Log Today's Weight</div>
-    <div class="weight-log-row-add">
-      <input type="date" id="wlDate">
-      <input type="number" id="wlWeight" step="0.1" min="0" placeholder="Weight">
-      <button class="btn btn-primary" id="wlAddBtn">+ Log Weight</button>
-    </div>
-    <div class="weight-log-list" id="weightLogList"></div>
-    <div class="empty" id="weightLogEmpty" style="display:none;">No weight logged yet. Log your first entry above.</div>
-
-    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
-    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
-    <div class="chart-card">
-      <div id="weightChartWrap"></div>
-      <div class="chart-legend">
-        <span><span class="dot" style="background:var(--violet);"></span>Weight</span>
-        <span><span class="dot" style="background:var(--gold);"></span>Moving average</span>
-      </div>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Progress Photos</div>
-    <div class="view-sub" id="progressPhotoUnavailable" style="display:none;">Photo upload needs the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
-    <div id="progressPhotoUploadRow" class="img-row">
-      <label class="ai-btn">📷 Upload Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
-      <span id="progressPhotoStatus" class="fitness-note" style="margin:0;"></span>
-    </div>
-    <div id="progressPhotoList" class="photo-carousel"></div>
-    <div class="empty" id="progressPhotoEmpty" style="display:none;">No progress photos yet — upload one above and it's saved straight to Google Drive.</div>
   </div>
 
   <!-- VALORANT -->

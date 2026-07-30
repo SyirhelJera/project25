@@ -11,15 +11,15 @@
     return streak;
   }
 
-  // habits with an active streak that haven't been checked off yet today — doing them today keeps the streak alive
-  function habitsAtRisk(){
+  // habits not yet checked off today, regardless of streak status
+  function habitsUndone(){
     const todayStr = localDateStr(new Date());
-    return state.habits.filter(h => h.completions && !h.completions[todayStr] && calcStreak(h) > 0);
+    return state.habits.filter(h => h.completions && !h.completions[todayStr]);
   }
   function updateHabitReminder(){
-    const atRisk = habitsAtRisk();
+    const undone = habitsUndone();
     const badge = el('habitRiskBadge');
-    if(atRisk.length){ badge.style.display = 'inline-flex'; badge.textContent = atRisk.length; }
+    if(undone.length){ badge.style.display = 'inline-flex'; badge.textContent = undone.length; }
     else { badge.style.display = 'none'; }
     // habits at risk are now shown via an outline directly on their card (see renderHabits)
     // instead of a separate text banner listing them out.

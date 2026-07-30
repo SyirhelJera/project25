@@ -307,6 +307,14 @@
     applyTheme();
     renderAll();
     resumePlaySessionIfAny();
+    hideLoadScreen();
+  }
+
+  function hideLoadScreen(){
+    const s = el('loadScreen');
+    if(!s) return;
+    s.classList.add('load-screen-hidden');
+    setTimeout(()=>{ s.style.display = 'none'; }, 250);
   }
 
   function showLoadWarning(){

@@ -182,6 +182,21 @@
   .conflict-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
   .conflict-actions .btn{white-space:normal;text-align:center;flex:1 1 180px;}
 
+  .load-screen{
+    position:fixed;inset:0;z-index:9999;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
+    background:var(--bg);color:var(--text);
+    transition:opacity .25s ease;
+  }
+  .load-screen.load-screen-hidden{opacity:0;pointer-events:none;}
+  .load-spinner{
+    width:38px;height:38px;border-radius:50%;
+    border:3px solid var(--violet-pale);border-top-color:var(--violet);
+    animation:loadSpin .8s linear infinite;
+  }
+  .load-screen-text{font-size:13.5px;font-weight:600;color:var(--muted);}
+  @keyframes loadSpin{to{transform:rotate(360deg);}}
+
   .sidebar-footer{font-size:10.5px;color:var(--faint);padding:12px 6px 2px;line-height:1.5;border-top:1px solid var(--border);margin-top:14px;}
 
   /* ---------- main ---------- */

@@ -11,7 +11,10 @@
     valorant: { apiKey:'', accounts:[], selectedAccountId:null },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:'',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default"
-    mosaicColors: { filled:'', today:'', empty:'' } };
+    mosaicColors: { filled:'', today:'', empty:'' },
+    // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —
+    // drives the mosaic's GitHub-style intensity coloring; see recomputeDailyActivity()
+    dailyActivity: {} };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';

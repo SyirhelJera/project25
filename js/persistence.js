@@ -194,6 +194,7 @@
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'' };
     ['filled','today','empty'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
+    state.dailyActivity = parsed.dailyActivity || {};
   }
 
   // Saves must run strictly one at a time: doSave() reads lastKnownUpdatedAt at the start and
@@ -204,6 +205,7 @@
   // guarantees each save sees the previous one's result before it starts.
   let savePromise = Promise.resolve();
   function save(force){
+    recomputeDailyActivity();
     savePromise = savePromise.then(()=> doSave(force));
     return savePromise;
   }

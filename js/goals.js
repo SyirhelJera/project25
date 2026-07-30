@@ -216,6 +216,31 @@
     renderMantra();
   });
 
+  // builds the dot <div>s for a {total,filled,todayIdx,levels} mosaicDots() result — shared by
+  // the compact pinned-countdown mosaic and the expanded overlay (which just passes an uncapped
+  // maxDots so `total` is the real day count instead of the CD_MOSAIC_MAX_DOTS-bucketed one)
+  function mosaicDotsHtml({ total, filled, todayIdx, levels }){
+    let dots = '';
+    for(let i=0;i<total;i++){
+      let cls = 'cd-mosaic-dot';
+      if(i===todayIdx) cls += ' today level-'+(levels[i]||0);
+      else if(i<filled) cls += ' level-'+(levels[i]||0);
+      dots += '<div class="'+cls+'"></div>';
+    }
+    return dots;
+  }
+
+  // expanded mosaic overlay — one real, unbucketed dot per day. Opened by clicking the compact
+  // mosaic; closed by clicking the backdrop outside the card (see the click listener below).
+  function openMosaicOverlay(c){
+    const data = mosaicDots(c, Infinity);
+    el('mosaicOverlayTitle').textContent = c.label + ' — ' + data.total + ' days';
+    el('mosaicOverlayGrid').innerHTML = mosaicDotsHtml(data);
+    el('mosaicOverlay').style.display = 'flex';
+  }
+  function closeMosaicOverlay(){ el('mosaicOverlay').style.display = 'none'; }
+  el('mosaicOverlay').addEventListener('click', e=>{ if(e.target === el('mosaicOverlay')) closeMosaicOverlay(); });
+
   function renderPinnedCountdown(){
     const slot = el('pinnedCdSlot');
     const c = state.countdowns.find(x=>x.pinned);
@@ -227,9 +252,7 @@
       + '</div>';
     let bodyHtml = numHtml;
     if(diff>=0){
-      const { total, filled, todayIdx } = mosaicDots(c);
-      let dots = '';
-      for(let i=0;i<total;i++) dots += '<div class="cd-mosaic-dot'+(i<filled?' filled':'')+(i===todayIdx?' today':'')+'"></div>';
+      const dots = mosaicDotsHtml(mosaicDots(c));
       bodyHtml = '<div class="pinned-cd-row">'+numHtml+'<div class="cd-mosaic">'+dots+'</div></div>';
     }
     slot.innerHTML = '<div class="pinned-cd-card">'
@@ -237,6 +260,8 @@
       + bodyHtml
       + '<div class="pinned-cd-date">'+fmtDate(new Date(c.date).getTime())+'</div>'
       + '</div>';
+    const mosaicEl = slot.querySelector('.cd-mosaic');
+    if(mosaicEl) mosaicEl.addEventListener('click', ()=> openMosaicOverlay(c));
   }
 
   function renderCheckin(){

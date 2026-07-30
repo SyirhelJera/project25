@@ -558,13 +558,23 @@
   .pinned-cd-row{display:flex;align-items:center;gap:16px;margin:6px 2px;text-align:left;}
   .pinned-cd-num-wrap{flex:none;text-align:center;}
   .pinned-cd-row .pinned-cd-num{font-size:26px;}
-  .cd-mosaic{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(9px,1fr));gap:4px;}
+  .cd-mosaic{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(9px,1fr));gap:4px;cursor:pointer;}
   .cd-mosaic-dot{aspect-ratio:1;border-radius:50%;background:var(--cd-dot-empty, var(--border));}
-  .cd-mosaic-dot.filled{background:var(--cd-dot-filled, var(--violet));}
-  .cd-mosaic-dot.today{background:var(--cd-dot-today, var(--gold));animation:cdDotBlink 1.3s ease-in-out infinite;}
+  .cd-mosaic-dot.level-1{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 25%, var(--cd-dot-empty, var(--border)));}
+  .cd-mosaic-dot.level-2{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 50%, var(--cd-dot-empty, var(--border)));}
+  .cd-mosaic-dot.level-3{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 75%, var(--cd-dot-empty, var(--border)));}
+  .cd-mosaic-dot.level-4{background:var(--cd-dot-filled, var(--violet));}
+  .cd-mosaic-dot.today{animation:cdDotBlink 1.3s ease-in-out infinite;}
   @keyframes cdDotBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,0,0,0);}50%{opacity:.45;box-shadow:0 0 5px 2px var(--cd-dot-today, var(--gold));}}
 
-  
+  /* expanded mosaic overlay — one real dot per day, no bucketing; click the mini mosaic to open,
+     click the backdrop (outside the card) to close */
+  .mosaic-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;}
+  .mosaic-overlay-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;width:100%;max-width:560px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .mosaic-overlay-title{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:14px;}
+  .mosaic-overlay-grid{grid-template-columns:repeat(auto-fill,minmax(12px,1fr));gap:5px;cursor:default;}
+
+
   /* checklists */
   .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}

@@ -38,6 +38,22 @@
   }
   const FREQ_LABELS = {none:'No reset', daily:'Reset daily', weekly:'Reset weekly', monthly:'Reset monthly', yearly:'Reset yearly'};
 
+  // Tallies today's "dailies"-group completion into state.dailyActivity, keyed by the current
+  // calendar day only — called from save() so it's always fresh at persist time, and because it
+  // only ever writes *today's* key, past days are structurally frozen once the date rolls over.
+  // Feeds the pinned-countdown mosaic's GitHub-style intensity coloring (see mosaicDots()).
+  function recomputeDailyActivity(){
+    const todayKey = localDateStr(new Date());
+    let done = 0, total = 0;
+    state.checklists.forEach(c=>{
+      if((c.group||'').trim().toLowerCase() !== 'dailies') return;
+      total += c.items.length;
+      done += c.items.filter(it=>it.done).length;
+    });
+    if(!state.dailyActivity) state.dailyActivity = {};
+    state.dailyActivity[todayKey] = { done, total };
+  }
+
   // if a checklist is linked to a habit and every item on it is checked, mark that habit done for today too
   function syncChecklistHabitLink(c){
     if(!c.linkedHabitId || !c.items.length) return;

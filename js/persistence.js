@@ -196,9 +196,20 @@
     ['filled','today','empty'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
   }
 
+  // Saves must run strictly one at a time: doSave() reads lastKnownUpdatedAt at the start and
+  // only updates it at the end, so two overlapping calls (e.g. two clicks in quick succession,
+  // or a debounced save landing mid-flight) would both read the same stale value — the second
+  // to finish would then fail its own conditional update and falsely report a conflict with
+  // "another device", when really it only raced itself. Chaining every call onto savePromise
+  // guarantees each save sees the previous one's result before it starts.
+  let savePromise = Promise.resolve();
+  function save(force){
+    savePromise = savePromise.then(()=> doSave(force));
+    return savePromise;
+  }
   // force=true skips the conflict check and overwrites unconditionally — only used when the user
   // explicitly chooses to (the conflict banner's "keep my changes" button, or restoring a backup).
-  async function save(force){
+  async function doSave(force){
     if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
     cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
     try{

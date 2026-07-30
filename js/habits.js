@@ -11,10 +11,21 @@
     return streak;
   }
 
-  // habits not yet checked off today, regardless of streak status
+  // "Unresolved" (drives the red pending outline + habitRiskBadge count) means there's still
+  // something genuinely unmarked today — not simply "not checked off". A habit linked to a
+  // checklist stays unresolved only while at least one linked item is neither done nor
+  // Failed/locked (isItemLocked, js/checklists.js) — a Failed item can't be redone today, so it
+  // shouldn't keep nagging, even though failing isn't a success and must not mark the habit done.
+  function habitIsUnresolved(h){
+    if(!h.completions) h.completions = {};
+    if(h.completions[localDateStr(new Date())]) return false;
+    const linked = state.checklists.filter(c=>c.linkedHabitId===h.id);
+    if(!linked.length) return true;
+    return linked.some(c=>c.items.some(it=>!it.done && !isItemLocked(it)));
+  }
+  // habits still unresolved today, regardless of streak status
   function habitsUndone(){
-    const todayStr = localDateStr(new Date());
-    return state.habits.filter(h => h.completions && !h.completions[todayStr]);
+    return state.habits.filter(h => habitIsUnresolved(h));
   }
   function updateHabitReminder(){
     const undone = habitsUndone();
@@ -96,6 +107,10 @@
     el('habitEmpty').style.display = state.habits.length===0 ? 'block':'none';
     updateHabitReminder();
 
+    const dailiesUndoneCt = buildDailiesQueue().length;
+    const playDailiesBtn = el('playDailiesBtn');
+    playDailiesBtn.style.display = dailiesUndoneCt ? '' : 'none';
+
     const today = new Date(); today.setHours(0,0,0,0);
     const weekStart = new Date(today); const wd=(weekStart.getDay()+6)%7; weekStart.setDate(weekStart.getDate()-wd);
 
@@ -110,8 +125,9 @@
       const restoresLeft = 3 - restoresUsedThisMonth(h);
       const linkedChecklists = state.checklists.filter(c=>c.linkedHabitId===h.id);
       const doneToday = !!h.completions[localDateStr(today)];
+      const unresolved = habitIsUnresolved(h);
 
-      const card = document.createElement('div'); card.className='habit-card'+(doneToday?'':' habit-pending');
+      const card = document.createElement('div'); card.className='habit-card'+(unresolved?' habit-pending':'');
       card.dataset.habitId = h.id;
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
@@ -228,4 +244,5 @@
   }
   el('addHabitBtn').addEventListener('click', addHabit);
   el('newHabitInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addHabit(); });
+  el('playDailiesBtn').addEventListener('click', ()=> startDailiesPlaySession());
 

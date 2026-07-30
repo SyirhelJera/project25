@@ -127,6 +127,9 @@
   }
   .brand-icon svg{width:19px;height:19px;}
   .brand-name{font-size:16.5px;font-weight:800;color:var(--text);letter-spacing:-0.2px;flex:1;transition:font-size .2s ease;}
+  /* mobile-only shortcut to the combined Dailies play session — hidden on desktop unconditionally;
+     see the (max-width:760px) block below for where it's actually shown/positioned */
+  #playDailiesBtn{display:none;background:var(--danger);}
 
   .profile-card{background:var(--surface-alt);border:1px solid var(--border);border-radius:13px;padding:14px;margin-bottom:18px;}
   .profile-row{margin-bottom:8px;}
@@ -349,8 +352,10 @@
   .sub-row{display:flex;align-items:center;gap:10px;padding:7px 0;}
   .sub-check{flex:none;width:16px;height:16px;border-radius:5px;border:2px solid #D3D7E8;cursor:pointer;display:flex;align-items:center;justify-content:center;color:transparent;font-size:9px;}
   .sub-check.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .sub-check.failed-locked{background:var(--surface-alt);border-color:var(--danger);color:var(--danger);cursor:not-allowed;}
   .sub-title{flex:1;font-size:13px;color:var(--text);}
   .sub-title.done{color:var(--faint);text-decoration:line-through;}
+  .sub-title.failed-locked{color:var(--danger);text-decoration:line-through;}
   .sub-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:14px;padding:2px 6px;}
   .sub-del:hover{color:var(--danger);}
   .sub-move{display:flex;flex-direction:column;gap:1px;flex:none;}
@@ -376,11 +381,13 @@
   .play-overlay.minimized .play-card{pointer-events:auto;width:auto;max-width:200px;padding:14px 16px;border-radius:14px;cursor:pointer;text-align:left;}
   .play-overlay.minimized .play-checklist-name,
   .play-overlay.minimized .play-progress,
+  .play-overlay.minimized .play-task-source,
   .play-overlay.minimized .play-actions{display:none;}
   .play-overlay.minimized .play-task-text{font-size:12px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .play-overlay.minimized .play-timer{font-size:20px;margin-bottom:0;}
   .play-checklist-name{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
   .play-progress{font-size:11.5px;color:var(--faint);margin-top:4px;margin-bottom:18px;}
+  .play-task-source{font-size:11.5px;font-weight:700;color:var(--violet-dark);margin-bottom:6px;}
   .play-task-text{font-size:19px;font-weight:700;color:var(--text);margin-bottom:22px;line-height:1.4;}
   .play-timer{font-family:'Manrope',sans-serif;font-size:44px;font-weight:800;color:var(--violet-dark);letter-spacing:1px;margin-bottom:26px;}
   .play-timer.play-timer-zero{color:var(--danger);animation:checklistFlash 1.2s ease-in-out infinite;}
@@ -388,11 +395,17 @@
   .play-action-btn{width:64px;height:64px;border-radius:999px;border:none;cursor:pointer;font-size:24px;font-weight:800;transition:transform .12s ease, filter .12s ease;}
   .play-action-btn:active{transform:scale(0.94);}
   .play-btn-x{background:var(--surface-alt);color:var(--danger);border:2px solid var(--danger);}
-  .play-btn-x:hover{background:var(--danger);color:#fff;}
   .play-btn-skip{background:var(--surface-alt);color:var(--gold);border:2px solid var(--gold);font-size:20px;}
-  .play-btn-skip:hover{background:var(--gold);color:#fff;}
+  .play-btn-failed{background:var(--surface-alt);color:var(--danger);border:2px solid var(--danger);font-size:20px;}
   .play-btn-check{background:var(--success);color:#fff;}
-  .play-btn-check:hover{filter:brightness(1.08);}
+  /* :hover guarded to real pointer devices only — on touch, a tap "activates" :hover and it never
+     clears (no mouseleave on touchscreens), so these would otherwise stay lit after every tap */
+  @media (hover:hover) and (pointer:fine){
+    .play-btn-x:hover{background:var(--danger);color:#fff;}
+    .play-btn-skip:hover{background:var(--gold);color:#fff;}
+    .play-btn-failed:hover{background:var(--danger);color:#fff;}
+    .play-btn-check:hover{filter:brightness(1.08);}
+  }
   .play-complete-msg{font-size:18px;font-weight:700;color:var(--text);margin-bottom:20px;}
   .play-complete-insights{text-align:left;border-top:1px solid var(--border);padding-top:14px;margin-bottom:20px;}
   .play-insight-total{font-size:13px;font-weight:700;color:var(--violet-dark);margin-bottom:10px;text-align:center;}
@@ -402,6 +415,7 @@
   .play-insight-task{font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .play-insight-time{font-size:11.5px;color:var(--muted);font-weight:700;flex:none;}
   .play-insight-time.play-insight-skipped{color:var(--gold);}
+  .play-insight-time.play-insight-failed{color:var(--danger);}
 
   /* ---- Struggling tasks panel (Checklists tab) ---- */
   .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:12px;padding:12px 14px;margin-bottom:14px;}
@@ -591,7 +605,8 @@
     .sidebar.scrolled .brand-icon{width:28px;height:28px;}
     .sidebar.scrolled .brand-icon svg{width:15px;height:15px;}
     .sidebar.scrolled .brand-name{font-size:14px;}
-    .brand{padding:0;margin-right:12px;width:100%;justify-content:center;}
+    .brand{padding:0;margin-right:12px;width:100%;justify-content:center;position:relative;}
+    #playDailiesBtn{display:inline-flex;position:absolute;top:50%;right:max(2px,env(safe-area-inset-right));transform:translateY(-50%);padding:6px 12px;font-size:12px;}
     .profile-card{display:none;}
     .sidebar-footer{display:none;}
 

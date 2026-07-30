@@ -111,6 +111,12 @@
   // marks a goal as edited "now" so the "Last Updated" sort reflects it
   function touchGoal(g){ g.updatedAt = Date.now(); }
 
+  // opens exactly one goal at a time — expanding a goal collapses any other currently-open goal
+  function openGoalExclusive(g){
+    state.goals.forEach(x=>{ if(x.id!==g.id) x.open = false; });
+    g.open = true;
+  }
+
   const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
   // Checklist items give a small trickle of exp — enough to feel rewarding day-to-day, but far
   // less than actually finishing a goal, which is the real accomplishment. This is tracked as a
@@ -246,6 +252,89 @@
     });
   }
 
+  // ids of "Working On" carousel cards currently expanded — UI-only, not persisted
+  const workingCarouselExpanded = new Set();
+
+  function buildWorkingCard(g){
+    const pct = goalProgress(g);
+    const expanded = workingCarouselExpanded.has(g.id);
+
+    let metaHtml = '';
+    const t = tierInfo(g.tier);
+    if(t.value) metaHtml += '<span class="tier-chip '+t.cls+'">'+escapeHtml(t.label)+'</span>';
+    if(g.subtasks.length) metaHtml += '<span class="chip">'+escapeHtml(g.subtasks.filter(s=>s.done).length + '/' + g.subtasks.length + ' subtasks')+'</span>';
+    if(g.targetDate) metaHtml += '<span class="chip">'+escapeHtml('Due ' + fmtDate(new Date(g.targetDate).getTime()))+'</span>';
+
+    const card = document.createElement('div');
+    card.className = 'wc-card' + (expanded ? ' expanded' : '');
+    card.dataset.goalId = g.id;
+    if(g.color) card.style.borderLeftColor = g.color;
+    card.innerHTML = '<div class="wc-card-img-wrap">'+(g.imageUrl ? '<img src="'+g.imageUrl+'">' : '')+'</div>'
+      + '<div class="wc-card-body">'
+      +   '<div class="wc-card-top">'
+      +     '<div class="wc-card-title">'+escapeHtml(g.title)+'</div>'
+      +     '<div class="wc-card-pct">'+pct+'%</div>'
+      +   '</div>'
+      +   '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
+      +   '<div class="wc-card-meta">'+metaHtml+'</div>'
+      +   '<div class="wc-card-foot"><button class="wc-expand-btn" type="button">'+(expanded?'Hide':'Details')+' <span class="chevron">▶</span></button></div>'
+      +   '<div class="wc-expand"><div class="wc-expand-inner">'
+      +     '<div class="wc-sub-list"></div>'
+      +     (g.subtasks.length ? '' : '<div class="wc-empty-subs">No subtasks yet.</div>')
+      +     '<button class="wc-open-link" type="button" data-wc-open>Open full goal ▸</button>'
+      +   '</div></div>'
+      + '</div>';
+
+    const subListEl = card.querySelector('.wc-sub-list');
+    g.subtasks.forEach(s=>{
+      const prereq = s.requiresId ? g.subtasks.find(x=>x.id===s.requiresId) : null;
+      const blocked = !s.done && prereq && !prereq.done;
+      const row = document.createElement('div'); row.className = 'sub-row';
+      row.innerHTML = '<div class="sub-check '+(s.done?'checked':'')+'" title="'+(blocked?'Locked until prerequisite is done':'')+'">'+(s.done?'✓':(blocked?'🔒':''))+'</div>'
+        + '<div class="sub-title '+(s.done?'done':'')+'">'+escapeHtml(s.title)+'</div>';
+      row.querySelector('.sub-check').addEventListener('click', e=>{
+        e.stopPropagation();
+        if(!s.done && s.requiresId){
+          const req = g.subtasks.find(x=>x.id===s.requiresId);
+          if(req && !req.done) return; // prerequisite subtask not done yet
+        }
+        s.done = !s.done; touchGoal(g); save(); renderGoals();
+      });
+      subListEl.appendChild(row);
+    });
+
+    card.addEventListener('click', e=>{
+      if(e.target.closest('[data-wc-open]')){
+        e.stopPropagation();
+        goalFilter = 'working';
+        openGoalExclusive(g);
+        renderGoals();
+        requestAnimationFrame(()=>{
+          const target = document.querySelector('#goalList .goal[data-goal-id="'+g.id+'"]');
+          if(target) target.scrollIntoView({behavior:'smooth', block:'center'});
+        });
+        return;
+      }
+      if(e.target.closest('.sub-check')) return;
+      if(workingCarouselExpanded.has(g.id)) workingCarouselExpanded.delete(g.id);
+      else workingCarouselExpanded.add(g.id);
+      renderWorkingCarousel();
+    });
+
+    return card;
+  }
+
+  function renderWorkingCarousel(){
+    const wrap = el('workingCarouselWrap');
+    const track = el('workingCarousel');
+    if(!wrap || !track) return;
+    const working = state.goals.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g));
+    if(!working.length){ wrap.style.display='none'; track.innerHTML=''; return; }
+    wrap.style.display='block';
+    track.innerHTML='';
+    working.forEach(g => track.appendChild(buildWorkingCard(g)));
+  }
+
   const SWATCHES = ['#6366F1','#16A34A','#EF4444','#F5A524','#3B82F6','#EC4899','#6B7280'];
   // goal tier rankings — 'value' is what's stored on the goal, 'cls' maps to the tier-chip CSS class
   const TIERS = [
@@ -299,6 +388,7 @@
     renderMantra();
     renderPinnedCountdown();
     updateGoalReminder();
+    renderWorkingCarousel();
 
     const list = el('goalList');
     const empty = el('emptyState');
@@ -397,7 +487,9 @@
           else { const allDone = g.subtasks.every(s=>s.done); g.subtasks.forEach(s => s.done = !allDone); }
           touchGoal(g); save(); renderGoals(); return;
         }
-        g.open = !g.open; renderGoals();
+        if(g.open) g.open = false;
+        else openGoalExclusive(g);
+        renderGoals();
       });
 
       const detail = document.createElement('div');
@@ -690,7 +782,9 @@
     const input = el('newGoalInput');
     const v = input.value.trim();
     if(!v) return;
-    state.goals.unshift({ id:uid(), title:v, starred:false, workingOn:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null });
+    const newGoal = { id:uid(), title:v, starred:false, workingOn:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null };
+    state.goals.unshift(newGoal);
+    openGoalExclusive(newGoal);
     input.value=''; save(); renderGoals(); input.focus();
   }
   el('addGoalBtn').addEventListener('click', addGoal);

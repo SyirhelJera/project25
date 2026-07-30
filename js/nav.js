@@ -40,7 +40,7 @@
     let startX = 0, startY = 0, tracking = false;
     main.addEventListener('touchstart', e => {
       if(e.touches.length !== 1) return;
-      if(e.target.closest('.photo-carousel')) return; // let the carousel handle its own horizontal drag
+      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel')) return; // let the carousel handle its own horizontal drag
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

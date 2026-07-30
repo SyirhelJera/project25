@@ -266,6 +266,10 @@
   let wcResumeTimer = null;
   let wcProgrammatic = false;
   let wcLastTs = null;
+  // float accumulator for scroll position — viewport.scrollLeft rounds to whole pixels on
+  // most displays, so reading it back every frame and adding a sub-pixel delta would round
+  // the movement away to nothing; this tracks true position and only writes rounded pixels out
+  let wcScrollPos = 0;
 
   function wcScheduleResume(){
     clearTimeout(wcResumeTimer);
@@ -291,16 +295,16 @@
     requestAnimationFrame(wcTick);
     const viewport = el('workingCarousel');
     if(!viewport || !wcTrack) { wcLastTs = null; return; }
-    if(wcLastTs == null){ wcLastTs = ts; return; }
+    if(wcLastTs == null){ wcLastTs = ts; wcScrollPos = viewport.scrollLeft; return; }
     const dt = Math.min(ts - wcLastTs, 100) / 1000;
     wcLastTs = ts;
-    if(wcPaused || wcAnyExpanded || wcReducedMotion) return;
+    if(wcPaused || wcAnyExpanded || wcReducedMotion){ wcScrollPos = viewport.scrollLeft; return; }
     const setWidth = wcTrack.scrollWidth / 2;
     if(setWidth <= 0) return;
-    let next = viewport.scrollLeft + WC_SPEED_PX_S * dt;
-    if(next >= setWidth) next -= setWidth;
+    wcScrollPos += WC_SPEED_PX_S * dt;
+    if(wcScrollPos >= setWidth) wcScrollPos -= setWidth;
     wcProgrammatic = true;
-    viewport.scrollLeft = next;
+    viewport.scrollLeft = wcScrollPos;
   }
   requestAnimationFrame(wcTick);
   (function wcSetupInteractionListeners(){
@@ -313,6 +317,7 @@
       if(wcProgrammatic){ wcProgrammatic = false; return; }
       wcOnUserActivity();
       wcWrap(viewport);
+      wcScrollPos = viewport.scrollLeft;
     });
   })();
 
@@ -419,6 +424,7 @@
       const setWidth = track.scrollWidth / 2;
       wcProgrammatic = true;
       viewport.scrollLeft = prevFraction * setWidth;
+      wcScrollPos = viewport.scrollLeft;
     });
   }
 

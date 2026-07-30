@@ -401,8 +401,10 @@
   }
 
   /* ---- progress photos: uploaded straight to Google Drive via the upload-fitness-photo
-     Edge Function; only the Drive file id/link are kept in app state, never the image bytes,
-     so the shared JSON row stays small and the photo itself lives only in Drive. ---- */
+     Edge Function; only the Drive file id/link/thumbnail URL are kept in app state, never the
+     image bytes, so the shared JSON row stays small and the photo itself lives only in Drive.
+     The carousel's <img> tags point straight at Drive's thumbnail endpoint, so scrolling through
+     photos costs Supabase nothing — Drive serves the pixels directly to the browser. ---- */
   function renderProgressPhotos(){
     if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
     const unavailable = usingClaudeStorage || !supabaseConfigured;
@@ -413,18 +415,22 @@
     el('progressPhotoEmpty').style.display = (unavailable || photos.length) ? 'none' : 'block';
     listEl.innerHTML = '';
     photos.slice().reverse().forEach(p=>{
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;';
-      row.innerHTML = '<span>'+escapeHtml(p.filename)+'</span>'
-        + '<span>'
-        + (p.driveViewLink ? '<a href="'+escapeHtml(p.driveViewLink)+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-right:6px;">View in Drive ↗</a>' : '')
+      const card = document.createElement('div');
+      card.className = 'photo-card';
+      card.innerHTML = (p.imageUrl
+          ? '<div class="photo-card-img-wrap"><img src="'+escapeHtml(p.imageUrl)+'" alt="Progress photo" loading="lazy"></div>'
+          : '<div class="photo-card-img-wrap no-preview">No in-app preview<br>(uploaded before this feature, or Drive sharing failed)</div>')
+        + '<div class="photo-card-footer">'
+        + '<span class="photo-card-name">'+escapeHtml(p.filename)+'</span>'
+        + '<span class="photo-card-actions">'
+        + (p.driveViewLink ? '<a href="'+escapeHtml(p.driveViewLink)+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">View in Drive ↗</a>' : '')
         + '<button class="btn btn-ghost btn-sm" data-id="'+p.id+'" title="Remove from this list (does not delete the file from Drive)">Remove</button>'
-        + '</span>';
-      row.querySelector('button[data-id]').addEventListener('click', ()=>{
+        + '</span></div>';
+      card.querySelector('button[data-id]').addEventListener('click', ()=>{
         state.fitness.progressPhotos = state.fitness.progressPhotos.filter(x=>x.id!==p.id);
         save(); renderProgressPhotos();
       });
-      listEl.appendChild(row);
+      listEl.appendChild(card);
     });
   }
 
@@ -480,7 +486,7 @@
       state.fitness.progressPhotos = state.fitness.progressPhotos || [];
       state.fitness.progressPhotos.push({
         id: uid(), filename: driveFilename, driveFileId: data.fileId,
-        driveViewLink: data.webViewLink || '', uploadedAt
+        driveViewLink: data.webViewLink || '', imageUrl: data.thumbnailUrl || '', uploadedAt
       });
       save();
       statusEl.textContent = 'Uploaded to Google Drive.';

@@ -115,7 +115,30 @@ Deno.serve(async (req) => {
     }
     const uploaded = await uploadResp.json();
 
-    return json({ fileId: uploaded.id, webViewLink: uploaded.webViewLink });
+    // Make the file link-viewable so the browser can load it directly from Drive for the
+    // in-app carousel (img src'd straight at Drive, never proxied through this function) —
+    // keeps photo bandwidth off Supabase entirely. Anyone with the file's (long, unguessable)
+    // id can then view it; if this fails, the upload still succeeds, it just has no in-app
+    // preview and falls back to a "View in Drive" link.
+    let thumbnailUrl: string | null = null;
+    const permResp = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${uploaded.id}/permissions`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ role: "reader", type: "anyone" }),
+      },
+    );
+    if (permResp.ok) {
+      thumbnailUrl = `https://drive.google.com/thumbnail?id=${uploaded.id}&sz=w1000`;
+    } else {
+      console.error("Drive permission update failed:", permResp.status, await permResp.text().catch(() => ""));
+    }
+
+    return json({ fileId: uploaded.id, webViewLink: uploaded.webViewLink, thumbnailUrl });
   } catch (err) {
     console.error(err);
     return json({ error: "Unexpected error" }, 500);

@@ -609,6 +609,17 @@
     .goal-foot-row{flex-wrap:wrap;}
     .add-row{flex-wrap:wrap;}
     .add-row input, .add-row .btn{flex:1 1 100% !important; width:100%;}
+    #view-habits .add-row, #view-checklists .add-row, #view-mantras .add-row{flex-wrap:nowrap;}
+    #view-habits .add-row input, #view-habits .add-row .btn,
+    #view-checklists .add-row input, #view-checklists .add-row .btn,
+    #view-mantras .add-row input, #view-mantras .add-row .btn{flex:unset !important; width:auto;}
+    #view-habits .add-row input, #view-checklists .add-row input, #view-mantras .add-row input{flex:1 1 auto !important;min-width:0;}
+    #view-habits .add-row .btn, #view-checklists .add-row .btn, #view-mantras .add-row .btn{flex:none !important;white-space:nowrap;}
+    #view-countdowns .add-row{flex-wrap:nowrap;}
+    #view-countdowns .add-row input, #view-countdowns .add-row .btn{flex:unset !important;width:auto;}
+    #view-countdowns .add-row input#newCdName{flex:1 1 auto !important;min-width:0;}
+    #view-countdowns .add-row input#newCdDate{flex:0 0 auto !important;width:128px;}
+    #view-countdowns .add-row .btn{flex:none !important;white-space:nowrap;}
     .cd-card{flex-wrap:wrap;}
   }
 

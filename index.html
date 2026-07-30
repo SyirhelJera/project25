@@ -246,12 +246,12 @@
 
     <div class="section-lbl" style="margin-top:4px;">Progress Photos</div>
     <div class="view-sub" id="progressPhotoUnavailable" style="display:none;">Photo upload needs the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
+    <div id="progressPhotoList" class="photo-carousel"></div>
+    <div class="empty" id="progressPhotoEmpty" style="display:none;">No progress photos yet — upload one below and it's saved straight to Google Drive.</div>
     <div id="progressPhotoUploadRow" class="img-row">
       <label class="ai-btn">📷 Upload Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
       <span id="progressPhotoStatus" class="fitness-note" style="margin:0;"></span>
     </div>
-    <div id="progressPhotoList" class="photo-carousel"></div>
-    <div class="empty" id="progressPhotoEmpty" style="display:none;">No progress photos yet — upload one above and it's saved straight to Google Drive.</div>
 
     <div class="section-lbl" style="margin-top:22px;">Log Today's Weight</div>
     <div class="weight-log-row-add">

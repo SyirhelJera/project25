@@ -255,6 +255,67 @@
   // ids of "Working On" carousel cards currently expanded — UI-only, not persisted
   const workingCarouselExpanded = new Set();
 
+  // Auto-scroll state for the "Working On" carousel — driven via scrollLeft (not CSS transform)
+  // so real touch/wheel/drag scrolling shares the same axis and can naturally interrupt it.
+  const WC_SPEED_PX_S = 32;
+  const WC_RESUME_DELAY_MS = 3000;
+  const wcReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let wcTrack = null;
+  let wcPaused = false;
+  let wcAnyExpanded = false;
+  let wcResumeTimer = null;
+  let wcProgrammatic = false;
+  let wcLastTs = null;
+
+  function wcScheduleResume(){
+    clearTimeout(wcResumeTimer);
+    wcResumeTimer = setTimeout(() => { wcPaused = false; }, WC_RESUME_DELAY_MS);
+  }
+  function wcOnUserActivity(){
+    wcPaused = true;
+    wcScheduleResume();
+  }
+  function wcWrap(viewport){
+    if(!wcTrack) return;
+    const setWidth = wcTrack.scrollWidth / 2;
+    if(setWidth <= 0) return;
+    if(viewport.scrollLeft >= setWidth){
+      wcProgrammatic = true;
+      viewport.scrollLeft -= setWidth;
+    } else if(viewport.scrollLeft < 0){
+      wcProgrammatic = true;
+      viewport.scrollLeft += setWidth;
+    }
+  }
+  function wcTick(ts){
+    requestAnimationFrame(wcTick);
+    const viewport = el('workingCarousel');
+    if(!viewport || !wcTrack) { wcLastTs = null; return; }
+    if(wcLastTs == null){ wcLastTs = ts; return; }
+    const dt = Math.min(ts - wcLastTs, 100) / 1000;
+    wcLastTs = ts;
+    if(wcPaused || wcAnyExpanded || wcReducedMotion) return;
+    const setWidth = wcTrack.scrollWidth / 2;
+    if(setWidth <= 0) return;
+    let next = viewport.scrollLeft + WC_SPEED_PX_S * dt;
+    if(next >= setWidth) next -= setWidth;
+    wcProgrammatic = true;
+    viewport.scrollLeft = next;
+  }
+  requestAnimationFrame(wcTick);
+  (function wcSetupInteractionListeners(){
+    const viewport = el('workingCarousel');
+    if(!viewport) return;
+    viewport.addEventListener('touchstart', wcOnUserActivity, {passive:true});
+    viewport.addEventListener('pointerdown', wcOnUserActivity);
+    viewport.addEventListener('wheel', wcOnUserActivity, {passive:true});
+    viewport.addEventListener('scroll', () => {
+      if(wcProgrammatic){ wcProgrammatic = false; return; }
+      wcOnUserActivity();
+      wcWrap(viewport);
+    });
+  })();
+
   function buildWorkingCard(g){
     const pct = goalProgress(g);
     const expanded = workingCarouselExpanded.has(g.id);
@@ -326,13 +387,39 @@
 
   function renderWorkingCarousel(){
     const wrap = el('workingCarouselWrap');
-    const track = el('workingCarousel');
-    if(!wrap || !track) return;
+    const viewport = el('workingCarousel');
+    if(!wrap || !viewport) return;
     const working = state.goals.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g));
-    if(!working.length){ wrap.style.display='none'; track.innerHTML=''; return; }
+    if(!working.length){ wrap.style.display='none'; viewport.innerHTML=''; wcTrack = null; return; }
     wrap.style.display='block';
-    track.innerHTML='';
+
+    // preserve the current scroll position (as a fraction of one set's width) across re-renders,
+    // so routine state updates elsewhere don't yank the carousel back to the start
+    const prevSetWidth = wcTrack ? wcTrack.scrollWidth / 2 : 0;
+    const prevFraction = prevSetWidth > 0 ? (viewport.scrollLeft % prevSetWidth) / prevSetWidth : 0;
+
+    viewport.innerHTML='';
+    const track = document.createElement('div');
+    track.className = 'wc-track';
     working.forEach(g => track.appendChild(buildWorkingCard(g)));
+    // duplicate the set so scrollLeft can wrap seamlessly once it passes one full set's width
+    working.forEach(g => {
+      const clone = buildWorkingCard(g);
+      clone.classList.add('wc-clone');
+      clone.setAttribute('aria-hidden', 'true');
+      clone.setAttribute('tabindex', '-1');
+      track.appendChild(clone);
+    });
+    viewport.appendChild(track);
+
+    wcTrack = track;
+    wcAnyExpanded = working.some(g => workingCarouselExpanded.has(g.id));
+    wcLastTs = null;
+    requestAnimationFrame(() => {
+      const setWidth = track.scrollWidth / 2;
+      wcProgrammatic = true;
+      viewport.scrollLeft = prevFraction * setWidth;
+    });
   }
 
   const SWATCHES = ['#6366F1','#16A34A','#EF4444','#F5A524','#3B82F6','#EC4899','#6B7280'];

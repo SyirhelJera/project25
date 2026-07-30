@@ -207,7 +207,7 @@
   function renderMantra(){
     if(!state.mantras.length){ el('mantraRow').style.display='none'; return; }
     el('mantraRow').style.display='flex';
-    if(mantraIdx >= state.mantras.length) mantraIdx = 0;
+    if(mantraIdx < 0 || mantraIdx >= state.mantras.length) mantraIdx = Math.floor(Math.random()*state.mantras.length);
     el('mantraText').textContent = state.mantras[mantraIdx].text;
   }
   el('mantraReroll').addEventListener('click', ()=>{

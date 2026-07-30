@@ -16,7 +16,7 @@
   let starredFirst = false;
   let sortMode = 'none';
   let sortDir = 'desc';
-  let mantraIdx = 0;
+  let mantraIdx = -1;
 
   const el = id => document.getElementById(id);
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);

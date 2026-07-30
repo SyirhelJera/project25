@@ -415,7 +415,7 @@
     photos.slice().reverse().forEach(p=>{
       const row = document.createElement('div');
       row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;';
-      row.innerHTML = '<span>'+escapeHtml(fmtDate(p.uploadedAt))+' — '+escapeHtml(p.filename)+'</span>'
+      row.innerHTML = '<span>'+escapeHtml(p.filename)+'</span>'
         + '<span>'
         + (p.driveViewLink ? '<a href="'+escapeHtml(p.driveViewLink)+'" target="_blank" rel="noopener" class="btn btn-ghost btn-sm" style="margin-right:6px;">View in Drive ↗</a>' : '')
         + '<button class="btn btn-ghost btn-sm" data-id="'+p.id+'" title="Remove from this list (does not delete the file from Drive)">Remove</button>'
@@ -426,6 +426,24 @@
       });
       listEl.appendChild(row);
     });
+  }
+
+  // Drive filenames are named by upload time + logged weight (e.g. "July 30, 2026 7:45AM
+  // (74.5 KG)") rather than the original camera/phone filename, so files are easy to sort
+  // and identify from within Drive itself.
+  function driveProgressPhotoFilename(uploadedAt, originalName){
+    const d = new Date(uploadedAt);
+    const datePart = d.toLocaleDateString(undefined,{month:'long',day:'numeric',year:'numeric'});
+    let hours = d.getHours();
+    const ampm = hours >= 12 ? 'PM' : 'AM';
+    hours = hours % 12; if(hours === 0) hours = 12;
+    const minutes = String(d.getMinutes()).padStart(2,'0');
+    const timePart = hours+':'+minutes+ampm;
+    const kg = parseFloat(state.fitness.currentWeight);
+    const weightPart = !isNaN(kg) ? ' ('+roundDisp(kg)+' KG)' : '';
+    const extMatch = /\.[^.]+$/.exec(originalName||'');
+    const ext = extMatch ? extMatch[0] : '';
+    return datePart+' '+timePart+weightPart+ext;
   }
 
   async function uploadProgressPhoto(file){
@@ -445,8 +463,10 @@
       });
       const commaIdx = dataUrl.indexOf(',');
       const imageBase64 = commaIdx>=0 ? dataUrl.slice(commaIdx+1) : dataUrl;
+      const uploadedAt = Date.now();
+      const driveFilename = driveProgressPhotoFilename(uploadedAt, file.name);
       const { data, error } = await supa.functions.invoke('upload-fitness-photo', {
-        body: { imageBase64, filename: file.name, mimeType: file.type || 'image/jpeg' }
+        body: { imageBase64, filename: driveFilename, mimeType: file.type || 'image/jpeg' }
       });
       if(error){
         let detail = '';
@@ -459,8 +479,8 @@
       if(!data || !data.fileId) throw new Error('Upload didn’t return a file, try again.');
       state.fitness.progressPhotos = state.fitness.progressPhotos || [];
       state.fitness.progressPhotos.push({
-        id: uid(), filename: file.name, driveFileId: data.fileId,
-        driveViewLink: data.webViewLink || '', uploadedAt: Date.now()
+        id: uid(), filename: driveFilename, driveFileId: data.fileId,
+        driveViewLink: data.webViewLink || '', uploadedAt
       });
       save();
       statusEl.textContent = 'Uploaded to Google Drive.';

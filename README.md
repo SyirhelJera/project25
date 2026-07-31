@@ -74,15 +74,26 @@ state = {
                                        // itself is uploaded to Google Drive, never stored in state
   valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId,
               dailyStores: { [label]: {checkedAt,items,bundle,error} },
+              wishlist: [ {id,name,imageUrl,skinUuid,createdAt} ],
               localServerUrl, localServerToken },
                                        // dailyStores is keyed by the label chosen when running
                                        // scripts/valorant-login.mjs (e.g. "main","smurf"), one
                                        // entry per tracked Riot account — written by
                                        // scripts/valorant-check-store.mjs (run locally) — see below.
-                                       // localServerUrl/localServerToken point the Valorant tab's
-                                       // "Local Helper" panel at scripts/valorant-local-server.mjs
-                                       // (also local-only) so Check/Add Account can be buttons
-                                       // instead of terminal commands — see "Setup" below.
+                                       // wishlist holds gun/skin names to watch for, added either by
+                                       // free text or by picking a real skin (with image + uuid)
+                                       // from the search-as-you-type list backed by
+                                       // valorant-api.com/v1/weapons/skins — see ensureValSkinDb()
+                                       // in valorant.js. Matched against dailyStores items
+                                       // (case-insensitive substring) to highlight store items and
+                                       // light up the red nav-bar tick — see
+                                       // valWishlistMatchesForItem() in valorant.js.
+                                       // localServerUrl/localServerToken point Settings ->
+                                       // "Valorant Local Helper" (token + Add Account) and the
+                                       // Valorant tab's account dropdown/Check Store/Delete at
+                                       // scripts/valorant-local-server.mjs (also local-only) so
+                                       // those can be buttons instead of terminal commands — see
+                                       // "Setup" below.
   profile: { name, age, netWorth, netWorthCurrency, avatarImage, race, skinTone, hairColor,
              hairStyle, eyeColor, clothing, background, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion

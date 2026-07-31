@@ -173,7 +173,7 @@
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
     if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
-    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual' };
+    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:[] };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];
     if(!state.valorant.sortMode) state.valorant.sortMode = 'manual';
@@ -204,6 +204,13 @@
     if(state.valorant.localServerToken===undefined) state.valorant.localServerToken = '';
     // which account's store the Valorant tab shows — '' means "all accounts" (stacked)
     if(state.valorant.selectedStoreLabel===undefined) state.valorant.selectedStoreLabel = '';
+    // gun/skin names the user wants a heads-up about when they rotate into the daily store —
+    // matched against dailyStores items in valWishlistMatchesForItem() (see valorant.js)
+    if(!state.valorant.wishlist) state.valorant.wishlist = [];
+    state.valorant.wishlist.forEach(w=>{
+      if(w.imageUrl===undefined) w.imageUrl = '';
+      if(w.skinUuid===undefined) w.skinUuid = '';
+    });
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     if(!state.profile.avatarImage) state.profile.avatarImage = '';

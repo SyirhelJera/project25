@@ -54,6 +54,37 @@
   }
   ensureValAgentIcons();
 
+  // Weapon skin database (uuid/name/icon), used to power the wishlist's search-as-you-type
+  // picker so users pick a real skin (with its actual thumbnail) instead of typing a name from
+  // memory. Same no-key public reference API as tiers/agents above. Entries with no
+  // contentTierUuid are the weapon's own default "Standard" skin (and the "Random Favorite Skin"
+  // selector) — neither is ever sold in the daily store, so they're filtered out here.
+  let valSkinDbCache = null;
+  let valSkinDbPromise = null;
+  function ensureValSkinDb(){
+    if(valSkinDbCache) return Promise.resolve(valSkinDbCache);
+    if(valSkinDbPromise) return valSkinDbPromise;
+    valSkinDbPromise = fetch(VALORANT_API_BASE+'/weapons/skins?language=en-US')
+      .then(r=>r.json())
+      .then(json=>{
+        const skins = (json && Array.isArray(json.data)) ? json.data : [];
+        valSkinDbCache = skins
+          .filter(s=> s.contentTierUuid && s.displayName)
+          .map(s=>({
+            uuid: s.uuid,
+            name: s.displayName,
+            icon: s.displayIcon
+              || (s.chromas && s.chromas[0] && (s.chromas[0].displayIcon || s.chromas[0].fullRender))
+              || (s.levels && s.levels[0] && s.levels[0].displayIcon)
+              || ''
+          }));
+        return valSkinDbCache;
+      })
+      .catch(()=>{ valSkinDbCache = []; return valSkinDbCache; });
+    return valSkinDbPromise;
+  }
+  ensureValSkinDb();
+
   function valTierColor(tierName){
     if(!tierName) return '#8B92A8';
     const t = tierName.toLowerCase();
@@ -241,6 +272,122 @@
      scripts/valorant-login.mjs (e.g. "main", "smurf") — this client only ever reads/displays it,
      never fetches or authenticates to Riot itself. One or more accounts render as separate
      labeled sections so multiple Riot accounts' stores can be checked at a glance. ---- */
+  /* ---- wishlist: gun/skin names the user wants a heads-up about when they rotate into the
+     daily store. Matching is a simple case-insensitive substring check in either direction, so a
+     wishlist entry of "Vandal" matches a store item named "Reaver Vandal", and a full skin name
+     pasted in ("Reaver Vandal") still matches itself exactly. ---- */
+  function valWishlistMatchesForItem(itemName){
+    if(!itemName) return [];
+    const lower = itemName.toLowerCase();
+    return (state.valorant.wishlist||[]).filter(w=>{
+      const wl = (w.name||'').toLowerCase().trim();
+      return wl && (lower.includes(wl) || wl.includes(lower));
+    });
+  }
+  // every {wishlist item, store item} pairing currently sitting in any tracked account's daily
+  // store — drives both the red nav tick and the "matched" styling on wishlist chips
+  function valCurrentWishlistMatches(){
+    const stores = state.valorant.dailyStores || {};
+    const matches = [];
+    Object.keys(stores).forEach(label=>{
+      const ds = stores[label];
+      if(!ds || !Array.isArray(ds.items)) return;
+      ds.items.forEach(it=>{
+        valWishlistMatchesForItem(it.name).forEach(w=>{
+          matches.push({ wishlistId: w.id, itemName: it.name, label });
+        });
+      });
+    });
+    return matches;
+  }
+  function updateValWishlistBadge(){
+    const badge = el('valWishlistBadge');
+    if(!badge) return;
+    badge.style.display = valCurrentWishlistMatches().length ? 'inline-flex' : 'none';
+  }
+
+  function renderValWishlist(){
+    const listEl = el('valWishlistList');
+    if(!listEl) return;
+    const wishlist = state.valorant.wishlist || [];
+    el('valWishlistEmpty').style.display = wishlist.length ? 'none' : 'block';
+    const matches = valCurrentWishlistMatches();
+    listEl.innerHTML = wishlist.map(w=>{
+      const hit = matches.find(m=>m.wishlistId===w.id);
+      return '<span class="val-wishlist-chip'+(hit?' matched':'')+'" data-wish-id="'+w.id+'">'
+        + (w.imageUrl ? '<img src="'+escapeHtml(w.imageUrl)+'" alt="">' : '')
+        + escapeHtml(w.name)
+        + (hit ? '<span class="val-wishlist-match-note" title="In today\'s store'+(hit.label?' ('+escapeHtml(hit.label)+')':'')+'">✓ In store</span>' : '')
+        + '<button class="val-icon-btn" data-wish-del="'+w.id+'" title="Remove from wishlist">✕</button>'
+        + '</span>';
+    }).join('');
+    listEl.querySelectorAll('[data-wish-del]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        state.valorant.wishlist = state.valorant.wishlist.filter(w=>w.id!==btn.dataset.wishDel);
+        save(); renderValWishlist(); updateValWishlistBadge();
+      });
+    });
+    updateValWishlistBadge();
+  }
+
+  // shared by the freeform "+ Add to Wishlist" button and by clicking a search suggestion below —
+  // imageUrl/skinUuid are only known when the entry came from the skin database picker
+  function addValWishlistEntry(name, imageUrl, skinUuid){
+    name = (name||'').trim();
+    if(!name) return;
+    if(state.valorant.wishlist.some(w=>w.name.toLowerCase()===name.toLowerCase())) return;
+    state.valorant.wishlist.push({ id: uid(), name, imageUrl: imageUrl||'', skinUuid: skinUuid||'', createdAt: Date.now() });
+    save(); renderValWishlist();
+  }
+
+  function hideValWishlistSuggest(){
+    const box = el('valWishlistSuggest');
+    if(box){ box.style.display = 'none'; box.innerHTML = ''; }
+  }
+
+  // search-as-you-type dropdown of real skins (name + thumbnail) pulled from ensureValSkinDb() —
+  // picking one adds it straight to the wishlist with its actual image
+  function renderValWishlistSuggest(query){
+    const box = el('valWishlistSuggest');
+    if(!box) return;
+    const q = (query||'').trim().toLowerCase();
+    const db = valSkinDbCache || [];
+    if(!q || !db.length){ hideValWishlistSuggest(); return; }
+    const results = db.filter(s=>s.name.toLowerCase().includes(q)).slice(0,8);
+    if(!results.length){ hideValWishlistSuggest(); return; }
+    box.innerHTML = results.map(s=>
+      '<div class="val-wishlist-suggest-item" data-skin-uuid="'+escapeHtml(s.uuid)+'">'
+      + (s.icon ? '<img src="'+escapeHtml(s.icon)+'" alt="">' : '<span class="val-wishlist-suggest-noimg"></span>')
+      + '<span>'+escapeHtml(s.name)+'</span>'
+      + '</div>'
+    ).join('');
+    box.style.display = 'block';
+    box.querySelectorAll('[data-skin-uuid]').forEach(item=>{
+      // mousedown (not click) fires before the input's blur handler, so the suggestion is still
+      // in the DOM to be clicked instead of getting hidden out from under the pointer first
+      item.addEventListener('mousedown', (e)=>{
+        e.preventDefault();
+        const skin = db.find(s=>s.uuid===item.dataset.skinUuid);
+        if(!skin) return;
+        addValWishlistEntry(skin.name, skin.icon, skin.uuid);
+        el('valWishlistInput').value = '';
+        hideValWishlistSuggest();
+      });
+    });
+  }
+
+  el('valWishlistInput').addEventListener('input', e=> renderValWishlistSuggest(e.target.value));
+  el('valWishlistInput').addEventListener('focus', e=> renderValWishlistSuggest(e.target.value));
+  el('valWishlistInput').addEventListener('blur', ()=> setTimeout(hideValWishlistSuggest, 150));
+
+  el('valWishlistAddBtn').addEventListener('click', ()=>{
+    const input = el('valWishlistInput');
+    addValWishlistEntry(input.value);
+    input.value = '';
+    hideValWishlistSuggest();
+  });
+  el('valWishlistInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valWishlistAddBtn').click(); });
+
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
@@ -271,10 +418,12 @@
       const items = ds.items || [];
       let html = '<div class="val-store-grid">';
       items.forEach(it=>{
-        html += '<div class="val-store-item">'
+        const isWish = valWishlistMatchesForItem(it.name).length > 0;
+        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'">'
           + (it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')
           + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
           + '<div class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+' VP</div>'
+          + (isWish ? '<div class="val-store-item-wish-tag">★ Wishlist</div>' : '')
           + '</div>';
       });
       html += '</div>';
@@ -303,8 +452,9 @@
   function valLocalUrl(){
     return (state.valorant.localServerUrl || VAL_LOCAL_DEFAULT_URL).replace(/\/+$/,'');
   }
-  function showValLocalErr(msg){
-    const e2 = el('valLocalErr');
+  function showValLocalErr(msg, targetId){
+    const e2 = el(targetId || 'valLocalErr');
+    if(!e2) return;
     e2.textContent = msg;
     e2.style.display = 'block';
   }
@@ -325,18 +475,25 @@
 
   function renderValLocalPanel(){
     const wrap = el('valLocalPanel'); if(!wrap) return;
+    const credsWrap = el('valLocalCredsPanel');
     const unavailable = usingClaudeStorage || !supabaseConfigured;
     wrap.style.display = unavailable ? 'none' : 'block';
+    if(credsWrap) credsWrap.style.display = unavailable ? 'none' : 'block';
     if(unavailable) return;
 
-    const statusEl = el('valLocalStatusTxt');
+    let statusHtml;
     if(valLocalStatus.connected){
       const n = valLocalStatus.accounts.length;
-      statusEl.innerHTML = '<span class="val-local-dot on"></span> Local helper connected'
-        + (n ? ' · '+n+' account'+(n===1?'':'s')+' saved' : ' · no accounts logged in yet — add one below');
+      statusHtml = '<span class="val-local-dot on"></span> Local helper connected'
+        + (n ? ' · '+n+' account'+(n===1?'':'s')+' saved' : ' · no accounts logged in yet — add one in Settings');
     } else {
-      statusEl.innerHTML = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine (see README.md)';
+      statusHtml = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine (see README.md)';
     }
+    // shown in two places — the toolbar here (Valorant tab) and next to the Add Account form
+    // (Settings tab) — so either place always explains why its buttons are enabled/disabled
+    el('valLocalStatusTxt').innerHTML = statusHtml;
+    const settingsStatusEl = el('valSettingsLocalStatusTxt');
+    if(settingsStatusEl) settingsStatusEl.innerHTML = statusHtml;
 
     // union of accounts the local server has a saved session for, and accounts that already
     // have store data — so a device without the local server running (or an account it doesn't
@@ -417,11 +574,11 @@
   });
 
   el('valLocalAddAccountBtn').addEventListener('click', async ()=>{
-    el('valLocalErr').style.display = 'none';
+    el('valSettingsLocalErr').style.display = 'none';
     const label = el('valLocalNewLabel').value.trim();
     const ssid = el('valLocalNewSsid').value.trim();
-    if(!label){ showValLocalErr('Enter a label for this account, e.g. "main".'); return; }
-    if(!ssid){ showValLocalErr('Paste the ssid cookie value (see the note below) — log into playvalorant.com in your own browser first, then copy it from DevTools.'); return; }
+    if(!label){ showValLocalErr('Enter a label for this account, e.g. "main".', 'valSettingsLocalErr'); return; }
+    if(!ssid){ showValLocalErr('Paste the ssid cookie value (see the note below) — log into playvalorant.com in your own browser first, then copy it from DevTools.', 'valSettingsLocalErr'); return; }
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'login'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/login', {
@@ -434,7 +591,7 @@
       el('valLocalNewLabel').value = '';
       el('valLocalNewSsid').value = '';
     }catch(e){
-      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.', 'valSettingsLocalErr');
     }
     valLocalStatus.busy = false; valLocalStatus.busyMsg = '';
     await pollValLocalStatus();
@@ -446,6 +603,7 @@
   }
 
   function renderValorant(){
+    renderValWishlist();
     renderValorantStore();
     renderValLocalPanel();
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';

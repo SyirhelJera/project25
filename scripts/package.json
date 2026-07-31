@@ -1,9 +1,0 @@
-{
-  "name": "project25-valorant-login",
-  "private": true,
-  "type": "module",
-  "description": "Standalone local helper for valorant-login.mjs only — NOT a dependency of the app itself (index.html has zero npm dependencies). Run `npm install` in this scripts/ folder once, then `node valorant-login.mjs`.",
-  "dependencies": {
-    "puppeteer": "*"
-  }
-}

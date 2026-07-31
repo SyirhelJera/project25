@@ -339,6 +339,30 @@
 
     <div class="section-lbl" style="margin-top:4px;">Today's Store</div>
     <div class="view-sub" id="valStoreUnavailable" style="display:none;">Daily store checks need the Supabase-hosted deployment (a scheduled local script writes here — see README.md) and aren't available in this mode.</div>
+
+    <div class="val-local-panel" id="valLocalPanel" style="display:none;">
+      <div class="val-local-status" id="valLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+      <div class="val-api-row">
+        <div class="fitness-field">
+          <label>Local Helper Token</label>
+          <input type="password" id="valLocalToken" placeholder="Paste the token printed by valorant-local-server.mjs">
+        </div>
+        <button class="btn btn-ghost" id="valLocalSaveTokenBtn" style="margin-bottom:0;">Save Token</button>
+      </div>
+      <div class="val-toolbar">
+        <select id="valLocalAccountSelect"><option value="">All accounts</option></select>
+        <button class="btn btn-primary btn-sm" id="valLocalCheckBtn">Check Store Now</button>
+        <button class="btn btn-ghost btn-sm val-local-delete-btn" id="valLocalDeleteBtn" title="Delete the selected saved account">🗑 Delete</button>
+      </div>
+      <div class="val-add-row">
+        <input type="text" id="valLocalNewLabel" placeholder='Account label, e.g. "main"' maxlength="30" style="flex:1;min-width:120px;">
+        <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:220px;">
+        <button class="btn btn-ghost" id="valLocalAddAccountBtn">+ Add Account</button>
+      </div>
+      <div class="val-peak-note">Log into <code>playvalorant.com</code> in your own browser first, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy the <code>ssid</code> value here.</div>
+      <div class="val-err" id="valLocalErr" style="display:none;"></div>
+    </div>
+
     <div id="valStoreCard"></div>
 
     <div class="section-lbl" id="valChartLbl" style="margin-top:4px;display:none;">RR History</div>

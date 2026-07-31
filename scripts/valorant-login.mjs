@@ -1,84 +1,89 @@
 #!/usr/bin/env node
 // scripts/valorant-login.mjs
 //
-// One-time (and periodic, every ~1-3 weeks — Riot expires the resulting cookie) local helper
-// that gets a reauth cookie for scripts/valorant-check-store.mjs to use.
+// Saves a Riot session cookie under a label, for scripts/valorant-check-store.mjs to reuse.
+// Supports multiple Riot accounts: each cookie is saved under a label you choose, so you can
+// track the daily store for more than one account (e.g. a main and a smurf) side by side.
 //
-// Riot's direct username/password login endpoint now requires solving an hCaptcha, which no
-// script should try to bypass — captchas exist specifically to block automated logins, and
-// defeating one isn't something this tool does. Instead, this opens a real, visible browser
-// window at Riot's actual login page: you log in there completely normally — captcha, OTP,
-// whatever Riot asks for, all handled by you in a genuine browser — and once you land back on
-// playvalorant.com this script reads the resulting `ssid` cookie out of that same browser
-// session. Your credentials are typed into Riot's own page, never seen by this script.
+// This does NOT open or automate a browser. Earlier versions did (via Puppeteer), but Riot's
+// fraud detection rejects login attempts that come through an automation-controlled browser —
+// even a real, "headful" Chrome driven via the DevTools Protocol gets fingerprinted (e.g.
+// `navigator.webdriver`) and silently blocked, surfaced as a misleading "username or password
+// may be incorrect" error even with correct credentials. Rather than try to defeat that
+// detection — it exists for the same reason this project already refuses to automate Riot's
+// captcha — logging in has to happen in your own, completely normal, human-driven browser. This
+// script only saves the resulting session cookie.
 //
-// The cookie is saved to .valorant-session.json in this folder (gitignored, never committed,
-// never leaves your machine) — NOT set as a cloud secret. See README.md for why the daily
-// check runs locally instead of via GitHub Actions / a Supabase Edge Function.
+// How to get the cookie:
+//   1. In your own browser, go to https://playvalorant.com and log in normally.
+//   2. Open DevTools (F12) -> Application tab -> Cookies -> https://auth.riotgames.com
+//   3. Copy the value of the `ssid` cookie.
 //
-// Setup (first time only):
-//   cd scripts && npm install
+// loginAccount(label, ssid) is also imported directly by scripts/valorant-local-server.mjs, so
+// the "+ Add Account" button on the Valorant tab can save a cookie the same way.
+//
 // Usage:
-//   node valorant-login.mjs
+//   node scripts/valorant-login.mjs [label]         (prompts for the cookie)
+//   node scripts/valorant-login.mjs [label] <ssid>   (non-interactive)
+//   e.g. node scripts/valorant-login.mjs main
+//   [label] defaults to "default" — save again with the same label later to refresh that
+//   account's session (e.g. once it expires); a different label adds another tracked account.
+//
+// No npm dependencies — nothing in scripts/ needs `npm install` anymore.
 
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import puppeteer from 'puppeteer';
+import readline from 'node:readline';
+import { loadSessions, saveSessions, silentReauth } from './valorant-lib.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SESSION_FILE = path.join(__dirname, '.valorant-session.json');
-
-const AUTHORIZE_URL = 'https://auth.riotgames.com/authorize'
-  + '?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in'
-  + '&client_id=play-valorant-web-prod'
-  + '&response_type=token%20id_token'
-  + '&nonce=1'
-  + '&scope=account%20openid';
-
-const LOGIN_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to complete login, including any MFA/captcha
-
-async function main(){
-  console.log('Opening a browser window — log in to your Riot account normally there.');
-  console.log('Any captcha or one-time code Riot shows you is fine to solve there; that\'s a');
-  console.log('real browser, not this script.\n');
-
-  const browser = await puppeteer.launch({ headless: false });
-  const page = await browser.newPage();
-  await page.goto(AUTHORIZE_URL, { waitUntil: 'domcontentloaded' });
-
-  try {
-    await page.waitForFunction(
-      () => location.href.includes('access_token='),
-      { timeout: LOGIN_TIMEOUT_MS },
-    );
-  } catch {
-    console.error('\nTimed out waiting for login to complete (5 min). Closing the browser —');
-    console.error('run this again when you\'re ready to log in.');
-    await browser.close();
-    process.exitCode = 1;
-    return;
-  }
-
-  const cookies = await page.cookies('https://auth.riotgames.com');
-  const ssid = cookies.find(c => c.name === 'ssid')?.value;
-  await browser.close();
-
-  if (!ssid) {
-    console.error('\nLogin succeeded but no ssid cookie was found on auth.riotgames.com —');
-    console.error('cannot continue. If this persists, Riot may have changed its cookie setup.');
-    process.exitCode = 1;
-    return;
-  }
-
-  fs.writeFileSync(SESSION_FILE, JSON.stringify({ ssid, savedAt: Date.now() }, null, 2));
-
-  console.log('\nLogin succeeded — session saved locally to scripts/.valorant-session.json');
-  console.log('(gitignored, never committed, never sent anywhere but Riot).');
-  console.log('\nNow run: node scripts/valorant-check-store.mjs');
-  console.log('(today, and daily going forward — see README.md for a Windows Task Scheduler setup)');
-  console.log('\nThis session is good for roughly 1-3 weeks. When the daily check starts failing');
-  console.log('(see the error banner on the Valorant tab), just run this script again.');
+// Confirms `ssid` actually works (a quick silent reauth) before saving it under `label` — so a
+// mistyped or already-expired cookie fails immediately here instead of silently breaking the
+// next scheduled check. Throws if the cookie doesn't work.
+export async function loginAccount(label, ssid){
+  await silentReauth(ssid);
+  const accounts = loadSessions();
+  accounts[label] = { ssid, savedAt: Date.now() };
+  saveSessions(accounts);
+  console.log(`Session for "${label}" saved locally to scripts/.valorant-session.json`);
 }
 
-main().catch(err => { console.error(err); process.exitCode = 1; });
+function promptForSsid(){
+  return new Promise(resolve => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question('Paste the ssid cookie value: ', answer => { rl.close(); resolve(answer.trim()); });
+  });
+}
+
+async function main(){
+  const label = (process.argv[2] || '').trim() || 'default';
+  let ssid = (process.argv[3] || '').trim();
+
+  console.log(`Saving a session for "${label}".\n`);
+  console.log('If you haven\'t already: log into https://playvalorant.com in your own normal');
+  console.log('browser, then open DevTools (F12) -> Application -> Cookies ->');
+  console.log('https://auth.riotgames.com, and copy the value of the "ssid" cookie.\n');
+
+  if (!ssid) ssid = await promptForSsid();
+  if (!ssid) { console.error('No cookie value entered.'); process.exitCode = 1; return; }
+
+  try {
+    await loginAccount(label, ssid);
+  } catch (err) {
+    console.error('\n' + err.message);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log('(gitignored, never committed, never sent anywhere but Riot).');
+  console.log('\nNow run: node scripts/valorant-check-store.mjs');
+  console.log('(checks the store for every saved account — today, and daily going forward; see');
+  console.log('README.md for a Windows Task Scheduler setup)');
+  console.log('\nTo track another account, run this script again with a different label, e.g.:');
+  console.log('  node scripts/valorant-login.mjs smurf');
+  console.log('\nEach session is good for roughly 1-3 weeks. When one expires (see the error banner');
+  console.log('on the Valorant tab), just log in again in your browser, grab a fresh ssid value,');
+  console.log('and run this script again with that same label.');
+}
+
+// Only run the CLI flow when this file is executed directly (`node valorant-login.mjs`), not
+// when valorant-local-server.mjs imports loginAccount() from it.
+const isMain = process.argv[1] && process.argv[1].replace(/\\/g, '/').endsWith('valorant-login.mjs');
+if (isMain) main().catch(err => { console.error(err); process.exitCode = 1; });

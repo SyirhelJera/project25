@@ -237,47 +237,217 @@
 
   /* ---- daily store: written by scripts/valorant-check-store.mjs, run locally on the app
      owner's machine (see README.md — Riot's bot detection blocks this reauth flow from cloud
-     infrastructure) into state.valorant.dailyStore/dailyStoreError — this client only ever
-     reads/displays it, never fetches or authenticates to Riot itself. ---- */
+     infrastructure) into state.valorant.dailyStores, keyed by the label chosen when running
+     scripts/valorant-login.mjs (e.g. "main", "smurf") — this client only ever reads/displays it,
+     never fetches or authenticates to Riot itself. One or more accounts render as separate
+     labeled sections so multiple Riot accounts' stores can be checked at a glance. ---- */
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
     el('valStoreUnavailable').style.display = unavailable ? 'block' : 'none';
     if(unavailable){ wrap.innerHTML = ''; return; }
 
-    const err = state.valorant.dailyStoreError;
-    if(err){
-      wrap.innerHTML = '<div class="val-err">⚠️ '+escapeHtml(err)+'</div>';
+    const stores = state.valorant.dailyStores || {};
+    const allLabels = Object.keys(stores);
+    if(!allLabels.length){
+      wrap.innerHTML = '<div class="val-peak-note">No store data yet — run scripts/valorant-login.mjs then scripts/valorant-check-store.mjs locally (see README.md "Setup").</div>';
       return;
     }
-    const ds = state.valorant.dailyStore;
-    if(!ds){
-      wrap.innerHTML = '<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div>';
-      return;
+    // the Local Helper panel's account dropdown doubles as a filter here — pick one account to
+    // show just its store, or "All accounts" (empty selection) to show every tracked account
+    // stacked, like before. Keeps the tab from getting cluttered once a few accounts are tracked.
+    const selected = state.valorant.selectedStoreLabel;
+    const labels = (selected && allLabels.includes(selected)) ? [selected] : allLabels;
+
+    wrap.innerHTML = labels.map(label=>{
+      const ds = stores[label] || {};
+      const hdrHtml = '<div class="val-store-account-hdr">'+escapeHtml(label)+'</div>';
+      if(ds.error){
+        return '<div class="val-store-account">'+hdrHtml+'<div class="val-err">⚠️ '+escapeHtml(ds.error)+'</div></div>';
+      }
+      if(!ds.checkedAt){
+        return '<div class="val-store-account">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
+      }
+      const items = ds.items || [];
+      let html = '<div class="val-store-grid">';
+      items.forEach(it=>{
+        html += '<div class="val-store-item">'
+          + (it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')
+          + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
+          + '<div class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+' VP</div>'
+          + '</div>';
+      });
+      html += '</div>';
+      if(ds.bundle){
+        html += '<div class="val-store-bundle">'
+          + (ds.bundle.imageUrl ? '<img src="'+escapeHtml(ds.bundle.imageUrl)+'" alt="'+escapeHtml(ds.bundle.name)+'">' : '')
+          + '<div><div class="val-store-item-name">'+escapeHtml(ds.bundle.name)+' <span class="chip">Featured Bundle</span></div>'
+          + '<div class="val-store-item-price">'+(parseInt(ds.bundle.price,10)||0).toLocaleString()+' VP</div></div>'
+          + '</div>';
+      }
+      html += '<div class="today-sub" style="margin-top:8px;">Checked '+fmtDate(ds.checkedAt)+'</div>';
+      return '<div class="val-store-account">'+hdrHtml+html+'</div>';
+    }).join('');
+  }
+
+  /* ---- Local Helper: talks to scripts/valorant-local-server.mjs running on this machine, so
+     the "Check Store Now" / "+ Add Account" buttons below can trigger the same store check /
+     session-cookie save that valorant-check-store.mjs / valorant-login.mjs do from a terminal —
+     see README.md for why logging in itself still has to happen in your own normal browser
+     first (Riot's bot detection rejects automation-driven login attempts). Connection state
+     (valLocalStatus) is intentionally not persisted: it only describes whatever's listening on
+     *this* browser's localhost right now. ---- */
+  const VAL_LOCAL_DEFAULT_URL = 'http://127.0.0.1:8787';
+  let valLocalStatus = { connected:false, accounts:[], busy:false, busyMsg:'' };
+
+  function valLocalUrl(){
+    return (state.valorant.localServerUrl || VAL_LOCAL_DEFAULT_URL).replace(/\/+$/,'');
+  }
+  function showValLocalErr(msg){
+    const e2 = el('valLocalErr');
+    e2.textContent = msg;
+    e2.style.display = 'block';
+  }
+
+  async function pollValLocalStatus(){
+    try{
+      const res = await fetch(valLocalUrl()+'/status');
+      if(!res.ok) throw new Error('bad status');
+      const json = await res.json();
+      valLocalStatus.connected = true;
+      valLocalStatus.accounts = Array.isArray(json.accounts) ? json.accounts : [];
+    }catch(e){
+      valLocalStatus.connected = false;
+      valLocalStatus.accounts = [];
     }
-    const items = ds.items || [];
-    let html = '<div class="val-store-grid">';
-    items.forEach(it=>{
-      html += '<div class="val-store-item">'
-        + (it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')
-        + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
-        + '<div class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+' VP</div>'
-        + '</div>';
-    });
-    html += '</div>';
-    if(ds.bundle){
-      html += '<div class="val-store-bundle">'
-        + (ds.bundle.imageUrl ? '<img src="'+escapeHtml(ds.bundle.imageUrl)+'" alt="'+escapeHtml(ds.bundle.name)+'">' : '')
-        + '<div><div class="val-store-item-name">'+escapeHtml(ds.bundle.name)+' <span class="chip">Featured Bundle</span></div>'
-        + '<div class="val-store-item-price">'+(parseInt(ds.bundle.price,10)||0).toLocaleString()+' VP</div></div>'
-        + '</div>';
+    renderValLocalPanel();
+  }
+
+  function renderValLocalPanel(){
+    const wrap = el('valLocalPanel'); if(!wrap) return;
+    const unavailable = usingClaudeStorage || !supabaseConfigured;
+    wrap.style.display = unavailable ? 'none' : 'block';
+    if(unavailable) return;
+
+    const statusEl = el('valLocalStatusTxt');
+    if(valLocalStatus.connected){
+      const n = valLocalStatus.accounts.length;
+      statusEl.innerHTML = '<span class="val-local-dot on"></span> Local helper connected'
+        + (n ? ' · '+n+' account'+(n===1?'':'s')+' saved' : ' · no accounts logged in yet — add one below');
+    } else {
+      statusEl.innerHTML = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine (see README.md)';
     }
-    html += '<div class="today-sub" style="margin-top:8px;">Checked '+fmtDate(ds.checkedAt)+'</div>';
-    wrap.innerHTML = html;
+
+    // union of accounts the local server has a saved session for, and accounts that already
+    // have store data — so a device without the local server running (or an account it doesn't
+    // know about yet) can still pick from and view whatever's already been checked
+    const dropdownLabels = Array.from(new Set([...valLocalStatus.accounts, ...Object.keys(state.valorant.dailyStores||{})]));
+    const sel = el('valLocalAccountSelect');
+    sel.innerHTML = '<option value="">All accounts</option>'
+      + dropdownLabels.map(a=>'<option value="'+escapeHtml(a)+'">'+escapeHtml(a)+'</option>').join('');
+    sel.value = dropdownLabels.includes(state.valorant.selectedStoreLabel) ? state.valorant.selectedStoreLabel : '';
+
+    const disabled = !valLocalStatus.connected || valLocalStatus.busy;
+    el('valLocalCheckBtn').disabled = disabled || !valLocalStatus.accounts.length;
+    el('valLocalCheckBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='check') ? 'Checking…' : 'Check Store Now';
+    el('valLocalAddAccountBtn').disabled = disabled;
+    el('valLocalAddAccountBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='login') ? 'Saving…' : '+ Add Account';
+    // deleting removes the saved *session*, so it only makes sense for a specific account the
+    // local server actually has a session for — not "All accounts" and not a dailyStores-only
+    // label left over from a device that isn't running the local server
+    el('valLocalDeleteBtn').disabled = disabled || !sel.value || !valLocalStatus.accounts.includes(sel.value);
+    el('valLocalDeleteBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='delete') ? 'Deleting…' : '🗑 Delete';
+  }
+
+  el('valLocalSaveTokenBtn').addEventListener('click', ()=>{
+    state.valorant.localServerToken = el('valLocalToken').value.trim();
+    save();
+    pollValLocalStatus();
+  });
+
+  el('valLocalAccountSelect').addEventListener('change', ()=>{
+    state.valorant.selectedStoreLabel = el('valLocalAccountSelect').value;
+    save();
+    renderValorantStore();
+  });
+
+  el('valLocalCheckBtn').addEventListener('click', async ()=>{
+    el('valLocalErr').style.display = 'none';
+    const label = el('valLocalAccountSelect').value;
+    valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check'; renderValLocalPanel();
+    try{
+      const res = await fetch(valLocalUrl()+'/check', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken, label: label || undefined })
+      });
+      const json = await res.json().catch(()=>null);
+      if(!res.ok || !json || json.ok===false){
+        const detail = json && json.results && Object.values(json.results).map(r=>r.error).filter(Boolean)[0];
+        throw new Error((json && json.error) || detail || ('Check failed (HTTP '+res.status+').'));
+      }
+      await load(); // pulls the dailyStores the local server just wrote to Supabase and re-renders
+    }catch(e){
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+    }
+    valLocalStatus.busy = false; valLocalStatus.busyMsg = ''; renderValLocalPanel();
+  });
+
+  el('valLocalDeleteBtn').addEventListener('click', async ()=>{
+    el('valLocalErr').style.display = 'none';
+    const label = el('valLocalAccountSelect').value;
+    if(!label) return; // button is disabled in this case, but guard anyway
+    if(!window.confirm('Delete the saved session for "'+label+'"? You\'ll need to log in again and paste a fresh cookie to re-add it. This can\'t be undone.')) return;
+    valLocalStatus.busy = true; valLocalStatus.busyMsg = 'delete'; renderValLocalPanel();
+    try{
+      const res = await fetch(valLocalUrl()+'/delete-account', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken, label })
+      });
+      const json = await res.json().catch(()=>null);
+      if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Delete failed (HTTP '+res.status+').'));
+      if(state.valorant.selectedStoreLabel === label){ state.valorant.selectedStoreLabel = ''; save(); }
+      await load(); // drops the deleted account's dailyStores entry and re-renders
+    }catch(e){
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+    }
+    valLocalStatus.busy = false; valLocalStatus.busyMsg = '';
+    await pollValLocalStatus();
+  });
+
+  el('valLocalAddAccountBtn').addEventListener('click', async ()=>{
+    el('valLocalErr').style.display = 'none';
+    const label = el('valLocalNewLabel').value.trim();
+    const ssid = el('valLocalNewSsid').value.trim();
+    if(!label){ showValLocalErr('Enter a label for this account, e.g. "main".'); return; }
+    if(!ssid){ showValLocalErr('Paste the ssid cookie value (see the note below) — log into playvalorant.com in your own browser first, then copy it from DevTools.'); return; }
+    valLocalStatus.busy = true; valLocalStatus.busyMsg = 'login'; renderValLocalPanel();
+    try{
+      const res = await fetch(valLocalUrl()+'/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken, label, ssid })
+      });
+      const json = await res.json().catch(()=>null);
+      if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Login failed (HTTP '+res.status+').'));
+      el('valLocalNewLabel').value = '';
+      el('valLocalNewSsid').value = '';
+    }catch(e){
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+    }
+    valLocalStatus.busy = false; valLocalStatus.busyMsg = '';
+    await pollValLocalStatus();
+  });
+
+  if(!(usingClaudeStorage || !supabaseConfigured)){
+    pollValLocalStatus();
+    setInterval(pollValLocalStatus, 15000);
   }
 
   function renderValorant(){
     renderValorantStore();
+    renderValLocalPanel();
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;

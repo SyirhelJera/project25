@@ -8,7 +8,7 @@
   let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
-    valorant: { apiKey:'', accounts:[], selectedAccountId:null, dailyStore:null, dailyStoreError:'' },
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, selectedStoreLabel:'', localServerUrl:'', localServerToken:'' },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:'',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default"
     mosaicColors: { filled:'', today:'', empty:'' },

@@ -186,10 +186,24 @@
       if(a.lastAgent===undefined) a.lastAgent = '';
     });
     if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
-    // written by scripts/valorant-check-store.mjs, run locally by the app owner (see README.md) —
-    // never set by this client, just read/displayed
-    if(state.valorant.dailyStore===undefined) state.valorant.dailyStore = null;
-    if(state.valorant.dailyStoreError===undefined) state.valorant.dailyStoreError = '';
+    // per-Riot-account daily store snapshots, keyed by the label passed to
+    // scripts/valorant-login.mjs (e.g. "main", "smurf") — written by scripts/valorant-check-store.mjs,
+    // run locally by the app owner (see README.md), never set by this client, just read/displayed
+    if(!state.valorant.dailyStores) state.valorant.dailyStores = {};
+    if(state.valorant.dailyStore || state.valorant.dailyStoreError){
+      // upgrade from the old single-account shape into one entry labeled "default"
+      if(!state.valorant.dailyStores.default){
+        state.valorant.dailyStores.default = Object.assign({}, state.valorant.dailyStore, { error: state.valorant.dailyStoreError||'' });
+      }
+    }
+    delete state.valorant.dailyStore;
+    delete state.valorant.dailyStoreError;
+    // scripts/valorant-local-server.mjs connection — the URL is a sensible default so most users
+    // never need to touch it; the token is pasted in once from that script's console output
+    if(state.valorant.localServerUrl===undefined) state.valorant.localServerUrl = '';
+    if(state.valorant.localServerToken===undefined) state.valorant.localServerToken = '';
+    // which account's store the Valorant tab shows — '' means "all accounts" (stacked)
+    if(state.valorant.selectedStoreLabel===undefined) state.valorant.selectedStoreLabel = '';
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     if(!state.profile.avatarImage) state.profile.avatarImage = '';
@@ -323,6 +337,7 @@
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
+    el('valLocalToken').value = state.valorant.localServerToken || '';
     renderAboutMe();
     applyTheme();
     renderAll();

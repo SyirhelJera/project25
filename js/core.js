@@ -9,7 +9,7 @@
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, selectedStoreLabel:'', localServerUrl:'', localServerToken:'' },
-    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:'',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
+    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:'',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default"
     mosaicColors: { filled:'', today:'', empty:'' },
     // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —
@@ -27,13 +27,15 @@
   const fmtDate = ts => !ts ? '' : new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
   const localDateStr = d => { const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day; };
 
-  // Goal/finance icon images are stored inline as base64 in the single shared app_data row
-  // (see js/persistence.js) — that whole row is transferred on every load and every save, even
-  // ones unrelated to these images. An unresized phone photo dropped in here (multi-MB) gets
-  // re-sent on every save from then on, which is what actually drives PostgREST egress up, not
-  // just the one-time upload. So every upload is downscaled + re-encoded as JPEG before it's
-  // ever put in state, instead of storing the raw file. Falls back to the raw file (old
-  // behavior) if decoding fails, so an upload never just silently breaks.
+  // Goal/finance icon images used to be stored inline as base64 in the single shared app_data
+  // row (see js/persistence.js) — that whole row is transferred on every load and every save,
+  // even ones unrelated to these images, so an embedded image got re-sent forever, not just on
+  // upload. Every upload is downscaled + re-encoded as JPEG (as before), then uploaded to the
+  // "icons" Supabase Storage bucket — only the resulting (short) public URL is stored in state.
+  // Requires the "icons" bucket + public read/write policies (see README.md "Setup"). Falls
+  // back to an inline base64 data URL when Supabase isn't configured/reachable (e.g. running
+  // inside Claude, or the upload itself fails), so an upload never just silently breaks — it
+  // just costs more egress than usual until Storage is reachable again.
   function compressImageFile(file, maxDim, quality){
     return new Promise((resolve, reject)=>{
       const objUrl = URL.createObjectURL(file);
@@ -47,16 +49,49 @@
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
-        try{ resolve(canvas.toDataURL('image/jpeg', quality)); }
-        catch(e){ reject(e); }
+        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not encode image')), 'image/jpeg', quality);
       };
       img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Could not decode image')); };
       img.src = objUrl;
-    }).catch(()=> new Promise((resolve, reject)=>{
+    }).catch(()=> file); // decode failed — fall back to uploading/encoding the raw file as-is
+  }
+
+  function blobToDataUrl(blob){
+    return new Promise((resolve, reject)=>{
       const reader = new FileReader();
       reader.onload = ev => resolve(ev.target.result);
       reader.onerror = () => reject(new Error('Could not read the selected file.'));
-      reader.readAsDataURL(file);
-    }));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // One-time setup: run supabase/setup-egress-fix.sql in the Supabase SQL editor to create this
+  // bucket + its public read/write policies (same "anyone can read/write" model already used
+  // for app_data — see js/persistence.js — since this app has no login).
+  const ICONS_BUCKET = 'icons';
+  function uploadCompressedImage(file, maxDim, quality, folder){
+    return compressImageFile(file, maxDim, quality).then(blob=>{
+      if(!supabaseConfigured || usingClaudeStorage || !supa) return blobToDataUrl(blob);
+      const path = folder + '/' + uid() + '.jpg';
+      return supa.storage.from(ICONS_BUCKET).upload(path, blob, { contentType: 'image/jpeg' })
+        .then(({ error })=>{
+          if(error) throw error;
+          return supa.storage.from(ICONS_BUCKET).getPublicUrl(path).data.publicUrl;
+        })
+        .catch(()=> blobToDataUrl(blob));
+    });
+  }
+
+  // Best-effort delete of a previously-uploaded icon when it's replaced or removed, so the free
+  // Storage quota doesn't slowly fill with orphaned files. A no-op for base64 data URLs (icons
+  // saved before this change, or ones that fell back to base64 above) since those aren't in
+  // Storage at all. Failures are swallowed — a stray orphaned file is harmless, unlike blocking
+  // the user's edit on a delete call failing.
+  function deleteStorageImage(url){
+    if(!url || !supabaseConfigured || usingClaudeStorage || !supa) return;
+    const marker = '/storage/v1/object/public/' + ICONS_BUCKET + '/';
+    const idx = url.indexOf(marker);
+    if(idx === -1) return;
+    supa.storage.from(ICONS_BUCKET).remove([url.slice(idx + marker.length)]).catch(()=>{});
   }
 

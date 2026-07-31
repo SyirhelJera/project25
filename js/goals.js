@@ -827,12 +827,14 @@
         + (g.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
       imgRow.querySelector('input[type=file]').addEventListener('change', (e)=>{
         const file = e.target.files[0]; if(!file) return;
-        compressImageFile(file, 640, 0.78).then(dataUrl=>{
-          g.imageUrl = dataUrl; touchGoal(g); save(); renderGoals();
+        const prevUrl = g.imageUrl;
+        uploadCompressedImage(file, 640, 0.78, 'goals').then(url=>{
+          g.imageUrl = url; touchGoal(g); save(); renderGoals();
+          deleteStorageImage(prevUrl);
         });
       });
       const rmBtn = imgRow.querySelector('.del-goal');
-      if(rmBtn) rmBtn.addEventListener('click', ()=>{ g.imageUrl = ''; touchGoal(g); save(); renderGoals(); });
+      if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(g.imageUrl); g.imageUrl = ''; touchGoal(g); save(); renderGoals(); });
       inner.appendChild(imgRow);
 
       const footer = document.createElement('div'); footer.className='goal-footer';

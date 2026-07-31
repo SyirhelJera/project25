@@ -46,53 +46,39 @@ function firstCostValue(cost){
   return vals.length ? vals[0] : 0;
 }
 
-export async function writeAppData(mutate){
+// These three calls used to GET the entire app_data row (every embedded image and all, see
+// js/persistence.js's comment on why that row can be large), mutate one key in JS, then PATCH
+// the whole thing back — meaning every daily store check, "Check Store Now" click, and account
+// deletion pulled the *whole* shared row over the wire just to touch one small field. They now
+// call three Postgres functions (jsonb_set/delete server-side, no read at all) created by
+// running supabase/setup-egress-fix.sql once in the Supabase SQL editor.
+async function callRpc(fn, args){
   const { url, anonKey } = readSupabaseConfig();
-  const getResp = await fetch(`${url}/rest/v1/app_data?id=eq.shared&select=data`, {
-    headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
-  });
-  const rows = await getResp.json();
-  const row = Array.isArray(rows) ? rows[0] : null;
-  if (!row?.data) throw new Error('Could not read app_data row');
-  const appData = row.data;
-  mutate(appData);
-  const patchResp = await fetch(`${url}/rest/v1/app_data?id=eq.shared`, {
-    method: 'PATCH',
+  const resp = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+    method: 'POST',
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
       'Content-Type': 'application/json',
-      Prefer: 'return=minimal',
     },
-    body: JSON.stringify({ data: appData, updated_at: new Date().toISOString() }),
+    body: JSON.stringify(args),
   });
-  if (!patchResp.ok) throw new Error(`Failed to save to Supabase: HTTP ${patchResp.status}`);
+  if (!resp.ok) throw new Error(`Failed to save to Supabase: HTTP ${resp.status} ${await resp.text().catch(() => '')}`);
 }
 
 export async function recordAccountResult(label, result){
-  await writeAppData(appData => {
-    appData.valorant = appData.valorant || {};
-    appData.valorant.dailyStores = appData.valorant.dailyStores || {};
-    appData.valorant.dailyStores[label] = result;
-  });
+  await callRpc('valorant_set_daily_store', { p_label: label, p_result: result });
 }
 
 export async function recordAccountError(label, message){
-  await writeAppData(appData => {
-    appData.valorant = appData.valorant || {};
-    appData.valorant.dailyStores = appData.valorant.dailyStores || {};
-    // keep whatever store data this account last successfully fetched — only the error changes
-    appData.valorant.dailyStores[label] = { ...(appData.valorant.dailyStores[label] || {}), error: message };
-  });
+  await callRpc('valorant_set_daily_store_error', { p_label: label, p_message: message });
 }
 
 // Removes a deleted account's store data from the shared app_data row so it stops showing up in
 // the Valorant tab (the account dropdown, "All accounts" view, etc.) once its saved session is
 // gone. Called after the session itself is removed from loadSessions()/saveSessions().
 export async function deleteAccountStore(label){
-  await writeAppData(appData => {
-    if (appData.valorant && appData.valorant.dailyStores) delete appData.valorant.dailyStores[label];
-  });
+  await callRpc('valorant_delete_daily_store', { p_label: label });
 }
 
 // Redeems a saved `ssid` cookie for a fresh access/id token pair, the same silent reauth Riot's

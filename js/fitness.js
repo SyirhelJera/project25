@@ -64,34 +64,17 @@
     return { color:'#94A3B8', crown:false };
   }
 
-  // Player-card avatar: either the AI-generated image (once the user has manually generated
-  // one — see generateAiAvatar()), or a fallback hand-drawn SVG character (no external
-  // images/fonts) whose hair/build reflects age, chest pin reflects level tier, and outfit
-  // color (plus a crown at the top tier) reflects net worth —
-  // all redrawn from current state. The AI image is never (re)generated automatically; it's
-  // only ever replaced when the user presses the generate/regenerate button.
+  // Player-card avatar: a hand-drawn SVG character (no external images/fonts) whose hair/build
+  // reflects age, chest pin reflects level tier, and outfit color (plus a crown at the top
+  // tier) reflects net worth — all redrawn from current state.
   function updateAvatar(){
-    const ringEl = el('pfAvatarRing'), svg = el('pfAvatarSvg'), img = el('pfAvatarImg');
+    const ringEl = el('pfAvatarRing'), svg = el('pfAvatarSvg');
     if(!ringEl || !svg) return;
 
     const blockEl = el('pfAvatarBlock');
     if(blockEl) blockEl.style.display = state.profile.hideAvatar ? 'none' : '';
 
     const fitTier = getFitnessTier();
-
-    const genBtn = el('pfAvatarGenBtn');
-    if(genBtn && !genBtn.disabled){
-      genBtn.textContent = state.profile.avatarImage ? '↻ Regenerate Avatar' : '✦ Generate AI Avatar';
-    }
-
-    if(state.profile.avatarImage){
-      img.src = state.profile.avatarImage;
-      img.style.display = 'block';
-      svg.style.display = 'none';
-    } else {
-      img.style.display = 'none';
-      svg.style.display = 'block';
-    }
 
     const ap = avatarAgeProfile(parseFloat(state.profile.age));
     const { level } = levelInfo(totalExp());
@@ -130,87 +113,6 @@
     svg.innerHTML = parts.join('');
     ringEl.title = 'Lv.'+level+' · '+(fitTier?fitTier.label:'Fitness not set')+' · $'+Math.round(getNetWorthNum()).toLocaleString()+' net worth';
   }
-
-  // Reduce the current stats down to small fixed vocabularies before they ever leave the
-  // browser — the edge function maps these keys to its own prompt text server-side, so no
-  // free-form profile text (name, etc.) is ever sent to the image model.
-  function avatarAgeBracketKey(age){
-    if(isNaN(age)) return 'unknown';
-    if(age < 18) return 'young';
-    if(age < 60) return 'adult';
-    return 'senior';
-  }
-  function avatarFitnessKey(){
-    const t = getFitnessTier();
-    if(!t) return 'unknown';
-    if(t.label === 'Fit') return 'fit';
-    if(t.label === 'Underweight') return 'underweight';
-    if(t.label === 'Overweight') return 'overweight';
-    return 'obese'; // only remaining tier from getFitnessTier()
-  }
-  function avatarWorthKey(nw){
-    if(nw >= 1000000) return 'elite';
-    if(nw >= 100000) return 'wealthy';
-    if(nw >= 10000) return 'comfortable';
-    if(nw >= 1000) return 'stable';
-    return 'starter';
-  }
-
-  // Manual only, by design: this never runs on page load or on a stat change — only a direct
-  // button click calls it, and the resulting image is saved into state.profile.avatarImage so
-  // it persists as-is across visits until the user presses the button again.
-  async function generateAiAvatar(){
-    const btn = el('pfAvatarGenBtn'), errEl = el('pfAvatarGenErr');
-    if(!btn) return;
-    errEl.style.display = 'none';
-    if(usingClaudeStorage){
-      errEl.textContent = 'AI avatar generation isn’t available in this mode — it only works on the Supabase-hosted deployment.';
-      errEl.style.display = 'block';
-      return;
-    }
-    if(!initSupabaseIfNeeded()) return;
-    btn.textContent = '✦ Generating...'; btn.disabled = true;
-    try{
-      const payload = {
-        ageBracket: avatarAgeBracketKey(parseFloat(state.profile.age)),
-        fitnessTier: avatarFitnessKey(),
-        worthTier: avatarWorthKey(getNetWorthNum()),
-        // Optional free-text appearance details from the About Me tab — the edge function
-        // sanitizes/truncates these itself; net worth still always shapes clothing quality
-        // and surroundings server-side even when these are filled in.
-        race: state.profile.race || '',
-        skinTone: state.profile.skinTone || '',
-        hairColor: state.profile.hairColor || '',
-        hairStyle: state.profile.hairStyle || '',
-        eyeColor: state.profile.eyeColor || '',
-        clothing: state.profile.clothing || '',
-        background: state.profile.background || '',
-      };
-      const { data, error } = await supa.functions.invoke('generate-avatar', { body: payload });
-      if(error){
-        // supabase-js's default error.message is just "Edge Function returned a non-2xx
-        // status code" — the real reason (rate limit, upstream failure, etc.) is in the
-        // response body, so pull it out when available instead of showing the generic text.
-        let detail = '';
-        if(error.context && typeof error.context.json === 'function'){
-          try{ detail = (await error.context.json())?.error || ''; }catch(_){}
-        }
-        throw new Error(detail || error.message);
-      }
-      if(data && data.error) throw new Error(data.error);
-      if(!data || !data.image) throw new Error('No image came back, try again.');
-      state.profile.avatarImage = data.image;
-      state.profile.avatarGeneratedAt = Date.now();
-      save();
-    }catch(e){
-      const msg = (e && e.message) ? e.message : 'Could not generate an avatar right now, try again shortly.';
-      errEl.textContent = msg;
-      errEl.style.display = 'block';
-    }
-    btn.disabled = false;
-    updateAvatar();
-  }
-  el('pfAvatarGenBtn').addEventListener('click', generateAiAvatar);
 
   function calcFitness(){
     const f = state.fitness;

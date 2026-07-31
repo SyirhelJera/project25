@@ -255,12 +255,14 @@
           + (a.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
         imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
           const file = e.target.files[0]; if(!file) return;
-          compressImageFile(file, 200, 0.75).then(dataUrl=>{
-            a.imageUrl = dataUrl; save(); renderFinanceAccounts();
+          const prevUrl = a.imageUrl;
+          uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
+            a.imageUrl = url; save(); renderFinanceAccounts();
+            deleteStorageImage(prevUrl);
           });
         });
         const rmBtn = imgRow.querySelector('.del-goal');
-        if(rmBtn) rmBtn.addEventListener('click', ()=>{ a.imageUrl=''; save(); renderFinanceAccounts(); });
+        if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(a.imageUrl); a.imageUrl=''; save(); renderFinanceAccounts(); });
         inner.appendChild(imgRow);
 
         // transactions
@@ -396,8 +398,10 @@
       card.querySelector('.sub-icon').addEventListener('click', ()=> iconFile.click());
       iconFile.addEventListener('change', e=>{
         const file = e.target.files[0]; if(!file) return;
-        compressImageFile(file, 200, 0.75).then(dataUrl=>{
-          s.imageUrl = dataUrl; save(); renderFinanceSubs();
+        const prevUrl = s.imageUrl;
+        uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
+          s.imageUrl = url; save(); renderFinanceSubs();
+          deleteStorageImage(prevUrl);
         });
       });
       card.querySelector('.del-goal').addEventListener('click', ()=>{

@@ -1,4 +1,4 @@
-  /* ---------- about me (appearance details used by AI avatar generation) ---------- */
+  /* ---------- about me (free-text appearance details) ---------- */
   function renderAboutMe(){
     el('amRace').value = state.profile.race || '';
     el('amSkinTone').value = state.profile.skinTone || '';

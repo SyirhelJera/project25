@@ -16,10 +16,10 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, and a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer. |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
-| **About Me** | Free-text appearance details (race, hair, eyes, clothing, background) used only to steer AI avatar generation. |
+| **About Me** | Free-text appearance details (race, hair, eyes, clothing, background). |
 | **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, and backup restore. |
 
-**Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a generated avatar (hand-drawn SVG by default) whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance.
+**Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance.
 
 ## Architecture
 
@@ -51,6 +51,9 @@ state = {
   goals: [ { id, title, subtasks:[{id,title,done,requiresId}], tier, starred, workingOn,
              targetDate, completedAt, financeTarget, financeSaved, requiredNetWorth,
              color, imageUrl, checkin, ... } ],
+                                       // imageUrl is a public Supabase Storage URL (uploaded via
+                                       // uploadCompressedImage() in core.js), not an embedded
+                                       // base64 image — keeps it off the app_data row entirely
   habits: [ { id, name, completions:{date:true}, streakRestores:{monthKey:count}, ... } ],
   countdowns: [ { id, label, date, pinned, createdAt } ],
   mantras: [ { id, text } ],
@@ -62,8 +65,10 @@ state = {
                                        // tasks" panel (getStrugglingItems() in checklists.js)
   checklistExp: number,               // running XP total from checklist items (survives resets)
   finance: {
-    accounts: [ {id,type,name,balance,currency,transactions:[{id,amount,note,category,createdAt}],...} ],
-    subscriptions: [ {id,name,amount,currency,cycle,nextDate,...} ],
+    accounts: [ {id,type,name,balance,currency,imageUrl,transactions:[{id,amount,note,category,createdAt}],...} ],
+    subscriptions: [ {id,name,amount,currency,cycle,nextDate,imageUrl,...} ],
+                                       // account/subscription imageUrl: same Storage-URL scheme
+                                       // as goals.imageUrl above, not embedded base64
     moneyGoals: [ {id,name,target,currency,deadline,contributions:[...],...} ],
     rates: { USD:1, PHP:58.5, ... },  // "units per 1 USD", user-editable or live-fetched
     netWorthHistory: [ {date, value} ] // one snapshot/day (USD), captured on save() — see snapshotNetWorth()
@@ -94,7 +99,7 @@ state = {
                                        // scripts/valorant-local-server.mjs (also local-only) so
                                        // those can be buttons instead of terminal commands — see
                                        // "Setup" below.
-  profile: { name, age, netWorth, netWorthCurrency, avatarImage, race, skinTone, hairColor,
+  profile: { name, age, netWorth, netWorthCurrency, race, skinTone, hairColor,
              hairStyle, eyeColor, clothing, background, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
@@ -119,16 +124,15 @@ Key mechanics in this layer:
 
 ### Supabase backend
 
-Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
+Three Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
 
-- **`generate-avatar`** — builds a prompt from fixed vocabularies (age bracket / fitness tier / net-worth tier, always derived from real stats) plus optional free-text About Me fields, then proxies to Pollinations.ai's free, keyless image API (`image.pollinations.ai`). Returns a base64 data URL. Manual trigger only (button click), never automatic.
 - **`manage-backups`** — lets the client list/restore daily backups from a private Storage bucket (`backups`) without ever exposing the `service_role` key to the browser. Read-only from the client's perspective.
 - **`suggest-subtasks`** — proxies "suggest subtasks for this goal" to the Anthropic API (`claude-haiku-4-5`) using a server-side `ANTHROPIC_API_KEY` secret, with a shared daily call cap (`ai_usage` table, 30/day) and a 300-token cap per call.
 - **`upload-fitness-photo`** — uploads a Fitness tab progress photo straight to a Google Drive folder on the app owner's behalf. Uses a one-time-obtained Google OAuth refresh token (server secret) to mint a fresh access token per call, so uploads are fully automatic — no per-upload consent prompt. Only the returned Drive file id/link are saved into app state; the image bytes themselves live only in Drive.
 
 **Backups**: `scripts/backup-supabase.sh` (run daily by `.github/workflows/backup-supabase.yml` via cron at 07:00 UTC) pulls the current `app_data` row with the service-role key and uploads it as `<YYYY-MM-DD>.json` to a private Storage bucket. The Settings tab can list and restore from these via the `manage-backups` function.
 
-**Daily Valorant store check — deliberately *not* an Edge Function.** An earlier version of this ran as a Supabase Edge Function on a GitHub Actions cron, like the backup above. It doesn't work: fetching your personal storefront requires silently re-authenticating to Riot's internal client API, and Riot's fraud/bot detection flags that reauth as low-trust and forces an interactive login again whenever it comes from a cloud/data-center IP (Supabase's Edge Function infrastructure, in this case) instead of your own device. Rather than fight that detection, `scripts/valorant-check-store.mjs` runs **locally, on your own machine** — the same device/IP that did the original login, which Riot's risk engine already trusts — and writes straight into the shared `app_data` row using the same public anon key the app itself already uses (see "Persistence" above; there's no login on this app, so no extra credential is needed to write there). See "Setup" below.
+**Daily Valorant store check — deliberately *not* an Edge Function.** An earlier version of this ran as a Supabase Edge Function on a GitHub Actions cron, like the backup above. It doesn't work: fetching your personal storefront requires silently re-authenticating to Riot's internal client API, and Riot's fraud/bot detection flags that reauth as low-trust and forces an interactive login again whenever it comes from a cloud/data-center IP (Supabase's Edge Function infrastructure, in this case) instead of your own device. Rather than fight that detection, `scripts/valorant-check-store.mjs` runs **locally, on your own machine** — the same device/IP that did the original login, which Riot's risk engine already trusts — and writes into the shared `app_data` row via a small Postgres function (`valorant_set_daily_store`, see the SQL comment in `scripts/valorant-lib.mjs`) called through the same public anon key the app itself already uses (see "Persistence" above; there's no login on this app, so no extra credential is needed to write there). That function patches just `valorant.dailyStores[label]` server-side with `jsonb_set` — earlier versions read the *entire* row into the script, mutated it, then wrote the whole thing back, which meant every check (and every tracked account) round-tripped the whole row, images and all. See "Setup" below.
 
 **Getting the initial session — deliberately *not* an automated browser login either.** An earlier version of `scripts/valorant-login.mjs` used Puppeteer to open a real, visible Chrome window at Riot's login page. That doesn't work either: Riot's fraud detection fingerprints automation-controlled browsers (e.g. `navigator.webdriver`, other DevTools-Protocol tells) independently of the IP check above, and silently rejects the login — surfaced as a misleading "username or password may be incorrect" even with correct credentials, regardless of whether Chromium or a real installed Chrome drives it. Getting around that would mean actively evading a fraud-detection system built specifically to block this kind of automated access, which this project won't do (same principle as not automating past the login captcha). So `valorant-login.mjs` doesn't touch a browser at all anymore: you log into `playvalorant.com` yourself, in your own completely normal browser, then copy the resulting `ssid` session cookie out of DevTools and either paste it when the script prompts for it or paste it into the Valorant tab's "+ Add Account" field. Everything downstream of that (the daily check, the local server) is plain `fetch()` calls with that cookie — no browser involved.
 
@@ -141,7 +145,6 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
-| Pollinations.ai (via `generate-avatar` function) | AI avatar images | None (public, proxied server-side) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation | Local session cookie only, never leaves your machine — see "Setup" |
@@ -156,9 +159,10 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 2. **If deploying outside Claude** (e.g. GitHub Pages), create a Supabase project and:
    - Run the SQL in the comment at the top of `js/persistence.js` to create the `app_data` table + open RLS policy.
    - Replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `js/persistence.js`.
-   - Deploy the four Edge Functions in `supabase/functions/` (`generate-avatar`, `manage-backups`, `suggest-subtasks`, `upload-fitness-photo`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
+   - Deploy the three Edge Functions in `supabase/functions/` (`manage-backups`, `suggest-subtasks`, `upload-fitness-photo`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
    - Create the private `backups` Storage bucket and the `ai_usage` table (`day text primary key, count int`) if you want backups / AI subtask limits to work.
    - For scheduled backups, set the `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret so `.github/workflows/backup-supabase.yml` can run.
+   - **For goal/finance icon uploads and the daily Valorant store check's writes** — run `supabase/setup-egress-fix.sql` once in the SQL editor. It creates the public `icons` Storage bucket + policies (goal/finance images upload here instead of being embedded as base64 in `app_data`) and the three Postgres functions (`valorant_set_daily_store`, `valorant_set_daily_store_error`, `valorant_delete_daily_store`) `scripts/valorant-lib.mjs` calls instead of reading/writing the whole row. Skipping this doesn't break anything — icon uploads fall back to base64 and the Valorant scripts fall back to erroring per-account — it just means you're not getting the egress savings.
    - **For Fitness progress-photo uploads** (one-time setup, needed for `upload-fitness-photo`):
      1. In [Google Cloud Console](https://console.cloud.google.com), create a project, enable the **Google Drive API**, and create an **OAuth 2.0 Client ID** (type: Desktop app is simplest).
      2. Using that client ID/secret, complete an OAuth consent once with scope `https://www.googleapis.com/auth/drive.file` (e.g. via [Google's OAuth 2.0 Playground](https://developers.google.com/oauthplayground), using your own client ID/secret under its settings gear) and copy the resulting **refresh token**.
@@ -197,7 +201,6 @@ js/
   checklists.js / countdowns.js / mantras.js / aboutme.js / backups.js / insights.js
                                      one file per feature tab
 supabase/functions/
-  generate-avatar/                  AI avatar image proxy (Pollinations)
   manage-backups/                   list/restore daily backups
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive

@@ -211,10 +211,14 @@
       if(w.imageUrl===undefined) w.imageUrl = '';
       if(w.skinUuid===undefined) w.skinUuid = '';
     });
-    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
+    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
-    if(!state.profile.avatarImage) state.profile.avatarImage = '';
-    if(state.profile.avatarGeneratedAt === undefined) state.profile.avatarGeneratedAt = null;
+    // avatarImage/avatarGeneratedAt: dropped along with the AI avatar feature (used to embed a
+    // large base64 image straight into this shared row, re-transferred on every load/save).
+    // Deleting rather than just not-setting purges it from any row saved before this change —
+    // the first save() after upgrading writes state.profile back out without the field at all.
+    delete state.profile.avatarImage;
+    delete state.profile.avatarGeneratedAt;
     ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=>{ if(!state.profile[k]) state.profile[k] = ''; });
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;

@@ -1,4 +1,17 @@
   /* ================= FINANCE ================= */
+  const FINANCE_CATEGORIES = ['Income','Food','Transport','Bills & Subscriptions','Shopping','Health','Entertainment','Savings/Transfer','Other'];
+
+  // captures one net-worth data point per calendar day, updating today's point in place if
+  // save() runs more than once that day — same per-day dedupe idiom as recomputeDailyActivity()
+  function snapshotNetWorth(){
+    const hist = state.finance.netWorthHistory || (state.finance.netWorthHistory = []);
+    const today = localDateStr(new Date());
+    const value = getNetWorthNum();
+    const last = hist[hist.length-1];
+    if(last && last.date === today) last.value = value;
+    else hist.push({ date: today, value });
+  }
+
   function financeAccountLabel(type){
     return {savings:'Savings', credit:'Credit', lent:'Lent', 'custom-asset':'Custom (Asset)', 'custom-liability':'Custom (Liability)'}[type] || type;
   }
@@ -15,10 +28,86 @@
   }
 
   function renderFinance(){
+    renderNetWorthChart();
     renderFinanceAccounts();
     renderFinanceSubs();
     renderFinanceConverter();
     renderMoneyGoals();
+  }
+
+  /* ---- net worth trend chart: line chart over state.finance.netWorthHistory, zoomable ----
+     Same hand-rolled SVG approach as the Fitness weight chart (see renderWeightChart() in
+     fitness.js) minus the BMI bands / moving average, which don't have a net-worth analogue. */
+  const FINANCE_CHART_ZOOMS = [
+    {key:'1m', label:'1M', months:1},
+    {key:'3m', label:'3M', months:3},
+    {key:'6m', label:'6M', months:6},
+    {key:'1y', label:'1Y', months:12},
+    {key:'all', label:'All', months:null}
+  ];
+  let netWorthChartZoom = '6m'; // not persisted — resets to a sensible default each page load
+
+  function renderNetWorthChart(){
+    const zoomRow = el('nwChartZoomRow'); if(!zoomRow) return;
+    zoomRow.innerHTML = FINANCE_CHART_ZOOMS.map(z=>
+      '<button class="chart-zoom-btn'+(netWorthChartZoom===z.key?' active':'')+'" data-zoom="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    zoomRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ netWorthChartZoom = btn.dataset.zoom; renderNetWorthChart(); });
+    });
+
+    const wrap = el('nwChartWrap');
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    const log = (state.finance.netWorthHistory||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+    if(log.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Check back after a couple of days — net worth is snapshotted once per day you open the app.</div>';
+      return;
+    }
+    const zoomOpt = FINANCE_CHART_ZOOMS.find(z=>z.key===netWorthChartZoom) || FINANCE_CHART_ZOOMS[2];
+    let points = log;
+    if(zoomOpt.months != null){
+      const cutoff = new Date(); cutoff.setMonth(cutoff.getMonth() - zoomOpt.months);
+      const cutoffStr = localDateStr(cutoff);
+      points = log.filter(e=>e.date >= cutoffStr);
+    }
+    if(points.length < 2){
+      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">No entries in this time range — try a wider zoom.</div>';
+      return;
+    }
+    const W = 780, H = 220, padL = 60, padR = 14, padT = 14, padB = 26;
+    const vals = points.map(p => convertAmt(p.value, 'USD', nwCcy));
+    let minV = Math.min(...vals), maxV = Math.max(...vals);
+    if(minV === maxV){ const bump = Math.abs(minV)*0.1 || 1; minV -= bump; maxV += bump; }
+    const pad = (maxV-minV)*0.12; minV -= pad; maxV += pad;
+    const t0 = new Date(points[0].date).getTime(), t1 = new Date(points[points.length-1].date).getTime();
+    const tSpan = Math.max(1, t1-t0);
+    const xOf = d => padL + ((new Date(d).getTime()-t0)/tSpan) * (W-padL-padR);
+    const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+
+    const linePath = points.map((p,i)=> (i===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(vals[i]).toFixed(1)).join(' ');
+
+    let gridSvg = '';
+    const steps = 4;
+    for(let i=0;i<=steps;i++){
+      const v = minV + (maxV-minV)*(i/steps);
+      const y = yOf(v);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
+      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="10" fill="var(--muted)" text-anchor="end">'+escapeHtml(ccySymbol(nwCcy)+Math.round(v).toLocaleString())+'</text>';
+    }
+    const labelIdxs = [0, Math.floor((points.length-1)/2), points.length-1];
+    let xLabelSvg = '';
+    labelIdxs.forEach(i=>{
+      const p = points[i];
+      xLabelSvg += '<text x="'+xOf(p.date).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+fmtDate(new Date(p.date).getTime())+'</text>';
+    });
+
+    const dotsSvg = points.map((p,i)=> '<circle cx="'+xOf(p.date).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="2.5" fill="var(--violet)"></circle>').join('');
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+      + gridSvg + xLabelSvg
+      + '<path d="'+linePath+'" fill="none" stroke="var(--violet)" stroke-width="2"/>'
+      + dotsSvg
+      + '</svg>';
   }
 
   /* drag-to-reorder finance accounts — registered once, delegated over #financeList */
@@ -56,6 +145,38 @@
   });
   financeListEl.addEventListener('dragend', ()=>{ draggedAccountId = null; financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
+  /* ---- spending breakdown: this calendar month's outflow transactions, grouped by category ---- */
+  function renderSpendBreakdown(){
+    const list = el('spendBreakdownList'); if(!list) return;
+    list.innerHTML = '';
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    const now = new Date();
+    const monthPrefix = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const totals = {};
+    (state.finance.accounts||[]).forEach(a=>{
+      (a.transactions||[]).forEach(tx=>{
+        if(tx.amount >= 0) return; // spending (outflow) only
+        const d = new Date(tx.createdAt);
+        const prefix = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+        if(prefix !== monthPrefix) return;
+        const cat = tx.category || 'Other';
+        const usd = Math.abs(convertAmt(tx.amount, a.currency||'USD', 'USD'));
+        totals[cat] = (totals[cat]||0) + usd;
+      });
+    });
+    const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
+    el('spendBreakdownEmpty').style.display = entries.length ? 'none' : 'block';
+    const maxUsd = entries.length ? entries[0][1] : 0;
+    entries.forEach(([cat, usd])=>{
+      const pct = maxUsd>0 ? Math.round((usd/maxUsd)*100) : 0;
+      const row = document.createElement('div'); row.className = 'spend-cat-row';
+      row.innerHTML = '<div class="spend-cat-name">'+escapeHtml(cat)+'</div>'
+        + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
+        + '<div class="spend-cat-amt">'+fmtMoney(convertAmt(usd,'USD',nwCcy), nwCcy)+'</div>';
+      list.appendChild(row);
+    });
+  }
+
   /* ---- accounts (+ transfers, transactions, per-account currency & icon image) ---- */
   function renderFinanceAccounts(){
     const list = el('financeList'); list.innerHTML = '';
@@ -72,6 +193,7 @@
     el('finNetWorth').textContent = fmtMoney(assets-liabilities,'USD');
 
     populateTransferPanel();
+    renderSpendBreakdown();
 
     const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
     groups.forEach(([type,label])=>{
@@ -153,7 +275,7 @@
           const row = document.createElement('div'); row.className='tx-row';
           const isPos = tx.amount >= 0;
           row.innerHTML = '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
-            + '<span class="tx-note">'+escapeHtml(tx.note||'')+'</span>'
+            + '<span class="tx-note">'+escapeHtml(tx.note||'')+(tx.category ? ' <span class="chip">'+escapeHtml(tx.category)+'</span>' : '')+'</span>'
             + '<span class="tx-amt '+(isPos?'positive':'negative')+'">'+(isPos?'+':'-')+fmtMoney(Math.abs(tx.amount),a.currency)+'</span>'
             + '<button class="del-goal" style="padding:2px 8px;font-size:11px;">✕</button>';
           row.querySelector('.del-goal').addEventListener('click', ()=>{
@@ -167,17 +289,19 @@
 
         const addTx = document.createElement('div'); addTx.className='add-tx-row';
         addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80">'
+          + '<select class="tx-category-select">'+FINANCE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select>'
           + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)">'
           + '<button class="btn btn-primary" type="button">+ Add</button>';
         const txInputs = addTx.querySelectorAll('input');
         const noteInput = txInputs[0], amtInput = txInputs[1];
+        const categorySelect = addTx.querySelector('.tx-category-select');
         addTx.querySelector('button').addEventListener('click', ()=>{
           const amt = parseFloat(amtInput.value);
           if(isNaN(amt) || amt===0) return;
-          const tx = { id:uid(), amount:amt, note:noteInput.value.trim(), createdAt:Date.now() };
+          const tx = { id:uid(), amount:amt, note:noteInput.value.trim(), category:categorySelect.value, createdAt:Date.now() };
           a.transactions = a.transactions || []; a.transactions.push(tx);
           a.balance = (parseFloat(a.balance)||0) + amt;
-          noteInput.value=''; amtInput.value='';
+          noteInput.value=''; amtInput.value=''; categorySelect.value = FINANCE_CATEGORIES[0];
           save(); renderFinanceAccounts(); renderGoals();
         });
         inner.appendChild(addTx);

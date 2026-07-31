@@ -10,7 +10,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 |---|---|
 | **Goals** | Freeform goal list with subtasks, tiers (F/B/A/S/S+/Mythical), star/"working on" flags, target dates, per-goal color/image, AI-suggested subtasks, and a "locked until net worth X" mechanic. Drives the XP/level system. |
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), and optional linking to a checklist (completing the checklist auto-checks the habit). |
-| **Finance** | Multi-currency accounts (savings/credit/lent/custom), transfers between accounts, subscriptions with monthly-cost rollup, "money goals" (save $X by date, with logged contributions), and a currency converter with live or manual exchange rates. Feeds into net worth. |
+| **Finance** | Multi-currency accounts (savings/credit/lent/custom), transfers between accounts, subscriptions with monthly-cost rollup, "money goals" (save $X by date, with logged contributions), a currency converter with live or manual exchange rates, a net-worth-over-time trend chart, and a this-month spending-by-category breakdown. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Tracks competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, and a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer. |
@@ -62,16 +62,18 @@ state = {
                                        // tasks" panel (getStrugglingItems() in checklists.js)
   checklistExp: number,               // running XP total from checklist items (survives resets)
   finance: {
-    accounts: [ {id,type,name,balance,currency,transactions:[...],...} ],
+    accounts: [ {id,type,name,balance,currency,transactions:[{id,amount,note,category,createdAt}],...} ],
     subscriptions: [ {id,name,amount,currency,cycle,nextDate,...} ],
     moneyGoals: [ {id,name,target,currency,deadline,contributions:[...],...} ],
-    rates: { USD:1, PHP:58.5, ... }   // "units per 1 USD", user-editable or live-fetched
+    rates: { USD:1, PHP:58.5, ... },  // "units per 1 USD", user-editable or live-fetched
+    netWorthHistory: [ {date, value} ] // one snapshot/day (USD), captured on save() — see snapshotNetWorth()
   },
   fitness: { currentWeight, targetWeight, height, age, sex, activity, pace, unit, weightLog:[{date,kg}],
              progressPhotos:[{id,filename,driveFileId,driveViewLink,uploadedAt}] },
                                        // progressPhotos holds only Drive metadata — the photo
                                        // itself is uploaded to Google Drive, never stored in state
-  valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId },
+  valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId,
+              dailyStore, dailyStoreError },  // written by scripts/valorant-check-store.mjs (run locally) — see below
   profile: { name, age, netWorth, netWorthCurrency, avatarImage, race, skinTone, hairColor,
              hairStyle, eyeColor, clothing, background, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
@@ -106,16 +108,19 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 
 **Backups**: `scripts/backup-supabase.sh` (run daily by `.github/workflows/backup-supabase.yml` via cron at 07:00 UTC) pulls the current `app_data` row with the service-role key and uploads it as `<YYYY-MM-DD>.json` to a private Storage bucket. The Settings tab can list and restore from these via the `manage-backups` function.
 
+**Daily Valorant store check — deliberately *not* an Edge Function.** An earlier version of this ran as a Supabase Edge Function on a GitHub Actions cron, like the backup above. It doesn't work: fetching your personal storefront requires silently re-authenticating to Riot's internal client API, and Riot's fraud/bot detection flags that reauth as low-trust and forces an interactive login again whenever it comes from a cloud/data-center IP (Supabase's Edge Function infrastructure, in this case) instead of your own device. Rather than fight that detection, `scripts/valorant-check-store.mjs` runs **locally, on your own machine** — the same device/IP that did the original login, which Riot's risk engine already trusts — and writes straight into the shared `app_data` row using the same public anon key the app itself already uses (see "Persistence" above; there's no login on this app, so no extra credential is needed to write there). See "Setup" below.
+
 ### External APIs used
 
 | API | Used for | Auth |
 |---|---|---|
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
-| valorant-api.com | Rank tier icons, agent art (reference data) | None (public) |
+| valorant-api.com | Rank tier icons, agent art, skin/bundle names & images (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Pollinations.ai (via `generate-avatar` function) | AI avatar images | None (public, proxied server-side) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
+| Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation | Local session cookie only, never leaves your machine — see "Setup" |
 
 ### PWA / offline
 
@@ -136,7 +141,15 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
      3. (Optional) create/choose a Drive folder for progress photos and copy its folder ID from the URL.
      4. Set the Supabase Edge Function secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and optionally `GOOGLE_DRIVE_FOLDER_ID`.
      5. Note: to power the in-app photo carousel without proxying image bytes through Supabase, the function sets each uploaded photo's Drive sharing to "anyone with the link can view" and points the carousel's `<img>` tags straight at Drive. Anyone who obtains a photo's (long, unguessable) file ID could view it — turn this off by removing the `permissions` call in `upload-fitness-photo/index.ts` if that's not an acceptable trade-off for you.
-3. No `npm install`, no bundler — just static files.
+   - **For the daily Valorant store check** — this one runs **locally on your own machine**, not as an Edge Function (see "Daily Valorant store check" above for why) — recurring, not one-time:
+     1. One-time only: `cd scripts && npm install` (pulls in `puppeteer`, used only by `valorant-login.mjs` — this is the one part of the project with an npm dependency, scoped to `scripts/` only; the app itself stays build-step-free).
+     2. Run `node scripts/valorant-login.mjs`. It opens a real, visible browser window at Riot's own login page — log in there completely normally (Riot's captcha and any OTP challenge work fine in a real browser; your credentials are typed into Riot's page, never seen by the script). Once you land back on `playvalorant.com`, the script saves the resulting session cookie to `scripts/.valorant-session.json` (gitignored — never committed, never sent anywhere but Riot) and closes the browser.
+        - *Why not just type your password into the script directly?* Riot's direct login endpoint now requires solving an hCaptcha, and this project won't automate defeating a captcha — so a real browser (where you solve it yourself) is the only legitimate way to get past it.
+     3. Run `node scripts/valorant-check-store.mjs`. It re-authenticates using the saved session, pulls your personal daily storefront, resolves skin/bundle names and images via valorant-api.com, and writes the result into `state.valorant.dailyStore` on the shared `app_data` row directly (same public anon key the app itself uses — no service-role key needed for this).
+     4. **Run step 3 daily** for the Valorant tab to actually show "today's" store. See "Automating the daily check" below for a Windows Task Scheduler setup so you don't have to run it by hand.
+     5. **The saved session expires in roughly 1-3 weeks** (Riot's own limit, not configurable). When it does, `valorant-check-store.mjs` writes a "session expired" message into `state.valorant.dailyStoreError` (shown as a banner on the Valorant tab) instead of failing silently — when you see that, just re-run step 2.
+   - **Automating the daily check (Windows Task Scheduler)**: open Task Scheduler → Create Basic Task → trigger "Daily" at a time your PC is normally on → action "Start a program" → Program: `node`, Arguments: `scripts\valorant-check-store.mjs`, "Start in": this project's folder. Since the check needs your own machine's session, it only runs while the PC is on — a missed day just means yesterday's store stays shown until the next successful run.
+3. No `npm install`, no bundler for the app itself — just static files. (`scripts/valorant-login.mjs` is the one exception, and it's isolated: its `package.json`/`puppeteer` dependency live only in `scripts/`, never touched by the app or `valorant-check-store.mjs`.)
 
 ## File map
 
@@ -158,5 +171,9 @@ supabase/functions/
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
+scripts/valorant-login.mjs          run LOCALLY to (re-)obtain a Riot session — needs `scripts/` npm install
+scripts/valorant-check-store.mjs    run LOCALLY (daily, e.g. via Task Scheduler) to update the store
+scripts/package.json                puppeteer dependency, scoped to valorant-login.mjs only
+scripts/.valorant-session.json      gitignored — the saved Riot session, created by valorant-login.mjs
 .github/workflows/backup-supabase.yml   cron trigger for the backup script
 ```

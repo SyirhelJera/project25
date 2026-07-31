@@ -161,6 +161,15 @@
       <div class="stat" style="cursor:default;"><div class="num" id="finNetWorth">$0</div><div class="lbl">Finance Net Worth</div></div>
     </div>
 
+    <div class="section-lbl" style="margin-top:4px;">Net Worth Trend</div>
+    <div class="chart-zoom-row" id="nwChartZoomRow"></div>
+    <div class="chart-card">
+      <div id="nwChartWrap"></div>
+      <div class="chart-legend">
+        <span><span class="dot" style="background:var(--violet);"></span>Net worth</span>
+      </div>
+    </div>
+
     <div class="finance-subnav">
       <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
       <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
@@ -191,6 +200,10 @@
 
       <div id="financeList"></div>
       <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one above</b> to start tracking your net worth.</div>
+
+      <div class="section-lbl" style="margin-top:22px;">This Month's Spending by Category</div>
+      <div id="spendBreakdownList"></div>
+      <div class="empty" id="spendBreakdownEmpty" style="display:none;">No spending logged this month yet.</div>
     </div>
 
     <!-- SUBSCRIPTIONS -->
@@ -323,6 +336,10 @@
   <div class="view" id="view-valorant">
     <div class="view-title">Valorant</div>
     <div class="view-sub">Track competitive rank and RR history across one or more Riot accounts.</div>
+
+    <div class="section-lbl" style="margin-top:4px;">Today's Store</div>
+    <div class="view-sub" id="valStoreUnavailable" style="display:none;">Daily store checks need the Supabase-hosted deployment (a scheduled local script writes here — see README.md) and aren't available in this mode.</div>
+    <div id="valStoreCard"></div>
 
     <div class="section-lbl" id="valChartLbl" style="margin-top:4px;display:none;">RR History</div>
     <div class="chart-zoom-row" id="valChartAccountRow" style="display:none;"></div>

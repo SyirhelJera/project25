@@ -145,12 +145,14 @@
     if(!state.finance.subscriptions) state.finance.subscriptions = [];
     if(!state.finance.moneyGoals) state.finance.moneyGoals = [];
     if(!state.finance.rates) state.finance.rates = Object.assign({}, DEFAULT_RATES);
+    if(!state.finance.netWorthHistory) state.finance.netWorthHistory = [];
     CURRENCIES.forEach(c=>{ if(state.finance.rates[c]===undefined) state.finance.rates[c] = DEFAULT_RATES[c]; });
     state.finance.accounts.forEach(a=>{
       if(a.currency===undefined) a.currency = 'USD';
       if(a.imageUrl===undefined) a.imageUrl = '';
       if(a.transactions===undefined) a.transactions = [];
       if(a.open===undefined) a.open = false;
+      a.transactions.forEach(t=>{ if(t.category===undefined) t.category = ''; });
     });
     state.finance.subscriptions.forEach(s=>{
       if(s.currency===undefined) s.currency = 'USD';
@@ -184,6 +186,10 @@
       if(a.lastAgent===undefined) a.lastAgent = '';
     });
     if(state.valorant.selectedAccountId===undefined) state.valorant.selectedAccountId = null;
+    // written by scripts/valorant-check-store.mjs, run locally by the app owner (see README.md) —
+    // never set by this client, just read/displayed
+    if(state.valorant.dailyStore===undefined) state.valorant.dailyStore = null;
+    if(state.valorant.dailyStoreError===undefined) state.valorant.dailyStoreError = '';
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',avatarImage:'',avatarGeneratedAt:null,race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     if(!state.profile.avatarImage) state.profile.avatarImage = '';
@@ -206,6 +212,7 @@
   let savePromise = Promise.resolve();
   function save(force){
     recomputeDailyActivity();
+    snapshotNetWorth();
     savePromise = savePromise.then(()=> doSave(force));
     return savePromise;
   }

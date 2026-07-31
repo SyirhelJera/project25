@@ -235,7 +235,49 @@
     state.valorant.accounts.forEach(acc=> fetchValorantAccount(acc.id));
   });
 
+  /* ---- daily store: written by scripts/valorant-check-store.mjs, run locally on the app
+     owner's machine (see README.md — Riot's bot detection blocks this reauth flow from cloud
+     infrastructure) into state.valorant.dailyStore/dailyStoreError — this client only ever
+     reads/displays it, never fetches or authenticates to Riot itself. ---- */
+  function renderValorantStore(){
+    const wrap = el('valStoreCard'); if(!wrap) return;
+    const unavailable = usingClaudeStorage || !supabaseConfigured;
+    el('valStoreUnavailable').style.display = unavailable ? 'block' : 'none';
+    if(unavailable){ wrap.innerHTML = ''; return; }
+
+    const err = state.valorant.dailyStoreError;
+    if(err){
+      wrap.innerHTML = '<div class="val-err">⚠️ '+escapeHtml(err)+'</div>';
+      return;
+    }
+    const ds = state.valorant.dailyStore;
+    if(!ds){
+      wrap.innerHTML = '<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div>';
+      return;
+    }
+    const items = ds.items || [];
+    let html = '<div class="val-store-grid">';
+    items.forEach(it=>{
+      html += '<div class="val-store-item">'
+        + (it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')
+        + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
+        + '<div class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+' VP</div>'
+        + '</div>';
+    });
+    html += '</div>';
+    if(ds.bundle){
+      html += '<div class="val-store-bundle">'
+        + (ds.bundle.imageUrl ? '<img src="'+escapeHtml(ds.bundle.imageUrl)+'" alt="'+escapeHtml(ds.bundle.name)+'">' : '')
+        + '<div><div class="val-store-item-name">'+escapeHtml(ds.bundle.name)+' <span class="chip">Featured Bundle</span></div>'
+        + '<div class="val-store-item-price">'+(parseInt(ds.bundle.price,10)||0).toLocaleString()+' VP</div></div>'
+        + '</div>';
+    }
+    html += '<div class="today-sub" style="margin-top:8px;">Checked '+fmtDate(ds.checkedAt)+'</div>';
+    wrap.innerHTML = html;
+  }
+
   function renderValorant(){
+    renderValorantStore();
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;

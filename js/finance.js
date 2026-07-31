@@ -259,7 +259,7 @@
           uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
             a.imageUrl = url; save(); renderFinanceAccounts();
             deleteStorageImage(prevUrl);
-          });
+          }).catch(err=> window.alert(err.message));
         });
         const rmBtn = imgRow.querySelector('.del-goal');
         if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(a.imageUrl); a.imageUrl=''; save(); renderFinanceAccounts(); });
@@ -402,7 +402,7 @@
         uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
           s.imageUrl = url; save(); renderFinanceSubs();
           deleteStorageImage(prevUrl);
-        });
+        }).catch(err=> window.alert(err.message));
       });
       card.querySelector('.del-goal').addEventListener('click', ()=>{
         state.finance.subscriptions = state.finance.subscriptions.filter(x=>x.id!==s.id);

@@ -78,7 +78,15 @@
           if(error) throw error;
           return supa.storage.from(ICONS_BUCKET).getPublicUrl(path).data.publicUrl;
         })
-        .catch(()=> blobToDataUrl(blob));
+        .catch(err=>{
+          // Deliberately do NOT fall back to embedding the image as a base64 data: URL here —
+          // that used to happen silently on any Storage failure (bad network, bucket/policy
+          // issue) and permanently bloats the single shared app_data row with the full image
+          // bytes, since every load()/save() round-trips that whole row regardless of which
+          // tab is open. Surface the failure instead so the user can retry.
+          console.error('Image upload to Storage failed', err);
+          throw new Error('Could not upload the image — check your connection and try again.');
+        });
     });
   }
 

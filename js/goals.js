@@ -831,7 +831,7 @@
         uploadCompressedImage(file, 640, 0.78, 'goals').then(url=>{
           g.imageUrl = url; touchGoal(g); save(); renderGoals();
           deleteStorageImage(prevUrl);
-        });
+        }).catch(err=> window.alert(err.message));
       });
       const rmBtn = imgRow.querySelector('.del-goal');
       if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(g.imageUrl); g.imageUrl = ''; touchGoal(g); save(); renderGoals(); });

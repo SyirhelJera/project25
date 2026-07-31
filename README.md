@@ -148,7 +148,7 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 
 ### PWA / offline
 
-`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co` requests, so `persistence.js`'s own online/offline handling sees real network state instead of a stale cached API response.
+`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, or `valorant-api.com` requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state).
 
 ## Setup
 

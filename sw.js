@@ -59,8 +59,11 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(req.url);
   // Data reads/writes must always hit the network live — never intercept these,
-  // so persistence.js's own offline handling (local cache fallback) kicks in.
-  if (url.hostname.endsWith('.supabase.co')) return;
+  // so persistence.js's own offline handling (local cache fallback) kicks in. This
+  // also covers the Valorant APIs (rank/history/store data changes constantly —
+  // unlike the fonts/supabase-js bundle below, it must never be served from cache).
+  const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com'];
+  if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;
 
   if (req.mode === 'navigate' || url.origin === self.location.origin) {
     event.respondWith(networkFirst(req, SHELL_CACHE, req.mode === 'navigate' ? './index.html' : null));

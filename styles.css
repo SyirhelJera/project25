@@ -879,29 +879,63 @@
   .val-local-panel .val-err{margin-top:0;}
   .val-local-panel > :last-child{margin-bottom:0;}
 
-  /* daily store card (see renderValorantStore() in valorant.js) — one .val-store-account per
+  /* Store Tracker — one unified card holding today's store (left) and the wishlist (right); see
+     the "VALORANT" view in index.html and renderValorantStore()/renderValWishlist() in valorant.js */
+  .val-tracker-card{background:var(--surface-alt);border:1px solid var(--border);border-radius:16px;padding:18px;}
+  .val-tracker-grid{display:flex;gap:22px;align-items:flex-start;}
+  .val-tracker-items-col{flex:2;min-width:0;}
+  .val-tracker-wishlist-col{flex:1;min-width:220px;padding-left:22px;border-left:1px solid var(--border);}
+  .val-tracker-wishlist-col .view-sub{margin-bottom:10px;}
+  .val-wishlist-hdr{font-size:12px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text);font-weight:800;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none;}
+  .val-wishlist-hdr .wlg-chevron{font-size:9px;color:var(--faint);flex:none;}
+  .val-wishlist-count{font-weight:700;text-transform:none;letter-spacing:0;color:var(--faint);margin-left:auto;}
+
+  /* account switcher, above the store card — filters which tracked account's store shows below;
+     works purely off already-fetched data, so it's independent of the local helper (whose
+     Check Store Now / Add Account / Delete controls live in Settings → Valorant Local Helper) */
+  .val-store-switcher-row{margin-bottom:14px;}
+  .val-store-switcher-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;width:100%;max-width:220px;}
+  .val-store-switcher-row select:focus{border-color:var(--violet);}
+
+  /* daily store items (see renderValorantStore() in valorant.js) — one .val-store-account per
      tracked Riot account, labeled with the name chosen when running valorant-login.mjs */
-  .val-store-account{padding-bottom:16px;margin-bottom:16px;border-bottom:1px solid var(--border);}
-  .val-store-account:last-child{padding-bottom:0;margin-bottom:0;border-bottom:none;}
-  .val-store-account-hdr{font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--faint);font-weight:800;margin-bottom:8px;}
-  .val-store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:10px;}
-  .val-store-item{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;}
-  .val-store-item img{width:100%;height:64px;object-fit:contain;margin-bottom:6px;}
-  .val-store-item-name{font-size:11.5px;font-weight:700;line-height:1.3;}
-  .val-store-item-price{font-size:11px;color:var(--muted);margin-top:3px;}
-  .val-store-bundle{display:flex;align-items:center;gap:12px;background:linear-gradient(120deg,var(--violet-pale),var(--surface));border:1px solid var(--border);border-radius:13px;padding:10px 14px;margin-bottom:6px;}
-  .val-store-bundle img{width:56px;height:56px;object-fit:contain;flex:none;}
+  #valStoreCard{display:flex;flex-direction:column;gap:14px;}
+  .val-store-account{padding-bottom:14px;border-bottom:1px solid var(--border);}
+  .val-store-account:last-child{padding-bottom:0;border-bottom:none;}
+  .val-store-account-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+  .val-store-account-name{font-size:12px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text);font-weight:800;}
+  .val-store-checked{font-size:10.5px;color:var(--faint);font-weight:600;white-space:nowrap;}
+
+  .val-store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(128px,1fr));gap:10px;margin-bottom:12px;}
+  .val-store-item{
+    position:relative;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px;text-align:center;
+    border-top:2.5px solid var(--rarity-color,var(--border));
+    transition:transform .14s ease,box-shadow .14s ease,border-color .14s ease;
+  }
+  .val-store-item:hover{transform:translateY(-3px);box-shadow:0 8px 18px rgba(20,22,31,0.12);}
+  .val-store-item-img{background:radial-gradient(ellipse at center,var(--surface-alt) 0%,transparent 72%);border-radius:8px;margin-bottom:6px;}
+  .val-store-item-img img{width:100%;height:64px;object-fit:contain;display:block;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.2));}
+  .val-store-item-name{font-size:11.5px;font-weight:700;line-height:1.3;min-height:2.6em;}
+  .val-store-item-footer{display:flex;align-items:center;justify-content:center;gap:5px;margin-top:6px;}
+  .val-store-rarity-dot{width:7px;height:7px;border-radius:50%;flex:none;background:var(--rarity-color,var(--faint));}
+  .val-store-item-price{font-size:11.5px;color:var(--muted);font-weight:700;display:inline-flex;align-items:center;gap:4px;}
+  .vp-tag{font-size:8.5px;font-weight:800;letter-spacing:0.3px;color:var(--violet-dark);background:var(--violet-pale);border-radius:4px;padding:1px 4px;}
+
   /* store item currently matching a wishlist entry (see valWishlistMatchesForItem() in valorant.js) */
   .val-store-item.wishlist-match{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
-  .val-store-item-wish-tag{display:inline-block;margin-top:4px;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.4px;color:#fff;background:var(--danger);border-radius:5px;padding:1px 6px;}
+  .val-store-item-wish-badge{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--danger);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.25);}
+  .val-store-empty{margin-bottom:0;}
 
-  /* wishlist (see renderValWishlist() in valorant.js) */
-  .val-wishlist-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;}
-  .val-wishlist-chip{display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);border-radius:999px;padding:5px 10px 5px 6px;font-size:12.5px;font-weight:600;}
-  .val-wishlist-chip img{width:22px;height:22px;object-fit:contain;border-radius:5px;background:var(--surface-alt);flex:none;}
-  .val-wishlist-chip.matched{border-color:var(--danger);background:rgba(239,68,68,.1);color:var(--danger);}
-  .val-wishlist-chip .val-wishlist-match-note{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;}
-  .val-wishlist-chip .val-icon-btn{width:20px;height:20px;border-radius:50%;font-size:10px;}
+  /* wishlist (see renderValWishlist() in valorant.js) — uniform-width rows rather than
+     content-sized pills, so a long skin name doesn't dwarf a short one; the name truncates
+     with an ellipsis (full name on hover) to keep every row's height and width identical */
+  .val-wishlist-list{display:flex;flex-direction:column;gap:6px;margin-bottom:0;}
+  .val-wishlist-row{display:flex;align-items:center;gap:8px;width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:6px 8px;font-size:12.5px;font-weight:600;}
+  .val-wishlist-row-img{width:26px;height:26px;border-radius:6px;object-fit:contain;background:var(--surface-alt);flex:none;display:block;}
+  .val-wishlist-row-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .val-wishlist-row.matched{border-color:var(--danger);background:rgba(239,68,68,.08);}
+  .val-wishlist-row-hit{flex:none;width:18px;height:18px;border-radius:50%;background:var(--danger);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;}
+  .val-wishlist-row .val-icon-btn{flex:none;width:20px;height:20px;border-radius:50%;font-size:10px;}
 
   /* wishlist search-as-you-type dropdown (see renderValWishlistSuggest() in valorant.js) */
   .val-wishlist-input-wrap{position:relative;flex:1;min-width:200px;}
@@ -916,6 +950,19 @@
     .finance-summary{grid-template-columns:repeat(3,1fr);}
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
     .fitness-results{grid-template-columns:repeat(2,1fr);}
+    .val-tracker-grid{flex-direction:column;align-items:stretch;}
+    .val-tracker-wishlist-col{padding-left:0;padding-top:16px;border-left:none;border-top:1px solid var(--border);}
+    .val-tracker-card{padding:14px;}
+    .val-store-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;}
+    .val-store-item{padding:8px;}
+    .val-store-item-img img{height:52px;}
+    .val-store-item-name{font-size:10.5px;min-height:2.4em;}
+    .val-store-item-price{font-size:10.5px;}
+  }
+
+  @media (max-width:420px){
+    .val-store-grid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;}
+    .val-store-item-img img{height:42px;}
   }
 
   ::-webkit-scrollbar{width:8px;}

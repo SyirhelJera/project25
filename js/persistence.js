@@ -173,7 +173,7 @@
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
     if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
-    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:[] };
+    state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:{} };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];
     if(!state.valorant.sortMode) state.valorant.sortMode = 'manual';
@@ -205,11 +205,23 @@
     // which account's store the Valorant tab shows — '' means "all accounts" (stacked)
     if(state.valorant.selectedStoreLabel===undefined) state.valorant.selectedStoreLabel = '';
     // gun/skin names the user wants a heads-up about when they rotate into the daily store —
-    // matched against dailyStores items in valWishlistMatchesForItem() (see valorant.js)
-    if(!state.valorant.wishlist) state.valorant.wishlist = [];
-    state.valorant.wishlist.forEach(w=>{
-      if(w.imageUrl===undefined) w.imageUrl = '';
-      if(w.skinUuid===undefined) w.skinUuid = '';
+    // one list per tracked account label, so a skin wishlisted on one account doesn't tick for
+    // another; matched against that same label's dailyStores items in valWishlistMatchesForItem()
+    // (see valorant.js). Upgrades the old flat-array shape (one shared list for every account) by
+    // copying it into each currently known daily-store label, so nothing already saved is lost.
+    if(Array.isArray(state.valorant.wishlist)){
+      const legacy = state.valorant.wishlist;
+      state.valorant.wishlist = {};
+      Object.keys(state.valorant.dailyStores).forEach(label=>{
+        state.valorant.wishlist[label] = legacy.map(w=>Object.assign({}, w, { id: uid() }));
+      });
+    }
+    if(!state.valorant.wishlist || typeof state.valorant.wishlist !== 'object') state.valorant.wishlist = {};
+    Object.keys(state.valorant.wishlist).forEach(label=>{
+      (state.valorant.wishlist[label]||[]).forEach(w=>{
+        if(w.imageUrl===undefined) w.imageUrl = '';
+        if(w.skinUuid===undefined) w.skinUuid = '';
+      });
     });
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';

@@ -266,6 +266,24 @@
     state.valorant.accounts.forEach(acc=> fetchValorantAccount(acc.id));
   });
 
+  /* ---- RR Tracker / Shop Tracker sub-tabs: the Valorant view got crowded once the store +
+     wishlist card was added alongside rank tracking, so the two are now split into switchable
+     panels instead of one long scroll. ---- */
+  function renderValSubtabs(){
+    const active = state.valorant.activeSubtab === 'shop' ? 'shop' : 'rr';
+    el('valSubtabBtnRR').classList.toggle('active', active === 'rr');
+    el('valSubtabBtnShop').classList.toggle('active', active === 'shop');
+    el('valSubtabRR').style.display = active === 'rr' ? 'block' : 'none';
+    el('valSubtabShop').style.display = active === 'shop' ? 'block' : 'none';
+  }
+  el('valSubtabToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-subtab]');
+    if(!btn) return;
+    state.valorant.activeSubtab = btn.dataset.subtab;
+    save(); renderValSubtabs();
+  });
+  renderValSubtabs();
+
   /* ---- daily store: written by scripts/valorant-check-store.mjs, run locally on the app
      owner's machine (see README.md — Riot's bot detection blocks this reauth flow from cloud
      infrastructure) into state.valorant.dailyStores, keyed by the label chosen when running
@@ -273,18 +291,21 @@
      never fetches or authenticates to Riot itself. One or more accounts render as separate
      labeled sections so multiple Riot accounts' stores can be checked at a glance. ---- */
   /* ---- wishlist: gun/skin names the user wants a heads-up about when they rotate into the
-     daily store. Matching is a simple case-insensitive substring check in either direction, so a
-     wishlist entry of "Vandal" matches a store item named "Reaver Vandal", and a full skin name
-     pasted in ("Reaver Vandal") still matches itself exactly. ---- */
-  function valWishlistMatchesForItem(itemName){
-    if(!itemName) return [];
+     daily store — one list per tracked account label (state.valorant.wishlist[label]), so a skin
+     wishlisted on one account doesn't tick for another. Matching is a simple case-insensitive
+     substring check in either direction, so a wishlist entry of "Vandal" matches a store item
+     named "Reaver Vandal", and a full skin name pasted in ("Reaver Vandal") still matches itself
+     exactly. The account switcher above the store (same selectedStoreLabel used to filter which
+     account's store shows) also picks which account's wishlist is being viewed/edited here. ---- */
+  function valWishlistMatchesForItem(itemName, label){
+    if(!itemName || !label) return [];
     const lower = itemName.toLowerCase();
-    return (state.valorant.wishlist||[]).filter(w=>{
+    return (state.valorant.wishlist[label]||[]).filter(w=>{
       const wl = (w.name||'').toLowerCase().trim();
       return wl && (lower.includes(wl) || wl.includes(lower));
     });
   }
-  // every {wishlist item, store item} pairing currently sitting in any tracked account's daily
+  // every {wishlist item, store item} pairing currently sitting in any tracked account's own daily
   // store — drives both the red nav tick and the "matched" styling on wishlist chips
   function valCurrentWishlistMatches(){
     const stores = state.valorant.dailyStores || {};
@@ -293,7 +314,7 @@
       const ds = stores[label];
       if(!ds || !Array.isArray(ds.items)) return;
       ds.items.forEach(it=>{
-        valWishlistMatchesForItem(it.name).forEach(w=>{
+        valWishlistMatchesForItem(it.name, label).forEach(w=>{
           matches.push({ wishlistId: w.id, itemName: it.name, label });
         });
       });
@@ -309,34 +330,63 @@
   function renderValWishlist(){
     const listEl = el('valWishlistList');
     if(!listEl) return;
-    const wishlist = state.valorant.wishlist || [];
+    const label = state.valorant.selectedStoreLabel;
+    const bodyEl = el('valWishlistBody');
+    const noAccEl = el('valWishlistNoAccount');
+    el('valWishlistForLabel').textContent = label ? (' — '+label) : '';
+    if(!label){
+      // "All accounts" is selected in the switcher above — wishlists are per-account, so there's
+      // no single list to show or add to until one specific account is picked
+      bodyEl.style.display = 'none';
+      if(noAccEl) noAccEl.style.display = 'block';
+      el('valWishlistCount').textContent = '';
+      updateValWishlistBadge();
+      return;
+    }
+    if(noAccEl) noAccEl.style.display = 'none';
+    const wishlist = state.valorant.wishlist[label] || (state.valorant.wishlist[label] = []);
+    const collapsed = !!state.valorant.wishlistCollapsed;
+    bodyEl.style.display = collapsed ? 'none' : 'block';
+    el('valWishlistChevron').textContent = collapsed ? '▶' : '▼';
+    el('valWishlistCount').textContent = wishlist.length ? '('+wishlist.length+')' : '';
     el('valWishlistEmpty').style.display = wishlist.length ? 'none' : 'block';
     const matches = valCurrentWishlistMatches();
+    // fixed-size rows (not variable-width pills) so a long skin name doesn't blow up its own
+    // chip while a short one sits tiny next to it — name truncates with an ellipsis instead
     listEl.innerHTML = wishlist.map(w=>{
       const hit = matches.find(m=>m.wishlistId===w.id);
-      return '<span class="val-wishlist-chip'+(hit?' matched':'')+'" data-wish-id="'+w.id+'">'
-        + (w.imageUrl ? '<img src="'+escapeHtml(w.imageUrl)+'" alt="">' : '')
-        + escapeHtml(w.name)
-        + (hit ? '<span class="val-wishlist-match-note" title="In today\'s store'+(hit.label?' ('+escapeHtml(hit.label)+')':'')+'">✓ In store</span>' : '')
+      return '<div class="val-wishlist-row'+(hit?' matched':'')+'" data-wish-id="'+w.id+'">'
+        + (w.imageUrl ? '<img class="val-wishlist-row-img" src="'+escapeHtml(w.imageUrl)+'" alt="">' : '<span class="val-wishlist-row-img"></span>')
+        + '<span class="val-wishlist-row-name" title="'+escapeHtml(w.name)+'">'+escapeHtml(w.name)+'</span>'
+        + (hit ? '<span class="val-wishlist-row-hit" title="In today\'s store">✓</span>' : '')
         + '<button class="val-icon-btn" data-wish-del="'+w.id+'" title="Remove from wishlist">✕</button>'
-        + '</span>';
+        + '</div>';
     }).join('');
     listEl.querySelectorAll('[data-wish-del]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
-        state.valorant.wishlist = state.valorant.wishlist.filter(w=>w.id!==btn.dataset.wishDel);
-        save(); renderValWishlist(); updateValWishlistBadge();
+        state.valorant.wishlist[label] = (state.valorant.wishlist[label]||[]).filter(w=>w.id!==btn.dataset.wishDel);
+        save(); renderValWishlist();
       });
     });
     updateValWishlistBadge();
   }
 
+  el('valWishlistToggle').addEventListener('click', ()=>{
+    state.valorant.wishlistCollapsed = !state.valorant.wishlistCollapsed;
+    save(); renderValWishlist();
+  });
+
   // shared by the freeform "+ Add to Wishlist" button and by clicking a search suggestion below —
-  // imageUrl/skinUuid are only known when the entry came from the skin database picker
+  // imageUrl/skinUuid are only known when the entry came from the skin database picker; adds to
+  // whichever account is currently picked in the switcher above the store
   function addValWishlistEntry(name, imageUrl, skinUuid){
+    const label = state.valorant.selectedStoreLabel;
+    if(!label) return;
     name = (name||'').trim();
     if(!name) return;
-    if(state.valorant.wishlist.some(w=>w.name.toLowerCase()===name.toLowerCase())) return;
-    state.valorant.wishlist.push({ id: uid(), name, imageUrl: imageUrl||'', skinUuid: skinUuid||'', createdAt: Date.now() });
+    const list = state.valorant.wishlist[label] || (state.valorant.wishlist[label] = []);
+    if(list.some(w=>w.name.toLowerCase()===name.toLowerCase())) return;
+    list.push({ id: uid(), name, imageUrl: imageUrl||'', skinUuid: skinUuid||'', createdAt: Date.now() });
     save(); renderValWishlist();
   }
 
@@ -388,6 +438,25 @@
   });
   el('valWishlistInput').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valWishlistAddBtn').click(); });
 
+  // Valorant's own store editions are priced in fixed VP bands (Select/Deluxe/Premium/Exclusive/
+  // Ultra), so a skin's price alone is a reliable stand-in for its edition color — the per-item
+  // fetch in valorant-lib.mjs never resolves contentTier, but this gets the same visual language
+  // (the colored corner flash under each skin in-game) without touching the check-store pipeline.
+  function valSkinRarityInfo(price){
+    const p = parseInt(price,10)||0;
+    if(p >= 2900) return { name:'Ultra', color:'#F84B4B' };
+    if(p >= 2300) return { name:'Exclusive', color:'#F0C755' };
+    if(p >= 1600) return { name:'Premium', color:'#E058CF' };
+    if(p >= 1000) return { name:'Deluxe', color:'#2FBE7A' };
+    return { name:'Select', color:'#9CA6AF' };
+  }
+  function valStoreHeader(label, ds){
+    const checkedHtml = ds.checkedAt
+      ? '<span class="val-store-checked" title="'+escapeHtml(fmtDate(ds.checkedAt))+'">🕒 '+escapeHtml(valTimeAgo(ds.checkedAt))+'</span>'
+      : '';
+    return '<div class="val-store-account-hdr"><span class="val-store-account-name">'+escapeHtml(label)+'</span>'+checkedHtml+'</div>';
+  }
+
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
@@ -397,44 +466,49 @@
     const stores = state.valorant.dailyStores || {};
     const allLabels = Object.keys(stores);
     if(!allLabels.length){
-      wrap.innerHTML = '<div class="val-peak-note">No store data yet — run scripts/valorant-login.mjs then scripts/valorant-check-store.mjs locally (see README.md "Setup").</div>';
+      wrap.innerHTML = '<div class="empty val-store-empty">🛒 No store data yet — run <code>scripts/valorant-login.mjs</code> then <code>scripts/valorant-check-store.mjs</code> locally (see README.md "Setup").</div>';
       return;
     }
-    // the Local Helper panel's account dropdown doubles as a filter here — pick one account to
-    // show just its store, or "All accounts" (empty selection) to show every tracked account
-    // stacked, like before. Keeps the tab from getting cluttered once a few accounts are tracked.
+    // the account switcher under the store doubles as a filter here — pick one account to show
+    // just its store, or "All accounts" (empty selection) to show every tracked account stacked.
     const selected = state.valorant.selectedStoreLabel;
-    const labels = (selected && allLabels.includes(selected)) ? [selected] : allLabels;
+    const labels = (selected && allLabels.includes(selected)) ? [selected] : allLabels.slice();
+
+    // in the "All accounts" view, surface whichever account currently has a wishlisted skin in
+    // its store first, so a hit isn't buried below accounts you have no particular interest in —
+    // stable sort keeps everything else in its existing order.
+    if(labels.length > 1){
+      const hasWishMatch = label => {
+        const ds = stores[label];
+        return !!(ds && Array.isArray(ds.items) && ds.items.some(it => valWishlistMatchesForItem(it.name, label).length > 0));
+      };
+      labels.sort((a,b) => (hasWishMatch(b)?1:0) - (hasWishMatch(a)?1:0));
+    }
 
     wrap.innerHTML = labels.map(label=>{
       const ds = stores[label] || {};
-      const hdrHtml = '<div class="val-store-account-hdr">'+escapeHtml(label)+'</div>';
+      const hdrHtml = valStoreHeader(label, ds);
       if(ds.error){
-        return '<div class="val-store-account">'+hdrHtml+'<div class="val-err">⚠️ '+escapeHtml(ds.error)+'</div></div>';
+        return '<div class="val-store-account val-store-account-error">'+hdrHtml+'<div class="val-err">⚠️ '+escapeHtml(ds.error)+'</div></div>';
       }
       if(!ds.checkedAt){
-        return '<div class="val-store-account">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
+        return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
       }
       const items = ds.items || [];
       let html = '<div class="val-store-grid">';
       items.forEach(it=>{
-        const isWish = valWishlistMatchesForItem(it.name).length > 0;
-        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'">'
-          + (it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')
+        const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
+        const rarity = valSkinRarityInfo(it.price);
+        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';">'
+          + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
+          + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
           + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
-          + '<div class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+' VP</div>'
-          + (isWish ? '<div class="val-store-item-wish-tag">★ Wishlist</div>' : '')
-          + '</div>';
+          + '<div class="val-store-item-footer">'
+          + '<span class="val-store-rarity-dot" title="'+escapeHtml(rarity.name)+' Edition"></span>'
+          + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'<span class="vp-tag">VP</span></span>'
+          + '</div></div>';
       });
       html += '</div>';
-      if(ds.bundle){
-        html += '<div class="val-store-bundle">'
-          + (ds.bundle.imageUrl ? '<img src="'+escapeHtml(ds.bundle.imageUrl)+'" alt="'+escapeHtml(ds.bundle.name)+'">' : '')
-          + '<div><div class="val-store-item-name">'+escapeHtml(ds.bundle.name)+' <span class="chip">Featured Bundle</span></div>'
-          + '<div class="val-store-item-price">'+(parseInt(ds.bundle.price,10)||0).toLocaleString()+' VP</div></div>'
-          + '</div>';
-      }
-      html += '<div class="today-sub" style="margin-top:8px;">Checked '+fmtDate(ds.checkedAt)+'</div>';
       return '<div class="val-store-account">'+hdrHtml+html+'</div>';
     }).join('');
   }
@@ -453,7 +527,7 @@
     return (state.valorant.localServerUrl || VAL_LOCAL_DEFAULT_URL).replace(/\/+$/,'');
   }
   function showValLocalErr(msg, targetId){
-    const e2 = el(targetId || 'valLocalErr');
+    const e2 = el(targetId || 'valSettingsLocalErr');
     if(!e2) return;
     e2.textContent = msg;
     e2.style.display = 'block';
@@ -489,8 +563,10 @@
     } else {
       statusHtml = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine (see README.md)';
     }
-    // shown in two places — the toolbar here (Valorant tab) and next to the Add Account form
-    // (Settings tab) — so either place always explains why its buttons are enabled/disabled
+    // shown in two places — a status-only note on the Valorant tab (account switcher lives there
+    // too, since it just filters already-fetched data and works with or without the local helper)
+    // and next to the actual Check Store Now / Delete / Add Account controls in Settings, since
+    // those genuinely need the local helper running
     el('valLocalStatusTxt').innerHTML = statusHtml;
     const settingsStatusEl = el('valSettingsLocalStatusTxt');
     if(settingsStatusEl) settingsStatusEl.innerHTML = statusHtml;
@@ -526,10 +602,11 @@
     state.valorant.selectedStoreLabel = el('valLocalAccountSelect').value;
     save();
     renderValorantStore();
+    renderValWishlist(); // wishlist is per-account, so it needs to follow the same switcher
   });
 
   el('valLocalCheckBtn').addEventListener('click', async ()=>{
-    el('valLocalErr').style.display = 'none';
+    el('valSettingsLocalErr').style.display = 'none';
     const label = el('valLocalAccountSelect').value;
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check'; renderValLocalPanel();
     try{
@@ -551,7 +628,7 @@
   });
 
   el('valLocalDeleteBtn').addEventListener('click', async ()=>{
-    el('valLocalErr').style.display = 'none';
+    el('valSettingsLocalErr').style.display = 'none';
     const label = el('valLocalAccountSelect').value;
     if(!label) return; // button is disabled in this case, but guard anyway
     if(!window.confirm('Delete the saved session for "'+label+'"? You\'ll need to log in again and paste a fresh cookie to re-add it. This can\'t be undone.')) return;
@@ -603,6 +680,7 @@
   }
 
   function renderValorant(){
+    renderValSubtabs();
     renderValWishlist();
     renderValorantStore();
     renderValLocalPanel();

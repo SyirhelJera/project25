@@ -827,9 +827,9 @@
         + (g.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
       imgRow.querySelector('input[type=file]').addEventListener('change', (e)=>{
         const file = e.target.files[0]; if(!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => { g.imageUrl = ev.target.result; touchGoal(g); save(); renderGoals(); };
-        reader.readAsDataURL(file);
+        compressImageFile(file, 640, 0.78).then(dataUrl=>{
+          g.imageUrl = dataUrl; touchGoal(g); save(); renderGoals();
+        });
       });
       const rmBtn = imgRow.querySelector('.del-goal');
       if(rmBtn) rmBtn.addEventListener('click', ()=>{ g.imageUrl = ''; touchGoal(g); save(); renderGoals(); });

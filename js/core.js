@@ -27,3 +27,36 @@
   const fmtDate = ts => !ts ? '' : new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
   const localDateStr = d => { const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day; };
 
+  // Goal/finance icon images are stored inline as base64 in the single shared app_data row
+  // (see js/persistence.js) — that whole row is transferred on every load and every save, even
+  // ones unrelated to these images. An unresized phone photo dropped in here (multi-MB) gets
+  // re-sent on every save from then on, which is what actually drives PostgREST egress up, not
+  // just the one-time upload. So every upload is downscaled + re-encoded as JPEG before it's
+  // ever put in state, instead of storing the raw file. Falls back to the raw file (old
+  // behavior) if decoding fails, so an upload never just silently breaks.
+  function compressImageFile(file, maxDim, quality){
+    return new Promise((resolve, reject)=>{
+      const objUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl);
+        const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        try{ resolve(canvas.toDataURL('image/jpeg', quality)); }
+        catch(e){ reject(e); }
+      };
+      img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Could not decode image')); };
+      img.src = objUrl;
+    }).catch(()=> new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ev => resolve(ev.target.result);
+      reader.onerror = () => reject(new Error('Could not read the selected file.'));
+      reader.readAsDataURL(file);
+    }));
+  }
+

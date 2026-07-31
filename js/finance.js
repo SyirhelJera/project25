@@ -255,9 +255,9 @@
           + (a.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
         imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
           const file = e.target.files[0]; if(!file) return;
-          const reader = new FileReader();
-          reader.onload = ev => { a.imageUrl = ev.target.result; save(); renderFinanceAccounts(); };
-          reader.readAsDataURL(file);
+          compressImageFile(file, 200, 0.75).then(dataUrl=>{
+            a.imageUrl = dataUrl; save(); renderFinanceAccounts();
+          });
         });
         const rmBtn = imgRow.querySelector('.del-goal');
         if(rmBtn) rmBtn.addEventListener('click', ()=>{ a.imageUrl=''; save(); renderFinanceAccounts(); });
@@ -396,9 +396,9 @@
       card.querySelector('.sub-icon').addEventListener('click', ()=> iconFile.click());
       iconFile.addEventListener('change', e=>{
         const file = e.target.files[0]; if(!file) return;
-        const reader = new FileReader();
-        reader.onload = ev => { s.imageUrl = ev.target.result; save(); renderFinanceSubs(); };
-        reader.readAsDataURL(file);
+        compressImageFile(file, 200, 0.75).then(dataUrl=>{
+          s.imageUrl = dataUrl; save(); renderFinanceSubs();
+        });
       });
       card.querySelector('.del-goal').addEventListener('click', ()=>{
         state.finance.subscriptions = state.finance.subscriptions.filter(x=>x.id!==s.id);

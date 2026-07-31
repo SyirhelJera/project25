@@ -499,13 +499,12 @@
       items.forEach(it=>{
         const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
         const rarity = valSkinRarityInfo(it.price);
-        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';">'
+        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';" title="'+escapeHtml(rarity.name)+' Edition">'
           + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
           + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
-          + '<div class="val-store-item-name">'+escapeHtml(it.name)+'</div>'
           + '<div class="val-store-item-footer">'
-          + '<span class="val-store-rarity-dot" title="'+escapeHtml(rarity.name)+' Edition"></span>'
-          + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'<span class="vp-tag">VP</span></span>'
+          + '<span class="val-store-item-name" title="'+escapeHtml(it.name)+'">'+escapeHtml(it.name)+'</span>'
+          + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
           + '</div></div>';
       });
       html += '</div>';

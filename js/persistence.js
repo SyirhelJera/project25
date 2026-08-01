@@ -244,8 +244,24 @@
       if(p.label === undefined) p.label = '';
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
-    state.motivation = parsed.motivation || { images: [] };
-    if(!Array.isArray(state.motivation.images)) state.motivation.images = [];
+    {
+      const m = parsed.motivation || {};
+      const pin = (typeof m.pin === 'string') ? m.pin : '';
+      if(Array.isArray(m.categories)){
+        state.motivation = { categories: m.categories, pin };
+      } else if(Array.isArray(m.images) && m.images.length){
+        // upgrade from the old flat single-slideshow shape into one "General" category
+        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin };
+      } else {
+        state.motivation = { categories: [], pin };
+      }
+      state.motivation.categories.forEach(c=>{
+        if(c.id===undefined) c.id = uid();
+        if(c.name===undefined) c.name = '';
+        if(!Array.isArray(c.images)) c.images = [];
+        if(typeof c.pin !== 'string') c.pin = '';
+      });
+    }
   }
 
   // Saves must run strictly one at a time: doSave() reads lastKnownUpdatedAt at the start and

@@ -42,7 +42,7 @@
     let startX = 0, startY = 0, tracking = false;
     main.addEventListener('touchstart', e => {
       if(e.touches.length !== 1) return;
-      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slideshow') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
+      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slide-area') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

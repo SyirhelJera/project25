@@ -511,22 +511,51 @@
 
   <!-- MOTIVATION -->
   <div class="view" id="view-motivation">
-    <div class="view-title">Motivation</div>
-    <div class="view-sub">Images to keep you locked in — your goals, your wants, whatever pushes you.</div>
-    <div class="img-row" style="margin-bottom:16px;">
-      <label>Upload image<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label>
+    <div class="motivation-lock" id="motivationLock" style="display:none;">
+      <div class="empty">Locked. Enter your PIN to view this tab.</div>
+      <button class="btn btn-primary" id="motivationUnlockBtn">Unlock</button>
     </div>
-    <div class="motivation-slideshow" id="motivationSlideshow" style="display:none;">
-      <div class="motivation-glow-wrap">
-        <img class="motivation-slide-img active" id="motivationLayerA" alt="">
-        <img class="motivation-slide-img" id="motivationLayerB" alt="">
+
+    <div id="motivationContent">
+      <div class="motivation-head" id="motivationHead" style="display:none;">
+        <span class="motivation-name" id="motivationActiveName" title="Click to switch categories"></span>
+        <div class="motivation-actions">
+          <button class="del-goal" id="motivationRenameCatBtn">Rename</button>
+          <button class="del-goal" id="motivationCatPinBtn">Set category PIN</button>
+          <button class="del-goal" id="motivationCatLockNowBtn" style="display:none;">Lock now</button>
+          <button class="del-goal" id="motivationDelCatBtn">Delete category</button>
+        </div>
       </div>
-      <button class="motivation-arrow motivation-arrow-prev" id="motivationPrevBtn" aria-label="Previous image">&#8249;</button>
-      <button class="motivation-arrow motivation-arrow-next" id="motivationNextBtn" aria-label="Next image">&#8250;</button>
-      <div class="motivation-dots" id="motivationDots"></div>
+
+      <!-- Always visible (unlike its children) so swiping still works to switch categories
+           even when the active one is locked or has no images yet. -->
+      <div class="motivation-slide-area" id="motivationSlideArea">
+        <div class="motivation-lock" id="motivationCatLock" style="display:none;">
+          <div class="empty">This category is locked.</div>
+          <button class="btn btn-primary btn-sm" id="motivationCatUnlockBtn">Unlock category</button>
+        </div>
+
+        <div class="motivation-slideshow" id="motivationSlideshow" style="display:none;">
+          <div class="motivation-glow-wrap" id="motivationGlowWrap">
+            <img class="motivation-slide-img active" id="motivationLayerA" alt="">
+            <img class="motivation-slide-img" id="motivationLayerB" alt="">
+          </div>
+          <div class="motivation-dots" id="motivationDots"></div>
+        </div>
+        <div class="empty" id="motivationCatEmpty" style="display:none;">No images in this category yet.</div>
+      </div>
+      <div class="empty" id="motivationEmpty" style="display:none;">No categories yet. Add one below.</div>
+      <div class="motivation-thumbs" id="motivationThumbs"></div>
+
+      <div class="motivation-bottom-row">
+        <button class="btn btn-primary" id="addMotivationCategoryBtn">+ Add category</button>
+        <div class="img-row" id="motivationUploadRow" style="display:none;"><label>+ Upload<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label></div>
+        <div class="motivation-pin-actions">
+          <button class="btn btn-ghost btn-sm" id="motivationPinBtn">Set PIN</button>
+          <button class="btn btn-ghost btn-sm" id="motivationLockBtn" style="display:none;">Lock now</button>
+        </div>
+      </div>
     </div>
-    <div class="empty" id="motivationEmpty" style="display:none;">No images yet. Upload photos of your goals, your wants, anything that keeps you going.</div>
-    <div class="motivation-thumbs" id="motivationThumbs"></div>
   </div>
 
   <!-- ABOUT ME -->

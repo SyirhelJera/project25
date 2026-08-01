@@ -2,4 +2,5 @@ node_modules/
 .DS_Store
 scripts/.valorant-session.json
 scripts/.valorant-local-token.json
+scripts/.valorant-notify-config.json
 supabase/.temp/

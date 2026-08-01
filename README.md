@@ -159,6 +159,7 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation | Local session cookie only, never leaves your machine — see "Setup" |
+| ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
 ### PWA / offline
 
@@ -189,6 +190,11 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
      4. **Run step 3 daily** for the Valorant tab to actually show "today's" store for each tracked account. See "Automating the daily check" below for a Windows Task Scheduler setup so you don't have to run it by hand.
      5. **Each saved session expires in roughly 1-3 weeks** (Riot's own limit, not configurable), independently per account. When one does, `valorant-check-store.mjs` writes a "session expired" message into that account's entry in `state.valorant.dailyStores` (shown as a banner under that account's store section on the Valorant tab) instead of failing silently — other accounts keep updating normally. When you see that, just repeat steps 1-2 with that same label.
    - **Automating the daily check (Windows Task Scheduler)**: open Task Scheduler → Create Basic Task → trigger "Daily" at a time your PC is normally on → action "Start a program" → Program: `node`, Arguments: `scripts\valorant-check-store.mjs`, "Start in": this project's folder. A single scheduled run checks every saved account. Since the check needs your own machine's session, it only runs while the PC is on — a missed day just means yesterday's store stays shown until the next successful run.
+   - **Optional: push notification when a wishlisted skin rotates in** — fires a phone push (via [ntfy.sh](https://ntfy.sh), free, no account needed) right after `valorant-check-store.mjs`/`valorant-local-server.mjs` writes a new store result, if any item matches that account's wishlist. Opt-in — skipping this changes nothing else.
+     1. Run `supabase/setup-valorant-notify.sql` once in the Supabase SQL editor (same place `setup-egress-fix.sql` was run) — adds a read-only RPC so the script can fetch one account's wishlist without pulling the whole `app_data` row.
+     2. Install the [ntfy app](https://ntfy.sh) (iOS/Android) and subscribe to a topic name of your choosing — pick something hard to guess, since anyone who knows a public ntfy topic can also subscribe to it.
+     3. Create `scripts/.valorant-notify-config.json` (gitignored) with `{"ntfyTopic": "your-topic-name"}`.
+     4. That's it — every `valorant-check-store.mjs` run (scheduled or manual) or "Check Store Now" click pushes a notification for any current wishlist match, even if a previous run already flagged the same skin earlier the same day.
    - **Optional: trigger Check/Add Account from the Valorant tab itself** instead of a terminal, via `scripts/valorant-local-server.mjs` — a small local bridge (loopback-only, no other network access) that the tab's "Local Helper" panel talks to:
      1. Run `node scripts/valorant-local-server.mjs`. It prints a token and keeps running in that terminal — leave it open while you use the buttons.
      2. Paste the printed token into the Valorant tab's "Local Helper" → "Local Helper Token" field and click Save Token. The panel's status dot turns on once it can reach the server.
@@ -223,5 +229,7 @@ scripts/valorant-check-store.mjs    run LOCALLY (daily, e.g. via Task Scheduler)
 scripts/valorant-local-server.mjs   run LOCALLY (optional) — loopback-only HTTP bridge so the Valorant tab's buttons can trigger the two scripts above
 scripts/.valorant-session.json      gitignored — saved Riot sessions by label, created by valorant-login.mjs
 scripts/.valorant-local-token.json  gitignored — token valorant-local-server.mjs requires on every request, created on first run
+scripts/.valorant-notify-config.json  gitignored — {"ntfyTopic": "..."}, opts into the wishlist-match push notification
+supabase/setup-valorant-notify.sql  run once — adds the read-only RPC the wishlist-match notification uses
 .github/workflows/backup-supabase.yml   cron trigger for the backup script
 ```

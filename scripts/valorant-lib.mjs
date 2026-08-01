@@ -13,6 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_FILE = path.join(__dirname, '.valorant-session.json');
 const RIOT_USER_AGENT = 'RiotClient/60 rso-auth (Windows;10;;Professional, x64)';
 const VALORANT_API_BASE = 'https://valorant-api.com/v1';
+const NOTIFY_CONFIG_FILE = path.join(__dirname, '.valorant-notify-config.json');
 
 // Sessions are stored as { accounts: { <label>: { ssid, savedAt } } } so multiple Riot accounts
 // can be tracked at once. Transparently upgrades the older single-session file shape (which had
@@ -68,6 +69,7 @@ async function callRpc(fn, args){
 
 export async function recordAccountResult(label, result){
   await callRpc('valorant_set_daily_store', { p_label: label, p_result: result });
+  await notifyWishlistMatches(label, result.items).catch(err => console.error(`  wishlist notify failed: ${err.message}`));
 }
 
 export async function recordAccountError(label, message){
@@ -79,6 +81,61 @@ export async function recordAccountError(label, message){
 // gone. Called after the session itself is removed from loadSessions()/saveSessions().
 export async function deleteAccountStore(label){
   await callRpc('valorant_delete_daily_store', { p_label: label });
+}
+
+// Push notification (via ntfy.sh) when a wishlisted skin rotates into the store. Opt-in: silently
+// does nothing until scripts/.valorant-notify-config.json exists (gitignored, see README), so
+// nobody's daily check breaks just because they haven't set this up.
+function loadNotifyConfig(){
+  if(!fs.existsSync(NOTIFY_CONFIG_FILE)) return null;
+  try {
+    const cfg = JSON.parse(fs.readFileSync(NOTIFY_CONFIG_FILE, 'utf8'));
+    return cfg && cfg.ntfyTopic ? cfg : null;
+  } catch {
+    return null;
+  }
+}
+
+// Same case-insensitive, either-direction substring match as valWishlistMatchesForItem in
+// js/valorant.js — kept in sync with that since matching is now duplicated server-side here.
+function wishlistMatchesForItem(itemName, wishlist){
+  const lower = (itemName || '').toLowerCase();
+  return (wishlist || []).filter(w => {
+    const wl = (w.name || '').toLowerCase().trim();
+    return wl && (lower.includes(wl) || wl.includes(lower));
+  });
+}
+
+// Fetches label's wishlist (via the read-only valorant_get_wishlist RPC — see
+// supabase/setup-valorant-notify.sql), checks it against this run's store items, and fires an
+// ntfy.sh push for any matches. No dedupe: every run that finds a wishlist match pushes a
+// notification, even if a previous run today already flagged the same skin.
+export async function notifyWishlistMatches(label, items){
+  const config = loadNotifyConfig();
+  if (!config) return;
+
+  const { url, anonKey } = readSupabaseConfig();
+  const resp = await fetch(`${url}/rest/v1/rpc/valorant_get_wishlist`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${anonKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ p_label: label }),
+  });
+  if (!resp.ok) return;
+  const wishlist = await resp.json();
+  if (!Array.isArray(wishlist) || !wishlist.length) return;
+
+  const matched = (items || []).filter(it => wishlistMatchesForItem(it.name, wishlist).length);
+  if (!matched.length) return;
+
+  await fetch(`https://ntfy.sh/${encodeURIComponent(config.ntfyTopic)}`, {
+    method: 'POST',
+    headers: { Title: 'Valorant shop alert', Priority: 'high', Tags: 'gun' },
+    body: `${label}: ${matched.map(it => it.name).join(', ')} just rotated into today's store!`,
+  });
 }
 
 // Redeems a saved `ssid` cookie for a fresh access/id token pair, the same silent reauth Riot's

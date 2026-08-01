@@ -5,7 +5,7 @@
   const CURRENCY_SYMBOLS = {USD:'$',PHP:'₱',EUR:'€',GBP:'£',JPY:'¥',AUD:'A$',CAD:'C$',SGD:'S$',INR:'₹',CNY:'¥'};
   const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
 
-  let state = { goals: [], habits: [], countdowns: [], mantras: [], checklists: [], checklistExp: 0,
+  let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { images: [] }, checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
@@ -80,7 +80,11 @@
     return compressImageFile(file, maxDim, quality).then(blob=>{
       if(!supabaseConfigured || usingClaudeStorage || !supa) return blobToDataUrl(blob);
       const path = folder + '/' + uid() + '.jpg';
-      return supa.storage.from(ICONS_BUCKET).upload(path, blob, { contentType: 'image/jpeg' })
+      // cacheControl is a full year: each path is unique (uid()) and never overwritten, so the
+      // browser can cache a fetched image indefinitely instead of re-pulling it from Storage
+      // (and burning egress) every time its default 1-hour cache would otherwise expire — e.g.
+      // on every slideshow rotation or tab revisit past that hour.
+      return supa.storage.from(ICONS_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' })
         .then(({ error })=>{
           if(error) throw error;
           return supa.storage.from(ICONS_BUCKET).getPublicUrl(path).data.publicUrl;

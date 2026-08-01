@@ -244,6 +244,8 @@
       if(p.label === undefined) p.label = '';
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
+    state.motivation = parsed.motivation || { images: [] };
+    if(!Array.isArray(state.motivation.images)) state.motivation.images = [];
   }
 
   // Saves must run strictly one at a time: doSave() reads lastKnownUpdatedAt at the start and

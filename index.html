@@ -60,6 +60,7 @@
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Countdowns</span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
+    <div class="nav-item" data-tab="motivation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></svg><span class="nav-label">Motivation</span></div>
     <div class="nav-item" data-tab="aboutme"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg><span class="nav-label">About Me</span></div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
   </div>
@@ -508,6 +509,26 @@
     <div class="empty" id="mantraEmpty" style="display:none;">No mantras yet. Add a phrase that keeps you motivated.</div>
   </div>
 
+  <!-- MOTIVATION -->
+  <div class="view" id="view-motivation">
+    <div class="view-title">Motivation</div>
+    <div class="view-sub">Images to keep you locked in — your goals, your wants, whatever pushes you.</div>
+    <div class="img-row" style="margin-bottom:16px;">
+      <label>Upload image<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label>
+    </div>
+    <div class="motivation-slideshow" id="motivationSlideshow" style="display:none;">
+      <div class="motivation-glow-wrap">
+        <img class="motivation-slide-img active" id="motivationLayerA" alt="">
+        <img class="motivation-slide-img" id="motivationLayerB" alt="">
+      </div>
+      <button class="motivation-arrow motivation-arrow-prev" id="motivationPrevBtn" aria-label="Previous image">&#8249;</button>
+      <button class="motivation-arrow motivation-arrow-next" id="motivationNextBtn" aria-label="Next image">&#8250;</button>
+      <div class="motivation-dots" id="motivationDots"></div>
+    </div>
+    <div class="empty" id="motivationEmpty" style="display:none;">No images yet. Upload photos of your goals, your wants, anything that keeps you going.</div>
+    <div class="motivation-thumbs" id="motivationThumbs"></div>
+  </div>
+
   <!-- ABOUT ME -->
   <div class="view" id="view-aboutme">
     <div class="view-title">About Me</div>
@@ -633,6 +654,7 @@
 <script src="js/insights.js"></script>
 <script src="js/backups.js"></script>
 <script src="js/mantras.js"></script>
+<script src="js/motivation.js"></script>
 <script src="js/checklists.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/fitness.js"></script>

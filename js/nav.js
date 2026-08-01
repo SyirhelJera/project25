@@ -5,11 +5,13 @@
       document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       el('view-' + t.dataset.tab).classList.add('active');
+      if(t.dataset.tab!=='motivation') stopMotivationSlideshow();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       if(t.dataset.tab==='countdowns') renderCountdowns();
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
+      if(t.dataset.tab==='motivation') renderMotivation();
       if(t.dataset.tab==='checklists') renderChecklists();
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
@@ -40,7 +42,7 @@
     let startX = 0, startY = 0, tracking = false;
     main.addEventListener('touchstart', e => {
       if(e.touches.length !== 1) return;
-      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel')) return; // let the carousel handle its own horizontal drag
+      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slideshow') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

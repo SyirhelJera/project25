@@ -238,6 +238,12 @@
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'' };
     ['filled','today','empty'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
     state.dailyActivity = parsed.dailyActivity || {};
+    state.protectedDays = parsed.protectedDays || [];
+    state.protectedDays.forEach(p=>{
+      if(p.type === undefined) p.type = 'event';
+      if(p.label === undefined) p.label = '';
+      if(p.endDate === undefined) p.endDate = p.startDate;
+    });
   }
 
   // Saves must run strictly one at a time: doSave() reads lastKnownUpdatedAt at the start and

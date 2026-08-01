@@ -3,12 +3,25 @@
   // tracks which month each habit's calendar is currently showing (0 = current month, negative = past); not persisted
   const habitMonthOffset = {};
 
-  function calcStreak(h){
+  // Walks backward from `startDate` (inclusive): a real completion counts and continues; a
+  // protected-but-uncompleted day (js/protecteddays.js) is skipped — doesn't count, doesn't break
+  // the walk; anything else stops it. Read-only — never mutates h.completions.
+  function countBackwardStreak(h, startDate){
     let streak = 0;
+    let cur = new Date(startDate);
+    while(true){
+      const ds = localDateStr(cur);
+      if(h.completions[ds]) streak++;
+      else if(!isDateProtected(ds)) break;
+      cur.setDate(cur.getDate()-1);
+    }
+    return streak;
+  }
+
+  function calcStreak(h){
     let cur = new Date(); cur.setHours(0,0,0,0);
     if(!h.completions[localDateStr(cur)]) cur.setDate(cur.getDate()-1);
-    while(h.completions[localDateStr(cur)]){ streak++; cur.setDate(cur.getDate()-1); }
-    return streak;
+    return countBackwardStreak(h, cur);
   }
 
   // "Unresolved" (drives the red pending outline + habitRiskBadge count) means there's still
@@ -55,16 +68,16 @@
     return h.streakRestores[monthKey(new Date())] || 0;
   }
   // Returns the date string of the single missed day that most recently broke an active streak,
-  // or null if there's nothing to restore (streak currently alive, or no prior streak existed).
+  // or null if there's nothing to restore (streak currently alive, protected, or no prior streak
+  // existed).
   function habitBrokenGapDate(h){
     const today = new Date(); today.setHours(0,0,0,0);
     if(h.completions[localDateStr(today)]) return null; // today already done, nothing broken
     const yesterday = new Date(today); yesterday.setDate(today.getDate()-1);
     const yStr = localDateStr(yesterday);
-    if(h.completions[yStr]) return null; // yesterday done — streak is still alive as of today
-    let cur = new Date(yesterday); cur.setDate(cur.getDate()-1);
-    let priorStreak = 0;
-    while(h.completions[localDateStr(cur)]){ priorStreak++; cur.setDate(cur.getDate()-1); }
+    if(h.completions[yStr] || isDateProtected(yStr)) return null; // done or excused — streak alive
+    const dayBefore = new Date(yesterday); dayBefore.setDate(yesterday.getDate()-1);
+    const priorStreak = countBackwardStreak(h, dayBefore);
     return priorStreak > 0 ? yStr : null;
   }
 
@@ -186,8 +199,10 @@
         weekDates.forEach((d,i)=>{
           const ds = localDateStr(d);
           const checked = !!h.completions[ds];
+          const isProtected = !checked && isDateProtected(ds);
+          const cls = checked ? 'checked' : (isProtected ? 'protected' : '');
           const cell = document.createElement('div'); cell.className='day-cell';
-          cell.innerHTML = '<div class="dlabel">'+DAY_LABELS[i]+'</div><div class="day-box '+(checked?'checked':'')+'">'+(checked?'✓':'')+'</div>';
+          cell.innerHTML = '<div class="dlabel">'+DAY_LABELS[i]+'</div><div class="day-box '+cls+'" title="'+(isProtected?'Protected day':'')+'">'+(checked?'✓':(isProtected?'•':''))+'</div>';
           cell.querySelector('.day-box').addEventListener('click', ()=>{
             if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;
             save(); renderHabits();
@@ -222,8 +237,10 @@
           const ds = localDateStr(d);
           const checked = !!h.completions[ds];
           const isToday = ds === localDateStr(today);
+          const isProtected = !checked && isDateProtected(ds);
           const cell = document.createElement('div');
-          cell.className = 'month-cell' + (checked?' checked':'') + (isToday?' today':'');
+          cell.className = 'month-cell' + (checked?' checked':(isProtected?' protected':'')) + (isToday?' today':'');
+          if(isProtected) cell.title = 'Protected day';
           cell.textContent = day;
           cell.addEventListener('click', ()=>{
             if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;

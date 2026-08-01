@@ -6,7 +6,7 @@
       t.classList.add('active');
       el('view-' + t.dataset.tab).classList.add('active');
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
-      if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); }
+      if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       if(t.dataset.tab==='countdowns') renderCountdowns();
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();

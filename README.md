@@ -9,15 +9,15 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | Tab | Purpose |
 |---|---|
 | **Goals** | Freeform goal list with subtasks, tiers (F/B/A/S/S+/Mythical), star/"working on" flags, target dates, per-goal color/image, AI-suggested subtasks, and a "locked until net worth X" mechanic. Drives the XP/level system. |
-| **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), and optional linking to a checklist (completing the checklist auto-checks the habit). |
+| **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
 | **Finance** | Multi-currency accounts (savings/credit/lent/custom), transfers between accounts, subscriptions with monthly-cost rollup, "money goals" (save $X by date, with logged contributions), a currency converter with live or manual exchange rates, a net-worth-over-time trend chart, and a this-month spending-by-category breakdown. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Tracks competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). |
-| **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, and a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer. |
+| **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
 | **About Me** | Free-text appearance details (race, hair, eyes, clothing, background). |
-| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, and backup restore. |
+| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks), and backup restore. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance.
 
@@ -26,7 +26,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 **No build step.** `index.html` loads Google Fonts, the Supabase JS SDK (CDN), `styles.css`, and then a fixed sequence of `<script>` tags from `js/` — load order matters because later files call functions/reference DOM refs defined in earlier ones:
 
 ```
-core.js → persistence.js → aboutme.js → nav.js → goals.js → habits.js →
+core.js → persistence.js → protecteddays.js → aboutme.js → nav.js → goals.js → habits.js →
 countdowns.js → insights.js → backups.js → mantras.js → checklists.js →
 finance.js → fitness.js → valorant.js → main.js
 ```
@@ -35,9 +35,10 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 
 - **`core.js`** — global `state` shape, currency constants, tiny DOM/date helper functions.
 - **`persistence.js`** — the `load()`/`save()` layer (see below); also owns the setup/offline/conflict banners.
+- **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks).
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, swipe-to-switch-tabs gesture.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `aboutme.js`, `backups.js`, `insights.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `aboutme.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
 Rendering is done by tearing down and rebuilding `innerHTML` for the relevant section on every state change (no virtual DOM, no diffing) — `save()` is called after essentially every mutation, and most mutations are followed by a call to that tab's own `render*()`.
@@ -55,6 +56,9 @@ state = {
                                        // uploadCompressedImage() in core.js), not an embedded
                                        // base64 image — keeps it off the app_data row entirely
   habits: [ { id, name, completions:{date:true}, streakRestores:{monthKey:count}, ... } ],
+                                       // calcStreak()/habitBrokenGapDate() (habits.js) treat any
+                                       // date covered by state.protectedDays below as excused —
+                                       // it doesn't break a streak, but doesn't inflate it either
   countdowns: [ { id, label, date, pinned, createdAt } ],
   mantras: [ { id, text } ],
   checklists: [ { id, name, items:[{id,text,done,durationMin,skipCount,missStreak}], resetFreq,
@@ -62,7 +66,10 @@ state = {
                                        // skipCount = lifetime times skipped in a Play Session;
                                        // missStreak = consecutive reset periods left undone at
                                        // reset time — both feed the Checklists tab's "struggling
-                                       // tasks" panel (getStrugglingItems() in checklists.js)
+                                       // tasks" panel (getStrugglingItems() in checklists.js).
+                                       // missStreak is NOT incremented for a reset period that
+                                       // overlaps a protected day (see state.protectedDays below
+                                       // and resetPeriodRange() in checklists.js)
   checklistExp: number,               // running XP total from checklist items (survives resets)
   finance: {
     accounts: [ {id,type,name,balance,currency,imageUrl,transactions:[{id,amount,note,category,createdAt}],...} ],
@@ -103,7 +110,11 @@ state = {
              hairStyle, eyeColor, clothing, background, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
-  theme: 'light' | 'dark' | 'ios-light' | 'ios-dark'
+  theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
+  protectedDays: [ { id, type:'vacation'|'sick'|'event', label, startDate, endDate, createdAt } ]
+                                       // global exemption list (Settings tab) — startDate/endDate
+                                       // are inclusive YYYY-MM-DD strings (endDate===startDate for
+                                       // a single day); see protecteddays.js
 }
 ```
 
@@ -195,6 +206,7 @@ manifest.json, sw.js, icons/        PWA installability + offline shell caching
 js/
   core.js                           state shape, constants, helpers (loads first)
   persistence.js                    load()/save(), Claude-storage vs Supabase, offline/conflict handling
+  protecteddays.js                  vacation/sick/event exemption list (Settings) — consumed by habits.js/checklists.js
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
   goals.js / habits.js / finance.js / fitness.js / valorant.js /

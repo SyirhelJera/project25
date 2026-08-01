@@ -7,6 +7,24 @@
     if(freq === 'yearly') return String(d.getFullYear());
     return null;
   }
+  // Inverse of resetKeyFor(): maps a (freq, key) pair back to the concrete [start,end] YYYY-MM-DD
+  // range it identifies, so an outgoing period can be checked against protected days
+  // (js/protecteddays.js) before a miss is counted against it. Must stay in sync with
+  // resetKeyFor()'s key formats.
+  function resetPeriodRange(freq, key){
+    if(freq === 'daily') return [key, key];
+    if(freq === 'weekly'){
+      const monday = parseLocalDateStr(key);
+      const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+      return [key, localDateStr(sunday)];
+    }
+    if(freq === 'monthly'){
+      const [y,m] = key.split('-').map(Number);
+      return [key+'-01', localDateStr(new Date(y, m, 0))]; // day 0 of next month = last day of this one
+    }
+    if(freq === 'yearly') return [key+'-01-01', key+'-12-31'];
+    return null;
+  }
   function applyChecklistResets(){
     let changed = false;
     state.checklists.forEach(c=>{
@@ -24,9 +42,13 @@
       if(c.lastResetKey !== key){
         // record whether each item was completed by the end of the outgoing period before
         // wiping it — this is the only point where a "miss" for that period is knowable, and
-        // feeds the struggling-tasks panel (see getStrugglingItems()).
+        // feeds the struggling-tasks panel (see getStrugglingItems()). Skip the miss penalty
+        // entirely when the outgoing period overlapped a protected day (js/protecteddays.js).
+        const outgoingRange = resetPeriodRange(c.resetFreq, c.lastResetKey);
+        const periodExcused = !!(outgoingRange && dateRangeOverlapsProtected(outgoingRange[0], outgoingRange[1]));
         c.items.forEach(it=>{
-          it.missStreak = it.done ? 0 : (it.missStreak||0) + 1;
+          if(it.done) it.missStreak = 0;
+          else if(!periodExcused) it.missStreak = (it.missStreak||0) + 1;
           it.done = false;
           it.failed = false;
         });

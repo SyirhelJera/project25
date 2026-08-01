@@ -548,6 +548,25 @@
       </div>
     </div>
 
+    <div class="section-lbl" style="margin-top:22px;">Protected Days</div>
+    <div class="view-sub" style="margin-bottom:4px;">Vacation, sick, or event days here won't count against habit streaks or checklist miss-streaks. Applies to every habit and checklist automatically.</div>
+    <div class="view-sub" id="protectedDayTodayNote" style="display:none;margin-bottom:10px;"></div>
+    <div class="fitness-fields" id="protectedDayFields">
+      <div class="fitness-field"><label>Type</label>
+        <select id="pdType">
+          <option value="vacation">🏖️ Vacation</option>
+          <option value="sick">🤒 Sick</option>
+          <option value="event">📅 Event</option>
+        </select>
+      </div>
+      <div class="fitness-field"><label>Start date</label><input type="date" id="pdStart"></div>
+      <div class="fitness-field"><label>End date (optional)</label><input type="date" id="pdEnd"></div>
+      <div class="fitness-field"><label>Note (optional)</label><input type="text" id="pdLabel" maxlength="60" placeholder='e.g. "Cancun trip"'></div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="addProtectedDayBtn" type="button" style="margin-top:10px;">+ Add</button>
+    <div id="protectedDayList" style="margin-top:12px;"></div>
+    <div class="empty" id="protectedDayEmpty" style="display:none;">No protected days yet.</div>
+
     <div class="section-lbl" style="margin-top:22px;">Countdown Mosaic Colors</div>
     <div class="view-sub" style="margin-bottom:10px;">Customize the day-dot colors on the pinned countdown's mosaic (Goals page).</div>
     <div class="fitness-fields" id="mosaicColorFields">
@@ -605,6 +624,7 @@
 
 <script src="js/core.js"></script>
 <script src="js/persistence.js"></script>
+<script src="js/protecteddays.js"></script>
 <script src="js/aboutme.js"></script>
 <script src="js/nav.js"></script>
 <script src="js/goals.js"></script>

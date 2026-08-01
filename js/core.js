@@ -14,7 +14,10 @@
     mosaicColors: { filled:'', today:'', empty:'' },
     // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —
     // drives the mosaic's GitHub-style intensity coloring; see recomputeDailyActivity()
-    dailyActivity: {} };
+    dailyActivity: {},
+    // vacation/sick/event date ranges (Settings tab) — excuses habit streaks and checklist
+    // miss-streaks for any day they cover; see js/protecteddays.js
+    protectedDays: [] };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';
@@ -26,6 +29,10 @@
   const escapeHtml = str => { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; };
   const fmtDate = ts => !ts ? '' : new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'});
   const localDateStr = d => { const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0'); return y+'-'+m+'-'+day; };
+  // Inverse of localDateStr — parses a "YYYY-MM-DD" string as a local-midnight Date by reading its
+  // components directly, unlike new Date(str) (parsed as UTC per spec, which can land on the
+  // previous local day in negative-UTC-offset zones once .setHours(0,0,0,0) is applied elsewhere).
+  const parseLocalDateStr = str => { const [y,m,day] = str.split('-').map(Number); return new Date(y, m-1, day); };
 
   // Goal/finance icon images used to be stored inline as base64 in the single shared app_data
   // row (see js/persistence.js) — that whole row is transferred on every load and every save,

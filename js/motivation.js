@@ -214,7 +214,7 @@
   function addMotivationImage(catId, file){
     const cat = state.motivation.categories.find(c=>c.id===catId);
     if(!cat) return;
-    uploadCompressedImage(file, 1280, 0.85, 'motivation').then(url=>{
+    uploadCompressedImage(file, 960, 0.78, 'motivation').then(url=>{
       cat.images.push({ id: uid(), url, createdAt: Date.now() });
       save(); renderMotivation();
     }).catch(err=> window.alert(err.message));
@@ -321,6 +321,11 @@
     if(motivationSuppressClick) return;
     nextMotivationImage();
     rerollMantra();
+  });
+  // Sits on top of the slideshow image (z-index above it) so this click never also reaches
+  // motivationGlowWrap's reroll/advance handler underneath.
+  el('mantraRow').addEventListener('click', ()=>{
+    el('mantraRow').classList.toggle('minimized');
   });
   el('motivationPinBtn').addEventListener('click', promptSetMotivationPin);
   el('motivationLockBtn').addEventListener('click', ()=>{ motivationUnlocked = false; renderMotivation(); });

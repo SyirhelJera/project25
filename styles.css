@@ -662,15 +662,18 @@
   .motivation-dots{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:2;}
 
   /* mantra hovers as a translucent black chip over the top-left of the slideshow image, above
-     both the photo layers (z-index:1) and the dots (z-index:2) — pointer-events:none so it never
-     blocks the tap-to-reroll/advance click on the image underneath it */
+     both the photo layers (z-index:1) and the dots (z-index:2). Clickable so it can be minimized
+     down to just the icon square (tap again to expand) without also triggering the
+     tap-to-reroll/advance click on the image underneath it. */
   .motivation-mantra-overlay{
     position:absolute;top:14px;left:14px;z-index:3;max-width:min(78%,320px);
     display:flex;align-items:center;gap:10px;
     background:rgba(10,10,12,.6);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
     border-radius:13px;padding:9px 13px;
-    pointer-events:none;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
   }
+  .motivation-mantra-overlay.minimized{gap:0;}
+  .motivation-mantra-overlay.minimized .mantra-live{display:none;}
   .motivation-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.55);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .2s ease;}
   .motivation-dot.active{width:18px;border-radius:4px;background:#fff;}
   .motivation-thumbs{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin-top:4px;scrollbar-width:none;-ms-overflow-style:none;}

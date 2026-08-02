@@ -20,10 +20,10 @@ Plain HTML/CSS/JS, no npm, no bundler, no framework.
   ```
   core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
   countdowns.js → insights.js → backups.js → mantras.js → checklists.js →
-  finance.js → fitness.js → valorant.js → main.js
+  finance.js → fitness.js → valorant.js → clock.js → main.js
   ```
 - All modules share one global `state` object (shape defined/defaulted in `core.js` / `persistence.js:applyLoadedState()`) and small globals (`el()`, `uid()`, `escapeHtml()`, date helpers). No modules, no per-file scoping, no virtual DOM — each tab's `render*()` rebuilds that section's `innerHTML` from `state` on every change, and `save()` runs after essentially every mutation.
-- One file per feature tab (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`), each owning its own render function and DOM listeners — no central router.
+- One file per feature tab (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `clock.js`, `backups.js`, `insights.js`, `protecteddays.js`), each owning its own render function and DOM listeners — no central router.
 - **Persistence** (`js/persistence.js`): inside Claude.ai uses `window.storage`; deployed elsewhere falls back to Supabase, writing to one shared unauthenticated row (`app_data`, `id='shared'`) with optimistic-concurrency conflict detection and a localStorage offline cache. See README's "Persistence — two modes, no auth" section before touching load/save logic.
 - **Valorant tooling is intentionally local-only** (`scripts/valorant-*.mjs`, run on the user's own machine, not as a cloud/Edge Function) — this is a deliberate anti-fraud-detection workaround documented at length in the README ("Daily Valorant store check", "Getting the initial session"). Don't try to "fix" this by moving it back to a cloud function.
 

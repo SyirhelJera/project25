@@ -10,6 +10,7 @@
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       if(t.dataset.tab==='countdowns') renderCountdowns();
+      if(t.dataset.tab==='clock') renderClock();
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); }

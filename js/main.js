@@ -1,7 +1,7 @@
   function renderAll(){
     applyTabOrder();
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
-    renderFinance(); renderFitness(); renderValorant();
+    renderFinance(); renderFitness(); renderValorant(); renderClock();
     openToPinnedMotivationCategory(); renderMotivation();
   }
 

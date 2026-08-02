@@ -227,6 +227,14 @@
         if(w.skinUuid===undefined) w.skinUuid = '';
       });
     });
+    state.clock = parsed.clock || { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] };
+    if(!state.clock.fasting) state.clock.fasting = { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' };
+    if(state.clock.fasting.enabled===undefined) state.clock.fasting.enabled = false;
+    if(!state.clock.fasting.eatingStart) state.clock.fasting.eatingStart = '12:00';
+    if(!state.clock.fasting.eatingEnd) state.clock.fasting.eatingEnd = '20:00';
+    if(!Array.isArray(state.clock.blocks)) state.clock.blocks = [];
+    state.clock.blocks.forEach(b=>{ if(b.color===undefined) b.color = ''; if(b.emoji===undefined) b.emoji = ''; });
+
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     // avatarImage/avatarGeneratedAt/race/skinTone/hairColor/hairStyle/eyeColor/clothing/background:

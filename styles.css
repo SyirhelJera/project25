@@ -126,7 +126,23 @@
     transition:width .2s ease, height .2s ease;
   }
   .brand-icon svg{width:19px;height:19px;}
-  .brand-name{font-size:16.5px;font-weight:800;color:var(--text);letter-spacing:-0.2px;flex:1;transition:font-size .2s ease;}
+  /* min-width:0 lets this shrink/ellipsize instead of forcing the row to wrap when
+     .nav-right-group's chip claims some of the row's width (see .nav-clock-status below) */
+  .brand-name{font-size:16.5px;font-weight:800;color:var(--text);letter-spacing:-0.2px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:font-size .2s ease;}
+  /* groups the fasting/time-block chip with the Play button so they move together as a unit —
+     on mobile the whole group gets absolutely-positioned at the sidebar's right edge (see the
+     (max-width:760px) block below), which keeps the chip "to the left of" Play without either of
+     them fighting the centered brand icon/name for space. */
+  .nav-right-group{display:flex;align-items:center;gap:6px;flex:none;}
+  /* fasting phase (#navClockStatus) and current time block (#navBlockStatus) — two independent
+     chips (js/clock.js updateNavClockStatus), each hidden until it actually has something to say.
+     Plain dot+label with no pill background/border, so they stay quiet and compact rather than
+     reading as buttons competing with Play. Kept separate (rather than one combined "Eating ·
+     Sleep" chip) since concatenating them made the label too long to fit and it just ellipsized
+     into unreadable "Fa…" garbage. */
+  .nav-clock-status{display:none;align-items:center;gap:4px;flex:none;max-width:84px;}
+  .nav-clock-dot{width:6px;height:6px;border-radius:50%;flex:none;}
+  .nav-clock-label{font-size:10.5px;font-weight:700;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   /* mobile-only shortcut to the combined Dailies play session — hidden on desktop unconditionally;
      see the (max-width:760px) block below for where it's actually shown/positioned */
   #playDailiesBtn{display:none;background:var(--danger);}
@@ -712,7 +728,11 @@
     .sidebar.scrolled .brand-icon svg{width:15px;height:15px;}
     .sidebar.scrolled .brand-name{font-size:14px;}
     .brand{padding:0;margin-right:12px;width:100%;justify-content:center;position:relative;}
-    #playDailiesBtn{display:inline-flex;position:absolute;top:50%;right:max(2px,env(safe-area-inset-right));transform:translateY(-50%);padding:6px 12px;font-size:12px;}
+    /* the chip+button move together, pinned to the right edge, so the chip reads as "just left
+       of Play" without either fighting the centered brand icon/name (see .nav-right-group above) */
+    .nav-right-group{position:absolute;top:50%;right:max(2px,env(safe-area-inset-right));transform:translateY(-50%);}
+    #playDailiesBtn{display:inline-flex;padding:6px 12px;font-size:12px;}
+    .nav-clock-status{max-width:56px;}
     .profile-card{display:none;}
     .sidebar-footer{display:none;}
 
@@ -1089,6 +1109,42 @@
   .val-wishlist-suggest-item:hover{background:var(--surface-alt);}
   .val-wishlist-suggest-item img{width:28px;height:28px;object-fit:contain;flex:none;border-radius:5px;background:var(--surface-alt);}
   .val-wishlist-suggest-noimg{width:28px;height:28px;flex:none;border-radius:5px;background:var(--surface-alt);}
+
+  /* ================= CLOCK ================= */
+  /* The dial itself is always dark (hardcoded, not theme vars) — it's meant to read as a
+     physical dark-faced clock widget regardless of which app theme is active; everything below
+     it (fasting form, block list) uses the normal theme vars like every other tab. */
+  .clock-face-card{
+    background:#10121C;border:1px solid #262A40;border-radius:18px;
+    padding:22px 20px 20px;display:flex;flex-direction:column;align-items:center;
+    margin-bottom:22px;
+  }
+  .clock-digital{font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;color:#F5F7FF;letter-spacing:0.5px;}
+  .clock-date{font-size:12px;color:#8B90AC;margin-top:2px;}
+  /* which concrete 12-hour half (today's AM or PM) the dial below is currently showing — the dial
+     can only ever display one real half at a time (see clockHalfSegments in js/clock.js), so
+     without this label there'd be no way to tell whether the "8" wedge means 8am or 8pm. */
+  .clock-half-label{font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:#5C6288;margin-top:3px;margin-bottom:14px;}
+  .clock-face-wrap{width:260px;max-width:100%;}
+  .clock-face-wrap svg{width:100%;height:auto;display:block;}
+  .clock-status{margin-top:16px;text-align:center;min-height:52px;}
+  .clock-status-phase{font-size:15px;font-weight:800;color:#F5F7FF;}
+  .clock-status-countdown{font-size:12.5px;color:#B9BEDC;margin-top:2px;}
+  .clock-status-sub{font-size:11px;color:#767CA0;margin-top:6px;}
+  .clock-now-blocks{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:10px;}
+  .clock-now-chip{display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:999px;padding:3px 10px 3px 6px;font-size:11px;font-weight:700;color:#E7E9F5;}
+  .clock-now-chip .dot{width:7px;height:7px;border-radius:50%;flex:none;}
+
+  .clock-toggle-row{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--text);margin-bottom:14px;cursor:pointer;}
+  .clock-toggle-row input{width:16px;height:16px;accent-color:var(--violet);cursor:pointer;}
+  #clockFastingFields{transition:opacity .2s ease;}
+
+  .clock-block-swatch{width:14px;height:14px;border-radius:5px;flex:none;}
+  /* in-place edit form for an existing time block (js/clock.js renderClockBlockEditCard) —
+     violet border matches the app's other "actively editing" affordances (e.g. .rename-input) */
+  .clock-block-edit-card{background:var(--surface);border:1px solid var(--violet);border-radius:13px;padding:14px 16px 4px;margin-bottom:9px;}
+  .clock-block-edit-card .fitness-fields{margin-bottom:12px;}
+  .clock-block-edit-actions{display:flex;gap:8px;margin-bottom:14px;}
 
   @media (max-width:720px){
     .finance-summary{grid-template-columns:repeat(3,1fr);}

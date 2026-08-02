@@ -32,7 +32,11 @@
   <div class="brand">
     <div class="brand-icon"><svg viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg"><path d="M21 16v-2l-8-5V3.5c0-.83-.67-1.5-1.5-1.5S10 2.67 10 3.5V9l-8 5v2l8-2.5V19l-2.5 1.5V22l4-1 4 1v-1.5L13 19v-5.5l8 2.5z"/></svg></div>
     <div class="brand-name">Project 25</div>
-    <button class="btn btn-primary" id="playDailiesBtn" style="display:none;">▶ Play</button>
+    <div class="nav-right-group" id="navRightGroup">
+      <div class="nav-clock-status" id="navClockStatus" style="display:none;" title=""></div>
+      <div class="nav-clock-status" id="navBlockStatus" style="display:none;" title=""></div>
+      <button class="btn btn-primary" id="playDailiesBtn" style="display:none;">▶ Play</button>
+    </div>
   </div>
 
   <div class="profile-card">
@@ -63,6 +67,7 @@
     <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg><span class="nav-label">Valorant</span><span class="nav-badge" id="valWishlistBadge" style="display:none;" title="A wishlisted skin is in today's store">✓</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Countdowns</span></div>
+    <div class="nav-item" data-tab="clock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span class="nav-label">Clock</span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
   </div>
@@ -566,6 +571,46 @@
     <div class="empty" id="cdEmpty" style="display:none;">No countdowns yet. Try "End of Year" or a birthday.</div>
   </div>
 
+  <!-- CLOCK -->
+  <div class="view" id="view-clock">
+    <div class="view-title">Clock</div>
+    <div class="view-sub">A live clock mapped to your day — set a fasting schedule and add time blocks to see them on the dial.</div>
+
+    <div class="clock-face-card">
+      <div class="clock-digital" id="clockDigital">--:--:--</div>
+      <div class="clock-date" id="clockDateReadout"></div>
+      <div class="clock-half-label" id="clockHalfLabel"></div>
+      <div class="clock-face-wrap"><svg id="clockSvg" viewBox="0 0 200 200"></svg></div>
+      <div class="clock-status">
+        <div class="clock-status-phase" id="clockStatusPhase"></div>
+        <div class="clock-status-countdown" id="clockStatusCountdown"></div>
+        <div class="clock-status-sub" id="clockStatusSub"></div>
+      </div>
+      <div class="clock-now-blocks" id="clockNowBlocks"></div>
+    </div>
+
+    <div class="section-lbl" style="margin-top:4px;">Fasting Schedule</div>
+    <div class="view-sub" style="margin-top:-4px;">Set your eating window — the rest of the day counts as your fast. Shown as the gold ring around the edge of the clock.</div>
+    <label class="clock-toggle-row" for="clockFastingEnabled"><input type="checkbox" id="clockFastingEnabled"> Enable fasting tracking</label>
+    <div class="fitness-fields" id="clockFastingFields">
+      <div class="fitness-field"><label>Eating window starts</label><input type="time" id="clockEatingStart"></div>
+      <div class="fitness-field"><label>Eating window ends</label><input type="time" id="clockEatingEnd"></div>
+    </div>
+
+    <div class="section-lbl" style="margin-top:22px;">Time Blocks</div>
+    <div class="view-sub" style="margin-top:-4px;">Add blocks like Sleep, Work, or Gym to see them mapped onto the clock face.</div>
+    <div class="fitness-fields" id="clockBlockFields">
+      <div class="fitness-field"><label>Label</label><input type="text" id="clockBlockLabel" maxlength="40" placeholder="e.g. Sleep"></div>
+      <div class="fitness-field"><label>Emoji (optional)</label><input type="text" id="clockBlockEmoji" maxlength="8" placeholder="🌙"></div>
+      <div class="fitness-field"><label>Start</label><input type="time" id="clockBlockStart"></div>
+      <div class="fitness-field"><label>End</label><input type="time" id="clockBlockEnd"></div>
+      <div class="fitness-field"><label>Color</label><input type="color" id="clockBlockColor" value="#FBBF24"></div>
+    </div>
+    <button class="btn btn-primary btn-sm" id="addClockBlockBtn" type="button">+ Add Block</button>
+    <div id="clockBlockList" style="margin-top:12px;"></div>
+    <div class="empty" id="clockBlockEmpty" style="display:none;">No time blocks yet. Add one above — try "Sleep" or "Deep Work".</div>
+  </div>
+
   <!-- MANTRAS -->
   <div class="view" id="view-mantras">
     <div class="view-title">Mantras</div>
@@ -752,6 +797,7 @@
 <script src="js/finance.js"></script>
 <script src="js/fitness.js"></script>
 <script src="js/valorant.js"></script>
+<script src="js/clock.js"></script>
 <script src="js/main.js"></script>
 <script>
   if('serviceWorker' in navigator){

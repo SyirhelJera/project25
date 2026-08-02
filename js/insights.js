@@ -25,14 +25,26 @@
     items.forEach(it=>{ if(!order.includes(it.dataset.tab)) nav.appendChild(it); });
   }
 
+  // commits a new tab key order — used by both the drag-drop handler (desktop) and the up/down
+  // move buttons (mobile, where .drag-handle is hidden since HTML5 drag events don't fire on touch)
+  function commitTabOrder(order){
+    state.tabOrder = order;
+    save();
+    applyTabOrder();
+    renderTabOrderSettings();
+  }
+
   /* drag-to-reorder navbar tabs (Settings page) — same delegated dragstart/dragover/drop/dragend
      pattern as finance accounts / checklists, but reorders the live sidebar nav too, not just a
-     data array, since the sidebar's DOM order *is* the source of truth for tab order */
+     data array, since the sidebar's DOM order *is* the source of truth for tab order. Also offers
+     ▲▼ move buttons alongside the handle, since drag-and-drop doesn't work on touch (see the
+     .drag-handle{display:none} mobile override) and this is the one reorder list in the app that
+     needs a touch-friendly fallback. */
   let draggedTabKey = null;
   function renderTabOrderSettings(){
     const list = el('tabOrderList'); if(!list) return;
     const navItems = Array.from(document.querySelectorAll('#navList .nav-item'));
-    list.innerHTML = navItems.map(item=>{
+    list.innerHTML = navItems.map((item, idx)=>{
       const key = item.dataset.tab;
       const label = item.querySelector('.nav-label').textContent;
       const iconHtml = item.querySelector('svg').outerHTML;
@@ -40,10 +52,25 @@
         + '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<span class="tab-order-icon">'+iconHtml+'</span>'
         + '<span class="tab-order-label">'+escapeHtml(label)+'</span>'
+        + '<div class="tab-order-move-btns">'
+        +   '<button class="tab-order-move-btn" type="button" data-dir="up" title="Move up"'+(idx===0?' disabled':'')+'>▲</button>'
+        +   '<button class="tab-order-move-btn" type="button" data-dir="down" title="Move down"'+(idx===navItems.length-1?' disabled':'')+'>▼</button>'
+        + '</div>'
         + '</div>';
     }).join('');
     if(!list.dataset.wired){
       list.dataset.wired = '1';
+      list.addEventListener('click', e=>{
+        const btn = e.target.closest('.tab-order-move-btn');
+        if(!btn || btn.disabled) return;
+        const row = btn.closest('.tab-order-row');
+        const order = Array.from(list.querySelectorAll('.tab-order-row')).map(r=>r.dataset.tabKey);
+        const idx = order.indexOf(row.dataset.tabKey);
+        const swapIdx = btn.dataset.dir === 'up' ? idx-1 : idx+1;
+        if(swapIdx<0 || swapIdx>=order.length) return;
+        [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
+        commitTabOrder(order);
+      });
       list.addEventListener('dragstart', e=>{
         const handle = e.target.closest('.drag-handle');
         if(!handle) return;
@@ -70,10 +97,7 @@
         const fromIdx = order.indexOf(fromKey), toIdx = order.indexOf(toKey);
         if(fromIdx<0 || toIdx<0) return;
         order.splice(toIdx, 0, order.splice(fromIdx,1)[0]);
-        state.tabOrder = order;
-        save();
-        applyTabOrder();
-        renderTabOrderSettings();
+        commitTabOrder(order);
       });
       list.addEventListener('dragend', ()=>{ draggedTabKey = null; list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over')); });
     }

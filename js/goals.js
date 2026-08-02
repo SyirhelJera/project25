@@ -210,11 +210,13 @@
     if(mantraIdx < 0 || mantraIdx >= state.mantras.length) mantraIdx = Math.floor(Math.random()*state.mantras.length);
     el('mantraText').textContent = state.mantras[mantraIdx].text;
   }
-  el('mantraReroll').addEventListener('click', ()=>{
+  // rerolled by clicking the motivation slideshow image (see motivation.js's motivationGlowWrap
+  // click handler) rather than a dedicated button
+  function rerollMantra(){
     if(!state.mantras.length) return;
     mantraIdx = Math.floor(Math.random()*state.mantras.length);
     renderMantra();
-  });
+  }
 
   // builds the dot <div>s for a {total,filled,todayIdx,levels} mosaicDots() result — shared by
   // the compact pinned-countdown mosaic and the expanded overlay (which just passes an uncapped

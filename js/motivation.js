@@ -320,6 +320,7 @@
   el('motivationGlowWrap').addEventListener('click', ()=>{
     if(motivationSuppressClick) return;
     nextMotivationImage();
+    rerollMantra();
   });
   el('motivationPinBtn').addEventListener('click', promptSetMotivationPin);
   el('motivationLockBtn').addEventListener('click', ()=>{ motivationUnlocked = false; renderMotivation(); });

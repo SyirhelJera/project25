@@ -76,21 +76,16 @@
   <!-- GOALS -->
   <div class="view" id="view-goals">
 
-    <div id="workingCarouselWrap" style="display:none;">
-      <div class="working-carousel" id="workingCarousel"></div>
-    </div>
-
     <div class="today-card">
       <div class="today-row">
         <div class="today-icon">🎯</div>
         <div class="today-text" id="focusText"><b>Today's focus:</b> add a goal to get a suggestion</div>
         <button class="reroll-btn" id="focusReroll" title="New suggestion">↻</button>
       </div>
-      <div class="today-row" id="mantraRow" style="display:none;">
-        <div class="today-icon">✦</div>
-        <div class="today-text mantra-live" id="mantraText"></div>
-        <button class="reroll-btn" id="mantraReroll" title="New mantra">↻</button>
-      </div>
+    </div>
+
+    <div id="workingCarouselWrap" style="display:none;">
+      <div class="working-carousel" id="workingCarousel"></div>
     </div>
 
     <div id="pinnedCdSlot"></div>
@@ -596,6 +591,14 @@
         </div>
         <div class="empty" id="motivationCatEmpty" style="display:none;">No images in this category yet.</div>
       </div>
+
+      <div class="today-card">
+        <div class="today-row" id="mantraRow" style="display:none;" title="Click the image above to get a new mantra">
+          <div class="today-icon">✦</div>
+          <div class="today-text mantra-live" id="mantraText"></div>
+        </div>
+      </div>
+
       <div class="empty" id="motivationEmpty" style="display:none;">No categories yet. Add one below.</div>
       <div class="motivation-thumbs" id="motivationThumbs"></div>
 

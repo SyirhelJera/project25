@@ -179,20 +179,35 @@
   .conflict-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
   .conflict-actions .btn{white-space:normal;text-align:center;flex:1 1 180px;}
 
+  /* always a dark scene (independent of the active theme) — reads as a night sky the plane
+     climbs into, and matches the dark-themed airplane brand icon in the sidebar */
   .load-screen{
     position:fixed;inset:0;z-index:9999;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;
-    background:var(--bg);color:var(--text);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+    background:radial-gradient(ellipse at 50% 75%,#1c1c22 0%,#050506 72%);color:#fff;
     transition:opacity .25s ease;
   }
   .load-screen.load-screen-hidden{opacity:0;pointer-events:none;}
-  .load-spinner{
-    width:38px;height:38px;border-radius:50%;
-    border:3px solid var(--violet-pale);border-top-color:var(--violet);
-    animation:loadSpin .8s linear infinite;
+  .load-plane-scene{position:relative;width:60px;height:96px;}
+  .load-plane-runway{
+    position:absolute;bottom:10px;left:50%;width:44px;height:2px;border-radius:2px;
+    transform:translateX(-50%);
+    background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.4),rgba(255,255,255,0));
   }
-  .load-screen-text{font-size:13.5px;font-weight:600;color:var(--muted);}
-  @keyframes loadSpin{to{transform:rotate(360deg);}}
+  .load-plane{
+    position:absolute;bottom:9px;left:50%;width:32px;height:32px;
+    /* the flight glyph's nose points up-right at ~45° by default — rotate it to point straight up */
+    transform:translateX(-50%) rotate(-45deg);
+    filter:drop-shadow(0 6px 10px rgba(0,0,0,.5));
+    animation:loadPlaneTakeoff 2s cubic-bezier(.5,0,.5,1) infinite;
+  }
+  @keyframes loadPlaneTakeoff{
+    0%{transform:translateX(-50%) translateY(0) rotate(-45deg);opacity:0;}
+    10%{opacity:1;}
+    75%{transform:translateX(-50%) translateY(-68px) rotate(-45deg);opacity:1;}
+    100%{transform:translateX(-50%) translateY(-88px) rotate(-45deg);opacity:0;}
+  }
+  .load-screen-text{font-size:13.5px;font-weight:600;color:#8b8b96;}
 
   .sidebar-footer{font-size:10.5px;color:var(--faint);padding:12px 6px 2px;line-height:1.5;border-top:1px solid var(--border);margin-top:14px;}
 

@@ -1,4 +1,91 @@
   /* ================= CHECKLISTS ================= */
+
+  /* ---------- completion celebration: confetti burst + chime ----------
+     Fires the instant a checklist becomes fully checked off — whether that happens inside a Play
+     session (showPlayComplete / showPlayCheckpoint) or by hand in the regular checklist list.
+     Both effects are self-contained (canvas particles, a synthesized Web Audio tone) so there's
+     no image/audio asset or external library dependency, and either can silently no-op if the
+     browser blocks it (e.g. AudioContext before a user gesture) without breaking anything else. */
+  let celebrateAudioCtx = null;
+  function playCelebrateChime(){
+    try{
+      celebrateAudioCtx = celebrateAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = celebrateAudioCtx;
+      if(ctx.state === 'suspended') ctx.resume();
+      const now = ctx.currentTime;
+      // three quick ascending notes (C5-E5-G5), each a short decaying sine — reads as a bright
+      // "success" chime rather than a flat beep
+      [523.25, 659.25, 783.99].forEach((freq, i)=>{
+        const t = now + i*0.09;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.22, t+0.015);
+        gain.gain.exponentialRampToValueAtTime(0.001, t+0.35);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t+0.36);
+      });
+    }catch(e){ /* Web Audio unavailable/blocked — confetti still carries the celebration */ }
+  }
+
+  function fireConfettiBurst(){
+    const canvas = document.createElement('canvas');
+    canvas.className = 'confetti-canvas';
+    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    document.body.appendChild(canvas);
+    const ctx = canvas.getContext('2d');
+    const colors = ['#8B5CF6','#F97316','#22C55E','#EF4444','#F5A524','#38BDF8'];
+    const originX = canvas.width/2, originY = canvas.height*0.35;
+    const particles = Array.from({length:90}, ()=>{
+      const angle = Math.random()*Math.PI*2;
+      const speed = 4 + Math.random()*7;
+      return {
+        x: originX, y: originY,
+        vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 3,
+        size: 5 + Math.random()*5,
+        color: colors[Math.floor(Math.random()*colors.length)],
+        rotation: Math.random()*Math.PI*2,
+        spin: (Math.random()-0.5)*0.3,
+        life: 1
+      };
+    });
+    const gravity = 0.18;
+    let raf = null;
+    function tick(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      let alive = false;
+      particles.forEach(p=>{
+        if(p.life <= 0) return;
+        p.vy += gravity;
+        p.x += p.vx; p.y += p.vy;
+        p.rotation += p.spin;
+        p.life -= 0.012;
+        if(p.life > 0){
+          alive = true;
+          ctx.save();
+          ctx.globalAlpha = Math.max(0, p.life);
+          ctx.translate(p.x, p.y);
+          ctx.rotate(p.rotation);
+          ctx.fillStyle = p.color;
+          ctx.fillRect(-p.size/2, -p.size/2, p.size, p.size*0.6);
+          ctx.restore();
+        }
+      });
+      if(alive) raf = requestAnimationFrame(tick);
+      else canvas.remove();
+    }
+    raf = requestAnimationFrame(tick);
+    // hard stop as a backstop in case a particle's life value never quite reaches 0
+    setTimeout(()=>{ if(raf) cancelAnimationFrame(raf); canvas.remove(); }, 2500);
+  }
+
+  function celebrateChecklistComplete(){
+    fireConfettiBurst();
+    playCelebrateChime();
+  }
+
   function resetKeyFor(freq, d){
     d = d || new Date();
     if(freq === 'daily') return localDateStr(d);
@@ -199,6 +286,7 @@
     setPlayMinimized(false);
     el('playBody').style.display = '';
     el('playComplete').style.display = 'none';
+    el('playCheckpoint').style.display = 'none';
     el('playOverlay').style.display = 'flex';
     renderPlayOverlay();
     playTimerHandle = setInterval(tickPlayTimer, 1000);
@@ -225,6 +313,19 @@
       c.items.forEach(it=>{ if(!it.done && !isItemLocked(it)) queue.push({ checklistId: c.id, itemId: it.id }); });
     });
     return queue;
+  }
+
+  // live done/total across every "Dailies" checklist (not just this session's starting queue) —
+  // so the combined Play overlay's overall bar reflects items that were already done before the
+  // session started, not just what's been handled since pressing Play
+  function dailiesOverallProgress(){
+    let done = 0, total = 0;
+    state.checklists.forEach(c=>{
+      if((c.group||'').trim().toLowerCase() !== 'dailies') return;
+      total += c.items.length;
+      done += c.items.filter(i=>i.done).length;
+    });
+    return { done, total };
   }
 
   function startDailiesPlaySession(){
@@ -284,7 +385,8 @@
     if(!refs) return;
     const { c, it } = refs;
     const sourceEl = el('playTaskSource');
-    if(state.playSession.combined){
+    const combined = !!state.playSession.combined;
+    if(combined){
       el('playChecklistName').textContent = '📋 Dailies Backlog';
       el('playProgress').textContent = 'Task '+((state.playSession.log||[]).length+1)+' of '+state.playSession.totalCt;
       sourceEl.textContent = c.name;
@@ -296,6 +398,25 @@
       sourceEl.style.display = 'none';
     }
     el('playTaskText').textContent = it.text;
+
+    // "checkpoint" bar — how far along the checklist the *current* task belongs to is, so a
+    // combined Dailies session shows progress within that sub-checklist as you jump between them
+    const clDoneCt = c.items.filter(i=>i.done).length;
+    const clPct = c.items.length ? Math.round((clDoneCt/c.items.length)*100) : 0;
+    el('playChecklistProgressFill').style.width = clPct+'%';
+    el('playChecklistProgressPct').textContent = clPct+'%';
+
+    // overall bar only means something distinct from the checklist bar in a combined session —
+    // for a single-checklist Play session it would just duplicate the bar above. Counts every
+    // Dailies item that's actually done right now, not just what's been handled this session, so
+    // items finished before the session started (or checked off elsewhere mid-session) count too.
+    el('playOverallProgressRow').style.display = combined ? 'flex' : 'none';
+    if(combined){
+      const { done, total } = dailiesOverallProgress();
+      const pct = total ? Math.round((done/total)*100) : 0;
+      el('playOverallProgressFill').style.width = pct+'%';
+      el('playOverallProgressPct').textContent = pct+'%';
+    }
     updatePlayTimerDisplay();
   }
 
@@ -303,31 +424,10 @@
     const refs = resolvePlaySessionRefs();
     if(!refs) return;
     const { c, it } = refs;
-    const combined = !!state.playSession.combined;
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
-    const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec }]);
-    const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
-    const skippedIds = state.playSession.skippedIds || [];
-    const queue = state.playSession.queue;
-    const totalCt = state.playSession.totalCt;
     setItemDone(c, it, true);
     renderChecklists(); renderHabits(); updateExpUI();
-    const next = combined
-      ? advanceCombinedQueue({ queue })
-      : c.items.find(i=>!i.done && !isItemLocked(i) && !skippedIds.includes(i.id));
-    if(!next){
-      const totalSec = Math.round((Date.now() - sessionStartedAt)/1000);
-      state.playSession = null; save();
-      showPlayComplete({ log, totalSec });
-      return;
-    }
-    const nextC = combined ? next.c : c;
-    const nextIt = combined ? next.it : next;
-    state.playSession = combined
-      ? { combined: true, checklistId: nextC.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds, queue, totalCt }
-      : { checklistId: c.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds };
-    save();
-    renderPlayOverlay();
+    advancePlaySession(c, it, { text: it.text, elapsedSec, checklistId: c.id });
   }
 
   // "come back to this later" — leaves the item undone (no XP, no habit-link change) but
@@ -337,32 +437,11 @@
     const refs = resolvePlaySessionRefs();
     if(!refs) return;
     const { c, it } = refs;
-    const combined = !!state.playSession.combined;
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
-    const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec, skipped: true }]);
-    const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
-    const skippedIds = (state.playSession.skippedIds || []).concat([it.id]);
-    const queue = state.playSession.queue;
-    const totalCt = state.playSession.totalCt;
     it.skipCount = (it.skipCount||0) + 1;
     save();
     renderChecklists();
-    const next = combined
-      ? advanceCombinedQueue({ queue })
-      : c.items.find(i=>!i.done && !isItemLocked(i) && !skippedIds.includes(i.id));
-    if(!next){
-      const totalSec = Math.round((Date.now() - sessionStartedAt)/1000);
-      state.playSession = null; save();
-      showPlayComplete({ log, totalSec });
-      return;
-    }
-    const nextC = combined ? next.c : c;
-    const nextIt = combined ? next.it : next;
-    state.playSession = combined
-      ? { combined: true, checklistId: nextC.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds, queue, totalCt }
-      : { checklistId: c.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds };
-    save();
-    renderPlayOverlay();
+    advancePlaySession(c, it, { text: it.text, elapsedSec, skipped: true, checklistId: c.id }, it.id);
   }
 
   // "attempted and not accomplished" — unlike Skip, this locks the item (see setItemFailed /
@@ -372,15 +451,25 @@
     const refs = resolvePlaySessionRefs();
     if(!refs) return;
     const { c, it } = refs;
-    const combined = !!state.playSession.combined;
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
-    const log = (state.playSession.log||[]).concat([{ text: it.text, elapsedSec, failed: true }]);
-    const sessionStartedAt = state.playSession.sessionStartedAt || state.playSession.startedAt;
-    const skippedIds = state.playSession.skippedIds || [];
-    const queue = state.playSession.queue;
-    const totalCt = state.playSession.totalCt;
     setItemFailed(c, it);
     renderChecklists();
+    advancePlaySession(c, it, { text: it.text, elapsedSec, failed: true, checklistId: c.id });
+  }
+
+  // shared tail of handlePlayCheck/Skip/Failed — appends the log entry, figures out what's next
+  // (another task in the same checklist, the first task of a different checklist in a combined
+  // session, or nothing left), and either ends the whole session, pauses on a per-checklist
+  // checkpoint recap, or moves straight on to the next task. `skipId`, when given, is recorded in
+  // skippedIds so a skipped task isn't immediately re-offered within the same checklist.
+  function advancePlaySession(c, it, logEntry, skipId){
+    const s = state.playSession;
+    const combined = !!s.combined;
+    const log = (s.log||[]).concat([logEntry]);
+    const sessionStartedAt = s.sessionStartedAt || s.startedAt;
+    const skippedIds = skipId ? (s.skippedIds||[]).concat([skipId]) : (s.skippedIds||[]);
+    const queue = s.queue;
+    const totalCt = s.totalCt;
     const next = combined
       ? advanceCombinedQueue({ queue })
       : c.items.find(i=>!i.done && !isItemLocked(i) && !skippedIds.includes(i.id));
@@ -396,14 +485,17 @@
       ? { combined: true, checklistId: nextC.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds, queue, totalCt }
       : { checklistId: c.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds };
     save();
-    renderPlayOverlay();
+    if(combined && nextC.id !== c.id) showPlayCheckpoint(c, log);
+    else renderPlayOverlay();
   }
 
   function showPlayComplete(summary){
     if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
     el('playBody').style.display = 'none';
+    el('playCheckpoint').style.display = 'none';
     el('playProgress').textContent = '';
     el('playComplete').style.display = 'block';
+    celebrateChecklistComplete();
     const log = (summary && summary.log) || [];
     const totalSec = (summary && summary.totalSec) || 0;
     const insights = el('playCompleteInsights');
@@ -413,6 +505,40 @@
       + log.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time'+(entry.failed?' play-insight-failed':entry.skipped?' play-insight-skipped':'')+'">'+(entry.failed?'🚫 Failed':entry.skipped?'⏭ Skipped':fmtPlayDuration(entry.elapsedSec))+'</span></div>').join('')
       + '</div>';
   }
+
+  // pit-stop recap between checklists in a combined Dailies session — pauses the timer/interval
+  // just like showPlayComplete does, but only for the entries logged against the checklist that
+  // just finished (matched via the checklistId stamped on each log entry in advancePlaySession)
+  function showPlayCheckpoint(finishedChecklist, log){
+    if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
+    el('playBody').style.display = 'none';
+    el('playComplete').style.display = 'none';
+    el('playCheckpoint').style.display = 'block';
+    celebrateChecklistComplete();
+    const entries = log.filter(e=>e.checklistId === finishedChecklist.id);
+    const doneCt = entries.filter(e=>!e.skipped && !e.failed).length;
+    el('playCheckpointMsg').textContent = '🎉 "'+finishedChecklist.name+'" done!';
+    const insights = el('playCheckpointInsights');
+    insights.innerHTML = '<div class="play-insight-total">'+doneCt+' of '+entries.length+' tasks done</div>'
+      + '<div class="play-insight-list">'
+      + entries.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time'+(entry.failed?' play-insight-failed':entry.skipped?' play-insight-skipped':'')+'">'+(entry.failed?'🚫 Failed':entry.skipped?'⏭ Skipped':fmtPlayDuration(entry.elapsedSec))+'</span></div>').join('')
+      + '</div>';
+  }
+
+  // give the next checklist's first task a fresh timer window starting now, rather than counting
+  // down in the background while the checkpoint recap was on screen
+  function continueFromPlayCheckpoint(){
+    if(!state.playSession) return;
+    el('playCheckpoint').style.display = 'none';
+    el('playBody').style.display = '';
+    state.playSession.startedAt = Date.now();
+    save();
+    renderPlayOverlay();
+    if(playTimerHandle) clearInterval(playTimerHandle);
+    playTimerHandle = setInterval(tickPlayTimer, 1000);
+  }
+  el('playCheckpointContinueBtn').addEventListener('click', continueFromPlayCheckpoint);
+  el('playCheckpointExitBtn').addEventListener('click', stopPlaySession);
 
   function stopPlaySession(){
     if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
@@ -471,15 +597,16 @@
   });
 
   // top items across all checklists ranked by "struggle score" — a mix of how many consecutive
-  // reset periods an item was missed (missStreak) and how many times it's been skipped in a Play
-  // Session (skipCount). Only items with a nonzero score are included, so a freshly added item
-  // never shows up here just for existing.
+  // reset periods an item was missed (missStreak) and how many times it's been marked failed in a
+  // Play Session (failCount). Skips deliberately don't count — "come back to this later" isn't
+  // struggling, it's just deferring. Only items with a nonzero score are included, so a freshly
+  // added item never shows up here just for existing.
   function getStrugglingItems(){
     const rows = [];
     state.checklists.forEach(c=>{
       c.items.forEach(it=>{
         const missStreak = it.missStreak||0, skipCount = it.skipCount||0, failCount = it.failCount||0;
-        const score = missStreak*2 + skipCount + failCount*2;
+        const score = missStreak*2 + failCount*2;
         if(score > 0) rows.push({ checklistName: c.name, text: it.text, missStreak, skipCount, failCount, score });
       });
     });
@@ -492,7 +619,6 @@
       const reasons = [];
       if(r.missStreak>0) reasons.push('missed '+r.missStreak+' reset'+(r.missStreak===1?'':'s')+' in a row');
       if(r.failCount>0) reasons.push('failed '+r.failCount+'×');
-      if(r.skipCount>0) reasons.push('skipped '+r.skipCount+'×');
       return '<div class="struggle-row">'
         + '<span class="struggle-row-task">'+escapeHtml(r.text)+' <span class="struggle-row-checklist">— '+escapeHtml(r.checklistName)+'</span></span>'
         + '<span class="struggle-row-reason">'+escapeHtml(reasons.join(', '))+'</span>'
@@ -640,7 +766,10 @@
             + '<button class="sub-del">✕</button>';
           row.querySelector('.sub-check').addEventListener('click', ()=>{
             if(locked) return;
+            const wasAllDone = c.items.length>0 && c.items.every(i=>i.done);
             setItemDone(c, it, !it.done);
+            const isAllDoneNow = c.items.length>0 && c.items.every(i=>i.done);
+            if(!wasAllDone && isAllDoneNow) celebrateChecklistComplete();
             renderChecklists(); renderHabits(); updateExpUI();
           });
           row.querySelector('.sub-duration').addEventListener('change', e=>{

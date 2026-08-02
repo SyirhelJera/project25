@@ -503,6 +503,18 @@
     <div class="play-card" id="playCard">
       <div class="play-checklist-name" id="playChecklistName"></div>
       <div class="play-progress" id="playProgress"></div>
+      <div class="play-progress-bars" id="playProgressBars">
+        <div class="play-progress-bar-row">
+          <span class="play-progress-bar-lbl">This checklist</span>
+          <div class="mini-track"><div class="mini-fill" id="playChecklistProgressFill" style="width:0%"></div></div>
+          <span class="play-progress-bar-pct" id="playChecklistProgressPct">0%</span>
+        </div>
+        <div class="play-progress-bar-row" id="playOverallProgressRow" style="display:none;">
+          <span class="play-progress-bar-lbl">Overall</span>
+          <div class="mini-track"><div class="mini-fill" id="playOverallProgressFill" style="width:0%"></div></div>
+          <span class="play-progress-bar-pct" id="playOverallProgressPct">0%</span>
+        </div>
+      </div>
       <div id="playBody">
         <div class="play-task-source" id="playTaskSource" style="display:none;"></div>
         <div class="play-task-text" id="playTaskText"></div>
@@ -518,6 +530,14 @@
         <div class="play-complete-msg">🎉 Checklist complete!</div>
         <div class="play-complete-insights" id="playCompleteInsights"></div>
         <button class="btn btn-primary" id="playCompleteCloseBtn">Close</button>
+      </div>
+      <!-- shown mid-session (combined Dailies sessions only) when the queue moves from one
+           checklist's tasks into the next one's — a pit-stop recap before continuing -->
+      <div class="play-complete" id="playCheckpoint" style="display:none;">
+        <div class="play-complete-msg" id="playCheckpointMsg">🎉 Checklist complete!</div>
+        <div class="play-complete-insights" id="playCheckpointInsights"></div>
+        <button class="btn btn-primary" id="playCheckpointContinueBtn">Continue →</button>
+        <button class="btn btn-ghost btn-sm" id="playCheckpointExitBtn" style="margin-top:8px;">Exit session</button>
       </div>
     </div>
   </div>

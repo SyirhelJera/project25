@@ -1,6 +1,8 @@
   function renderAll(){
+    applyTabOrder();
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness(); renderValorant();
+    openToPinnedMotivationCategory(); renderMotivation();
   }
 
   function applyTheme(){

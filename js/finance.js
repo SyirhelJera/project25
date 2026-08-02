@@ -226,13 +226,48 @@
     const maxUsd = entries.length ? entries[0][1] : 0;
     entries.forEach(([cat, usd])=>{
       const pct = maxUsd>0 ? Math.round((usd/maxUsd)*100) : 0;
-      const row = document.createElement('div'); row.className = 'spend-cat-row';
+      const row = document.createElement('div'); row.className = 'spend-cat-row'; row.style.cursor = 'pointer';
+      row.title = 'Click to see all '+cat+' transactions in this period';
       row.innerHTML = '<div class="spend-cat-name">'+escapeHtml(cat)+'</div>'
         + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
         + '<div class="spend-cat-amt">'+fmtMoney(convertAmt(usd,'USD',nwCcy), nwCcy)+'</div>';
+      row.addEventListener('click', ()=> openSpendCategoryDetail(cat, start, end, label));
       list.appendChild(row);
     });
   }
+
+  /* ---- spend category drill-down: every outflow transaction behind one category/period cell ---- */
+  function openSpendCategoryDetail(cat, start, end, periodLabel){
+    el('spendCategoryTitle').textContent = cat+' — '+periodLabel;
+    const rows = [];
+    (state.finance.accounts||[]).forEach(a=>{
+      (a.transactions||[]).forEach(tx=>{
+        if(tx.amount >= 0) return;
+        if(isTransferTx(tx)) return;
+        if((tx.category || 'Other') !== cat) return;
+        const d = new Date(tx.createdAt);
+        if(d < start || d >= end) return;
+        rows.push({ tx, account: a });
+      });
+    });
+    rows.sort((x,y)=> y.tx.createdAt - x.tx.createdAt);
+    const listEl = el('spendCategoryList');
+    if(!rows.length){
+      listEl.innerHTML = '<div style="font-size:12px;color:var(--faint);padding:6px 0;">No transactions in this period.</div>';
+    } else {
+      listEl.innerHTML = rows.map(({tx, account})=>
+        '<div class="tx-row">'
+          + '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
+          + '<span class="tx-note">'+escapeHtml(tx.note||'')+' <span class="chip">'+escapeHtml(account.name)+'</span></span>'
+          + '<span class="tx-amt negative">-'+fmtMoney(Math.abs(tx.amount), account.currency||'USD')+'</span>'
+        + '</div>'
+      ).join('');
+    }
+    el('spendCategoryOverlay').style.display = 'flex';
+  }
+  function closeSpendCategoryDetail(){ el('spendCategoryOverlay').style.display = 'none'; }
+  el('spendCategoryCloseBtn').addEventListener('click', closeSpendCategoryDetail);
+  el('spendCategoryOverlay').addEventListener('click', e=>{ if(e.target === el('spendCategoryOverlay')) closeSpendCategoryDetail(); });
 
   /* ---- accounts (+ transfers, transactions, per-account currency & icon image) ---- */
   function renderFinanceAccounts(){

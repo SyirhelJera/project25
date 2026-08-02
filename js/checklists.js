@@ -516,6 +516,15 @@
   function closeStruggleOverlay(){ el('strugglingTasksOverlay').style.display = 'none'; }
   el('strugglingTasksPanel').addEventListener('click', openStruggleOverlay);
   el('strugglingTasksOverlay').addEventListener('click', e=>{ if(e.target === el('strugglingTasksOverlay')) closeStruggleOverlay(); });
+  // clears every item's missStreak/skipCount/failCount — the only way to wipe struggle history
+  // short of completing/reset-cycling each item individually
+  el('struggleResetBtn').addEventListener('click', ()=>{
+    if(!window.confirm('Clear struggle history for every task? This resets miss/skip/fail counts to zero.')) return;
+    state.checklists.forEach(c=>{
+      c.items.forEach(it=>{ it.missStreak = 0; it.skipCount = 0; it.failCount = 0; });
+    });
+    save(); renderChecklists();
+  });
 
   function renderChecklists(){
     applyChecklistResets();

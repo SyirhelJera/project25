@@ -51,8 +51,9 @@
     </div>
   </div>
 
-  <div class="nav">
-    <div class="nav-item active" data-tab="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span class="nav-label">Goals</span><span class="nav-badge" id="goalRiskBadge" style="display:none;"></span></div>
+  <div class="nav" id="navList">
+    <div class="nav-item active" data-tab="motivation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></svg><span class="nav-label">Motivation</span></div>
+    <div class="nav-item" data-tab="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span class="nav-label">Goals</span><span class="nav-badge" id="goalRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg><span class="nav-label">Habits</span><span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg><span class="nav-label">Finance</span></div>
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg><span class="nav-label">Fitness</span><span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
@@ -60,7 +61,6 @@
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Countdowns</span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
-    <div class="nav-item" data-tab="motivation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></svg><span class="nav-label">Motivation</span></div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
   </div>
 
@@ -74,7 +74,7 @@
   <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
 
   <!-- GOALS -->
-  <div class="view active" id="view-goals">
+  <div class="view" id="view-goals">
 
     <div id="workingCarouselWrap" style="display:none;">
       <div class="working-carousel" id="workingCarousel"></div>
@@ -250,6 +250,17 @@
       <div class="view-sub" style="margin-top:-4px;margin-bottom:10px;">Edit these manually, or fetch current rates automatically.</div>
       <button class="btn btn-ghost btn-sm" id="fetchRatesBtn" type="button" style="margin-bottom:12px;">⟳ Fetch Live Rates</button>
       <div id="ratesTable" class="rates-table"></div>
+    </div>
+  </div>
+
+  <!-- SPEND CATEGORY DETAIL — click a category in "Spending by Category" to open -->
+  <div id="spendCategoryOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title" id="spendCategoryTitle"></div>
+        <button class="btn btn-ghost btn-sm" id="spendCategoryCloseBtn" type="button">Close</button>
+      </div>
+      <div id="spendCategoryList"></div>
     </div>
   </div>
 
@@ -484,7 +495,10 @@
   <!-- STRUGGLING TASKS — maximized view (click the panel above to open, backdrop to close) -->
   <div id="strugglingTasksOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
-      <div class="struggle-overlay-title">⚠️ Tasks you're struggling with</div>
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title">⚠️ Tasks you're struggling with</div>
+        <button class="btn btn-ghost btn-sm" id="struggleResetBtn" type="button" title="Clear miss/skip/fail counts for every item">↺ Reset</button>
+      </div>
       <div id="strugglingTasksOverlayList"></div>
     </div>
   </div>
@@ -547,7 +561,7 @@
   </div>
 
   <!-- MOTIVATION -->
-  <div class="view" id="view-motivation">
+  <div class="view active" id="view-motivation">
     <div class="motivation-lock" id="motivationLock" style="display:none;">
       <div class="empty">Locked. Enter your PIN to view this tab.</div>
       <button class="btn btn-primary" id="motivationUnlockBtn">Unlock</button>
@@ -620,6 +634,10 @@
         <div class="theme-option-label">iOS Dark</div>
       </div>
     </div>
+
+    <div class="section-lbl" style="margin-top:22px;">Reorder Navbar Tabs</div>
+    <div class="view-sub" style="margin-bottom:10px;">Drag a tab by its handle to change the order it appears in the sidebar.</div>
+    <div id="tabOrderList" class="tab-order-list"></div>
 
     <div class="section-lbl" style="margin-top:22px;">Protected Days</div>
     <div class="view-sub" style="margin-bottom:4px;">Vacation, sick, or event days here won't count against habit streaks or checklist miss-streaks. Applies to every habit and checklist automatically.</div>

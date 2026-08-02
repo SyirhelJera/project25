@@ -13,8 +13,75 @@
     el('mcEmptyInput').value = mc.empty || computedVarHex('--border');
   }
 
+  // moves each .nav-item into state.tabOrder's order (tabs missing from a stale saved order —
+  // e.g. added after the order was last saved — fall in at the end, keeping their relative order)
+  function applyTabOrder(){
+    const nav = el('navList'); if(!nav) return;
+    const order = state.tabOrder;
+    if(!order || !order.length) return;
+    const items = Array.from(nav.querySelectorAll('.nav-item'));
+    const byKey = {}; items.forEach(it=>{ byKey[it.dataset.tab] = it; });
+    order.forEach(key=>{ if(byKey[key]) nav.appendChild(byKey[key]); });
+    items.forEach(it=>{ if(!order.includes(it.dataset.tab)) nav.appendChild(it); });
+  }
+
+  /* drag-to-reorder navbar tabs (Settings page) — same delegated dragstart/dragover/drop/dragend
+     pattern as finance accounts / checklists, but reorders the live sidebar nav too, not just a
+     data array, since the sidebar's DOM order *is* the source of truth for tab order */
+  let draggedTabKey = null;
+  function renderTabOrderSettings(){
+    const list = el('tabOrderList'); if(!list) return;
+    const navItems = Array.from(document.querySelectorAll('#navList .nav-item'));
+    list.innerHTML = navItems.map(item=>{
+      const key = item.dataset.tab;
+      const label = item.querySelector('.nav-label').textContent;
+      const iconHtml = item.querySelector('svg').outerHTML;
+      return '<div class="tab-order-row" data-tab-key="'+key+'">'
+        + '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+        + '<span class="tab-order-icon">'+iconHtml+'</span>'
+        + '<span class="tab-order-label">'+escapeHtml(label)+'</span>'
+        + '</div>';
+    }).join('');
+    if(!list.dataset.wired){
+      list.dataset.wired = '1';
+      list.addEventListener('dragstart', e=>{
+        const handle = e.target.closest('.drag-handle');
+        if(!handle) return;
+        const row = handle.closest('.tab-order-row');
+        draggedTabKey = row ? row.dataset.tabKey : null;
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      list.addEventListener('dragover', e=>{
+        if(!draggedTabKey) return;
+        e.preventDefault();
+        const overRow = e.target.closest('.tab-order-row');
+        list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+        if(overRow && overRow.dataset.tabKey !== draggedTabKey) overRow.classList.add('drag-over');
+      });
+      list.addEventListener('drop', e=>{
+        if(!draggedTabKey) return;
+        e.preventDefault();
+        list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+        const overRow = e.target.closest('.tab-order-row');
+        const toKey = overRow ? overRow.dataset.tabKey : null;
+        const fromKey = draggedTabKey; draggedTabKey = null;
+        if(!toKey || toKey === fromKey) return;
+        const order = Array.from(list.querySelectorAll('.tab-order-row')).map(r=>r.dataset.tabKey);
+        const fromIdx = order.indexOf(fromKey), toIdx = order.indexOf(toKey);
+        if(fromIdx<0 || toIdx<0) return;
+        order.splice(toIdx, 0, order.splice(fromIdx,1)[0]);
+        state.tabOrder = order;
+        save();
+        applyTabOrder();
+        renderTabOrderSettings();
+      });
+      list.addEventListener('dragend', ()=>{ draggedTabKey = null; list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over')); });
+    }
+  }
+
   function renderSettings(){
     applyTheme();
+    renderTabOrderSettings();
     const sel = el('settingsNetWorthCurrency');
     if(!sel.options.length){
       sel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');

@@ -24,7 +24,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore } from './valorant-lib.mjs';
+import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins } from './valorant-lib.mjs';
 import { loginAccount } from './valorant-login.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -119,6 +119,43 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /check-inventory — same per-account loop as /check above, but for every owned skin (see
+  // checkAccountOwnedSkins() in valorant-lib.mjs), sorted by tier, instead of the daily storefront.
+  // Kept as a separate endpoint/button rather than folded into /check so a plain store check
+  // never costs the extra Riot reauth + valorant-api.com catalog fetch this needs.
+  if (req.method === 'POST' && url.pathname === '/check-inventory') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const sessions = loadSessions();
+    const labels = body.label ? [body.label] : Object.keys(sessions);
+    if (!labels.length) { sendJson(res, 400, { ok: false, error: 'No saved accounts. Add one first.' }, origin); return; }
+
+    const results = {};
+    let anyFailed = false;
+    for (const label of labels) {
+      const sess = sessions[label];
+      if (!sess || !sess.ssid) {
+        results[label] = { ok: false, error: 'No saved session for this account.' };
+        anyFailed = true;
+        continue;
+      }
+      console.log(`Checking owned skins for "${label}"...`);
+      try {
+        const result = await checkAccountOwnedSkins(label, sess.ssid);
+        await recordOwnedSkinsResult(label, result);
+        results[label] = { ok: true, skins: result.skins.length };
+        console.log(`  done: ${result.skins.length} owned skin(s) found.`);
+      } catch (err) {
+        results[label] = { ok: false, error: err.message };
+        await recordOwnedSkinsError(label, err.message).catch(() => {});
+        anyFailed = true;
+        console.error(`  failed: ${err.message}`);
+      }
+    }
+    sendJson(res, 200, { ok: !anyFailed, results }, origin);
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/login') {
     const body = await readJsonBody(req);
     if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
@@ -147,10 +184,12 @@ const server = http.createServer(async (req, res) => {
     console.log(`Deleted saved session for "${label}".`);
     try {
       await deleteAccountStore(label);
+      await deleteAccountOwnedSkins(label);
     } catch (err) {
       // the session is already gone locally, which is what matters most — a Supabase write
-      // hiccup here just means a stale dailyStores[label] entry lingers until the next check
-      console.error(`  (could not clear its store data from Supabase: ${err.message})`);
+      // hiccup here just means a stale dailyStores/ownedSkins[label] entry lingers until the
+      // next check
+      console.error(`  (could not clear its store/inventory data from Supabase: ${err.message})`);
     }
     sendJson(res, 200, { ok: true }, origin);
     return;

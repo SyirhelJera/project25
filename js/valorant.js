@@ -333,7 +333,6 @@
     const label = state.valorant.selectedStoreLabel;
     const bodyEl = el('valWishlistBody');
     const noAccEl = el('valWishlistNoAccount');
-    el('valWishlistForLabel').textContent = label ? (' — '+label) : '';
     if(!label){
       // "All accounts" is selected in the switcher above — wishlists are per-account, so there's
       // no single list to show or add to until one specific account is picked
@@ -512,6 +511,184 @@
     }).join('');
   }
 
+  // Same tier -> color mapping the store already uses for its price-band rarity flash
+  // (valSkinRarityInfo above), just keyed by the real tier name coming back from
+  // checkAccountOwnedSkins() instead of guessed from a price (owned skins aren't for sale, so
+  // there's no price to guess from). Matched by substring, case-insensitive, highest tier first —
+  // same "don't trust the exact shape" posture as resolveTierRank() in valorant-lib.mjs, in case
+  // Riot's actual tier name has extra decoration text (e.g. "Deluxe Edition") around the word.
+  const VAL_TIER_COLOR_ORDER = ['Select','Deluxe','Premium','Exclusive','Ultra'];
+  const VAL_TIER_COLORS = { Ultra:'#F84B4B', Exclusive:'#F0C755', Premium:'#E058CF', Deluxe:'#2FBE7A', Select:'#9CA6AF' };
+  function valTierColor(tierName){
+    const s = (tierName||'').toLowerCase();
+    for(let i=VAL_TIER_COLOR_ORDER.length-1;i>=0;i--){
+      if(s.includes(VAL_TIER_COLOR_ORDER[i].toLowerCase())) return VAL_TIER_COLORS[VAL_TIER_COLOR_ORDER[i]];
+    }
+    return '#9CA6AF';
+  }
+  // Riot's actual tier name comes back as e.g. "Ultra Edition", not just "Ultra" — fine for the
+  // substring match above, but "Ultra Edition" as a badge/label reads noisy and crowds out the
+  // skin name in the card footer. Strips it for anywhere the tier name is shown to the user.
+  function tierDisplayName(tierName){
+    return (tierName||'').replace(/\s*edition\s*$/i, '').trim() || 'Unknown';
+  }
+
+  // Default weapon-type grouping/sort order, per user preference — not the in-game buy-menu
+  // order. Anything valorant-api.com returns that isn't in this list (shouldn't happen, but the
+  // category string is reverse engineered like everything else Riot-side here) sorts after all
+  // of these, alphabetically.
+  const VAL_WEAPON_TYPE_ORDER = ['Melee','Rifle','Sniper','SMG','Sidearm','Shotgun','Heavy'];
+  function weaponTypeRank(weaponType){
+    const i = VAL_WEAPON_TYPE_ORDER.indexOf(weaponType);
+    return i === -1 ? VAL_WEAPON_TYPE_ORDER.length : i;
+  }
+  // Ascending price/rarity order, used only to order the tier filter chips — sort itself uses
+  // each skin's own tierRank from checkAccountOwnedSkins().
+  const VAL_TIER_ORDER = ['Standard','Select','Deluxe','Premium','Exclusive','Ultra'];
+  function tierOrderRank(tierName){
+    const i = VAL_TIER_ORDER.indexOf(tierName);
+    return i === -1 ? VAL_TIER_ORDER.length : i;
+  }
+
+  /* ---- owned skins: written by the "🎨 Check Owned Skins" local-helper action (see
+     checkAccountOwnedSkins() in scripts/valorant-lib.mjs) into state.valorant.ownedSkins, keyed
+     by account label same as dailyStores — every weapon skin the account owns, with its content
+     tier and weapon type. Rendered as its own account-style section (same header/grid look as
+     the store above), collapsible, filterable by tier/weapon type, and follows the same
+     account-switcher selection; shows nothing useful for "All accounts" since there's no single
+     list to render, same as the wishlist. ---- */
+  let valOwnedSkinsSort = 'tier-desc'; // not persisted — resets to a sensible default each page load
+  let valOwnedSkinsTierExclude = new Set(); // tier names currently hidden — not persisted
+  let valOwnedSkinsTypeExclude = new Set(); // weapon types currently hidden — not persisted
+
+  el('valOwnedSkinsSortSelect').addEventListener('change', ()=>{
+    valOwnedSkinsSort = el('valOwnedSkinsSortSelect').value;
+    renderValOwnedSkins();
+  });
+  el('valOwnedSkinsToggle').addEventListener('click', ()=>{
+    state.valorant.ownedSkinsCollapsed = !state.valorant.ownedSkinsCollapsed;
+    save();
+    renderValOwnedSkins();
+  });
+  // Delegated (chips are regenerated on every render, so binding to each one directly wouldn't
+  // survive a re-render) — toggles that one value's membership in the relevant exclude set.
+  el('valOwnedSkinsTierFilters').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-tier]'); if(!btn) return;
+    const t = btn.dataset.tier;
+    if(valOwnedSkinsTierExclude.has(t)) valOwnedSkinsTierExclude.delete(t); else valOwnedSkinsTierExclude.add(t);
+    renderValOwnedSkins();
+  });
+  el('valOwnedSkinsTypeFilters').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-weapon-type]'); if(!btn) return;
+    const t = btn.dataset.weaponType;
+    if(valOwnedSkinsTypeExclude.has(t)) valOwnedSkinsTypeExclude.delete(t); else valOwnedSkinsTypeExclude.add(t);
+    renderValOwnedSkins();
+  });
+
+  // Builds one filter-chip row: a small uppercase label plus one toggle chip per distinct value
+  // present in `values` (in `order` order) — a chip reads as "on" (shown) unless its value is in
+  // `excludeSet`. Hides the whole row (returns '') if there's nothing to usefully filter by.
+  function ownedSkinsFilterRowHtml(label, values, order, excludeSet, dataAttr){
+    const present = [...new Set(values)].sort((a,b)=> order(a) - order(b));
+    if(present.length < 2) return '';
+    return '<span class="val-owned-skins-filter-label">'+escapeHtml(label)+'</span>'
+      + present.map(v=> '<button type="button" class="chart-zoom-btn'+(excludeSet.has(v)?'':' active')+'" data-'+dataAttr+'="'+escapeHtml(v)+'">'+escapeHtml(v)+'</button>').join('');
+  }
+
+  function renderValOwnedSkins(){
+    const card = el('valOwnedSkinsCard'); if(!card) return;
+    const unavailable = usingClaudeStorage || !supabaseConfigured;
+    if(unavailable){ card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const collapsed = !!state.valorant.ownedSkinsCollapsed;
+    el('valOwnedSkinsChevron').textContent = collapsed ? '▶' : '▼';
+    const bodyEl = el('valOwnedSkinsBody');
+    bodyEl.style.display = collapsed ? 'none' : 'block';
+    if(collapsed) return; // nothing below the header needs updating while hidden
+
+    const label = state.valorant.selectedStoreLabel;
+    const noAccEl = el('valOwnedSkinsNoAccount');
+    const errEl = el('valOwnedSkinsErr');
+    const infoEl = el('valOwnedSkinsInfo');
+    const toolbarEl = el('valOwnedSkinsToolbar');
+    const tierFiltersEl = el('valOwnedSkinsTierFilters');
+    const typeFiltersEl = el('valOwnedSkinsTypeFilters');
+    const filteredEmptyEl = el('valOwnedSkinsFilteredEmpty');
+    const listEl = el('valOwnedSkinsList');
+    el('valOwnedSkinsSortSelect').value = valOwnedSkinsSort;
+
+    function showOnly(which){
+      noAccEl.style.display = which==='noacc' ? 'block' : 'none';
+      errEl.style.display = which==='err' ? 'block' : 'none';
+      infoEl.style.display = which==='info' ? 'block' : 'none';
+      toolbarEl.style.display = which==='list' ? 'flex' : 'none';
+      if(which !== 'list'){ tierFiltersEl.style.display = 'none'; typeFiltersEl.style.display = 'none'; filteredEmptyEl.style.display = 'none'; }
+      listEl.style.display = which==='list' ? '' : 'none';
+    }
+
+    if(!label){
+      showOnly('noacc');
+      el('valOwnedSkinsChecked').style.display = 'none';
+      el('valOwnedSkinsCount').textContent = '';
+      return;
+    }
+
+    const os = (state.valorant.ownedSkins||{})[label];
+    const checkedEl = el('valOwnedSkinsChecked');
+    if(!os || (!os.checkedAt && !os.error)){
+      showOnly('info');
+      infoEl.textContent = 'No owned-skins data yet — click "🎨 Check Owned Skins" in Settings → Valorant Local Helper.';
+      checkedEl.style.display = 'none';
+      el('valOwnedSkinsCount').textContent = '';
+      return;
+    }
+    if(os.error){
+      showOnly('err');
+      errEl.innerHTML = '⚠️ '+escapeHtml(os.error);
+      checkedEl.style.display = 'none';
+      el('valOwnedSkinsCount').textContent = '';
+      return;
+    }
+
+    checkedEl.style.display = os.checkedAt ? 'inline' : 'none';
+    if(os.checkedAt) checkedEl.innerHTML = '🕒 '+escapeHtml(valTimeAgo(os.checkedAt));
+    if(os.checkedAt) checkedEl.title = escapeHtml(fmtDate(os.checkedAt));
+
+    const allSkins = os.skins || [];
+    if(!allSkins.length){
+      showOnly('info');
+      infoEl.textContent = 'No skins found for this account.';
+      el('valOwnedSkinsCount').textContent = '';
+      return;
+    }
+
+    showOnly('list');
+    tierFiltersEl.innerHTML = ownedSkinsFilterRowHtml('Tier', allSkins.map(s=>tierDisplayName(s.tierName)), tierOrderRank, valOwnedSkinsTierExclude, 'tier');
+    tierFiltersEl.style.display = tierFiltersEl.innerHTML ? 'flex' : 'none';
+    typeFiltersEl.innerHTML = ownedSkinsFilterRowHtml('Weapon', allSkins.map(s=>s.weaponType||'Other'), weaponTypeRank, valOwnedSkinsTypeExclude, 'weapon-type');
+    typeFiltersEl.style.display = typeFiltersEl.innerHTML ? 'flex' : 'none';
+
+    const skins = allSkins.filter(s=> !valOwnedSkinsTierExclude.has(tierDisplayName(s.tierName)) && !valOwnedSkinsTypeExclude.has(s.weaponType||'Other'));
+    if(valOwnedSkinsSort === 'name') skins.sort((a,b)=> a.name.localeCompare(b.name));
+    else if(valOwnedSkinsSort === 'weapon') skins.sort((a,b)=> weaponTypeRank(a.weaponType) - weaponTypeRank(b.weaponType) || (b.tierRank??-1) - (a.tierRank??-1) || a.name.localeCompare(b.name));
+    else if(valOwnedSkinsSort === 'tier-asc') skins.sort((a,b)=> (a.tierRank??-1) - (b.tierRank??-1) || a.name.localeCompare(b.name));
+    else skins.sort((a,b)=> (b.tierRank??-1) - (a.tierRank??-1) || a.name.localeCompare(b.name));
+
+    el('valOwnedSkinsCount').textContent = String(skins.length)+(skins.length!==allSkins.length ? ' / '+allSkins.length : '');
+    filteredEmptyEl.style.display = skins.length ? 'none' : 'block';
+    listEl.style.display = skins.length ? '' : 'none';
+    listEl.innerHTML = skins.map(s=>{
+      const color = valTierColor(s.tierName);
+      const sub = [s.weaponType, tierDisplayName(s.tierName)].filter(Boolean).join(' — ');
+      return '<div class="val-store-item" style="--rarity-color:'+color+';" title="'+escapeHtml(s.name)+(sub?' — '+escapeHtml(sub):'')+'">'
+        + '<div class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="'+escapeHtml(s.name)+'">' : '')+'</div>'
+        + '<div class="val-store-item-footer">'
+        + '<span class="val-store-item-name" title="'+escapeHtml(s.name)+'">'+escapeHtml(s.name)+'</span>'
+        + '</div></div>';
+    }).join('');
+  }
+
   /* ---- Local Helper: talks to scripts/valorant-local-server.mjs running on this machine, so
      the "Check Store Now" / "+ Add Account" buttons below can trigger the same store check /
      session-cookie save that valorant-check-store.mjs / valorant-login.mjs do from a terminal —
@@ -573,7 +750,7 @@
     // union of accounts the local server has a saved session for, and accounts that already
     // have store data — so a device without the local server running (or an account it doesn't
     // know about yet) can still pick from and view whatever's already been checked
-    const dropdownLabels = Array.from(new Set([...valLocalStatus.accounts, ...Object.keys(state.valorant.dailyStores||{})]));
+    const dropdownLabels = Array.from(new Set([...valLocalStatus.accounts, ...Object.keys(state.valorant.dailyStores||{}), ...Object.keys(state.valorant.ownedSkins||{})]));
     const sel = el('valLocalAccountSelect');
     sel.innerHTML = '<option value="">All accounts</option>'
       + dropdownLabels.map(a=>'<option value="'+escapeHtml(a)+'">'+escapeHtml(a)+'</option>').join('');
@@ -582,6 +759,8 @@
     const disabled = !valLocalStatus.connected || valLocalStatus.busy;
     el('valLocalCheckBtn').disabled = disabled || !valLocalStatus.accounts.length;
     el('valLocalCheckBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='check') ? 'Checking…' : 'Check Store Now';
+    el('valLocalCheckInventoryBtn').disabled = disabled || !valLocalStatus.accounts.length;
+    el('valLocalCheckInventoryBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='check-inventory') ? 'Checking…' : '🎨 Check Owned Skins';
     el('valLocalAddAccountBtn').disabled = disabled;
     el('valLocalAddAccountBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='login') ? 'Saving…' : '+ Add Account';
     // deleting removes the saved *session*, so it only makes sense for a specific account the
@@ -602,6 +781,7 @@
     save();
     renderValorantStore();
     renderValWishlist(); // wishlist is per-account, so it needs to follow the same switcher
+    renderValOwnedSkins(); // ditto — owned skins are per account too
   });
 
   el('valLocalCheckBtn').addEventListener('click', async ()=>{
@@ -620,6 +800,28 @@
         throw new Error((json && json.error) || detail || ('Check failed (HTTP '+res.status+').'));
       }
       await load(); // pulls the dailyStores the local server just wrote to Supabase and re-renders
+    }catch(e){
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+    }
+    valLocalStatus.busy = false; valLocalStatus.busyMsg = ''; renderValLocalPanel();
+  });
+
+  el('valLocalCheckInventoryBtn').addEventListener('click', async ()=>{
+    el('valSettingsLocalErr').style.display = 'none';
+    const label = el('valLocalAccountSelect').value;
+    valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check-inventory'; renderValLocalPanel();
+    try{
+      const res = await fetch(valLocalUrl()+'/check-inventory', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken, label: label || undefined })
+      });
+      const json = await res.json().catch(()=>null);
+      if(!res.ok || !json || json.ok===false){
+        const detail = json && json.results && Object.values(json.results).map(r=>r.error).filter(Boolean)[0];
+        throw new Error((json && json.error) || detail || ('Check failed (HTTP '+res.status+').'));
+      }
+      await load(); // pulls the ownedSkins the local server just wrote to Supabase and re-renders
     }catch(e){
       showValLocalErr((e && e.message) || 'Could not reach the local helper.');
     }
@@ -682,6 +884,7 @@
     renderValSubtabs();
     renderValWishlist();
     renderValorantStore();
+    renderValOwnedSkins();
     renderValLocalPanel();
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const listEl = el('valAccountList');

@@ -145,20 +145,77 @@
   });
   financeListEl.addEventListener('dragend', ()=>{ draggedAccountId = null; financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
-  /* ---- spending breakdown: this calendar month's outflow transactions, grouped by category ---- */
+  /* ---- spending breakdown: this period's outflow transactions, grouped by category ---- */
+  const SPEND_PERIODS = [
+    {key:'week', label:'Weekly'},
+    {key:'month', label:'Monthly'},
+    {key:'year', label:'Yearly'}
+  ];
+  let spendPeriod = 'month'; // not persisted — resets to a sensible default each page load
+  // How many periods back from the current one — 0 = the ongoing week/month/year, 1 = the one
+  // before that, etc. Not persisted; resets to 0 (and whenever the period type is switched) so
+  // you always land back on "now" rather than being stuck looking at some old month.
+  let spendPeriodOffset = 0;
+
+  // Account transfers (see doTransfer()) are logged as ordinary transactions so account balances
+  // stay accurate, but they're money moving between your own accounts, not spending — the note
+  // is code-generated (never user-editable), so matching its fixed prefix is reliable.
+  function isTransferTx(tx){
+    const note = tx.note || '';
+    return note.indexOf('Transfer to ') === 0 || note.indexOf('Transfer from ') === 0;
+  }
+
+  // Returns the [start, end) range for the period `offset` steps before the current one, plus a
+  // human label for it — e.g. offset 1 with period 'month' is last calendar month.
+  function spendPeriodRange(period, offset, now){
+    const start = new Date(now); start.setHours(0,0,0,0);
+    let end, label;
+    if(period === 'week'){
+      start.setDate(start.getDate() - start.getDay() - offset*7);
+      end = new Date(start); end.setDate(start.getDate()+7);
+      label = offset===0 ? 'This week' : fmtDate(start.getTime())+' – '+fmtDate(new Date(end-1).getTime());
+    } else if(period === 'year'){
+      start.setMonth(0,1); start.setFullYear(start.getFullYear()-offset);
+      end = new Date(start); end.setFullYear(start.getFullYear()+1);
+      label = String(start.getFullYear());
+    } else {
+      start.setDate(1); start.setMonth(start.getMonth()-offset);
+      end = new Date(start); end.setMonth(start.getMonth()+1);
+      label = start.toLocaleDateString(undefined,{month:'long',year:'numeric'});
+    }
+    return { start, end, label };
+  }
+
   function renderSpendBreakdown(){
     const list = el('spendBreakdownList'); if(!list) return;
     list.innerHTML = '';
+    const zoomRow = el('spendPeriodRow');
+    if(zoomRow){
+      zoomRow.innerHTML = SPEND_PERIODS.map(p=>
+        '<button class="chart-zoom-btn'+(spendPeriod===p.key?' active':'')+'" data-period="'+p.key+'">'+p.label+'</button>'
+      ).join('');
+      zoomRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
+        btn.addEventListener('click', ()=>{ spendPeriod = btn.dataset.period; spendPeriodOffset = 0; renderSpendBreakdown(); });
+      });
+    }
     const nwCcy = state.profile.netWorthCurrency || 'USD';
     const now = new Date();
-    const monthPrefix = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+    const { start, end, label } = spendPeriodRange(spendPeriod, spendPeriodOffset, now);
+    const navRow = el('spendPeriodNavRow');
+    if(navRow){
+      navRow.innerHTML = '<button class="chart-zoom-btn" id="spendPeriodPrevBtn" type="button">◀</button>'
+        + '<span class="spend-period-label">'+escapeHtml(label)+'</span>'
+        + '<button class="chart-zoom-btn" id="spendPeriodNextBtn" type="button" '+(spendPeriodOffset===0?'disabled':'')+'>▶</button>';
+      el('spendPeriodPrevBtn').addEventListener('click', ()=>{ spendPeriodOffset++; renderSpendBreakdown(); });
+      el('spendPeriodNextBtn').addEventListener('click', ()=>{ if(spendPeriodOffset>0){ spendPeriodOffset--; renderSpendBreakdown(); } });
+    }
     const totals = {};
     (state.finance.accounts||[]).forEach(a=>{
       (a.transactions||[]).forEach(tx=>{
         if(tx.amount >= 0) return; // spending (outflow) only
+        if(isTransferTx(tx)) return; // moving money between your own accounts isn't spending
         const d = new Date(tx.createdAt);
-        const prefix = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-        if(prefix !== monthPrefix) return;
+        if(d < start || d >= end) return;
         const cat = tx.category || 'Other';
         const usd = Math.abs(convertAmt(tx.amount, a.currency||'USD', 'USD'));
         totals[cat] = (totals[cat]||0) + usd;

@@ -198,6 +198,10 @@
     }
     delete state.valorant.dailyStore;
     delete state.valorant.dailyStoreError;
+    // per-Riot-account "owned, non-Battle-Pass skins" snapshot, same shape/origin as dailyStores
+    // above but written by the "Check Owned Skins" local-helper action (see valorant-lib.mjs's
+    // checkAccountOwnedSkins()) instead of the daily store check.
+    if(!state.valorant.ownedSkins) state.valorant.ownedSkins = {};
     // scripts/valorant-local-server.mjs connection — the URL is a sensible default so most users
     // never need to touch it; the token is pasted in once from that script's console output
     if(state.valorant.localServerUrl===undefined) state.valorant.localServerUrl = '';
@@ -223,15 +227,16 @@
         if(w.skinUuid===undefined) w.skinUuid = '';
       });
     });
-    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD',race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:''};
+    state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
-    // avatarImage/avatarGeneratedAt: dropped along with the AI avatar feature (used to embed a
-    // large base64 image straight into this shared row, re-transferred on every load/save).
-    // Deleting rather than just not-setting purges it from any row saved before this change —
-    // the first save() after upgrading writes state.profile back out without the field at all.
+    // avatarImage/avatarGeneratedAt/race/skinTone/hairColor/hairStyle/eyeColor/clothing/background:
+    // dropped along with the AI avatar + About Me feature (used to embed a large base64 image
+    // straight into this shared row, re-transferred on every load/save). Deleting rather than just
+    // not-setting purges these from any row saved before this change — the first save() after
+    // upgrading writes state.profile back out without the fields at all.
     delete state.profile.avatarImage;
     delete state.profile.avatarGeneratedAt;
-    ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=>{ if(!state.profile[k]) state.profile[k] = ''; });
+    ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=> delete state.profile[k]);
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
@@ -247,14 +252,16 @@
     {
       const m = parsed.motivation || {};
       const pin = (typeof m.pin === 'string') ? m.pin : '';
+      const pinnedCategoryId = (typeof m.pinnedCategoryId === 'string') ? m.pinnedCategoryId : '';
       if(Array.isArray(m.categories)){
-        state.motivation = { categories: m.categories, pin };
+        state.motivation = { categories: m.categories, pin, pinnedCategoryId };
       } else if(Array.isArray(m.images) && m.images.length){
         // upgrade from the old flat single-slideshow shape into one "General" category
-        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin };
+        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin, pinnedCategoryId };
       } else {
-        state.motivation = { categories: [], pin };
+        state.motivation = { categories: [], pin, pinnedCategoryId };
       }
+      if(!state.motivation.categories.some(c=>c.id===state.motivation.pinnedCategoryId)) state.motivation.pinnedCategoryId = '';
       state.motivation.categories.forEach(c=>{
         if(c.id===undefined) c.id = uid();
         if(c.name===undefined) c.name = '';
@@ -385,7 +392,6 @@
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
     el('valLocalToken').value = state.valorant.localServerToken || '';
-    renderAboutMe();
     applyTheme();
     renderAll();
     resumePlaySessionIfAny();

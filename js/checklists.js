@@ -132,6 +132,14 @@
     state.checklistExp = done
       ? (state.checklistExp||0) + CHECKLIST_ITEM_EXP
       : Math.max(0, (state.checklistExp||0) - CHECKLIST_ITEM_EXP);
+    // Completing a task chips away at its struggle score, so the struggling-tasks panel doesn't
+    // stay permanently crowded with old skips/fails once you start succeeding at it again —
+    // missStreak already zeroes out at reset time (see applyChecklistResets()); this covers the
+    // other two inputs to getStrugglingItems()'s score.
+    if(done){
+      if(it.skipCount) it.skipCount = Math.max(0, it.skipCount - 1);
+      if(it.failCount) it.failCount = Math.max(0, it.failCount - 1);
+    }
     syncChecklistHabitLink(c);
     save();
   }
@@ -476,15 +484,11 @@
       });
     });
     rows.sort((a,b)=> b.score - a.score);
-    return rows.slice(0, 5);
+    return rows;
   }
 
-  function renderStrugglingTasks(){
-    const panel = el('strugglingTasksPanel');
-    const rows = getStrugglingItems();
-    if(!rows.length){ panel.style.display = 'none'; return; }
-    panel.style.display = 'block';
-    el('strugglingTasksList').innerHTML = rows.map(r=>{
+  function struggleRowsHtml(rows){
+    return rows.map(r=>{
       const reasons = [];
       if(r.missStreak>0) reasons.push('missed '+r.missStreak+' reset'+(r.missStreak===1?'':'s')+' in a row');
       if(r.failCount>0) reasons.push('failed '+r.failCount+'×');
@@ -495,6 +499,23 @@
         + '</div>';
     }).join('');
   }
+
+  function renderStrugglingTasks(){
+    const panel = el('strugglingTasksPanel');
+    const rows = getStrugglingItems();
+    if(!rows.length){ panel.style.display = 'none'; closeStruggleOverlay(); return; }
+    panel.style.display = 'block';
+    const html = struggleRowsHtml(rows);
+    el('strugglingTasksList').innerHTML = html;
+    el('strugglingTasksOverlayList').innerHTML = html;
+  }
+  function openStruggleOverlay(){
+    if(!getStrugglingItems().length) return;
+    el('strugglingTasksOverlay').style.display = 'flex';
+  }
+  function closeStruggleOverlay(){ el('strugglingTasksOverlay').style.display = 'none'; }
+  el('strugglingTasksPanel').addEventListener('click', openStruggleOverlay);
+  el('strugglingTasksOverlay').addEventListener('click', e=>{ if(e.target === el('strugglingTasksOverlay')) closeStruggleOverlay(); });
 
   function renderChecklists(){
     applyChecklistResets();

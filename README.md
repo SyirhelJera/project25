@@ -16,7 +16,6 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
-| **About Me** | Free-text appearance details (race, hair, eyes, clothing, background). |
 | **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks), and backup restore. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance.
@@ -26,7 +25,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 **No build step.** `index.html` loads Google Fonts, the Supabase JS SDK (CDN), `styles.css`, and then a fixed sequence of `<script>` tags from `js/` — load order matters because later files call functions/reference DOM refs defined in earlier ones:
 
 ```
-core.js → persistence.js → protecteddays.js → aboutme.js → nav.js → goals.js → habits.js →
+core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
 countdowns.js → insights.js → backups.js → mantras.js → checklists.js →
 finance.js → fitness.js → valorant.js → main.js
 ```
@@ -38,7 +37,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks).
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, swipe-to-switch-tabs gesture.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `aboutme.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
 Rendering is done by tearing down and rebuilding `innerHTML` for the relevant section on every state change (no virtual DOM, no diffing) — `save()` is called after essentially every mutation, and most mutations are followed by a call to that tab's own `render*()`.
@@ -86,12 +85,18 @@ state = {
                                        // itself is uploaded to Google Drive, never stored in state
   valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId,
               dailyStores: { [label]: {checkedAt,items,bundle,error} },
+              ownedSkins: { [label]: {checkedAt,skins:[{uuid,name,imageUrl,tierName,tierRank,weaponType}],error} },
+              ownedSkinsCollapsed,
               wishlist: [ {id,name,imageUrl,skinUuid,createdAt} ],
               localServerUrl, localServerToken },
                                        // dailyStores is keyed by the label chosen when running
                                        // scripts/valorant-login.mjs (e.g. "main","smurf"), one
                                        // entry per tracked Riot account — written by
                                        // scripts/valorant-check-store.mjs (run locally) — see below.
+                                       // ownedSkins is the same shape/origin, but for every owned
+                                       // weapon skin (sorted by tier), written by the Local
+                                       // Helper's "🎨 Check Owned Skins" button — see
+                                       // checkAccountOwnedSkins() in scripts/valorant-lib.mjs.
                                        // wishlist holds gun/skin names to watch for, added either by
                                        // free text or by picking a real skin (with image + uuid)
                                        // from the search-as-you-type list backed by
@@ -106,8 +111,7 @@ state = {
                                        // scripts/valorant-local-server.mjs (also local-only) so
                                        // those can be buttons instead of terminal commands — see
                                        // "Setup" below.
-  profile: { name, age, netWorth, netWorthCurrency, race, skinTone, hairColor,
-             hairStyle, eyeColor, clothing, background, hideAvatar },
+  profile: { name, age, netWorth, netWorthCurrency, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
@@ -154,11 +158,11 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 | API | Used for | Auth |
 |---|---|---|
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
-| valorant-api.com | Rank tier icons, agent art, skin/bundle names & images (reference data) | None (public) |
+| valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
-| Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation | Local session cookie only, never leaves your machine — see "Setup" |
+| Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
 | ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
 ### PWA / offline
@@ -201,6 +205,11 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
      3. **Check Store Now** runs the same check as step 3 above (for the account picked in the dropdown, or "All accounts") and refreshes the tab with the result. **+ Add Account** runs the same cookie-save as steps 1-2 above: log into `playvalorant.com` in your own browser first (same DevTools cookie copy as step 1), then type a label and paste the cookie into the panel's fields and click the button. **🗑 Delete** removes the saved session for whichever specific account is picked in the dropdown (disabled for "All accounts") — it deletes that label from `scripts/.valorant-session.json` and clears its store data, after a confirmation prompt since you'd need to repeat steps 1-2 to re-add it.
      4. This is a convenience on top of the CLI, not a replacement for it — the daily automated check (previous bullet) still needs the Task Scheduler entry, since nobody's expected to leave a browser tab open and click a button every day. The local server is for one-off checks, adding new accounts, and removing ones you no longer want tracked.
      5. The token gates `/check`, `/login`, and `/delete-account` (all three would let a page write to your Supabase data, save a session cookie, or remove one); regenerate it by deleting `scripts/.valorant-local-token.json` and restarting the server if you ever want to invalidate it.
+   - **Optional: "🎨 Check Owned Skins"** — same Local Helper panel, one more button. Re-authenticates the picked account (or every saved account, for "All accounts"), fetches every entitlement type Riot has on file for it, and figures out which one is "weapon skins" by checking which bucket's item ids actually resolve against valorant-api.com's skin catalog (rather than trusting a hardcoded Riot item-type id, which turned out to be unreliable). Owning any one level of a skin entitles you to all of its levels, so entitlements are deduped back to one entry per skin rather than showing a 4-level skin 4 times. Writes the result — each owned skin's name, image, content tier, and weapon type — into `state.valorant.ownedSkins[label]`, shown as a collapsible "Owned Skins" card styled the same as the daily store above, for whichever account is picked in the Shop Tracker's account dropdown (not shown for "All accounts", same as the wishlist), sortable by tier, name, or weapon type (Sidearm/SMG/Shotgun/Rifle/Sniper/Heavy/Melee).
+     1. Run `supabase/setup-valorant-inventory.sql` once in the Supabase SQL editor (same place `setup-egress-fix.sql` was run) — adds the three RPC functions this write needs. Skipping this doesn't break anything else; the button just errors per-account until it's run.
+     2. Uses the same saved session/local server as "Check Store Now" above — no separate login step.
+     3. Riot doesn't expose a historical purchase price for already-owned items via any API — a skin's content tier (Select/Deluxe/Premium/Exclusive/Ultra) is the closest available stand-in, since tier is what actually determines a skin's price bracket in Valorant. "Sort by tier" and "sort by price" are therefore the same ordering here.
+     4. The entitlement-bucket detection and tier resolution are based on community reverse-engineering of undocumented Riot/valorant-api.com response shapes — if this ever starts erroring or miscategorizing tiers, see the comments above `fetchSkinCatalog()` and `checkAccountOwnedSkins()` in `scripts/valorant-lib.mjs`.
 3. No `npm install`, no bundler, anywhere in this project — just static files for the app, plain Node built-ins for every script in `scripts/`.
 
 ## File map
@@ -216,14 +225,14 @@ js/
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
   goals.js / habits.js / finance.js / fitness.js / valorant.js /
-  checklists.js / countdowns.js / mantras.js / aboutme.js / backups.js / insights.js
+  checklists.js / countdowns.js / mantras.js / backups.js / insights.js
                                      one file per feature tab
 supabase/functions/
   manage-backups/                   list/restore daily backups
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
-scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront fetch)
+scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront + owned-skins fetch)
 scripts/valorant-login.mjs          run LOCALLY to save a pasted Riot session cookie under a labeled account
 scripts/valorant-check-store.mjs    run LOCALLY (daily, e.g. via Task Scheduler) to update the store for every saved account
 scripts/valorant-local-server.mjs   run LOCALLY (optional) — loopback-only HTTP bridge so the Valorant tab's buttons can trigger the two scripts above
@@ -231,5 +240,6 @@ scripts/.valorant-session.json      gitignored — saved Riot sessions by label,
 scripts/.valorant-local-token.json  gitignored — token valorant-local-server.mjs requires on every request, created on first run
 scripts/.valorant-notify-config.json  gitignored — {"ntfyTopic": "..."}, opts into the wishlist-match push notification
 supabase/setup-valorant-notify.sql  run once — adds the read-only RPC the wishlist-match notification uses
+supabase/setup-valorant-inventory.sql  run once — adds the RPCs the "Check Owned Skins" button uses
 .github/workflows/backup-supabase.yml   cron trigger for the backup script
 ```

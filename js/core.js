@@ -5,11 +5,11 @@
   const CURRENCY_SYMBOLS = {USD:'$',PHP:'₱',EUR:'€',GBP:'£',JPY:'¥',AUD:'A$',CAD:'C$',SGD:'S$',INR:'₹',CNY:'¥'};
   const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
 
-  let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '' }, checklists: [], checklistExp: 0,
+  let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '' }, checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
-    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
-    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',race:'',skinTone:'',hairColor:'',hairStyle:'',eyeColor:'',clothing:'',background:'',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
+    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default"
     mosaicColors: { filled:'', today:'', empty:'' },
     // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —

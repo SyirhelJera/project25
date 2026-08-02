@@ -164,7 +164,6 @@
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
   .nav-item[data-tab="mantras"] svg{color:var(--violet);}
-  .nav-item[data-tab="aboutme"] svg{color:var(--violet-dark);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
   /* Goals is the app's main point — a soft, permanent gold pulse keeps it visually distinct
      from the rest of the nav instead of blending in like every other tab. Inset (not outward)
@@ -412,13 +411,21 @@
   .play-insight-time.play-insight-failed{color:var(--danger);}
 
   /* ---- Struggling tasks panel (Checklists tab) ---- */
-  .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:12px;padding:12px 14px;margin-bottom:14px;}
+  /* Minimized: a compact, scrollable preview — click anywhere on it to pop up the full list
+     in an overlay (same open/close pattern as .mosaic-overlay: click the backdrop to close). */
+  .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:12px;padding:12px 14px;margin-bottom:14px;cursor:pointer;}
   .struggle-panel-title{font-size:13px;font-weight:700;color:var(--danger);margin-bottom:8px;}
+  .struggle-panel-list{max-height:140px;overflow-y:auto;}
   .struggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
   .struggle-row:last-child{border-bottom:none;}
   .struggle-row-task{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .struggle-row-checklist{color:var(--faint);font-weight:400;}
   .struggle-row-reason{color:var(--muted);font-size:11.5px;flex:none;}
+
+  .struggle-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;}
+  .struggle-overlay-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  .struggle-overlay-title{font-size:15px;font-weight:700;color:var(--danger);margin-bottom:14px;}
+  .struggle-overlay-card .struggle-row{font-size:13.5px;}
 
   .ai-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .ai-btn:hover{background:var(--violet-pale);}
@@ -430,7 +437,8 @@
   .ai-sugg-row button:disabled{background:var(--faint);cursor:default;}
 
   .inline-fields{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted);}
-  .inline-fields input[type=date], .inline-fields input[type=number]{background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;width:110px;font-family:'Inter',sans-serif;}
+  .inline-fields input[type=date], .inline-fields input[type=number], .inline-fields input[type=text], .inline-fields select{background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12px;color:var(--text);outline:none;width:110px;font-family:'Inter',sans-serif;}
+  .inline-fields select{cursor:pointer;}
   .inline-fields input:focus{border-color:var(--violet);}
   .finance-bar{width:100%;height:8px;border-radius:5px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;margin-top:6px;}
   .finance-fill{height:100%;background:linear-gradient(90deg,var(--gold),#FBD38D);border-radius:5px;}
@@ -452,6 +460,7 @@
   .completed-tag{font-size:11px;color:var(--success);font-weight:700;}
   .del-goal{background:none;border:none;color:var(--faint);font-size:11.5px;cursor:pointer;}
   .del-goal:hover{color:var(--danger);}
+  .del-goal.active{color:var(--violet-dark);font-weight:700;}
 
   .empty{text-align:center;padding:44px 20px;color:var(--faint);border:1px dashed var(--border);border-radius:14px;font-size:13px;}
   .empty b{color:var(--muted);}
@@ -618,9 +627,11 @@
   .motivation-dot.active{width:18px;border-radius:4px;background:#fff;}
   .motivation-thumbs{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin-top:4px;scrollbar-width:none;-ms-overflow-style:none;}
   .motivation-thumbs::-webkit-scrollbar{display:none;}
-  .motivation-thumb{position:relative;flex:0 0 auto;width:74px;height:74px;border-radius:10px;overflow:hidden;border:2px solid transparent;cursor:pointer;-webkit-tap-highlight-color:transparent;scroll-snap-align:start;}
-  .motivation-thumb img{width:100%;height:100%;object-fit:cover;display:block;}
+  .motivation-thumb{position:relative;flex:0 0 auto;width:74px;height:74px;border-radius:10px;overflow:hidden;border:2px solid transparent;cursor:grab;-webkit-tap-highlight-color:transparent;scroll-snap-align:start;}
+  .motivation-thumb:active{cursor:grabbing;}
+  .motivation-thumb img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none;}
   .motivation-thumb.active{border-color:var(--violet);}
+  .motivation-thumb.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .motivation-thumb-del{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;border:none;background:rgba(0,0,0,0.55);color:#fff;font-size:11px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .motivation-thumb-del:hover{background:var(--danger);}
   .motivation-bottom-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:18px;flex-wrap:wrap;}
@@ -824,6 +835,11 @@
   .chart-zoom-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .chart-zoom-btn:hover{border-color:var(--violet);color:var(--text);}
   .chart-zoom-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
+  .chart-zoom-btn:disabled{opacity:.4;cursor:default;}
+  .chart-zoom-btn:disabled:hover{border-color:var(--border);color:var(--muted);}
+
+  .spend-period-nav-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .spend-period-label{font-size:12.5px;font-weight:700;color:var(--text);}
 
   /* ---------- valorant ---------- */
   .val-api-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;}
@@ -965,9 +981,15 @@
   #valStoreCard{display:flex;flex-direction:column;gap:18px;}
   .val-store-account{padding-bottom:18px;border-bottom:1px solid var(--border);}
   .val-store-account:last-child{padding-bottom:0;border-bottom:none;}
-  .val-store-account-hdr{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+  .val-store-account-hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);user-select:none;}
+  .val-store-account-hdr .wlg-chevron{font-size:9px;color:var(--faint);flex:none;}
   .val-store-account-name{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text);font-weight:800;}
-  .val-store-checked{font-size:10.5px;color:var(--vp-gold,var(--faint));font-weight:700;letter-spacing:.3px;white-space:nowrap;}
+  .val-store-checked{font-size:10.5px;color:var(--vp-gold,var(--faint));font-weight:700;letter-spacing:.3px;white-space:nowrap;margin-left:auto;}
+
+  .val-owned-skins-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+  .val-owned-skins-toolbar .sort-select{margin-left:auto;}
+  .val-owned-skins-filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
+  .val-owned-skins-filter-label{font-size:10.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px;flex:none;margin-right:2px;}
 
   /* item cards mimic Valorant's own Daily Offers tiles: big art on top, a solid name+price bar
      pinned to the bottom, and a thin rarity-colored edge (Select/Deluxe/Premium/Exclusive/Ultra —

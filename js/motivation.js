@@ -40,6 +40,9 @@
     const cat = categories[motivationActiveCatIdx];
     el('motivationActiveName').textContent = cat.name;
     el('motivationCatPinBtn').textContent = cat.pin ? 'Change category PIN' : 'Set category PIN';
+    const isPinnedFirst = state.motivation.pinnedCategoryId === cat.id;
+    el('motivationCatPinFirstBtn').textContent = isPinnedFirst ? '📌 Unpin as default' : '📌 Pin as default';
+    el('motivationCatPinFirstBtn').classList.toggle('active', isPinnedFirst);
 
     const catLocked = !!cat.pin && !motivationUnlockedCats[cat.id];
     el('motivationCatLockNowBtn').style.display = (cat.pin && !catLocked) ? 'inline-flex' : 'none';
@@ -76,7 +79,7 @@
       // loading="lazy" matters here: without it, opening a category with many images would
       // immediately download every full-resolution image just to paint a 74px thumbnail —
       // this way only the ones scrolled into view actually fetch anything.
-      const thumb = document.createElement('div'); thumb.className = 'motivation-thumb';
+      const thumb = document.createElement('div'); thumb.className = 'motivation-thumb'; thumb.draggable = true; thumb.dataset.imageId = img.id;
       thumb.innerHTML = '<img src="'+img.url+'" loading="lazy" decoding="async"><button class="motivation-thumb-del" aria-label="Delete image">&times;</button>';
       thumb.querySelector('img').addEventListener('click', ()=> goToMotivationImage(i));
       thumb.querySelector('.motivation-thumb-del').addEventListener('click', e=>{ e.stopPropagation(); deleteMotivationImage(cat.id, img.id); });
@@ -88,6 +91,45 @@
     });
     dots.style.display = cat.images.length > 1 ? 'flex' : 'none';
   }
+
+  /* drag-to-reorder motivation images — the thumbnail itself is the drag handle (no separate
+     button), delegated once over #motivationThumbs so it keeps working after every re-render */
+  let draggedMotivationImageId = null;
+  const motivationThumbsEl = el('motivationThumbs');
+  motivationThumbsEl.addEventListener('dragstart', e=>{
+    const thumb = e.target.closest('.motivation-thumb');
+    draggedMotivationImageId = thumb ? thumb.dataset.imageId : null;
+    if(thumb) e.dataTransfer.effectAllowed = 'move';
+  });
+  motivationThumbsEl.addEventListener('dragover', e=>{
+    if(!draggedMotivationImageId) return;
+    e.preventDefault();
+    const overThumb = e.target.closest('.motivation-thumb');
+    motivationThumbsEl.querySelectorAll('.motivation-thumb.drag-over').forEach(t=>t.classList.remove('drag-over'));
+    if(overThumb && overThumb.dataset.imageId !== draggedMotivationImageId) overThumb.classList.add('drag-over');
+  });
+  motivationThumbsEl.addEventListener('drop', e=>{
+    if(!draggedMotivationImageId) return;
+    e.preventDefault();
+    motivationThumbsEl.querySelectorAll('.motivation-thumb.drag-over').forEach(t=>t.classList.remove('drag-over'));
+    const overThumb = e.target.closest('.motivation-thumb');
+    const toId = overThumb ? overThumb.dataset.imageId : null;
+    const fromId = draggedMotivationImageId; draggedMotivationImageId = null;
+    if(!toId || toId === fromId) return;
+    const cat = activeMotivationCategory(); if(!cat) return;
+    const fromIdx = cat.images.findIndex(x=>x.id===fromId);
+    const toIdx = cat.images.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const activeId = cat.images[motivationSlideIdx[cat.id] || 0] ? cat.images[motivationSlideIdx[cat.id] || 0].id : null;
+    const [moved] = cat.images.splice(fromIdx,1);
+    cat.images.splice(toIdx,0,moved);
+    if(activeId) motivationSlideIdx[cat.id] = cat.images.findIndex(x=>x.id===activeId);
+    save(); renderMotivation();
+  });
+  motivationThumbsEl.addEventListener('dragend', ()=>{
+    draggedMotivationImageId = null;
+    motivationThumbsEl.querySelectorAll('.motivation-thumb.drag-over').forEach(t=>t.classList.remove('drag-over'));
+  });
 
   function showMotivationSlide(animate){
     const cat = activeMotivationCategory();
@@ -134,6 +176,20 @@
     motivationSlideIdx[cat.id] = idx;
     showMotivationSlide(true);
     startMotivationSlideshow();
+  }
+
+  function toggleMotivationCategoryPinnedFirst(){
+    const cat = activeMotivationCategory(); if(!cat) return;
+    state.motivation.pinnedCategoryId = (state.motivation.pinnedCategoryId === cat.id) ? '' : cat.id;
+    save(); renderMotivation();
+  }
+
+  // Jumps to the pinned category, if one is set — call this when the Motivation tab is opened
+  // (not on every render) so it doesn't yank you back after you've manually switched categories.
+  function openToPinnedMotivationCategory(){
+    if(!state.motivation.pinnedCategoryId) return;
+    const idx = state.motivation.categories.findIndex(c=>c.id===state.motivation.pinnedCategoryId);
+    if(idx >= 0) motivationActiveCatIdx = idx;
   }
 
   function nextMotivationCategory(){
@@ -198,6 +254,7 @@
     state.motivation.categories = state.motivation.categories.filter(c=>c.id!==catId);
     delete motivationSlideIdx[catId];
     delete motivationUnlockedCats[catId];
+    if(state.motivation.pinnedCategoryId === catId) state.motivation.pinnedCategoryId = '';
     save(); renderMotivation();
   }
 
@@ -245,6 +302,7 @@
   // desktop, since the swipe gesture only exists for touch. Renaming now has its own button.
   el('motivationActiveName').addEventListener('click', nextMotivationCategory);
   el('motivationRenameCatBtn').addEventListener('click', ()=>{ const cat = activeMotivationCategory(); if(cat) promptRenameMotivationCategory(cat.id); });
+  el('motivationCatPinFirstBtn').addEventListener('click', toggleMotivationCategoryPinnedFirst);
   el('motivationCatPinBtn').addEventListener('click', promptSetMotivationCategoryPin);
   el('motivationCatLockNowBtn').addEventListener('click', ()=>{
     const cat = activeMotivationCategory(); if(!cat) return;

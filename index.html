@@ -150,77 +150,54 @@
 
   <!-- FINANCE -->
   <div class="view" id="view-finance">
-    <div class="view-title">Finance</div>
-    <div class="view-sub">Track savings, credit, and lent money — this feeds your overall net worth.</div>
-
-    <div class="finance-summary">
-      <div class="stat" style="cursor:default;"><div class="num" id="finTotalAssets">$0</div><div class="lbl">Total Assets</div></div>
-      <div class="stat" style="cursor:default;"><div class="num" id="finTotalLiabilities">$0</div><div class="lbl">Total Liabilities</div></div>
-      <div class="stat" style="cursor:default;"><div class="num" id="finNetWorth">$0</div><div class="lbl">Finance Net Worth</div></div>
-    </div>
-
-    <div class="section-lbl" style="margin-top:4px;">Net Worth Trend</div>
-    <div class="chart-zoom-row" id="nwChartZoomRow"></div>
-    <div class="chart-card">
-      <div id="nwChartWrap"></div>
-      <div class="chart-legend">
-        <span><span class="dot" style="background:var(--violet);"></span>Net worth</span>
-      </div>
-    </div>
 
     <div class="finance-subnav">
       <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
-      <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
       <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
-      <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency Converter</button>
+      <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
+      <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency</button>
+    </div>
+
+    <!-- accounts-only overview: earnings/spending pulse + net worth trend don't make sense on
+         the Subscriptions / Money Goals / Currency sub-tabs. The earnings/spending totals are
+         first — before the chart — so they're visible the moment you land on Finance, no
+         scrolling needed. -->
+    <div id="financeAccountsOverview">
+      <div class="section-lbl" style="margin-top:4px;">This Period</div>
+      <div class="chart-zoom-row" id="spendPeriodRow"></div>
+      <div class="spend-period-nav-row" id="spendPeriodNavRow"></div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
+        <div class="stat" style="cursor:default;max-width:220px;"><div class="num" id="spendEarningsTotal">$0</div><div class="lbl">Total Earnings This Period</div></div>
+        <div class="stat" style="cursor:default;max-width:220px;"><div class="num" id="spendBreakdownTotal">$0</div><div class="lbl">Total Spending This Period</div></div>
+      </div>
+
+      <div class="section-lbl">Net Worth Trend</div>
+      <div class="chart-card">
+        <div id="nwCurrentValue" class="nw-current-value" title="Click to change currency">$0</div>
+        <div id="nwChartWrap"></div>
+        <div class="chart-zoom-row" id="nwChartZoomRow"></div>
+        <div class="chart-legend">
+          <span><span class="dot" style="background:var(--violet);"></span>Net worth</span>
+        </div>
+      </div>
     </div>
 
     <!-- ACCOUNTS -->
     <div class="fintab" id="fintab-accounts">
-      <div class="finance-add-row">
-        <select id="finType">
-          <option value="savings">Savings account</option>
-          <option value="credit">Credit account</option>
-          <option value="lent">Lent (owed to you)</option>
-          <option value="custom-asset">Custom — Asset</option>
-          <option value="custom-liability">Custom — Liability</option>
-        </select>
-        <input type="text" id="finName" placeholder="Account name..." maxlength="60">
-        <input type="number" id="finBalance" placeholder="Balance" min="0" step="0.01">
-        <select id="finCurrency"></select>
-        <button class="btn btn-primary" id="addFinanceBtn">+ Add Account</button>
+      <div class="finance-accounts-grid">
+        <div class="finance-accounts-col">
+          <div id="financeList"></div>
+          <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one below</b> to start tracking your net worth.</div>
+          <div class="finance-add-row" style="justify-content:flex-end;">
+            <button class="btn btn-primary" id="openAddAccountBtn" type="button">+ Add Account</button>
+          </div>
+        </div>
+        <div class="finance-spending-col">
+          <div class="section-lbl" style="margin-top:0;">Spending by Category</div>
+          <div id="spendBreakdownList"></div>
+          <div class="empty" id="spendBreakdownEmpty" style="display:none;">No spending logged in this period yet.</div>
+        </div>
       </div>
-
-      <div class="finance-add-row" style="margin-top:-8px;">
-        <button class="btn" id="toggleTransferBtn" type="button">⇄ Transfer Between Accounts</button>
-      </div>
-      <div id="transferPanel" class="finance-transfer-panel" style="display:none;"></div>
-
-      <div id="financeList"></div>
-      <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one above</b> to start tracking your net worth.</div>
-
-      <div class="section-lbl" style="margin-top:22px;">Spending by Category</div>
-      <div class="chart-zoom-row" id="spendPeriodRow"></div>
-      <div class="spend-period-nav-row" id="spendPeriodNavRow"></div>
-      <div id="spendBreakdownList"></div>
-      <div class="empty" id="spendBreakdownEmpty" style="display:none;">No spending logged in this period yet.</div>
-    </div>
-
-    <!-- SUBSCRIPTIONS -->
-    <div class="fintab" id="fintab-subs" style="display:none;">
-      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
-        <div class="stat" style="cursor:default;max-width:260px;"><div class="num" id="subsMonthlyTotal">$0</div><div class="lbl">Total Monthly Subscriptions</div></div>
-      </div>
-      <div class="finance-add-row">
-        <input type="text" id="subName" placeholder="Subscription name (e.g. Netflix)" maxlength="60">
-        <input type="number" id="subAmount" placeholder="Amount" min="0" step="0.01">
-        <select id="subCurrency"></select>
-        <select id="subCycle"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>
-        <input type="date" id="subNextDate" title="Next billing date">
-        <button class="btn btn-primary" id="addSubBtn">+ Add Subscription</button>
-      </div>
-      <div id="subsList"></div>
-      <div class="empty" id="subsEmpty" style="display:none;">No subscriptions tracked yet. <b>Add one above</b> — e.g. Netflix, Claude, Spotify.</div>
     </div>
 
     <!-- MONEY GOALS -->
@@ -238,6 +215,23 @@
       </div>
       <div id="moneyGoalList"></div>
       <div class="empty" id="moneyGoalEmpty" style="display:none;">No money goals yet. <b>Add one above</b> — e.g. "4000 PHP by Aug 24".</div>
+    </div>
+
+    <!-- SUBSCRIPTIONS -->
+    <div class="fintab" id="fintab-subs" style="display:none;">
+      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
+        <div class="stat" style="cursor:default;max-width:260px;"><div class="num" id="subsMonthlyTotal">$0</div><div class="lbl">Total Monthly Subscriptions</div></div>
+      </div>
+      <div class="finance-add-row">
+        <input type="text" id="subName" placeholder="Subscription name (e.g. Netflix)" maxlength="60">
+        <input type="number" id="subAmount" placeholder="Amount" min="0" step="0.01">
+        <select id="subCurrency"></select>
+        <select id="subCycle"><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select>
+        <input type="date" id="subNextDate" title="Next billing date">
+        <button class="btn btn-primary" id="addSubBtn">+ Add Subscription</button>
+      </div>
+      <div id="subsList"></div>
+      <div class="empty" id="subsEmpty" style="display:none;">No subscriptions tracked yet. <b>Add one above</b> — e.g. Netflix, Claude, Spotify.</div>
     </div>
 
     <!-- CURRENCY CONVERTER -->
@@ -264,6 +258,51 @@
         <button class="btn btn-ghost btn-sm" id="spendCategoryCloseBtn" type="button">Close</button>
       </div>
       <div id="spendCategoryList"></div>
+    </div>
+  </div>
+
+  <!-- ADD FINANCE ACCOUNT — opened by the "+ Add Account" button on the Accounts tab -->
+  <div id="addAccountOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title">Add Account</div>
+        <button class="btn btn-ghost btn-sm" id="addAccountCloseBtn" type="button">Close</button>
+      </div>
+      <div class="finance-add-row" style="margin-bottom:0;">
+        <select id="finType">
+          <option value="savings">Savings account</option>
+          <option value="credit">Credit account</option>
+          <option value="lent">Lent (owed to you)</option>
+          <option value="custom-asset">Custom — Asset</option>
+          <option value="custom-liability">Custom — Liability</option>
+        </select>
+        <input type="text" id="finName" placeholder="Account name..." maxlength="60">
+        <input type="number" id="finBalance" placeholder="Balance" min="0" step="0.01">
+        <select id="finCurrency"></select>
+        <button class="btn btn-primary" id="addFinanceBtn">+ Add Account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT ACCOUNT — opened by the "Edit Account" button inside an expanded account -->
+  <div id="editAccountOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title">Edit Account</div>
+        <button class="btn btn-ghost btn-sm" id="editAccountCloseBtn" type="button">Close</button>
+      </div>
+      <div id="editAccountBody"></div>
+    </div>
+  </div>
+
+  <!-- TRANSFER FUNDS — opened by the "Transfer Funds" button inside an expanded account -->
+  <div id="transferFundsOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title" id="transferFundsTitle">Transfer Funds</div>
+        <button class="btn btn-ghost btn-sm" id="transferFundsCloseBtn" type="button">Close</button>
+      </div>
+      <div id="transferFundsBody"></div>
     </div>
   </div>
 

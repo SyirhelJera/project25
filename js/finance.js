@@ -56,8 +56,21 @@
       btn.addEventListener('click', ()=>{ netWorthChartZoom = btn.dataset.zoom; renderNetWorthChart(); });
     });
 
-    const wrap = el('nwChartWrap');
     const nwCcy = state.profile.netWorthCurrency || 'USD';
+    const currentValueEl = el('nwCurrentValue');
+    currentValueEl.textContent = fmtMoney(convertAmt(getNetWorthNum(), 'USD', nwCcy), nwCcy);
+    if(!currentValueEl.dataset.wired){
+      currentValueEl.dataset.wired = '1';
+      // clicking the figure cycles the net worth display currency — a quick way to check net
+      // worth in another currency without going to Settings
+      currentValueEl.addEventListener('click', ()=>{
+        const idx = CURRENCIES.indexOf(state.profile.netWorthCurrency || 'USD');
+        state.profile.netWorthCurrency = CURRENCIES[(idx+1) % CURRENCIES.length];
+        save(); renderFinance(); renderGoals();
+      });
+    }
+
+    const wrap = el('nwChartWrap');
     const log = (state.finance.netWorthHistory||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
     if(log.length < 2){
       wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Check back after a couple of days — net worth is snapshotted once per day you open the app.</div>';
@@ -157,7 +170,7 @@
   // you always land back on "now" rather than being stuck looking at some old month.
   let spendPeriodOffset = 0;
 
-  // Account transfers (see doTransfer()) are logged as ordinary transactions so account balances
+  // Account transfers (see transferFunds()) are logged as ordinary transactions so account balances
   // stay accurate, but they're money moving between your own accounts, not spending — the note
   // is code-generated (never user-editable), so matching its fixed prefix is reliable.
   function isTransferTx(tx){
@@ -210,19 +223,26 @@
       el('spendPeriodNextBtn').addEventListener('click', ()=>{ if(spendPeriodOffset>0){ spendPeriodOffset--; renderSpendBreakdown(); } });
     }
     const totals = {};
+    let earningsUsd = 0;
     (state.finance.accounts||[]).forEach(a=>{
       (a.transactions||[]).forEach(tx=>{
-        if(tx.amount >= 0) return; // spending (outflow) only
-        if(isTransferTx(tx)) return; // moving money between your own accounts isn't spending
+        if(isTransferTx(tx)) return; // moving money between your own accounts is neither spending nor earning
         const d = new Date(tx.createdAt);
         if(d < start || d >= end) return;
+        if(tx.amount >= 0){
+          earningsUsd += convertAmt(tx.amount, a.currency||'USD', 'USD');
+          return;
+        }
         const cat = tx.category || 'Other';
         const usd = Math.abs(convertAmt(tx.amount, a.currency||'USD', 'USD'));
         totals[cat] = (totals[cat]||0) + usd;
       });
     });
+    el('spendEarningsTotal').textContent = fmtMoney(convertAmt(earningsUsd,'USD',nwCcy), nwCcy);
     const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
     el('spendBreakdownEmpty').style.display = entries.length ? 'none' : 'block';
+    const totalUsd = entries.reduce((sum,[,usd])=>sum+usd, 0);
+    el('spendBreakdownTotal').textContent = fmtMoney(convertAmt(totalUsd,'USD',nwCcy), nwCcy);
     const maxUsd = entries.length ? entries[0][1] : 0;
     entries.forEach(([cat, usd])=>{
       const pct = maxUsd>0 ? Math.round((usd/maxUsd)*100) : 0;
@@ -275,16 +295,6 @@
     const accounts = state.finance.accounts || [];
     el('financeEmpty').style.display = accounts.length===0 ? 'block' : 'none';
 
-    let assets = 0, liabilities = 0;
-    accounts.forEach(a=>{
-      const usdBal = convertAmt(a.balance, a.currency||'USD', 'USD');
-      if(a.type==='credit' || a.type==='custom-liability') liabilities += usdBal; else assets += usdBal;
-    });
-    el('finTotalAssets').textContent = fmtMoney(assets,'USD');
-    el('finTotalLiabilities').textContent = fmtMoney(liabilities,'USD');
-    el('finNetWorth').textContent = fmtMoney(assets-liabilities,'USD');
-
-    populateTransferPanel();
     renderSpendBreakdown();
 
     const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
@@ -317,49 +327,41 @@
         const detail = document.createElement('div'); detail.className = 'finance-account-detail';
         const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
 
-        // account name (rename)
-        const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Account Name'; inner.appendChild(nameLbl);
-        const nameRow = document.createElement('div'); nameRow.className='inline-fields';
-        const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=a.name; nameInput.maxLength=60; nameInput.style.width='220px';
-        nameInput.addEventListener('change', ()=>{
-          const v = nameInput.value.trim();
-          if(v){ a.name = v; save(); renderFinanceAccounts(); }
-        });
-        nameRow.appendChild(nameInput);
-        inner.appendChild(nameRow);
+        // account actions — name/currency&balance/icon editing and transfers live in their own
+        // modals now, so the default expanded view is just transactions (see openEditAccountModal(),
+        // openTransferFundsModal())
+        const actionRow = document.createElement('div'); actionRow.className='inline-fields'; actionRow.style.marginTop='12px'; actionRow.style.marginBottom='6px';
+        const editBtn = document.createElement('button'); editBtn.className='btn'; editBtn.type='button'; editBtn.textContent='✎ Edit Account';
+        editBtn.addEventListener('click', ()=> openEditAccountModal(a.id));
+        const xferBtn = document.createElement('button'); xferBtn.className='btn'; xferBtn.type='button'; xferBtn.textContent='⇄ Transfer Funds';
+        xferBtn.addEventListener('click', ()=> openTransferFundsModal(a.id));
+        actionRow.appendChild(editBtn); actionRow.appendChild(xferBtn);
+        inner.appendChild(actionRow);
 
-        // currency + balance
-        const ccyLbl = document.createElement('div'); ccyLbl.className='section-lbl'; ccyLbl.textContent='Currency & Balance'; inner.appendChild(ccyLbl);
-        const ccyRow = document.createElement('div'); ccyRow.className='inline-fields';
-        const ccySel = document.createElement('select');
-        ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(a.currency===c?'selected':'')+'>'+c+'</option>').join('');
-        ccySel.addEventListener('change', ()=>{ a.currency = ccySel.value; save(); renderFinanceAccounts(); });
-        const balInput = document.createElement('input'); balInput.type='number'; balInput.step='0.01'; balInput.value=a.balance; balInput.style.width='120px';
-        balInput.addEventListener('change', ()=>{ a.balance = parseFloat(balInput.value)||0; save(); renderFinanceAccounts(); renderGoals(); });
-        ccyRow.appendChild(ccySel); ccyRow.appendChild(balInput);
-        inner.appendChild(ccyRow);
-
-        // icon image
-        const iLbl = document.createElement('div'); iLbl.className='section-lbl'; iLbl.textContent='Icon Image'; inner.appendChild(iLbl);
-        const imgRow = document.createElement('div'); imgRow.className='img-row';
-        imgRow.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '')
-          + '<label>Upload image<input type="file" accept="image/*" style="display:none;"></label>'
-          + (a.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
-        imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
-          const file = e.target.files[0]; if(!file) return;
-          const prevUrl = a.imageUrl;
-          uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
-            a.imageUrl = url; save(); renderFinanceAccounts();
-            deleteStorageImage(prevUrl);
-          }).catch(err=> window.alert(err.message));
-        });
-        const rmBtn = imgRow.querySelector('.del-goal');
-        if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(a.imageUrl); a.imageUrl=''; save(); renderFinanceAccounts(); });
-        inner.appendChild(imgRow);
-
-        // transactions
+        // transactions — log row on top, most-recent-first list below in a scrollable box so a
+        // long history doesn't crowd the rest of the card
         const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Transactions'; inner.appendChild(tLbl);
-        const txList = document.createElement('div');
+
+        const addTx = document.createElement('div'); addTx.className='add-tx-row';
+        addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80">'
+          + '<select class="tx-category-select">'+FINANCE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select>'
+          + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)">'
+          + '<button class="btn btn-primary" type="button">+ Add</button>';
+        const txInputs = addTx.querySelectorAll('input');
+        const noteInput = txInputs[0], amtInput = txInputs[1];
+        const categorySelect = addTx.querySelector('.tx-category-select');
+        addTx.querySelector('button').addEventListener('click', ()=>{
+          const amt = parseFloat(amtInput.value);
+          if(isNaN(amt) || amt===0) return;
+          const tx = { id:uid(), amount:amt, note:noteInput.value.trim(), category:categorySelect.value, createdAt:Date.now() };
+          a.transactions = a.transactions || []; a.transactions.push(tx);
+          a.balance = (parseFloat(a.balance)||0) + amt;
+          noteInput.value=''; amtInput.value=''; categorySelect.value = FINANCE_CATEGORIES[0];
+          save(); renderFinanceAccounts(); renderGoals();
+        });
+        inner.appendChild(addTx);
+
+        const txList = document.createElement('div'); txList.className = 'tx-list-scroll';
         const txs = (a.transactions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
         if(!txs.length){
           const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;'; noneRow.textContent='No transactions logged yet.';
@@ -381,25 +383,6 @@
         });
         inner.appendChild(txList);
 
-        const addTx = document.createElement('div'); addTx.className='add-tx-row';
-        addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80">'
-          + '<select class="tx-category-select">'+FINANCE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select>'
-          + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)">'
-          + '<button class="btn btn-primary" type="button">+ Add</button>';
-        const txInputs = addTx.querySelectorAll('input');
-        const noteInput = txInputs[0], amtInput = txInputs[1];
-        const categorySelect = addTx.querySelector('.tx-category-select');
-        addTx.querySelector('button').addEventListener('click', ()=>{
-          const amt = parseFloat(amtInput.value);
-          if(isNaN(amt) || amt===0) return;
-          const tx = { id:uid(), amount:amt, note:noteInput.value.trim(), category:categorySelect.value, createdAt:Date.now() };
-          a.transactions = a.transactions || []; a.transactions.push(tx);
-          a.balance = (parseFloat(a.balance)||0) + amt;
-          noteInput.value=''; amtInput.value=''; categorySelect.value = FINANCE_CATEGORIES[0];
-          save(); renderFinanceAccounts(); renderGoals();
-        });
-        inner.appendChild(addTx);
-
         const footer = document.createElement('div'); footer.className='goal-footer'; footer.style.marginTop='12px';
         footer.innerHTML = '<span></span><button class="del-goal">Delete account</button>';
         footer.querySelector('.del-goal').addEventListener('click', ()=>{
@@ -414,6 +397,11 @@
       });
     });
   }
+  function openAddAccountModal(){ el('addAccountOverlay').style.display = 'flex'; }
+  function closeAddAccountModal(){ el('addAccountOverlay').style.display = 'none'; }
+  el('openAddAccountBtn').addEventListener('click', openAddAccountModal);
+  el('addAccountCloseBtn').addEventListener('click', closeAddAccountModal);
+  el('addAccountOverlay').addEventListener('click', e=>{ if(e.target === el('addAccountOverlay')) closeAddAccountModal(); });
   el('addFinanceBtn').addEventListener('click', ()=>{
     const name = el('finName').value.trim();
     const balance = parseFloat(el('finBalance').value);
@@ -421,47 +409,113 @@
     state.finance.accounts.push({ id:uid(), type: el('finType').value, name, balance, currency: el('finCurrency').value||'USD', imageUrl:'', transactions:[], open:false, createdAt: Date.now() });
     el('finName').value=''; el('finBalance').value='';
     save(); renderFinanceAccounts(); renderGoals();
+    closeAddAccountModal();
   });
 
-  /* ---- transfer funds between accounts ---- */
-  el('toggleTransferBtn').addEventListener('click', ()=>{
-    const panel = el('transferPanel');
-    panel.style.display = panel.style.display==='none' ? 'flex' : 'none';
-  });
-  function populateTransferPanel(){
-    const panel = el('transferPanel'); if(!panel) return;
-    if(!panel.dataset.built){
-      panel.innerHTML = '<select id="xferFrom"></select><span style="color:var(--muted);">→</span><select id="xferTo"></select>'
-        + '<input type="number" id="xferAmt" placeholder="Amount" step="0.01" style="width:110px;">'
-        + '<button class="btn btn-primary" id="xferBtn" type="button">Transfer</button>'
-        + '<div id="xferMsg" style="width:100%;font-size:11.5px;color:var(--muted);"></div>';
-      panel.dataset.built = '1';
-      el('xferBtn').addEventListener('click', doTransfer);
-    }
-    const accounts = state.finance.accounts || [];
-    const optHtml = accounts.map(a=>'<option value="'+a.id+'">'+escapeHtml(a.name)+' ('+a.currency+')</option>').join('');
-    const fromSel = el('xferFrom'), toSel = el('xferTo');
-    const fv = fromSel.value, tv = toSel.value;
-    fromSel.innerHTML = optHtml; toSel.innerHTML = optHtml;
-    if(accounts.some(a=>a.id===fv)) fromSel.value = fv;
-    if(accounts.some(a=>a.id===tv)) toSel.value = tv;
+  /* ---- edit account modal (name / currency & balance / icon image) — opened via the "Edit
+     Account" button inside an expanded account; the default expanded view stays transactions-only ---- */
+  let editingAccountId = null;
+  function openEditAccountModal(accountId){
+    editingAccountId = accountId;
+    populateEditAccountBody();
+    el('editAccountOverlay').style.display = 'flex';
   }
-  function doTransfer(){
+  function closeEditAccountModal(){ el('editAccountOverlay').style.display = 'none'; editingAccountId = null; }
+  function populateEditAccountBody(){
+    const a = (state.finance.accounts||[]).find(x=>x.id===editingAccountId); if(!a) return;
+    const body = el('editAccountBody'); body.innerHTML = '';
+
+    const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Account Name'; body.appendChild(nameLbl);
+    const nameRow = document.createElement('div'); nameRow.className='inline-fields';
+    const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=a.name; nameInput.maxLength=60; nameInput.style.width='220px';
+    nameInput.addEventListener('change', ()=>{
+      const v = nameInput.value.trim();
+      if(v){ a.name = v; save(); renderFinanceAccounts(); }
+    });
+    nameRow.appendChild(nameInput);
+    body.appendChild(nameRow);
+
+    const ccyLbl = document.createElement('div'); ccyLbl.className='section-lbl'; ccyLbl.textContent='Currency & Balance'; body.appendChild(ccyLbl);
+    const ccyRow = document.createElement('div'); ccyRow.className='inline-fields';
+    const ccySel = document.createElement('select');
+    ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(a.currency===c?'selected':'')+'>'+c+'</option>').join('');
+    ccySel.addEventListener('change', ()=>{ a.currency = ccySel.value; save(); renderFinanceAccounts(); });
+    const balInput = document.createElement('input'); balInput.type='number'; balInput.step='0.01'; balInput.value=a.balance; balInput.style.width='120px';
+    balInput.addEventListener('change', ()=>{ a.balance = parseFloat(balInput.value)||0; save(); renderFinanceAccounts(); renderGoals(); });
+    ccyRow.appendChild(ccySel); ccyRow.appendChild(balInput);
+    body.appendChild(ccyRow);
+
+    const iLbl = document.createElement('div'); iLbl.className='section-lbl'; iLbl.textContent='Icon Image'; body.appendChild(iLbl);
+    const imgRow = document.createElement('div'); imgRow.className='img-row';
+    imgRow.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '')
+      + '<label>Upload image<input type="file" accept="image/*" style="display:none;"></label>'
+      + (a.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
+    imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
+      const file = e.target.files[0]; if(!file) return;
+      const prevUrl = a.imageUrl;
+      uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
+        a.imageUrl = url; save(); renderFinanceAccounts();
+        populateEditAccountBody();
+        deleteStorageImage(prevUrl);
+      }).catch(err=> window.alert(err.message));
+    });
+    const rmBtn = imgRow.querySelector('.del-goal');
+    if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(a.imageUrl); a.imageUrl=''; save(); renderFinanceAccounts(); populateEditAccountBody(); });
+    body.appendChild(imgRow);
+  }
+  el('editAccountCloseBtn').addEventListener('click', closeEditAccountModal);
+  el('editAccountOverlay').addEventListener('click', e=>{ if(e.target === el('editAccountOverlay')) closeEditAccountModal(); });
+
+  /* ---- transfer funds between accounts — initiated from within an expanded account's own
+     detail panel via a "Transfer Funds" button that opens this modal, "from" fixed to that account ---- */
+  let transferringAccountId = null;
+  function openTransferFundsModal(accountId){
+    const a = (state.finance.accounts||[]).find(x=>x.id===accountId); if(!a) return;
+    transferringAccountId = accountId;
+    el('transferFundsTitle').textContent = 'Transfer Funds — '+a.name;
+    populateTransferFundsBody();
+    el('transferFundsOverlay').style.display = 'flex';
+  }
+  function closeTransferFundsModal(){ el('transferFundsOverlay').style.display = 'none'; transferringAccountId = null; }
+  function populateTransferFundsBody(){
+    const a = (state.finance.accounts||[]).find(x=>x.id===transferringAccountId); if(!a) return;
+    const body = el('transferFundsBody'); body.innerHTML = '';
+    const otherAccounts = (state.finance.accounts||[]).filter(x=>x.id!==a.id);
+    if(!otherAccounts.length){
+      const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:2px 0 6px;'; noneRow.textContent='Add another account to transfer funds.';
+      body.appendChild(noneRow);
+      return;
+    }
+    const row = document.createElement('div'); row.className='inline-fields';
+    const sel = document.createElement('select');
+    sel.innerHTML = otherAccounts.map(x=>'<option value="'+x.id+'">'+escapeHtml(x.name)+' ('+x.currency+')</option>').join('');
+    const amt = document.createElement('input'); amt.type='number'; amt.step='0.01'; amt.placeholder='Amount'; amt.style.width='110px';
+    const btn = document.createElement('button'); btn.className='btn btn-primary'; btn.type='button'; btn.textContent='⇄ Transfer';
+    const msg = document.createElement('div'); msg.style.cssText='width:100%;font-size:11.5px;color:var(--muted);';
+    btn.addEventListener('click', ()=>{
+      const amtVal = parseFloat(amt.value);
+      if(isNaN(amtVal) || amtVal<=0){ msg.textContent = 'Enter a positive amount.'; return; }
+      const result = transferFunds(a.id, sel.value, amtVal);
+      if(!result){ msg.textContent = 'Transfer failed — pick a valid account.'; return; }
+      msg.textContent = 'Transferred '+fmtMoney(amtVal, a.currency)+' → '+fmtMoney(result.converted, result.to.currency)+'.';
+      amt.value = '';
+    });
+    row.appendChild(sel); row.appendChild(amt); row.appendChild(btn); row.appendChild(msg);
+    body.appendChild(row);
+  }
+  el('transferFundsCloseBtn').addEventListener('click', closeTransferFundsModal);
+  el('transferFundsOverlay').addEventListener('click', e=>{ if(e.target === el('transferFundsOverlay')) closeTransferFundsModal(); });
+  function transferFunds(fromId, toId, amt){
     const accounts = state.finance.accounts || [];
-    const fromId = el('xferFrom').value, toId = el('xferTo').value;
-    const amt = parseFloat(el('xferAmt').value);
-    const msg = el('xferMsg');
-    if(!fromId || !toId || fromId===toId || isNaN(amt) || amt<=0){ msg.textContent = 'Pick two different accounts and a positive amount.'; return; }
     const from = accounts.find(a=>a.id===fromId), to = accounts.find(a=>a.id===toId);
-    if(!from || !to) return;
+    if(!from || !to || fromId===toId || isNaN(amt) || amt<=0) return null;
     const converted = convertAmt(amt, from.currency||'USD', to.currency||'USD');
     from.balance = (parseFloat(from.balance)||0) - amt;
     to.balance = (parseFloat(to.balance)||0) + converted;
     from.transactions = from.transactions || []; from.transactions.push({ id:uid(), amount:-amt, note:'Transfer to '+to.name, createdAt:Date.now() });
     to.transactions = to.transactions || []; to.transactions.push({ id:uid(), amount:converted, note:'Transfer from '+from.name, createdAt:Date.now() });
-    el('xferAmt').value = '';
-    msg.textContent = 'Transferred '+fmtMoney(amt, from.currency)+' → '+fmtMoney(converted, to.currency)+'.';
     save(); renderFinanceAccounts(); renderGoals();
+    return { from, to, converted };
   }
 
   /* ---- subscriptions ---- */
@@ -712,6 +766,7 @@
   function showFinanceSubTab(key){
     document.querySelectorAll('.finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.fintab===key));
     document.querySelectorAll('.fintab').forEach(t=>t.style.display = (t.id==='fintab-'+key) ? '' : 'none');
+    el('financeAccountsOverview').style.display = key==='accounts' ? '' : 'none';
     if(key==='subs') renderFinanceSubs();
     if(key==='moneygoals') renderMoneyGoals();
     if(key==='convert') renderFinanceConverter();

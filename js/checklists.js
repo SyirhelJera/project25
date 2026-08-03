@@ -596,18 +596,17 @@
     setPlayMinimized(true);
   });
 
-  // top items across all checklists ranked by "struggle score" — a mix of how many consecutive
-  // reset periods an item was missed (missStreak) and how many times it's been marked failed in a
-  // Play Session (failCount). Skips deliberately don't count — "come back to this later" isn't
-  // struggling, it's just deferring. Only items with a nonzero score are included, so a freshly
-  // added item never shows up here just for existing.
+  // top items across all checklists ranked by "struggle score" — how many times an item has been
+  // marked failed in a Play Session (failCount). Skips deliberately don't count — "come back to
+  // this later" isn't struggling, it's just deferring. Only items with a nonzero score are
+  // included, so a freshly added item never shows up here just for existing.
   function getStrugglingItems(){
     const rows = [];
     state.checklists.forEach(c=>{
       c.items.forEach(it=>{
-        const missStreak = it.missStreak||0, skipCount = it.skipCount||0, failCount = it.failCount||0;
-        const score = missStreak*2 + failCount*2;
-        if(score > 0) rows.push({ checklistName: c.name, text: it.text, missStreak, skipCount, failCount, score });
+        const skipCount = it.skipCount||0, failCount = it.failCount||0;
+        const score = failCount*2;
+        if(score > 0) rows.push({ checklistName: c.name, text: it.text, skipCount, failCount, score });
       });
     });
     rows.sort((a,b)=> b.score - a.score);
@@ -617,7 +616,6 @@
   function struggleRowsHtml(rows){
     return rows.map(r=>{
       const reasons = [];
-      if(r.missStreak>0) reasons.push('missed '+r.missStreak+' reset'+(r.missStreak===1?'':'s')+' in a row');
       if(r.failCount>0) reasons.push('failed '+r.failCount+'×');
       return '<div class="struggle-row">'
         + '<span class="struggle-row-task">'+escapeHtml(r.text)+' <span class="struggle-row-checklist">— '+escapeHtml(r.checklistName)+'</span></span>'

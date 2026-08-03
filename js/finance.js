@@ -337,6 +337,10 @@
     el('financeEmpty').style.display = accounts.length===0 ? 'block' : 'none';
 
     renderSpendBreakdown();
+    // every account/transaction mutation routes through renderFinanceAccounts(), and save()
+    // (already called by all of those) updates today's netWorthHistory point in place — so this
+    // is the one place that needs to refresh the chart for the change to show up immediately
+    renderNetWorthChart();
 
     const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
     groups.forEach(([type,label])=>{
@@ -531,32 +535,42 @@
     const sel = document.createElement('select');
     sel.innerHTML = otherAccounts.map(x=>'<option value="'+x.id+'">'+escapeHtml(x.name)+' ('+x.currency+')</option>').join('');
     const amt = document.createElement('input'); amt.type='number'; amt.step='0.01'; amt.placeholder='Amount'; amt.style.width='110px';
+    const fee = document.createElement('input'); fee.type='number'; fee.step='0.01'; fee.min='0'; fee.placeholder='Fee (optional)'; fee.title='Transfer fee, charged in '+a.currency+' on top of the amount — counts as real spending, not a transfer'; fee.style.width='120px';
     const btn = document.createElement('button'); btn.className='btn btn-primary'; btn.type='button'; btn.textContent='⇄ Transfer';
     const msg = document.createElement('div'); msg.style.cssText='width:100%;font-size:11.5px;color:var(--muted);';
     btn.addEventListener('click', ()=>{
       const amtVal = parseFloat(amt.value);
+      const feeVal = parseFloat(fee.value) || 0;
       if(isNaN(amtVal) || amtVal<=0){ msg.textContent = 'Enter a positive amount.'; return; }
-      const result = transferFunds(a.id, sel.value, amtVal);
+      if(feeVal < 0){ msg.textContent = 'Fee can\'t be negative.'; return; }
+      const result = transferFunds(a.id, sel.value, amtVal, feeVal);
       if(!result){ msg.textContent = 'Transfer failed — pick a valid account.'; return; }
-      msg.textContent = 'Transferred '+fmtMoney(amtVal, a.currency)+' → '+fmtMoney(result.converted, result.to.currency)+'.';
-      amt.value = '';
+      msg.textContent = 'Transferred '+fmtMoney(amtVal, a.currency)+' → '+fmtMoney(result.converted, result.to.currency)
+        + (result.fee>0 ? ' (+'+fmtMoney(result.fee, a.currency)+' fee)' : '')+'.';
+      amt.value = ''; fee.value = '';
     });
-    row.appendChild(sel); row.appendChild(amt); row.appendChild(btn); row.appendChild(msg);
+    row.appendChild(sel); row.appendChild(amt); row.appendChild(fee); row.appendChild(btn); row.appendChild(msg);
     body.appendChild(row);
   }
   el('transferFundsCloseBtn').addEventListener('click', closeTransferFundsModal);
   el('transferFundsOverlay').addEventListener('click', e=>{ if(e.target === el('transferFundsOverlay')) closeTransferFundsModal(); });
-  function transferFunds(fromId, toId, amt){
+  // fee is charged in the "from" account's currency, deducted on top of the transferred amount —
+  // unlike the transfer itself, a fee actually leaves your net worth, so it's logged as an
+  // ordinary (non-transfer) expense transaction and shows up in spending totals/breakdown
+  function transferFunds(fromId, toId, amt, fee){
     const accounts = state.finance.accounts || [];
     const from = accounts.find(a=>a.id===fromId), to = accounts.find(a=>a.id===toId);
+    fee = Math.max(0, parseFloat(fee) || 0);
     if(!from || !to || fromId===toId || isNaN(amt) || amt<=0) return null;
     const converted = convertAmt(amt, from.currency||'USD', to.currency||'USD');
-    from.balance = (parseFloat(from.balance)||0) - amt;
+    from.balance = (parseFloat(from.balance)||0) - amt - fee;
     to.balance = (parseFloat(to.balance)||0) + converted;
-    from.transactions = from.transactions || []; from.transactions.push({ id:uid(), amount:-amt, note:'Transfer to '+to.name, createdAt:Date.now() });
+    from.transactions = from.transactions || [];
+    from.transactions.push({ id:uid(), amount:-amt, note:'Transfer to '+to.name, createdAt:Date.now() });
+    if(fee > 0) from.transactions.push({ id:uid(), amount:-fee, note:'Transfer fee to '+to.name, category:'Other', createdAt:Date.now() });
     to.transactions = to.transactions || []; to.transactions.push({ id:uid(), amount:converted, note:'Transfer from '+from.name, createdAt:Date.now() });
     save(); renderFinanceAccounts(); renderGoals();
-    return { from, to, converted };
+    return { from, to, converted, fee };
   }
 
   /* ---- subscriptions ---- */

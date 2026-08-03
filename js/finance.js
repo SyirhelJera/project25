@@ -199,9 +199,29 @@
     return { start, end, label };
   }
 
+  // per-category USD totals for one sign of transaction ('spend' = outflow, 'earn' = inflow)
+  // within [start, end) — shared by the inline spending list and both period-breakdown modals
+  function categoryTotalsForPeriod(kind, start, end){
+    const totals = {};
+    (state.finance.accounts||[]).forEach(a=>{
+      (a.transactions||[]).forEach(tx=>{
+        if(isTransferTx(tx)) return; // moving money between your own accounts is neither spending nor earning
+        const isEarn = tx.amount >= 0;
+        if((kind==='spend') === isEarn) return;
+        const d = new Date(tx.createdAt);
+        if(d < start || d >= end) return;
+        const cat = tx.category || 'Other';
+        const usd = Math.abs(convertAmt(tx.amount, a.currency||'USD', 'USD'));
+        totals[cat] = (totals[cat]||0) + usd;
+      });
+    });
+    return totals;
+  }
+
+  // updates the period toggle/nav row and the two top-of-tab totals; the actual category
+  // breakdown only lives in the on-demand modals now (see openPeriodBreakdownModal()) — the
+  // inline per-category list under Accounts was removed as redundant with those modals
   function renderSpendBreakdown(){
-    const list = el('spendBreakdownList'); if(!list) return;
-    list.innerHTML = '';
     const zoomRow = el('spendPeriodRow');
     if(zoomRow){
       zoomRow.innerHTML = SPEND_PERIODS.map(p=>
@@ -222,27 +242,34 @@
       el('spendPeriodPrevBtn').addEventListener('click', ()=>{ spendPeriodOffset++; renderSpendBreakdown(); });
       el('spendPeriodNextBtn').addEventListener('click', ()=>{ if(spendPeriodOffset>0){ spendPeriodOffset--; renderSpendBreakdown(); } });
     }
-    const totals = {};
-    let earningsUsd = 0;
-    (state.finance.accounts||[]).forEach(a=>{
-      (a.transactions||[]).forEach(tx=>{
-        if(isTransferTx(tx)) return; // moving money between your own accounts is neither spending nor earning
-        const d = new Date(tx.createdAt);
-        if(d < start || d >= end) return;
-        if(tx.amount >= 0){
-          earningsUsd += convertAmt(tx.amount, a.currency||'USD', 'USD');
-          return;
-        }
-        const cat = tx.category || 'Other';
-        const usd = Math.abs(convertAmt(tx.amount, a.currency||'USD', 'USD'));
-        totals[cat] = (totals[cat]||0) + usd;
-      });
-    });
+    const earningsUsd = Object.values(categoryTotalsForPeriod('earn', start, end)).reduce((sum,usd)=>sum+usd, 0);
     el('spendEarningsTotal').textContent = fmtMoney(convertAmt(earningsUsd,'USD',nwCcy), nwCcy);
+    const spendingUsd = Object.values(categoryTotalsForPeriod('spend', start, end)).reduce((sum,usd)=>sum+usd, 0);
+    el('spendBreakdownTotal').textContent = fmtMoney(convertAmt(spendingUsd,'USD',nwCcy), nwCcy);
+  }
+
+  /* ---- period breakdown modal — opened by clicking "Total Earnings/Spending This Period";
+     same category rows as the inline spending list, just for whichever sign was clicked ---- */
+  let periodBreakdownKind = 'spend';
+  function openPeriodBreakdownModal(kind){
+    periodBreakdownKind = kind;
+    populatePeriodBreakdownModal();
+    el('periodBreakdownOverlay').style.display = 'flex';
+  }
+  function closePeriodBreakdownModal(){ el('periodBreakdownOverlay').style.display = 'none'; }
+  function populatePeriodBreakdownModal(){
+    const kind = periodBreakdownKind;
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    const { start, end, label } = spendPeriodRange(spendPeriod, spendPeriodOffset, new Date());
+    const titleEl = el('periodBreakdownTitle');
+    titleEl.textContent = (kind==='spend' ? 'Spending' : 'Earnings') + ' by Category — ' + label;
+    // the shared .struggle-overlay-title class is red by default (borrowed from the struggling-
+    // tasks panel) — neither spending nor earnings is a warning, so override it to blue here
+    titleEl.style.color = 'var(--blue)';
+    const totals = categoryTotalsForPeriod(kind, start, end);
     const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
-    el('spendBreakdownEmpty').style.display = entries.length ? 'none' : 'block';
-    const totalUsd = entries.reduce((sum,[,usd])=>sum+usd, 0);
-    el('spendBreakdownTotal').textContent = fmtMoney(convertAmt(totalUsd,'USD',nwCcy), nwCcy);
+    const list = el('periodBreakdownList'); list.innerHTML = '';
+    el('periodBreakdownEmpty').style.display = entries.length ? 'none' : 'block';
     const maxUsd = entries.length ? entries[0][1] : 0;
     entries.forEach(([cat, usd])=>{
       const pct = maxUsd>0 ? Math.round((usd/maxUsd)*100) : 0;
@@ -251,18 +278,31 @@
       row.innerHTML = '<div class="spend-cat-name">'+escapeHtml(cat)+'</div>'
         + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
         + '<div class="spend-cat-amt">'+fmtMoney(convertAmt(usd,'USD',nwCcy), nwCcy)+'</div>';
-      row.addEventListener('click', ()=> openSpendCategoryDetail(cat, start, end, label));
+      row.addEventListener('click', ()=>{
+        // close this modal first — two struggle-overlay panels stacked at the same z-index would
+        // otherwise paint in DOM order, not open order, hiding the detail popup behind this one
+        closePeriodBreakdownModal();
+        openCategoryDetail(cat, start, end, label, kind);
+      });
       list.appendChild(row);
     });
   }
+  el('spendEarningsStat').addEventListener('click', ()=> openPeriodBreakdownModal('earn'));
+  el('spendBreakdownStat').addEventListener('click', ()=> openPeriodBreakdownModal('spend'));
+  el('periodBreakdownCloseBtn').addEventListener('click', closePeriodBreakdownModal);
+  el('periodBreakdownOverlay').addEventListener('click', e=>{ if(e.target === el('periodBreakdownOverlay')) closePeriodBreakdownModal(); });
 
-  /* ---- spend category drill-down: every outflow transaction behind one category/period cell ---- */
-  function openSpendCategoryDetail(cat, start, end, periodLabel){
-    el('spendCategoryTitle').textContent = cat+' — '+periodLabel;
+  /* ---- category drill-down: every transaction (outflow or inflow) behind one category/period cell ---- */
+  function openCategoryDetail(cat, start, end, periodLabel, kind){
+    kind = kind || 'spend';
+    const titleEl = el('spendCategoryTitle');
+    titleEl.textContent = cat+' — '+periodLabel;
+    titleEl.style.color = 'var(--blue)'; // same override as the period-breakdown modal — not a warning
     const rows = [];
     (state.finance.accounts||[]).forEach(a=>{
       (a.transactions||[]).forEach(tx=>{
-        if(tx.amount >= 0) return;
+        const isEarn = tx.amount >= 0;
+        if((kind==='spend') === isEarn) return;
         if(isTransferTx(tx)) return;
         if((tx.category || 'Other') !== cat) return;
         const d = new Date(tx.createdAt);
@@ -275,13 +315,14 @@
     if(!rows.length){
       listEl.innerHTML = '<div style="font-size:12px;color:var(--faint);padding:6px 0;">No transactions in this period.</div>';
     } else {
-      listEl.innerHTML = rows.map(({tx, account})=>
-        '<div class="tx-row">'
+      listEl.innerHTML = rows.map(({tx, account})=>{
+        const isPos = tx.amount >= 0;
+        return '<div class="tx-row">'
           + '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
           + '<span class="tx-note">'+escapeHtml(tx.note||'')+' <span class="chip">'+escapeHtml(account.name)+'</span></span>'
-          + '<span class="tx-amt negative">-'+fmtMoney(Math.abs(tx.amount), account.currency||'USD')+'</span>'
-        + '</div>'
-      ).join('');
+          + '<span class="tx-amt '+(isPos?'positive':'negative')+'">'+(isPos?'+':'-')+fmtMoney(Math.abs(tx.amount), account.currency||'USD')+'</span>'
+        + '</div>';
+      }).join('');
     }
     el('spendCategoryOverlay').style.display = 'flex';
   }
@@ -774,5 +815,32 @@
   document.querySelectorAll('.finance-subnav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> showFinanceSubTab(btn.dataset.fintab));
   });
+
+  // the sub-nav scrolls horizontally (overflow-x:auto, scrollbar hidden) when it doesn't fit —
+  // dragging across it with the mouse otherwise still fires a native click on whatever button
+  // the pointer happens to release over, switching tabs unintentionally mid-drag
+  (function(){
+    const nav = document.querySelector('.finance-subnav'); if(!nav) return;
+    let dragging = false, dragged = false, startX = 0, startScroll = 0;
+    nav.addEventListener('pointerdown', e=>{
+      if(e.pointerType === 'mouse' && e.button !== 0) return;
+      dragging = true; dragged = false;
+      startX = e.clientX; startScroll = nav.scrollLeft;
+    });
+    nav.addEventListener('pointermove', e=>{
+      if(!dragging) return;
+      const dx = e.clientX - startX;
+      if(Math.abs(dx) > 6) dragged = true;
+      if(e.pointerType === 'mouse') nav.scrollLeft = startScroll - dx; // touch/pen already scroll natively
+    });
+    const stopDragging = ()=>{ dragging = false; };
+    nav.addEventListener('pointerup', stopDragging);
+    nav.addEventListener('pointercancel', stopDragging);
+    nav.addEventListener('pointerleave', stopDragging);
+    nav.addEventListener('click', e=>{
+      if(dragged){ e.stopPropagation(); e.preventDefault(); dragged = false; }
+    }, true);
+  })();
+
   populateCurrencySelects();
 

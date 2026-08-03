@@ -797,11 +797,6 @@
 
   /* finance */
   .finance-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px;}
-  /* accounts list (left) side by side with spending-by-category (right) — same flex-pair
-     pattern as .val-tracker-grid, collapsing to stacked columns on narrow screens */
-  .finance-accounts-grid{display:flex;gap:22px;align-items:flex-start;}
-  .finance-accounts-col{flex:1;min-width:0;}
-  .finance-spending-col{flex:1;min-width:0;padding-left:22px;border-left:1px solid var(--border);}
   .finance-add-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
   .finance-add-row select, .finance-add-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
   .finance-add-row input[type=text]{flex:2;min-width:140px;}
@@ -1159,8 +1154,6 @@
     .fitness-results{grid-template-columns:repeat(2,1fr);}
     .val-tracker-grid{flex-direction:column;align-items:stretch;}
     .val-tracker-wishlist-col{padding-left:0;padding-top:16px;border-left:none;border-top:1px solid var(--border);}
-    .finance-accounts-grid{flex-direction:column;align-items:stretch;}
-    .finance-spending-col{padding-left:0;padding-top:16px;border-left:none;border-top:1px solid var(--border);}
     .val-tracker-card{padding:14px;}
     .val-store-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;}
     .val-store-item-img{padding:10px 6px 4px;min-height:56px;}

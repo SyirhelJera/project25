@@ -167,8 +167,8 @@
       <div class="chart-zoom-row" id="spendPeriodRow"></div>
       <div class="spend-period-nav-row" id="spendPeriodNavRow"></div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
-        <div class="stat" style="cursor:default;max-width:220px;"><div class="num" id="spendEarningsTotal">$0</div><div class="lbl">Total Earnings This Period</div></div>
-        <div class="stat" style="cursor:default;max-width:220px;"><div class="num" id="spendBreakdownTotal">$0</div><div class="lbl">Total Spending This Period</div></div>
+        <div class="stat" id="spendEarningsStat" style="max-width:220px;" title="Click to see the breakdown by category"><div class="num" id="spendEarningsTotal">$0</div><div class="lbl">Total Earnings This Period</div></div>
+        <div class="stat" id="spendBreakdownStat" style="max-width:220px;" title="Click to see the breakdown by category"><div class="num" id="spendBreakdownTotal">$0</div><div class="lbl">Total Spending This Period</div></div>
       </div>
 
       <div class="section-lbl">Net Worth Trend</div>
@@ -184,19 +184,10 @@
 
     <!-- ACCOUNTS -->
     <div class="fintab" id="fintab-accounts">
-      <div class="finance-accounts-grid">
-        <div class="finance-accounts-col">
-          <div id="financeList"></div>
-          <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one below</b> to start tracking your net worth.</div>
-          <div class="finance-add-row" style="justify-content:flex-end;">
-            <button class="btn btn-primary" id="openAddAccountBtn" type="button">+ Add Account</button>
-          </div>
-        </div>
-        <div class="finance-spending-col">
-          <div class="section-lbl" style="margin-top:0;">Spending by Category</div>
-          <div id="spendBreakdownList"></div>
-          <div class="empty" id="spendBreakdownEmpty" style="display:none;">No spending logged in this period yet.</div>
-        </div>
+      <div id="financeList"></div>
+      <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one below</b> to start tracking your net worth.</div>
+      <div class="finance-add-row" style="justify-content:flex-end;">
+        <button class="btn btn-primary" id="openAddAccountBtn" type="button">+ Add Account</button>
       </div>
     </div>
 
@@ -258,6 +249,18 @@
         <button class="btn btn-ghost btn-sm" id="spendCategoryCloseBtn" type="button">Close</button>
       </div>
       <div id="spendCategoryList"></div>
+    </div>
+  </div>
+
+  <!-- PERIOD BREAKDOWN — opened by clicking "Total Earnings/Spending This Period" -->
+  <div id="periodBreakdownOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title" id="periodBreakdownTitle"></div>
+        <button class="btn btn-ghost btn-sm" id="periodBreakdownCloseBtn" type="button">Close</button>
+      </div>
+      <div id="periodBreakdownList"></div>
+      <div class="empty" id="periodBreakdownEmpty" style="display:none;">No transactions in this period yet.</div>
     </div>
   </div>
 

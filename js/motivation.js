@@ -5,7 +5,7 @@
   let motivationUnlocked = false; // session-only — re-locks on every fresh page load
   let motivationUnlockedCats = {}; // { [categoryId]: true } — session-only per-category unlocks
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
-  const MOTIVATION_INTERVAL_MS = 5000;
+  const MOTIVATION_LOOP_MS = 15000; // a full category loop always takes this long, so each photo's share shrinks as more are added
 
   function activeMotivationCategory(){
     return state.motivation.categories[motivationActiveCatIdx] || null;
@@ -207,7 +207,7 @@
   function startMotivationSlideshow(){
     clearInterval(motivationTimer);
     const cat = activeMotivationCategory();
-    motivationTimer = (cat && cat.images.length > 1) ? setInterval(nextMotivationImage, MOTIVATION_INTERVAL_MS) : null;
+    motivationTimer = (cat && cat.images.length > 1) ? setInterval(nextMotivationImage, MOTIVATION_LOOP_MS / cat.images.length) : null;
   }
   function stopMotivationSlideshow(){ clearInterval(motivationTimer); motivationTimer = null; }
 

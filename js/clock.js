@@ -191,7 +191,7 @@
       + '<path id="clockPastOverlayRing" fill="#05060C" fill-opacity="0.6"></path>'
       + '<line id="clockHourHand" x1="100" y1="100" x2="100" y2="60" stroke="#F5F7FF" stroke-width="5" stroke-linecap="round"></line>'
       + '<line id="clockMinuteHand" x1="100" y1="100" x2="100" y2="41" stroke="#F5F7FF" stroke-width="3.2" stroke-linecap="round"></line>'
-      + '<line id="clockSecondHand" x1="100" y1="115" x2="100" y2="33" stroke="#FBBF24" stroke-width="1.4" stroke-linecap="round"></line>'
+      + '<line id="clockSecondHand" x1="100" y1="115" x2="100" y2="33" stroke="#EF4444" stroke-width="1.4" stroke-linecap="round"></line>'
       + '<circle cx="100" cy="100" r="4.5" fill="#FBBF24" stroke="#171A28" stroke-width="1.5"></circle>';
     updateClockPastOverlay(now);
   }

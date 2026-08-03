@@ -170,12 +170,14 @@
     motivationSlideIdx[cat.id] = (motivationSlideIdx[cat.id] || 0) + 1;
     showMotivationSlide(true);
     startMotivationSlideshow();
+    rerollMantra();
   }
   function goToMotivationImage(idx){
     const cat = activeMotivationCategory(); if(!cat) return;
     motivationSlideIdx[cat.id] = idx;
     showMotivationSlide(true);
     startMotivationSlideshow();
+    rerollMantra();
   }
 
   function toggleMotivationCategoryPinnedFirst(){
@@ -320,7 +322,6 @@
   el('motivationGlowWrap').addEventListener('click', ()=>{
     if(motivationSuppressClick) return;
     nextMotivationImage();
-    rerollMantra();
   });
   // Sits on top of the slideshow image (z-index above it) so this click never also reaches
   // motivationGlowWrap's reroll/advance handler underneath.

@@ -14,6 +14,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Tracks competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
+| **Wishlist** | Things you want to buy — name, cost, and an optional picture per item, shown as a card grid. |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
 | **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks), and backup restore. |
@@ -83,6 +84,22 @@ state = {
              progressPhotos:[{id,filename,driveFileId,driveViewLink,uploadedAt}] },
                                        // progressPhotos holds only Drive metadata — the photo
                                        // itself is uploaded to Google Drive, never stored in state
+  wishlist: [ {id,name,cost,contributions:[{id,amount,createdAt}],imageUrl,favorite,bought,createdAt} ],
+                                       // imageUrl: same Storage-URL scheme as goals.imageUrl above.
+                                       // contributions is logged via "+ Add Funds" in the detail
+                                       // modal (click a card — renderWishlistDetail() in
+                                       // wishlist.js), same shape as finance.moneyGoals'
+                                       // contributions above. cost/saved are always shown in
+                                       // Settings' Net Worth Display Currency (state.profile.
+                                       // netWorthCurrency), not a per-item currency. favorite pins
+                                       // a card to the top of its section (star, upper-left).
+                                       // "funded" (contributions total >= cost) and "bought"
+                                       // (explicitly marked via the modal) are distinct states —
+                                       // an item can be funded without being bought yet, or bought
+                                       // without ever being funded through this app. Cards land in
+                                       // one of three sections: active, then a collapsible "Funded"
+                                       // group, then a collapsible "Bought" group — see
+                                       // renderWishlist()/appendWishlistSection() in wishlist.js.
   valorant: { apiKey, accounts:[{id,name,tag,region,platform,current,history:[...],...}], selectedAccountId,
               dailyStores: { [label]: {checkedAt,items,bundle,error} },
               ownedSkins: { [label]: {checkedAt,skins:[{uuid,name,imageUrl,tierName,tierRank,weaponType}],error} },

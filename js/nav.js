@@ -18,6 +18,7 @@
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
+      if(t.dataset.tab==='wishlist') renderWishlist();
     });
   });
 

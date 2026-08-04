@@ -235,6 +235,20 @@
     if(!Array.isArray(state.clock.blocks)) state.clock.blocks = [];
     state.clock.blocks.forEach(b=>{ if(b.color===undefined) b.color = ''; if(b.emoji===undefined) b.emoji = ''; });
 
+    state.wishlist = parsed.wishlist || [];
+    state.wishlist.forEach(w=>{
+      if(w.imageUrl===undefined) w.imageUrl = '';
+      if(w.createdAt===undefined) w.createdAt = Date.now();
+      if(w.contributions===undefined){
+        // upgrade from the old flat "saved" number into an equivalent first contribution entry —
+        // same pattern as finance.moneyGoals' saved->contributions migration above
+        w.contributions = (w.saved && parseFloat(w.saved)>0) ? [{ id:uid(), amount:parseFloat(w.saved), createdAt:w.createdAt||Date.now() }] : [];
+      }
+      delete w.saved;
+      if(w.favorite===undefined) w.favorite = false;
+      if(w.bought===undefined) w.bought = false;
+    });
+
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     // avatarImage/avatarGeneratedAt/race/skinTone/hairColor/hairStyle/eyeColor/clothing/background:

@@ -179,6 +179,7 @@
   .nav-item[data-tab="valorant"] svg{color:var(--danger);}
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
+  .nav-item[data-tab="wishlist"] svg{color:var(--pink);}
   .nav-item[data-tab="mantras"] svg{color:var(--violet);}
   .nav-item[data-tab="motivation"] svg{color:var(--orange);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
@@ -823,6 +824,11 @@
     #view-countdowns .add-row input#newCdName{flex:1 1 auto !important;min-width:0;}
     #view-countdowns .add-row input#newCdDate{flex:0 0 auto !important;width:128px;}
     #view-countdowns .add-row .btn{flex:none !important;white-space:nowrap;}
+    #view-wishlist .add-row{flex-wrap:nowrap;}
+    #view-wishlist .add-row input, #view-wishlist .add-row .btn{flex:unset !important;width:auto;}
+    #view-wishlist .add-row input#newWishlistName{flex:1 1 auto !important;min-width:0;}
+    #view-wishlist .add-row input#newWishlistCost{flex:0 0 auto !important;width:78px;}
+    #view-wishlist .add-row .btn{flex:none !important;white-space:nowrap;}
     .cd-card{flex-wrap:wrap;}
     .motivation-slideshow, #motivationCatEmpty, #motivationCatLock{aspect-ratio:3/4;max-height:60vh;border-radius:14px;}
     .motivation-thumb{width:60px;height:60px;}
@@ -900,6 +906,64 @@
   .rate-cell{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;}
   .rate-cell label{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:4px;}
   .rate-cell input{width:100%;background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;box-sizing:border-box;}
+
+  /* wishlist (see renderWishlist()/renderWishlistDetail() in wishlist.js) — card grid where the
+     whole card opens the detail modal (image upload, rename, editing cost, funds history all live
+     there); .mini-track/.mini-fill are shared with the Finance money-goals progress bar. */
+  .wishlist-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:14px;}
+  /* funded/bought items collapse into their own sections at the bottom of the grid (see
+     appendWishlistSection() in wishlist.js) — these span every column of the outer #wishlistList
+     grid instead of sitting in one cell */
+  .wishlist-section-toggle{grid-column:1/-1;}
+  .wishlist-section-grid{grid-column:1/-1;}
+  .wishlist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;overflow:hidden;display:flex;flex-direction:column;cursor:pointer;transition:transform .16s ease,box-shadow .16s ease;}
+  .wishlist-card:hover{transform:translateY(-3px);box-shadow:0 10px 22px rgba(0,0,0,.25);}
+  .wishlist-card.funded{border-color:var(--success);}
+  .wishlist-card.bought{border-color:var(--violet);}
+  .wishlist-card-img{position:relative;aspect-ratio:1/1;display:flex;align-items:center;justify-content:center;background:var(--surface-alt);overflow:hidden;}
+  .wishlist-card-img img{width:100%;height:100%;object-fit:cover;display:block;}
+  .wishlist-card-placeholder{font-size:34px;opacity:.6;}
+  .wishlist-funded-badge{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:var(--success);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .wishlist-bought-badge{position:absolute;top:8px;right:8px;width:22px;height:22px;border-radius:50%;background:var(--violet);color:#fff;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .wishlist-card-star{position:absolute;top:6px;left:6px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;padding:0;font-size:14px;color:#fff;}
+  .wishlist-card-star.active{color:var(--gold);}
+  .wishlist-card-star:hover{background:rgba(0,0,0,.6);}
+  .wishlist-card-body{display:flex;flex-direction:column;padding-bottom:12px;}
+  .wishlist-card-name{font-size:13px;font-weight:700;padding:10px 12px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .wishlist-card-cost{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;color:var(--violet-dark);padding:2px 12px 0;}
+  .wishlist-card-progress-row{display:flex;align-items:center;gap:8px;padding:8px 12px 0;}
+  .wishlist-card-saved{font-size:10.5px;color:var(--faint);padding:4px 12px 0;}
+  .wishlist-funded-tag{color:var(--success);font-weight:700;}
+  .wishlist-bought-tag{color:var(--violet-dark);font-weight:700;}
+
+  /* wishlist detail modal — a photo banner (the item's own picture, click to change; a plain
+     placeholder when there isn't one yet) instead of a fixed accent color, so the header always
+     matches the theme rather than fighting it. Editable fields + funds history sit below it,
+     styled the same as the rest of the app (violet accent for money figures, .mini-track/.mini-fill
+     for progress — shared with the Finance money-goals bar). */
+  .wishlist-detail-card{padding:0;max-width:420px;}
+  .wishlist-hero{position:relative;}
+  .wishlist-hero-photo{cursor:pointer;width:100%;aspect-ratio:16/9;border-radius:18px 18px 0 0;overflow:hidden;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;}
+  .wishlist-hero-photo img{width:100%;height:100%;object-fit:cover;display:block;}
+  .wishlist-hero-placeholder{font-size:40px;opacity:.5;}
+  .wishlist-hero-close{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:50%;border:none;background:rgba(0,0,0,.4);color:#fff;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .wishlist-hero-close:hover{background:rgba(0,0,0,.6);}
+  .wishlist-hero-name-input{display:block;width:100%;box-sizing:border-box;background:transparent;border:none;outline:none;color:var(--text);font-size:16px;font-weight:800;font-family:'Manrope',sans-serif;padding:4px 0;border-bottom:1px solid transparent;}
+  .wishlist-hero-name-input:focus{border-bottom-color:var(--violet);}
+  .wishlist-hero-amount-row{display:flex;align-items:baseline;justify-content:center;gap:2px;margin-top:4px;}
+  .wishlist-hero-symbol{font-size:20px;font-weight:800;color:var(--violet-dark);}
+  .wishlist-hero-amount-input{width:140px;background:transparent;border:none;outline:none;color:var(--violet-dark);font-family:'Manrope',sans-serif;font-size:32px;font-weight:800;text-align:center;border-bottom:1px solid transparent;}
+  .wishlist-hero-amount-input:focus{border-bottom-color:var(--violet);}
+  .wishlist-hero-meta{display:flex;justify-content:space-between;font-size:12px;font-weight:700;color:var(--muted);margin-top:10px;}
+  .wishlist-hero-track{margin-top:6px;}
+  .wishlist-bought-row{margin-top:14px;}
+  .wishlist-bought-row .btn{width:100%;}
+  .wishlist-detail-body{padding:16px 20px 20px;}
+  .wishlist-contrib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:8px;margin-top:2px;}
+  .wishlist-contrib-cell{position:relative;background:var(--success-pale);border:1px solid var(--border);border-radius:10px;padding:8px 6px;text-align:center;}
+  .wishlist-contrib-amt{font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;color:var(--success);}
+  .wishlist-contrib-date{font-size:9.5px;color:var(--muted);margin-top:2px;}
+  .wishlist-contrib-del{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35);}
 
   /* fitness */
   .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}

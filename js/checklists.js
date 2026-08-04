@@ -335,7 +335,8 @@
     const c = state.checklists.find(x=>x.id===first.checklistId);
     const it = c && c.items.find(x=>x.id===first.itemId);
     if(!it) return;
-    state.playSession = { combined: true, checklistId: c.id, itemId: it.id, startedAt: Date.now(), durationSec: (it.durationMin||5)*60, sessionStartedAt: Date.now(), log: [], skippedIds: [], queue, totalCt: queue.length+1 };
+    const now = Date.now();
+    state.playSession = { combined: true, checklistId: c.id, itemId: it.id, startedAt: now, durationSec: (it.durationMin||5)*60, sessionStartedAt: now, checklistStartedAt: now, log: [], skippedIds: [], queue, totalCt: queue.length+1 };
     save();
     openPlayOverlay();
   }
@@ -481,11 +482,26 @@
     }
     const nextC = combined ? next.c : c;
     const nextIt = combined ? next.it : next;
+    const movingToNewChecklist = combined && nextC.id !== c.id;
+    const checklistStartedAt = movingToNewChecklist ? Date.now() : (s.checklistStartedAt || sessionStartedAt);
     state.playSession = combined
-      ? { combined: true, checklistId: nextC.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds, queue, totalCt }
+      ? { combined: true, checklistId: nextC.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, checklistStartedAt, log, skippedIds, queue, totalCt }
       : { checklistId: c.id, itemId: nextIt.id, startedAt: Date.now(), durationSec: (nextIt.durationMin||5)*60, sessionStartedAt, log, skippedIds };
     save();
-    if(combined && nextC.id !== c.id) showPlayCheckpoint(c, log);
+    if(movingToNewChecklist){
+      // the "This checklist" mini-bar stays visible behind the checkpoint recap, but
+      // renderPlayOverlay() (which recomputes it) isn't called again until Continue is
+      // pressed — and by then playSession already points at the *next* checklist. Without
+      // this, the bar sits at whatever % it was on before the just-finished item, so a
+      // checklist that just hit 100% never visibly shows it until the following checklist
+      // is already underway.
+      const clDoneCt = c.items.filter(i=>i.done).length;
+      const clPct = c.items.length ? Math.round((clDoneCt/c.items.length)*100) : 0;
+      el('playChecklistProgressFill').style.width = clPct+'%';
+      el('playChecklistProgressPct').textContent = clPct+'%';
+      const finishedElapsedSec = Math.round((Date.now() - (s.checklistStartedAt || sessionStartedAt))/1000);
+      showPlayCheckpoint(c, log, finishedElapsedSec);
+    }
     else renderPlayOverlay();
   }
 
@@ -509,7 +525,7 @@
   // pit-stop recap between checklists in a combined Dailies session — pauses the timer/interval
   // just like showPlayComplete does, but only for the entries logged against the checklist that
   // just finished (matched via the checklistId stamped on each log entry in advancePlaySession)
-  function showPlayCheckpoint(finishedChecklist, log){
+  function showPlayCheckpoint(finishedChecklist, log, totalSec){
     if(playTimerHandle){ clearInterval(playTimerHandle); playTimerHandle = null; }
     el('playBody').style.display = 'none';
     el('playComplete').style.display = 'none';
@@ -519,7 +535,7 @@
     const doneCt = entries.filter(e=>!e.skipped && !e.failed).length;
     el('playCheckpointMsg').textContent = '🎉 "'+finishedChecklist.name+'" done!';
     const insights = el('playCheckpointInsights');
-    insights.innerHTML = '<div class="play-insight-total">'+doneCt+' of '+entries.length+' tasks done</div>'
+    insights.innerHTML = '<div class="play-insight-total">'+doneCt+' of '+entries.length+' tasks done · '+fmtPlayDuration(totalSec||0)+'</div>'
       + '<div class="play-insight-list">'
       + entries.map(entry=>'<div class="play-insight-row"><span class="play-insight-task">'+escapeHtml(entry.text)+'</span><span class="play-insight-time'+(entry.failed?' play-insight-failed':entry.skipped?' play-insight-skipped':'')+'">'+(entry.failed?'🚫 Failed':entry.skipped?'⏭ Skipped':fmtPlayDuration(entry.elapsedSec))+'</span></div>').join('')
       + '</div>';
@@ -531,7 +547,9 @@
     if(!state.playSession) return;
     el('playCheckpoint').style.display = 'none';
     el('playBody').style.display = '';
-    state.playSession.startedAt = Date.now();
+    const now = Date.now();
+    state.playSession.startedAt = now;
+    state.playSession.checklistStartedAt = now;
     save();
     renderPlayOverlay();
     if(playTimerHandle) clearInterval(playTimerHandle);

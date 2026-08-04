@@ -248,8 +248,11 @@
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
-    state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'' };
-    ['filled','today','empty'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
+    state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
+    ['filled','today','empty','perfect'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
+    if(state.mosaicColors.perfectGlow === undefined) state.mosaicColors.perfectGlow = true;
+    if(state.mosaicColors.perfectStyle === undefined) state.mosaicColors.perfectStyle = 'color';
+    if(state.mosaicColors.perfectEmoji === undefined) state.mosaicColors.perfectEmoji = '⭐';
     state.dailyActivity = parsed.dailyActivity || {};
     state.protectedDays = parsed.protectedDays || [];
     state.protectedDays.forEach(p=>{

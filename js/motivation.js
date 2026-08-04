@@ -5,8 +5,7 @@
   let motivationUnlocked = false; // session-only — re-locks on every fresh page load
   let motivationUnlockedCats = {}; // { [categoryId]: true } — session-only per-category unlocks
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
-  const MOTIVATION_LOOP_MS = 15000; // a full category loop always takes this long, so each photo's share shrinks as more are added
-  const MOTIVATION_MIN_SLIDE_MS = 800; // floor per photo — keeps large categories from turning into a rapid-fire flicker of preloads
+  const MOTIVATION_INTERVAL_MS = 5000;
 
   function activeMotivationCategory(){
     return state.motivation.categories[motivationActiveCatIdx] || null;
@@ -171,14 +170,12 @@
     motivationSlideIdx[cat.id] = (motivationSlideIdx[cat.id] || 0) + 1;
     showMotivationSlide(true);
     startMotivationSlideshow();
-    rerollMantra();
   }
   function goToMotivationImage(idx){
     const cat = activeMotivationCategory(); if(!cat) return;
     motivationSlideIdx[cat.id] = idx;
     showMotivationSlide(true);
     startMotivationSlideshow();
-    rerollMantra();
   }
 
   function toggleMotivationCategoryPinnedFirst(){
@@ -210,7 +207,7 @@
   function startMotivationSlideshow(){
     clearInterval(motivationTimer);
     const cat = activeMotivationCategory();
-    motivationTimer = (cat && cat.images.length > 1) ? setInterval(nextMotivationImage, Math.max(MOTIVATION_MIN_SLIDE_MS, MOTIVATION_LOOP_MS / cat.images.length)) : null;
+    motivationTimer = (cat && cat.images.length > 1) ? setInterval(nextMotivationImage, MOTIVATION_INTERVAL_MS) : null;
   }
   function stopMotivationSlideshow(){ clearInterval(motivationTimer); motivationTimer = null; }
 
@@ -323,6 +320,7 @@
   el('motivationGlowWrap').addEventListener('click', ()=>{
     if(motivationSuppressClick) return;
     nextMotivationImage();
+    rerollMantra();
   });
   // Sits on top of the slideshow image (z-index above it) so this click never also reaches
   // motivationGlowWrap's reroll/advance handler underneath.

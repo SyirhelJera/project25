@@ -777,6 +777,35 @@
     </div>
     <button class="btn btn-ghost btn-sm" id="mosaicColorResetBtn" type="button" style="margin-top:10px;">Reset to theme default</button>
 
+    <div class="section-lbl" style="margin-top:22px;">Perfect Days</div>
+    <div class="view-sub" style="margin-bottom:6px;">Days where every "dailies" checklist item was completed stand out on the mosaic above.</div>
+    <div class="unit-toggle" id="perfectGlowToggle">
+      <button data-glow="on" id="perfectGlowBtnOn" type="button">Highlight on</button>
+      <button data-glow="off" id="perfectGlowBtnOff" type="button">Highlight off</button>
+    </div>
+    <div class="fitness-fields" id="perfectStyleFields" style="margin-top:10px;">
+      <div class="fitness-field">
+        <label>Style</label>
+        <select id="perfectStyleSelect">
+          <option value="color">Solid color</option>
+          <option value="outline">Outline</option>
+          <option value="rainbow">Rainbow</option>
+          <option value="golden">Golden shimmer</option>
+          <option value="emoji">Emoji</option>
+        </select>
+      </div>
+      <div class="fitness-field" id="perfectColorField"><label>Color</label><input type="color" id="mcPerfectInput"></div>
+      <div class="fitness-field" id="perfectEmojiField"><label>Emoji</label><input type="text" id="perfectEmojiInput" maxlength="4" style="width:60px;text-align:center;"></div>
+    </div>
+    <div class="swatches" id="perfectEmojiPresets">
+      <div class="emoji-swatch" data-emoji="⭐" title="⭐">⭐</div>
+      <div class="emoji-swatch" data-emoji="✨" title="✨">✨</div>
+      <div class="emoji-swatch" data-emoji="🌈" title="🌈">🌈</div>
+      <div class="emoji-swatch" data-emoji="👑" title="👑">👑</div>
+      <div class="emoji-swatch" data-emoji="🔥" title="🔥">🔥</div>
+      <div class="emoji-swatch" data-emoji="💯" title="💯">💯</div>
+    </div>
+
     <div class="section-lbl" style="margin-top:22px;">Profile Avatar</div>
     <div class="view-sub" style="margin-bottom:10px;">Show or hide your avatar on the profile card.</div>
     <div class="unit-toggle" id="avatarVisToggle">

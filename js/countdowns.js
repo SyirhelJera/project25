@@ -35,20 +35,15 @@
     dateKeys.forEach(k=>{ const f = dailyCompletionFraction(k); if(f!==null){ sum+=f; n++; } });
     return n ? sum/n : null;
   }
-  // GitHub-style 0-4 intensity level from a completion fraction
-  function fracToLevel(frac){
-    if(frac===null || frac<=0) return 0;
-    if(frac<=0.25) return 1;
-    if(frac<=0.5) return 2;
-    if(frac<=0.75) return 3;
-    return 4;
-  }
-
   // dot-matrix data for a countdown's pinned widget: one dot per day from creation to target,
   // bucketed down to maxDots for long spans so the grid stays readable. Each elapsed dot also
-  // gets a GitHub-style intensity `level` (0-4) reflecting that day's "dailies" completion (see
-  // recomputeDailyActivity() in checklists.js); future dots get level=null. Pass Infinity as
-  // maxDots to get one real, unbucketed dot per day (used by the expanded mosaic overlay).
+  // gets a completion `pct` (0-100, null for untouched future days) reflecting that day's
+  // "dailies" completion (see recomputeDailyActivity() in checklists.js) — rendered as a
+  // bottom-to-top liquid fill rather than a flat intensity color, see mosaicDotsHtml() in
+  // goals.js. Each dot also gets a `perfect` flag (true only when that dot's day(s) hit 100%)
+  // used to render a distinct color/style instead of the fill — see the Settings → Countdown
+  // Mosaic Colors "Highlight on/off" toggle. Pass Infinity as maxDots to get one real, unbucketed
+  // dot per day (used by the expanded mosaic overlay).
   function mosaicDots(c, maxDots){
     maxDots = maxDots || CD_MOSAIC_MAX_DOTS;
     const start = new Date(c.createdAt); start.setHours(0,0,0,0);
@@ -65,15 +60,21 @@
 
     const todayKey = localDateStr(now);
     const dateKeys = mosaicDotDateKeys(start, totalDays, total);
-    const levels = dateKeys.map((keys, i)=>{
-      if(i === todayIdx) return fracToLevel(dailyCompletionFraction(todayKey));
+    // per-dot completion fraction (null for untouched future days) — drives both the fill-height
+    // percentage and whether that dot counts as a "perfect" (100%) day for the highlight effect
+    const fracs = dateKeys.map((keys, i)=>{
+      if(i === todayIdx) return dailyCompletionFraction(todayKey);
       if(i > filled) return null;
       // exclude today's date from a historical bucket's average so live in-progress data never
       // leaks into an already-elapsed, otherwise-frozen dot
       const pastKeys = keys.filter(k => k !== todayKey);
-      return fracToLevel(bucketFraction(pastKeys.length ? pastKeys : keys));
+      return bucketFraction(pastKeys.length ? pastKeys : keys);
     });
-    return { total, filled, todayIdx, levels };
+    const pcts = fracs.map(f => f===null ? null : Math.max(0, Math.min(100, Math.round(f*100))));
+    // a bucket only reads as perfect if every day inside it was 100% (a partial bucket's average
+    // fraction can never reach 1 unless every component day did)
+    const perfects = fracs.map(f => f !== null && f >= 1);
+    return { total, filled, todayIdx, pcts, perfects };
   }
   function renderCountdowns(){
     const list = el('cdList'); list.innerHTML='';

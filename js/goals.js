@@ -218,16 +218,32 @@
     renderMantra();
   }
 
-  // builds the dot <div>s for a {total,filled,todayIdx,levels} mosaicDots() result — shared by
-  // the compact pinned-countdown mosaic and the expanded overlay (which just passes an uncapped
-  // maxDots so `total` is the real day count instead of the CD_MOSAIC_MAX_DOTS-bucketed one)
-  function mosaicDotsHtml({ total, filled, todayIdx, levels }){
+  // builds the dot <div>s for a {total,filled,todayIdx,pcts,perfects} mosaicDots() result —
+  // shared by the compact pinned-countdown mosaic and the expanded overlay (which just passes an
+  // uncapped maxDots so `total` is the real day count instead of the CD_MOSAIC_MAX_DOTS-bucketed one)
+  function mosaicDotsHtml({ total, filled, todayIdx, pcts, perfects }){
+    // user-editable in Settings → Countdown Mosaic Colors → "Highlight off" disables this entirely
+    const mc = state.mosaicColors || {};
+    const highlightOn = mc.perfectGlow !== false;
+    const style = mc.perfectStyle || 'color';
+    const emoji = mc.perfectEmoji || '⭐';
     let dots = '';
     for(let i=0;i<total;i++){
       let cls = 'cd-mosaic-dot';
-      if(i===todayIdx) cls += ' today level-'+(levels[i]||0);
-      else if(i<filled) cls += ' level-'+(levels[i]||0);
-      dots += '<div class="'+cls+'"></div>';
+      const isToday = i===todayIdx, isPast = i<filled;
+      let attrs = '';
+      if(isToday) cls += ' today';
+      if(isToday || isPast){
+        // liquid bottom-to-top fill instead of a flat intensity color, driven by a CSS custom
+        // property so one gradient rule (see .cd-mosaic-dot.has-fill in styles.css) handles every %
+        cls += ' has-fill';
+        attrs += ' style="--fill-pct:'+(pcts[i]||0)+'%"';
+      }
+      if(highlightOn && perfects && perfects[i] && (isToday || isPast)){
+        cls += ' perfect perfect-'+style;
+        attrs += ' title="Perfect day!"' + (style === 'emoji' ? ' data-emoji="'+escapeHtml(emoji)+'"' : '');
+      }
+      dots += '<div class="'+cls+'"'+attrs+'></div>';
     }
     return dots;
   }

@@ -11,8 +11,12 @@
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
-    // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default"
-    mosaicColors: { filled:'', today:'', empty:'' },
+    // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
+    // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;
+    // perfectStyle picks how ('color' solid fill / 'rainbow' / 'golden' shimmer / 'emoji' overlay);
+    // perfect is the 'color' style's color override (empty = theme default gold); perfectEmoji is
+    // the 'emoji' style's chosen emoji
+    mosaicColors: { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' },
     // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —
     // drives the mosaic's GitHub-style intensity coloring; see recomputeDailyActivity()
     dailyActivity: {},

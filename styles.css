@@ -618,12 +618,58 @@
   .pinned-cd-row .pinned-cd-num{font-size:26px;}
   .cd-mosaic{flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(9px,1fr));gap:4px;cursor:pointer;}
   .cd-mosaic-dot{aspect-ratio:1;border-radius:50%;background:var(--cd-dot-empty, var(--border));}
-  .cd-mosaic-dot.level-1{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 25%, var(--cd-dot-empty, var(--border)));}
-  .cd-mosaic-dot.level-2{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 50%, var(--cd-dot-empty, var(--border)));}
-  .cd-mosaic-dot.level-3{background:color-mix(in srgb, var(--cd-dot-filled, var(--violet)) 75%, var(--cd-dot-empty, var(--border)));}
-  .cd-mosaic-dot.level-4{background:var(--cd-dot-filled, var(--violet));}
-  .cd-mosaic-dot.today{animation:cdDotBlink 1.3s ease-in-out infinite;}
+  /* liquid bottom-to-top fill: a hard-stop gradient at --fill-pct (set inline per dot in
+     mosaicDotsHtml()) instead of a flat intensity color, so partial completion visibly "fills up"
+     the circle rather than just tinting it. border-radius clips the gradient to the dot's shape. */
+  .cd-mosaic-dot.has-fill{
+    background:linear-gradient(to top,
+      var(--cd-dot-filled, var(--violet)) 0%, var(--cd-dot-filled, var(--violet)) var(--fill-pct, 0%),
+      var(--cd-dot-empty, var(--border)) var(--fill-pct, 0%), var(--cd-dot-empty, var(--border)) 100%);
+  }
+  /* will-change promotes this to its own compositor layer so the blink (opacity/box-shadow) is
+     composited rather than repainting the fill gradient underneath every frame — without it, the
+     hard-stop edge in .has-fill's gradient can shimmer as it's repainted each animation tick. */
+  .cd-mosaic-dot.today{animation:cdDotBlink 1.3s ease-in-out infinite;will-change:opacity;}
   @keyframes cdDotBlink{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,0,0,0);}50%{opacity:.45;box-shadow:0 0 5px 2px var(--cd-dot-today, var(--gold));}}
+  /* "perfect" days (100% of that day's dailies completed) get a distinct treatment instead of the
+     fill — style chosen in Settings → Countdown Mosaic Colors. Each .perfect-* rule must come
+     after .has-fill (same specificity) so it wins the cascade and overrides it; the .today combos
+     need explicit higher-specificity selectors since .today
+     already claims the `animation` property for its own blink. */
+  .cd-mosaic-dot.perfect-color{background:var(--cd-dot-perfect, var(--gold));}
+
+  /* leaves the dot's own fill untouched and just rings it — uses `outline` (not box-shadow) so it
+     never fights with .today's animated box-shadow glow, no combo selector needed */
+  .cd-mosaic-dot.perfect-outline{outline:1.5px solid var(--cd-dot-perfect, var(--gold));outline-offset:1px;}
+
+  /* spins via transform (compositor-only, no repaint per frame) rather than an animated `filter`
+     — animating `filter` on a tiny border-radius-clipped element forces a full repaint of the
+     clipped edge every frame, which visibly flickers/strobes on a dot this small. */
+  .cd-mosaic-dot.perfect-rainbow{
+    background:conic-gradient(from 0deg, #ff3b3b, #ff9d3b, #ffe83b, #6bff3b, #3bffe8, #3b6bff, #a13bff, #ff3b9d, #ff3b3b);
+    animation:cdDotSpin 3s linear infinite;
+    will-change:transform;
+  }
+  .cd-mosaic-dot.today.perfect-rainbow{animation:cdDotBlink 1.3s ease-in-out infinite, cdDotSpin 3s linear infinite;}
+  @keyframes cdDotSpin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+
+  .cd-mosaic-dot.perfect-golden{
+    background:linear-gradient(120deg, #7a5b00, #ffd700, #fff6c8, #ffd700, #7a5b00);
+    background-size:220% 220%;
+    animation:cdDotGolden 2.4s ease-in-out infinite;
+  }
+  .cd-mosaic-dot.today.perfect-golden{animation:cdDotBlink 1.3s ease-in-out infinite, cdDotGolden 2.4s ease-in-out infinite;}
+  @keyframes cdDotGolden{0%,100%{background-position:0% 50%;}50%{background-position:100% 50%;}}
+
+  .cd-mosaic-dot.perfect-emoji{
+    background:transparent;
+    display:flex;align-items:center;justify-content:center;
+    container-type:inline-size;
+  }
+  .cd-mosaic-dot.perfect-emoji::after{content:attr(data-emoji);font-size:85cqw;line-height:1;}
+
+  .emoji-swatch{width:28px;height:28px;border-radius:8px;cursor:pointer;border:2px solid transparent;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;font-size:15px;}
+  .emoji-swatch.selected{border-color:var(--violet);}
 
   /* expanded mosaic overlay — one real dot per day, no bucketing; click the mini mosaic to open,
      click the backdrop (outside the card) to close */

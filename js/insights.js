@@ -6,11 +6,24 @@
   // color inputs need a concrete hex to display even when uncustomized — shows the current
   // theme's actual color in that case, without writing anything to state.mosaicColors
   function renderMosaicColorInputs(){
-    if(!state.mosaicColors) state.mosaicColors = { filled:'', today:'', empty:'' };
+    if(!state.mosaicColors) state.mosaicColors = { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
     const mc = state.mosaicColors;
     el('mcFilledInput').value = mc.filled || computedVarHex('--violet');
     el('mcTodayInput').value = mc.today || computedVarHex('--gold');
     el('mcEmptyInput').value = mc.empty || computedVarHex('--border');
+    el('mcPerfectInput').value = mc.perfect || computedVarHex('--gold');
+    document.querySelectorAll('#perfectGlowToggle [data-glow]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.glow === 'on') === (mc.perfectGlow !== false));
+    });
+    const style = mc.perfectStyle || 'color';
+    el('perfectStyleSelect').value = style;
+    el('perfectColorField').style.display = (style === 'color' || style === 'outline') ? '' : 'none';
+    el('perfectEmojiField').style.display = style === 'emoji' ? '' : 'none';
+    el('perfectEmojiPresets').style.display = style === 'emoji' ? '' : 'none';
+    el('perfectEmojiInput').value = mc.perfectEmoji || '⭐';
+    document.querySelectorAll('#perfectEmojiPresets .emoji-swatch').forEach(b=>{
+      b.classList.toggle('selected', b.dataset.emoji === (mc.perfectEmoji || '⭐'));
+    });
   }
 
   // moves each .nav-item into state.tabOrder's order (tabs missing from a stale saved order —
@@ -137,9 +150,50 @@
       el('mcFilledInput').addEventListener('input', ()=>{ state.mosaicColors.filled = el('mcFilledInput').value; applyMosaicColors(); debouncedSave(); });
       el('mcTodayInput').addEventListener('input', ()=>{ state.mosaicColors.today = el('mcTodayInput').value; applyMosaicColors(); debouncedSave(); });
       el('mcEmptyInput').addEventListener('input', ()=>{ state.mosaicColors.empty = el('mcEmptyInput').value; applyMosaicColors(); debouncedSave(); });
+      el('mcPerfectInput').addEventListener('input', ()=>{ state.mosaicColors.perfect = el('mcPerfectInput').value; applyMosaicColors(); debouncedSave(); });
       el('mosaicColorResetBtn').addEventListener('click', ()=>{
-        state.mosaicColors = { filled:'', today:'', empty:'' };
+        // reset colors only — leaves the perfectGlow on/off toggle alone, that's a separate control
+        state.mosaicColors.filled = ''; state.mosaicColors.today = ''; state.mosaicColors.empty = ''; state.mosaicColors.perfect = '';
         applyMosaicColors(); save(); renderMosaicColorInputs();
+      });
+    }
+    const perfectGlowToggle = el('perfectGlowToggle');
+    if(perfectGlowToggle && !perfectGlowToggle.dataset.wired){
+      perfectGlowToggle.dataset.wired = '1';
+      perfectGlowToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-glow]');
+        if(!btn) return;
+        state.mosaicColors.perfectGlow = btn.dataset.glow === 'on';
+        save(); renderGoals(); renderMosaicColorInputs();
+      });
+    }
+    const perfectStyleSelect = el('perfectStyleSelect');
+    if(perfectStyleSelect && !perfectStyleSelect.dataset.wired){
+      perfectStyleSelect.dataset.wired = '1';
+      perfectStyleSelect.addEventListener('change', ()=>{
+        state.mosaicColors.perfectStyle = perfectStyleSelect.value;
+        save(); renderGoals(); renderMosaicColorInputs();
+      });
+    }
+    const perfectEmojiInput = el('perfectEmojiInput');
+    if(perfectEmojiInput && !perfectEmojiInput.dataset.wired){
+      perfectEmojiInput.dataset.wired = '1';
+      perfectEmojiInput.addEventListener('input', ()=>{
+        state.mosaicColors.perfectEmoji = perfectEmojiInput.value.trim() || '⭐';
+        renderGoals(); debouncedSave();
+        document.querySelectorAll('#perfectEmojiPresets .emoji-swatch').forEach(b=>{
+          b.classList.toggle('selected', b.dataset.emoji === state.mosaicColors.perfectEmoji);
+        });
+      });
+    }
+    const perfectEmojiPresets = el('perfectEmojiPresets');
+    if(perfectEmojiPresets && !perfectEmojiPresets.dataset.wired){
+      perfectEmojiPresets.dataset.wired = '1';
+      perfectEmojiPresets.addEventListener('click', e=>{
+        const btn = e.target.closest('.emoji-swatch');
+        if(!btn) return;
+        state.mosaicColors.perfectEmoji = btn.dataset.emoji;
+        save(); renderGoals(); renderMosaicColorInputs();
       });
     }
   }

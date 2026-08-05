@@ -92,7 +92,7 @@
   body[data-theme="dark"] .habit-streak.streak-t1,body[data-theme="ios-dark"] .habit-streak.streak-t1{background:#3A2413;color:#F0B27A;}
   body[data-theme="dark"] .habit-streak.streak-t2,body[data-theme="ios-dark"] .habit-streak.streak-t2{background:#333750;color:#C7CCF5;}
   body[data-theme="dark"] .habit-streak.streak-t3,body[data-theme="ios-dark"] .habit-streak.streak-t3{background:#3A2F14;color:#FBBF24;}
-  body[data-theme="dark"] .habit-streak.streak-t4,body[data-theme="ios-dark"] .habit-streak.streak-t4{background:#2E2F55;color:#A5B4FC;}
+  body[data-theme="dark"] .habit-streak.streak-t4,body[data-theme="ios-dark"] .habit-streak.streak-t4{background:linear-gradient(135deg,#2E2F55,#3B3C6B);color:#A5B4FC;}
   body[data-theme="dark"] .habit-streak.streak-t5,body[data-theme="ios-dark"] .habit-streak.streak-t5{background:#3B1A1A;color:#F87171;}
   body[data-theme^="ios"]{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',sans-serif;}
   body[data-theme^="ios"] h1,body[data-theme^="ios"] h2,body[data-theme^="ios"] h3{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Manrope',sans-serif;}
@@ -562,13 +562,12 @@
   .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;text-align:center;}
   .habit-streak{min-width:108px;}
-  .habit-recap{color:var(--violet-dark);background:var(--violet-pale);min-width:64px;}
   .habit-restores{min-width:126px;}
   .habit-streak.streak-t0{color:var(--muted);background:var(--surface-alt);}
   .habit-streak.streak-t1{color:#B45309;background:#FDEBD3;}
   .habit-streak.streak-t2{color:#475569;background:#E2E8F0;}
   .habit-streak.streak-t3{color:#92400E;background:#FEF3C7;}
-  .habit-streak.streak-t4{color:var(--violet-dark);background:var(--violet-pale);}
+  .habit-streak.streak-t4{color:var(--violet-dark);background:linear-gradient(135deg,var(--violet-pale),#D9D6FB);}
   .habit-streak.streak-t5{color:var(--danger);background:#FEE2E2;}
   .habit-streak.streak-t6{color:#fff;background:linear-gradient(135deg,#F5A524,#EF4444,#818CF8);box-shadow:0 0 0 1px rgba(255,255,255,0.5) inset;}
   .habit-streak.streak-t7{color:#fff;background:linear-gradient(135deg,#0D9488,#10B981,#34D399);animation:tierGlowJade 1.8s ease-in-out infinite;}
@@ -803,7 +802,7 @@
     .habit-top{gap:6px;}
     .habit-name{flex:1 1 100%;font-size:13.5px;white-space:normal;overflow-wrap:break-word;word-break:break-word;}
     .habit-badge,.habit-restore-btn,.habit-link-btn,.del-goal{font-size:10px;}
-    .habit-streak,.habit-recap,.habit-restores{min-width:0;}
+    .habit-streak,.habit-restores{min-width:0;}
     .habit-link-btn{max-width:130px;}
     /* drag-to-reorder relies on HTML5 drag events, which don't work on touch — hide the handle so it isn't dead clutter */
     .drag-handle{display:none;}
@@ -831,6 +830,9 @@
     #view-wishlist .add-row input#newWishlistName{flex:1 1 auto !important;min-width:0;}
     #view-wishlist .add-row input#newWishlistCost{flex:0 0 auto !important;width:78px;}
     #view-wishlist .add-row .btn{flex:none !important;white-space:nowrap;}
+    #view-jobs .add-row{flex-wrap:nowrap;}
+    #view-jobs .add-row input{flex:1 1 auto !important;width:auto;min-width:0;}
+    #view-jobs .add-row .btn{flex:none !important;width:auto;white-space:nowrap;}
     .cd-card{flex-wrap:wrap;}
     .motivation-slideshow, #motivationCatEmpty, #motivationCatLock{aspect-ratio:3/4;max-height:60vh;border-radius:14px;}
     .motivation-thumb{width:60px;height:60px;}
@@ -966,6 +968,41 @@
   .wishlist-contrib-amt{font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;color:var(--success);}
   .wishlist-contrib-date{font-size:9.5px;color:var(--muted);margin-top:2px;}
   .wishlist-contrib-del{position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 4px rgba(0,0,0,.35);}
+
+  /* jobs — a dedicated filter-chip class (NOT .stat) since .stat is driven by a document-wide
+     click handler in goals.js keyed on the shared goalFilter variable; reusing it here would let
+     clicking a Jobs chip silently reset Goals' filter state. Visually identical to .stat though. */
+  .job-filter-chip{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 8px;text-align:center;cursor:pointer;transition:border-color .12s ease;}
+  .job-filter-chip:hover{border-color:var(--violet);}
+  .job-filter-chip.active-filter{border-color:var(--violet);background:var(--violet-pale);}
+  .job-filter-chip .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--text);}
+  .job-filter-chip .lbl{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.3px;text-transform:uppercase;}
+
+  .job-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
+  .job-card:hover{border-color:var(--violet);}
+  .job-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+  .job-card-company{font-size:14.5px;font-weight:700;color:var(--text);}
+  .job-card-title{font-size:12.5px;color:var(--muted);margin-top:2px;}
+  .job-card-meta{font-size:10.5px;color:var(--faint);margin-top:8px;}
+
+  .job-status-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
+  .job-status-badge.job-status-applied{color:var(--violet-dark);background:var(--violet-pale);}
+  .job-status-badge.job-status-interviewing{color:var(--gold);background:var(--surface-alt);border:1px solid var(--gold);}
+  .job-status-badge.job-status-offer{color:var(--success);background:var(--success-pale);}
+  .job-status-badge.job-status-rejected{color:var(--danger);background:var(--surface-alt);border:1px solid var(--danger);}
+  .job-status-badge.job-status-ghosted{color:var(--faint);background:var(--surface-alt);}
+
+  .job-detail-card{padding:20px;max-width:560px;}
+  .job-detail-card .field-row{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;}
+  .job-detail-card .field-row label{font-size:10.5px;text-transform:uppercase;letter-spacing:0.5px;color:var(--faint);font-weight:700;}
+  .job-detail-card .field-row input,.job-detail-card .field-row select,.job-detail-card .field-row textarea{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  .job-detail-card .field-row input:focus,.job-detail-card .field-row select:focus,.job-detail-card .field-row textarea:focus{border-color:var(--violet);}
+  .job-detail-card .field-row textarea{resize:vertical;min-height:52px;font-family:'Inter',sans-serif;}
+  .job-detail-card .field-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .job-contact-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+  .job-contact-row .job-contact-fields{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+  .job-contact-del{flex:none;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .job-status-select-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
 
   /* fitness */
   .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}

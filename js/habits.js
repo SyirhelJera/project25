@@ -52,8 +52,9 @@
   }
 
   function monthKey(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'); }
-  // maps a streak length to a badge color tier — climbs from a muted "just started" tone up to
-  // a shimmering gradient once a streak has been kept alive for 300+ days
+  // maps a streak length to a badge color tier — climbs from a muted "just started" tone up
+  // through a glowing violet gradient at the 30-day mark, to a shimmering gradient once a streak
+  // has been kept alive for 300+ days
   function streakTierClass(streak){
     if(streak>=300) return 'streak-t8';
     if(streak>=150) return 'streak-t7';
@@ -134,7 +135,6 @@
       if(!h.streakRestores) h.streakRestores = {};
       const weekDates = [];
       for(let i=0;i<7;i++){ const d = new Date(weekStart); d.setDate(d.getDate()+i); weekDates.push(d); }
-      const doneCount = weekDates.filter(d=>h.completions[localDateStr(d)]).length;
       const streak = calcStreak(h);
       const gapDate = habitBrokenGapDate(h);
       const restoresLeft = 3 - restoresUsedThisMonth(h);
@@ -150,7 +150,6 @@
         + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
-        + '<div class="habit-badge habit-recap">'+doneCount+'/7 week</div>'
         + '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
         + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist: '+escapeHtml(c.name)+'">🔗</button>').join('') : '')
         + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')

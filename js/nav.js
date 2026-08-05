@@ -19,6 +19,7 @@
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
       if(t.dataset.tab==='wishlist') renderWishlist();
+      if(t.dataset.tab==='jobs') renderJobs();
     });
   });
 

@@ -249,6 +249,23 @@
       if(w.bought===undefined) w.bought = false;
     });
 
+    state.jobs = parsed.jobs || [];
+    state.jobs.forEach(j=>{
+      if(j.workModel===undefined) j.workModel = '';
+      if(j.hqLocation===undefined) j.hqLocation = '';
+      if(j.postingUrl===undefined) j.postingUrl = '';
+      if(j.salaryRange===undefined) j.salaryRange = '';
+      if(j.resumeVersion===undefined) j.resumeVersion = '';
+      if(j.coverLetterVersion===undefined) j.coverLetterVersion = '';
+      if(j.portfolioLinks===undefined) j.portfolioLinks = '';
+      if(j.source===undefined) j.source = '';
+      if(j.sourceOther===undefined) j.sourceOther = '';
+      if(j.status===undefined) j.status = 'applied';
+      if(j.appliedDate===undefined) j.appliedDate = localDateStr(new Date(j.createdAt||Date.now()));
+      if(!Array.isArray(j.contacts)) j.contacts = [];
+      if(j.updatedAt===undefined) j.updatedAt = j.createdAt||Date.now();
+    });
+
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';
     // avatarImage/avatarGeneratedAt/race/skinTone/hairColor/hairStyle/eyeColor/clothing/background:

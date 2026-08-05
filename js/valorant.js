@@ -443,11 +443,11 @@
   // (the colored corner flash under each skin in-game) without touching the check-store pipeline.
   function valSkinRarityInfo(price){
     const p = parseInt(price,10)||0;
-    if(p >= 2900) return { name:'Ultra', color:'#F84B4B' };
-    if(p >= 2300) return { name:'Exclusive', color:'#F0C755' };
+    if(p >= 2900) return { name:'Ultra', color:'#F0D449' };
+    if(p >= 2300) return { name:'Exclusive', color:'#F0954B' };
     if(p >= 1600) return { name:'Premium', color:'#E058CF' };
     if(p >= 1000) return { name:'Deluxe', color:'#2FBE7A' };
-    return { name:'Select', color:'#9CA6AF' };
+    return { name:'Select', color:'#4B9EF0' };
   }
   function valStoreHeader(label, ds){
     const checkedHtml = ds.checkedAt
@@ -518,8 +518,8 @@
   // same "don't trust the exact shape" posture as resolveTierRank() in valorant-lib.mjs, in case
   // Riot's actual tier name has extra decoration text (e.g. "Deluxe Edition") around the word.
   const VAL_TIER_COLOR_ORDER = ['Select','Deluxe','Premium','Exclusive','Ultra'];
-  const VAL_TIER_COLORS = { Ultra:'#F84B4B', Exclusive:'#F0C755', Premium:'#E058CF', Deluxe:'#2FBE7A', Select:'#9CA6AF' };
-  function valTierColor(tierName){
+  const VAL_TIER_COLORS = { Ultra:'#F0D449', Exclusive:'#F0954B', Premium:'#E058CF', Deluxe:'#2FBE7A', Select:'#4B9EF0' };
+  function valSkinTierColor(tierName){
     const s = (tierName||'').toLowerCase();
     for(let i=VAL_TIER_COLOR_ORDER.length-1;i>=0;i--){
       if(s.includes(VAL_TIER_COLOR_ORDER[i].toLowerCase())) return VAL_TIER_COLORS[VAL_TIER_COLOR_ORDER[i]];
@@ -679,7 +679,7 @@
     filteredEmptyEl.style.display = skins.length ? 'none' : 'block';
     listEl.style.display = skins.length ? '' : 'none';
     listEl.innerHTML = skins.map(s=>{
-      const color = valTierColor(s.tierName);
+      const color = valSkinTierColor(s.tierName);
       const sub = [s.weaponType, tierDisplayName(s.tierName)].filter(Boolean).join(' — ');
       return '<div class="val-store-item" style="--rarity-color:'+color+';" title="'+escapeHtml(s.name)+(sub?' — '+escapeHtml(sub):'')+'">'
         + '<div class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="'+escapeHtml(s.name)+'">' : '')+'</div>'
@@ -763,10 +763,11 @@
     el('valLocalCheckInventoryBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='check-inventory') ? 'Checking…' : '🎨 Check Owned Skins';
     el('valLocalAddAccountBtn').disabled = disabled;
     el('valLocalAddAccountBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='login') ? 'Saving…' : '+ Add Account';
-    // deleting removes the saved *session*, so it only makes sense for a specific account the
-    // local server actually has a session for — not "All accounts" and not a dailyStores-only
-    // label left over from a device that isn't running the local server
-    el('valLocalDeleteBtn').disabled = disabled || !sel.value || !valLocalStatus.accounts.includes(sel.value);
+    // deleting removes the saved *session* (if any) and always clears any leftover
+    // dailyStores/ownedSkins data for the label — so it's available for "stale" labels too
+    // (a dailyStores-only entry left over after a session was already removed), just not for
+    // "All accounts"
+    el('valLocalDeleteBtn').disabled = disabled || !sel.value;
     el('valLocalDeleteBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='delete') ? 'Deleting…' : '🗑 Delete';
   }
 
@@ -832,7 +833,11 @@
     el('valSettingsLocalErr').style.display = 'none';
     const label = el('valLocalAccountSelect').value;
     if(!label) return; // button is disabled in this case, but guard anyway
-    if(!window.confirm('Delete the saved session for "'+label+'"? You\'ll need to log in again and paste a fresh cookie to re-add it. This can\'t be undone.')) return;
+    const hasSession = valLocalStatus.accounts.includes(label);
+    const confirmMsg = hasSession
+      ? 'Delete the saved session for "'+label+'"? You\'ll need to log in again and paste a fresh cookie to re-add it. This can\'t be undone.'
+      : 'Remove "'+label+'" from the account list? It has no active local session — this just clears its leftover store/inventory data. This can\'t be undone.';
+    if(!window.confirm(confirmMsg)) return;
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'delete'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/delete-account', {

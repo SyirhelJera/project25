@@ -178,10 +178,15 @@ const server = http.createServer(async (req, res) => {
     const label = (body.label || '').trim();
     if (!label) { sendJson(res, 400, { ok: false, error: 'Missing account label.' }, origin); return; }
     const sessions = loadSessions();
-    if (!(label in sessions)) { sendJson(res, 404, { ok: false, error: 'No saved account with that label.' }, origin); return; }
-    delete sessions[label];
-    saveSessions(sessions);
-    console.log(`Deleted saved session for "${label}".`);
+    if (label in sessions) {
+      delete sessions[label];
+      saveSessions(sessions);
+      console.log(`Deleted saved session for "${label}".`);
+    } else {
+      // no local session for this label — still worth clearing any leftover Supabase
+      // dailyStores/ownedSkins entry (e.g. a stale label from a previous, already-deleted session)
+      console.log(`No saved session for "${label}"; clearing any leftover store/inventory data only.`);
+    }
     try {
       await deleteAccountStore(label);
       await deleteAccountOwnedSkins(label);

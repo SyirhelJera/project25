@@ -179,9 +179,16 @@ export async function silentReauth(ssid){
 const ACCESSORY_ITEM_TYPES = {
   'd5f120f8-ff8c-4aac-92ea-f2b5acbe9475': { label: 'Spray', path: 'sprays', icon: d => d.fullTransparentIcon || d.displayIcon || '' },
   'dd3bf334-87f3-40bd-b043-682a57a8dc3a': { label: 'Gun Buddy', path: 'buddies/levels', icon: d => d.displayIcon || '' },
-  // player cards come with four crops of the same art; the wide banner is the one that fills a
-  // grid tile without shrinking to a sliver next to the square spray/buddy icons
-  '3f296c07-64c3-494c-923b-fe692a4fa1bd': { label: 'Player Card', path: 'playercards', icon: d => d.wideArt || d.displayIcon || d.smallArt || '' },
+  // player cards come with three crops of the same art; the wide banner is the one that fills a
+  // grid tile without shrinking to a sliver next to the square spray/buddy icons — but all three
+  // are kept in `art` so the tile's preview modal can show the vertical version too (that's the
+  // one that actually renders on your in-game profile, and it's not derivable from the others)
+  '3f296c07-64c3-494c-923b-fe692a4fa1bd': {
+    label: 'Player Card',
+    path: 'playercards',
+    icon: d => d.wideArt || d.displayIcon || d.smallArt || '',
+    art: d => ({ wide: d.wideArt || '', large: d.largeArt || '', small: d.smallArt || '' }),
+  },
   // titles are pure text — no art of any kind exists for them, so the tile renders titleText instead
   'de7caa6b-adf7-4588-bbd1-143831e786c6': { label: 'Player Title', path: 'playertitles', icon: () => '' },
   'e7c63390-eda7-46e0-bb7a-a6abdacd2433': { label: 'Skin', path: 'weapons/skinlevels', icon: d => d.displayIcon || '' },
@@ -193,7 +200,7 @@ const ACCESSORY_ITEM_TYPES = {
 async function resolveAccessoryReward(reward){
   const uuid = reward?.ItemID || '';
   const type = ACCESSORY_ITEM_TYPES[reward?.ItemTypeID];
-  if (!type) return { uuid, name: 'Unknown item', imageUrl: '', text: '', type: 'Accessory' };
+  if (!type) return { uuid, name: 'Unknown item', imageUrl: '', text: '', type: 'Accessory', art: null };
   try {
     const r = await fetch(`${VALORANT_API_BASE}/${type.path}/${uuid}`);
     const d = (await r.json())?.data || {};
@@ -203,9 +210,11 @@ async function resolveAccessoryReward(reward){
       imageUrl: type.icon(d),
       text: d.titleText || '',
       type: type.label,
+      // only player cards ship multiple crops; everything else has a single icon and stays null
+      art: type.art ? type.art(d) : null,
     };
   } catch {
-    return { uuid, name: `Unknown ${type.label}`, imageUrl: '', text: '', type: type.label };
+    return { uuid, name: `Unknown ${type.label}`, imageUrl: '', text: '', type: type.label, art: null };
   }
 }
 

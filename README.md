@@ -12,7 +12,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
 | **Finance** | Multi-currency accounts (savings/credit/lent/custom), transfers between accounts, subscriptions with monthly-cost rollup, "money goals" (save $X by date, with logged contributions), a currency converter with live or manual exchange rates, a net-worth-over-time trend chart, and a this-month spending-by-category breakdown. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
-| **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers plus its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles), a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". |
+| **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers plus its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles), a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Wishlist** | Things you want to buy — name, cost, and an optional picture per item, shown as a card grid. |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
@@ -116,7 +116,10 @@ state = {
                                        // a weekly rotation, with accessoriesRemainingSeconds counting
                                        // down from checkedAt). Entries written before accessories were
                                        // added simply have no `accessories` key and render the skins
-                                       // grid alone until their next check.
+                                       // grid alone until their next check. Player-card offers also
+                                       // carry art:{wide,large,small} — the three crops the preview
+                                       // modal shows side by side (openValItemPreview() in valorant.js);
+                                       // every other accessory type has art:null and one image.
                                        // ownedSkins is the same shape/origin, but for every owned
                                        // weapon skin (sorted by tier), written by the Local
                                        // Helper's "🎨 Check Owned Skins" button — see

@@ -483,6 +483,103 @@
       + '</div>';
   }
 
+  /* ---- item preview modal: clicking any store / accessory / owned-skin tile opens that item's
+     art at full size. The grid tiles cap art at 80px, which is enough to recognize a skin but not
+     to actually look at one. Player cards get all three of valorant-api.com's crops side by side
+     rather than one blown-up image — the tile only shows the wide banner, but the vertical art is
+     what renders on your in-game profile, and neither crop can be derived from the other. ---- */
+  function valPreviewVariantHtml(caption, url, cls){
+    if(!url) return '';
+    return '<figure class="val-preview-variant '+cls+'">'
+      + '<div class="val-preview-variant-img"><img src="'+escapeHtml(url)+'" alt="'+escapeHtml(caption)+'"></div>'
+      + '<figcaption>'+escapeHtml(caption)+'</figcaption>'
+      + '</figure>';
+  }
+
+  // `view` is a normalized { name, subtitle, color, imageUrl, text, art } — daily skins, accessory
+  // offers, and owned skins all carry different fields, so each click handler below maps its own
+  // item into this shape rather than this function having to know which list it came from.
+  function openValItemPreview(view){
+    const body = el('valItemPreviewBody');
+    const art = view.art || null;
+    let artHtml;
+    if(art && (art.wide || art.large || art.small)){
+      artHtml = '<div class="val-preview-variants">'
+        + valPreviewVariantHtml('Horizontal', art.wide, 'wide')
+        + valPreviewVariantHtml('Vertical', art.large, 'tall')
+        + valPreviewVariantHtml('Square', art.small, 'square')
+        + '</div>';
+    } else if(view.imageUrl){
+      artHtml = '<div class="val-preview-hero"><img src="'+escapeHtml(view.imageUrl)+'" alt="'+escapeHtml(view.name)+'"></div>';
+    } else {
+      // player titles have no art of any kind — the tag text itself is the whole item
+      artHtml = '<div class="val-preview-hero val-preview-hero-text">'+escapeHtml(view.text || view.name)+'</div>';
+    }
+    body.innerHTML = '<div class="val-preview-head">'
+      + '<div class="val-preview-titles">'
+      + '<div class="val-preview-name">'+escapeHtml(view.name)+'</div>'
+      + (view.subtitle ? '<div class="val-preview-sub">'+escapeHtml(view.subtitle)+'</div>' : '')
+      + '</div>'
+      + '<button class="val-preview-close" type="button" title="Close">✕</button>'
+      + '</div>'
+      + artHtml;
+    body.style.setProperty('--rarity-color', view.color || '#8B92A8');
+    body.querySelector('.val-preview-close').addEventListener('click', closeValItemPreview);
+    el('valItemPreviewOverlay').style.display = 'flex';
+  }
+  function closeValItemPreview(){ el('valItemPreviewOverlay').style.display = 'none'; }
+  el('valItemPreviewOverlay').addEventListener('click', e=>{
+    if(e.target === el('valItemPreviewOverlay')) closeValItemPreview();
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && el('valItemPreviewOverlay').style.display === 'flex') closeValItemPreview();
+  });
+
+  // Tiles are rebuilt wholesale by innerHTML on every render, so the click handlers are delegated
+  // to the (never-replaced) container elements and look their item back up by uuid — binding per
+  // tile wouldn't survive a re-render.
+  el('valStoreCard').addEventListener('click', e=>{
+    const tile = e.target.closest('[data-preview-kind]');
+    if(!tile) return;
+    const ds = (state.valorant.dailyStores||{})[tile.dataset.previewLabel] || {};
+    const uuid = tile.dataset.previewUuid;
+    if(tile.dataset.previewKind === 'skin'){
+      const it = (ds.items||[]).find(x=>x.uuid===uuid);
+      if(!it) return;
+      const rarity = valSkinRarityInfo(it.price);
+      openValItemPreview({
+        name: it.name,
+        subtitle: rarity.name+' Edition · '+(parseInt(it.price,10)||0).toLocaleString()+' VP',
+        color: rarity.color,
+        imageUrl: it.imageUrl,
+      });
+    } else {
+      const ac = (ds.accessories||[]).find(x=>x.uuid===uuid);
+      if(!ac) return;
+      openValItemPreview({
+        name: ac.name,
+        subtitle: (ac.type||'Accessory')+' · '+(parseInt(ac.price,10)||0).toLocaleString()+' KC',
+        color: valAccessoryTypeColor(ac.type),
+        imageUrl: ac.imageUrl,
+        text: ac.text,
+        art: ac.art,
+      });
+    }
+  });
+  el('valOwnedSkinsList').addEventListener('click', e=>{
+    const tile = e.target.closest('[data-preview-kind]');
+    if(!tile) return;
+    const os = (state.valorant.ownedSkins||{})[tile.dataset.previewLabel] || {};
+    const s = (os.skins||[]).find(x=>x.uuid===tile.dataset.previewUuid);
+    if(!s) return;
+    openValItemPreview({
+      name: s.name,
+      subtitle: [s.weaponType, tierDisplayName(s.tierName)].filter(Boolean).join(' · '),
+      color: valSkinTierColor(s.tierName),
+      imageUrl: s.imageUrl,
+    });
+  });
+
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
@@ -529,7 +626,9 @@
       items.forEach(it=>{
         const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
         const rarity = valSkinRarityInfo(it.price);
-        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';" title="'+escapeHtml(rarity.name)+' Edition">'
+        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
+          + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
+          + ' title="'+escapeHtml(rarity.name)+' Edition — click to enlarge">'
           + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
           + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
           + '<div class="val-store-item-footer">'
@@ -547,8 +646,10 @@
         html += '<div class="val-store-grid val-accessory-grid">';
         accessories.forEach(ac=>{
           const color = valAccessoryTypeColor(ac.type);
-          const title = ac.name + (ac.type ? ' — ' + ac.type : '');
-          html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';" title="'+escapeHtml(title)+'">'
+          const title = ac.name + (ac.type ? ' — ' + ac.type : '') + ' — click to enlarge';
+          html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
+            + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
+            + ' title="'+escapeHtml(title)+'">'
             + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
             + '<div class="val-store-item-img">'
             + (ac.imageUrl
@@ -737,7 +838,9 @@
     listEl.innerHTML = skins.map(s=>{
       const color = valSkinTierColor(s.tierName);
       const sub = [s.weaponType, tierDisplayName(s.tierName)].filter(Boolean).join(' — ');
-      return '<div class="val-store-item" style="--rarity-color:'+color+';" title="'+escapeHtml(s.name)+(sub?' — '+escapeHtml(sub):'')+'">'
+      return '<div class="val-store-item" style="--rarity-color:'+color+';"'
+        + ' data-preview-kind="owned" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(s.uuid||'')+'"'
+        + ' title="'+escapeHtml(s.name)+(sub?' — '+escapeHtml(sub):'')+' — click to enlarge">'
         + '<div class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="'+escapeHtml(s.name)+'">' : '')+'</div>'
         + '<div class="val-store-item-footer">'
         + '<span class="val-store-item-name" title="'+escapeHtml(s.name)+'">'+escapeHtml(s.name)+'</span>'

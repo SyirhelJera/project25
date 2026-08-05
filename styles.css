@@ -1185,7 +1185,11 @@
      price) regardless of the app's light/dark theme setting — achieved by overriding the shared
      surface/text/accent variables just within this card, since every rule below (including the
      wishlist rows) already reads its colors from those variables. */
-  .val-tracker-card{
+  /* The item-preview modal (.val-preview-card) lives outside this card in the DOM but shows the
+     same artwork, so it takes the same variable overrides — skin/buddy renders are near-white
+     PNGs with transparent backgrounds and would be all but invisible on a light-theme surface. */
+  .val-tracker-card,
+  .val-preview-card{
     --surface:#1B212C;
     --surface-alt:#242C3A;
     --border:#323B4C;
@@ -1198,11 +1202,13 @@
     --danger:#FF4655;
     --vp-gold:#ECE1B8;
     --kc-green:#8FD14F; /* Kingdom Credits, the accessory shop's currency */
+    color:var(--text);
+  }
+  .val-tracker-card{
     background:linear-gradient(180deg,#161B26 0%,#0F131C 100%);
     border:1px solid #262D3B;
     border-radius:16px;
     padding:18px;
-    color:var(--text);
   }
   .val-tracker-grid{display:flex;gap:22px;align-items:flex-start;}
   .val-tracker-items-col{flex:2;min-width:0;}
@@ -1245,7 +1251,7 @@
      see valSkinRarityInfo()) standing in for the in-game edition flash */
   .val-store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;}
   .val-store-item{
-    position:relative;display:flex;flex-direction:column;overflow:hidden;
+    position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;
     background:var(--surface);border:1px solid var(--border);border-radius:10px;
     transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
   }
@@ -1287,6 +1293,37 @@
     letter-spacing:.3px;line-height:1.3;overflow:hidden;display:-webkit-box;
     -webkit-line-clamp:3;-webkit-box-orient:vertical;
   }
+
+  /* item preview modal — opened by clicking any store/accessory/owned-skin tile (see
+     openValItemPreview() in valorant.js). Sits in the shared .struggle-overlay, so it picks up
+     that overlay's backdrop/centering and only restyles the card itself. */
+  .val-preview-card{max-width:760px;}
+  .val-preview-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:16px;}
+  .val-preview-titles{flex:1;min-width:0;}
+  .val-preview-name{font-size:16px;font-weight:800;letter-spacing:.2px;color:var(--text);}
+  .val-preview-sub{margin-top:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--rarity-color,var(--muted));}
+  .val-preview-close{flex:none;width:28px;height:28px;border-radius:50%;cursor:pointer;font-size:12px;
+    background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);}
+  .val-preview-close:hover{color:var(--text);border-color:var(--rarity-color,var(--border));}
+
+  /* single-image items (skins, buddies, sprays) — the rarity/type color becomes a soft glow
+     behind the art, the same visual language as the grid tile it was opened from */
+  .val-preview-hero{display:flex;align-items:center;justify-content:center;padding:24px 12px;border-radius:14px;
+    background:radial-gradient(ellipse at 50% 45%,var(--rarity-color,transparent) 0%,transparent 70%);}
+  .val-preview-hero img{max-width:100%;max-height:52vh;object-fit:contain;filter:drop-shadow(0 8px 20px rgba(0,0,0,.6));}
+  .val-preview-hero-text{font-size:22px;font-weight:800;text-align:center;letter-spacing:.5px;color:var(--text);}
+
+  /* player cards — all three crops at once: the wide banner spans the top, with the vertical
+     (in-game profile) and square versions side by side beneath it */
+  .val-preview-variants{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .val-preview-variant{margin:0;min-width:0;display:flex;flex-direction:column;gap:8px;}
+  .val-preview-variant.wide{grid-column:1 / -1;}
+  .val-preview-variant-img{display:flex;align-items:center;justify-content:center;padding:10px;
+    background:var(--surface-alt);border:1px solid var(--border);border-radius:12px;}
+  .val-preview-variant-img img{max-width:100%;object-fit:contain;border-radius:6px;display:block;}
+  .val-preview-variant.tall .val-preview-variant-img img{max-height:44vh;}
+  .val-preview-variant.square .val-preview-variant-img img{max-height:180px;}
+  .val-preview-variant figcaption{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--faint);text-align:center;}
 
   /* wishlist (see renderValWishlist() in valorant.js) — uniform-width rows rather than
      content-sized pills, so a long skin name doesn't dwarf a short one; the name truncates
@@ -1356,6 +1393,9 @@
     .val-store-item-img img{max-height:52px;}
     .val-store-item-name{font-size:9.5px;}
     .val-store-item-price{font-size:10.5px;}
+    /* two player-card crops side by side leave neither readable at this width — stack them */
+    .val-preview-variants{grid-template-columns:1fr;}
+    .val-preview-variant.tall .val-preview-variant-img img{max-height:38vh;}
   }
 
   @media (max-width:420px){

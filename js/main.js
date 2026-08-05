@@ -2,7 +2,7 @@
     applyTabOrder();
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness(); renderValorant(); renderClock(); renderWishlist(); renderJobs();
-    openToPinnedMotivationCategory(); renderMotivation();
+    shuffleMotivationImages(); openToPinnedMotivationCategory(); renderMotivation();
   }
 
   function applyTheme(){

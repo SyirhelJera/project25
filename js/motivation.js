@@ -11,6 +11,22 @@
     return state.motivation.categories[motivationActiveCatIdx] || null;
   }
 
+  // Reshuffles every category's photos once per load (called from renderAll, i.e. after the
+  // initial load and after a backup restore — not on every render, or the slideshow would
+  // reorder itself under you mid-session). Image order is purely display order, so shuffling
+  // the array in place is enough; a later save() persisting the shuffled order is harmless
+  // since the next load reshuffles anyway. Drag-to-reorder still works within the session.
+  function shuffleMotivationImages(){
+    state.motivation.categories.forEach(cat=>{
+      const imgs = cat.images;
+      for(let i = imgs.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = imgs[i]; imgs[i] = imgs[j]; imgs[j] = tmp;
+      }
+      delete motivationSlideIdx[cat.id]; // a remembered index would now point at a different photo
+    });
+  }
+
   function renderMotivation(animate){
     const locked = !!state.motivation.pin && !motivationUnlocked;
     el('motivationLock').style.display = locked ? 'block' : 'none';

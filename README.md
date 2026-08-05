@@ -156,11 +156,12 @@ Key mechanics in this layer:
 
 ### Supabase backend
 
-Three Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
+Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
 
 - **`manage-backups`** — lets the client list/restore daily backups from a private Storage bucket (`backups`) without ever exposing the `service_role` key to the browser. Read-only from the client's perspective.
 - **`suggest-subtasks`** — proxies "suggest subtasks for this goal" to the Anthropic API (`claude-haiku-4-5`) using a server-side `ANTHROPIC_API_KEY` secret, with a shared daily call cap (`ai_usage` table, 30/day) and a 300-token cap per call.
 - **`upload-fitness-photo`** — uploads a Fitness tab progress photo straight to a Google Drive folder on the app owner's behalf. Uses a one-time-obtained Google OAuth refresh token (server secret) to mint a fresh access token per call, so uploads are fully automatic — no per-upload consent prompt. Only the returned Drive file id/link are saved into app state; the image bytes themselves live only in Drive.
+- **`upload-resume`** — same pattern as `upload-fitness-photo`, for the Jobs tab's per-application resume PDF attachment: uploads straight to a Google Drive folder named "Uploaded Resumes" (auto-created on first use if it doesn't exist, or pinned to a specific folder via the optional `GOOGLE_DRIVE_RESUMES_FOLDER_ID` secret), reusing the same `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN` secrets as the fitness-photo function — no separate Google OAuth setup needed if that's already configured. Only the Drive file id/link are saved into app state; the PDF bytes live only in Drive.
 
 **Backups**: `scripts/backup-supabase.sh` (run daily by `.github/workflows/backup-supabase.yml` via cron at 07:00 UTC) pulls the current `app_data` row with the service-role key and uploads it as `<YYYY-MM-DD>.json` to a private Storage bucket. The Settings tab can list and restore from these via the `manage-backups` function.
 
@@ -178,7 +179,7 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
-| Google Drive API (via `upload-fitness-photo` function) | Auto-storing fitness progress photos | Server-side OAuth refresh token only |
+| Google Drive API (via `upload-fitness-photo`/`upload-resume` functions) | Auto-storing fitness progress photos and Jobs-tab resume PDFs | Server-side OAuth refresh token only |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
 | ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
@@ -192,7 +193,7 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
 2. **If deploying outside Claude** (e.g. GitHub Pages), create a Supabase project and:
    - Run the SQL in the comment at the top of `js/persistence.js` to create the `app_data` table + open RLS policy.
    - Replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `js/persistence.js`.
-   - Deploy the three Edge Functions in `supabase/functions/` (`manage-backups`, `suggest-subtasks`, `upload-fitness-photo`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
+   - Deploy the four Edge Functions in `supabase/functions/` (`manage-backups`, `suggest-subtasks`, `upload-fitness-photo`, `upload-resume`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
    - Create the private `backups` Storage bucket and the `ai_usage` table (`day text primary key, count int`) if you want backups / AI subtask limits to work.
    - For scheduled backups, set the `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret so `.github/workflows/backup-supabase.yml` can run.
    - **For goal/finance icon uploads and the daily Valorant store check's writes** — run `supabase/setup-egress-fix.sql` once in the SQL editor. It creates the public `icons` Storage bucket + policies (goal/finance images upload here instead of being embedded as base64 in `app_data`) and the three Postgres functions (`valorant_set_daily_store`, `valorant_set_daily_store_error`, `valorant_delete_daily_store`) `scripts/valorant-lib.mjs` calls instead of reading/writing the whole row. Skipping this doesn't break anything — icon uploads fall back to base64 and the Valorant scripts fall back to erroring per-account — it just means you're not getting the egress savings.
@@ -202,6 +203,7 @@ Three Edge Functions (`supabase/functions/`), called via `supabase.functions.inv
      3. (Optional) create/choose a Drive folder for progress photos and copy its folder ID from the URL.
      4. Set the Supabase Edge Function secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and optionally `GOOGLE_DRIVE_FOLDER_ID`.
      5. Note: to power the in-app photo carousel without proxying image bytes through Supabase, the function sets each uploaded photo's Drive sharing to "anyone with the link can view" and points the carousel's `<img>` tags straight at Drive. Anyone who obtains a photo's (long, unguessable) file ID could view it — turn this off by removing the `permissions` call in `upload-fitness-photo/index.ts` if that's not an acceptable trade-off for you.
+   - **For Jobs-tab resume PDF attachments** (needed for `upload-resume`) — reuses the exact same `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN` secrets set up above for Fitness photos, so if those are already set there's nothing new to configure: the function finds (or creates, on first upload) a Drive folder literally named "Uploaded Resumes" on its own. Set the optional secret `GOOGLE_DRIVE_RESUMES_FOLDER_ID` only if you'd rather pin uploads to a specific existing folder instead of the by-name lookup. Same link-viewable sharing trade-off as progress photos applies to the "View in Drive" links.
    - **For the daily Valorant store check** — this one runs **locally on your own machine**, not as an Edge Function (see "Daily Valorant store check" above for why) — recurring, not one-time. Supports tracking more than one Riot account's store side by side, each saved under a label you choose. No `npm install` needed anywhere in `scripts/` — it's plain Node built-ins end to end:
      1. In your own normal browser, log into `https://playvalorant.com`. Open DevTools (F12) → Application tab → Cookies → `https://auth.riotgames.com` → copy the value of the `ssid` cookie.
         - *Why not just automate this step?* An earlier version did, via a Puppeteer-driven browser window — see "Getting the initial session" above for why that no longer works (Riot's fraud detection rejects automation-controlled browsers outright) and won't be re-added.
@@ -248,6 +250,7 @@ supabase/functions/
   manage-backups/                   list/restore daily backups
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
+  upload-resume/                    uploads a Jobs-tab resume PDF to Google Drive ("Uploaded Resumes" folder)
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
 scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront + owned-skins fetch)
 scripts/valorant-login.mjs          run LOCALLY to save a pasted Riot session cookie under a labeled account

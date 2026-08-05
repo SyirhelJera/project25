@@ -11,9 +11,18 @@
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
-    jobs: [], // { id, createdAt, updatedAt, company, workModel, hqLocation, title, postingUrl, salaryRange,
-              //   resumeVersion, coverLetterVersion, portfolioLinks, source, sourceOther, status, appliedDate,
+    jobs: [], // { id, createdAt, updatedAt, company, workModel, hqLocation, companySiteUrl, title, postingUrl,
+              //   salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,
+              //   coverLetterVersion, portfolioLinks, source, sourceOther, status, appliedDate,
               //   contacts:[{id,name,title,email}] }
+              // resumeFileId/resumeFileName/resumeViewLink: the attached resume PDF, uploaded via the
+              // upload-resume Edge Function straight to a Google Drive folder named "Uploaded Resumes"
+              // (see supabase/functions/upload-resume) — only the Drive file id/link are stored here,
+              // never the PDF bytes, same pattern as fitness progress photos.
+    // login credentials for job-search sites (LinkedIn, Indeed, ...) — plaintext, stored in the same
+    // shared unauthenticated row as everything else in this app (see js/persistence.js), just masked
+    // in the UI; not real encryption
+    jobSiteAccounts: [], // { id, site, loginUrl, username, password, createdAt }
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
     // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;

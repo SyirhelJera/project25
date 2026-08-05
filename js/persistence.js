@@ -253,9 +253,13 @@
     state.jobs.forEach(j=>{
       if(j.workModel===undefined) j.workModel = '';
       if(j.hqLocation===undefined) j.hqLocation = '';
+      if(j.companySiteUrl===undefined) j.companySiteUrl = '';
       if(j.postingUrl===undefined) j.postingUrl = '';
       if(j.salaryRange===undefined) j.salaryRange = '';
       if(j.resumeVersion===undefined) j.resumeVersion = '';
+      if(j.resumeFileId===undefined) j.resumeFileId = '';
+      if(j.resumeFileName===undefined) j.resumeFileName = '';
+      if(j.resumeViewLink===undefined) j.resumeViewLink = '';
       if(j.coverLetterVersion===undefined) j.coverLetterVersion = '';
       if(j.portfolioLinks===undefined) j.portfolioLinks = '';
       if(j.source===undefined) j.source = '';
@@ -264,6 +268,13 @@
       if(j.appliedDate===undefined) j.appliedDate = localDateStr(new Date(j.createdAt||Date.now()));
       if(!Array.isArray(j.contacts)) j.contacts = [];
       if(j.updatedAt===undefined) j.updatedAt = j.createdAt||Date.now();
+    });
+
+    state.jobSiteAccounts = parsed.jobSiteAccounts || [];
+    state.jobSiteAccounts.forEach(a=>{
+      if(a.loginUrl===undefined) a.loginUrl = '';
+      if(a.username===undefined) a.username = '';
+      if(a.password===undefined) a.password = '';
     });
 
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};

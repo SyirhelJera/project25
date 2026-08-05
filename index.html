@@ -355,6 +355,7 @@
 
     <div class="stats job-filter-row" id="jobFilterRow">
       <div class="job-filter-chip" data-status="all"><div class="num" id="jobStatTotal">0</div><div class="lbl">All</div></div>
+      <div class="job-filter-chip" data-status="prospect"><div class="num" id="jobStatProspect">0</div><div class="lbl">Prospect</div></div>
       <div class="job-filter-chip" data-status="applied"><div class="num" id="jobStatApplied">0</div><div class="lbl">Applied</div></div>
       <div class="job-filter-chip" data-status="interviewing"><div class="num" id="jobStatInterviewing">0</div><div class="lbl">Interviewing</div></div>
       <div class="job-filter-chip" data-status="offer"><div class="num" id="jobStatOffer">0</div><div class="lbl">Offer</div></div>
@@ -371,6 +372,7 @@
       </select>
       <button class="sort-dir-btn" id="jobSortDirBtn" title="Toggle ascending/descending">↓</button>
       <div class="spacer"></div>
+      <button class="btn btn-ghost btn-sm" id="jobAccountsBtn">🔑 Accounts</button>
     </div>
 
     <div id="jobList"></div>
@@ -380,6 +382,26 @@
   <!-- JOB DETAIL — opened by clicking a job card; fully populated by renderJobDetail() in jobs.js -->
   <div id="jobDetailOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card job-detail-card" id="jobDetailBody"></div>
+  </div>
+
+  <!-- JOB ACCOUNTS — opened via the 🔑 Accounts button in the Jobs toolbar, so it stays reachable
+       in one click no matter how long the applications list gets -->
+  <div id="jobAccountsOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card job-accounts-card" id="jobAccountsBody">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title" style="color:var(--text);">🔑 Site Accounts</div>
+        <button class="wishlist-hero-close" type="button" id="jobAccountsCloseBtn" style="position:static;background:none;color:var(--faint);">✕</button>
+      </div>
+      <div class="add-tx-row">
+        <input type="text" id="newJobAcctSite" placeholder="Site (e.g. LinkedIn)">
+        <input type="text" id="newJobAcctUrl" placeholder="Login URL (optional)">
+        <input type="text" id="newJobAcctUsername" placeholder="Username / Email">
+        <input type="password" id="newJobAcctPassword" placeholder="Password">
+        <button class="btn btn-primary btn-sm" id="addJobAcctBtn">+ Add</button>
+      </div>
+      <div id="jobAccountList"></div>
+      <div class="empty" id="jobAccountsEmpty" style="display:none;">No saved logins yet.</div>
+    </div>
   </div>
 
   <!-- FITNESS -->

@@ -213,6 +213,9 @@
     if(state.valorant.localServerToken===undefined) state.valorant.localServerToken = '';
     // which account's store the Valorant tab shows — '' means "all accounts" (stacked)
     if(state.valorant.selectedStoreLabel===undefined) state.valorant.selectedStoreLabel = '';
+    // which of the two shops the store view shows — 'skins' (daily VP offers) or 'accessories'
+    // (weekly Kingdom Credit offers); they used to be stacked in one column, which got crowded
+    if(state.valorant.storeMode!=='accessories') state.valorant.storeMode = 'skins';
     // gun/skin names the user wants a heads-up about when they rotate into the daily store —
     // one list per tracked account label, so a skin wishlisted on one account doesn't tick for
     // another; matched against that same label's dailyStores items in valWishlistMatchesForItem()

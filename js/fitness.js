@@ -28,13 +28,28 @@
     return { label:'Fit', color:'var(--success)' };
   }
 
-  // Fitness Level shown on the profile card
+  // Fitness Level shown on the profile card, plus a weight-direction arrow beside it: losing
+  // weight reads as a green ▼ and gaining as a red ▲, regardless of which BMI tier you're in.
   function updateFitnessLevelUI(){
     const lvlEl = el('pfFitnessLevel');
     if(!lvlEl) return;
     const tier = getFitnessTier();
     lvlEl.textContent = tier ? tier.label : '—';
     lvlEl.style.color = tier ? tier.color : '';
+
+    const trendEl = el('pfFitnessTrend');
+    if(trendEl){
+      // two most recent log entries, chronologically — same 0.1-display-unit threshold the
+      // per-entry deltas in the weight log use, so tiny scale noise doesn't show an arrow
+      const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+      const latest = log[log.length-1], prev = log[log.length-2];
+      const deltaDisp = (latest && prev) ? roundDisp(kgToDisplay(latest.kg - prev.kg)) : 0;
+      trendEl.innerHTML = Math.abs(deltaDisp) >= 0.1
+        ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp < 0,
+            (deltaDisp > 0 ? 'Gained ' : 'Lost ') + Math.abs(deltaDisp) + ' ' + unitLabel()
+            + ' since ' + fmtDate(parseLocalDateStr(prev.date)))
+        : '';
+    }
     updateAvatar();
   }
 

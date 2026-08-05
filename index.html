@@ -50,8 +50,8 @@
     <div class="profile-row"><div class="profile-lbl">Name</div><input id="pfName" type="text" placeholder="Your name" maxlength="40"></div>
     <div class="profile-row"><div class="profile-lbl">Age</div><input id="pfAge" type="number" min="0" placeholder="Age"></div>
     <div class="profile-row profile-stat"><span>Goals Completed</span><b id="pfGoalsCompleted">0</b></div>
-    <div class="profile-row profile-stat"><span>Net Worth</span><b id="pfNetWorthCalc">$0</b></div>
-    <div class="profile-row profile-stat"><span>Fitness Level</span><b id="pfFitnessLevel">—</b></div>
+    <div class="profile-row profile-stat"><span>Net Worth</span><span class="profile-stat-val"><b id="pfNetWorthCalc">$0</b><span id="pfNetWorthTrend"></span></span></div>
+    <div class="profile-row profile-stat"><span>Fitness Level</span><span class="profile-stat-val"><b id="pfFitnessLevel">—</b><span id="pfFitnessTrend"></span></span></div>
     <div class="profile-row">
       <div class="exp-row"><span class="exp-level" id="pfLevel">Lv. 1</span><span class="exp-num" id="pfExpNum">0 / 100 XP</span></div>
       <div class="exp-track"><div class="exp-fill" id="pfExpFill" style="width:0%"></div></div>
@@ -559,6 +559,10 @@
 
       <div class="val-store-switcher-row">
         <select id="valLocalAccountSelect"><option value="">All accounts</option></select>
+        <div class="unit-toggle" id="valStoreModeToggle">
+          <button data-storemode="skins" id="valStoreModeBtnSkins">Skins</button>
+          <button data-storemode="accessories" id="valStoreModeBtnAccessories">Accessories</button>
+        </div>
       </div>
 
       <div class="val-tracker-card">

@@ -881,8 +881,24 @@
     el('pfGoalsCompleted').textContent = completedCount;
     {
       const nwCcy = state.profile.netWorthCurrency || 'USD';
-      const nwConverted = convertAmt(getNetWorthNum(), 'USD', nwCcy);
+      const nwNow = getNetWorthNum();
+      const nwConverted = convertAmt(nwNow, 'USD', nwCcy);
       el('pfNetWorthCalc').textContent = ccySymbol(nwCcy)+Math.round(nwConverted).toLocaleString();
+      // Compare against the newest netWorthHistory point from an *earlier* day — save() rewrites
+      // today's point in place (snapshotNetWorth()), so the last entry is usually today's own value.
+      const trendEl = el('pfNetWorthTrend');
+      if(trendEl){
+        const hist = state.finance.netWorthHistory || [];
+        const today = localDateStr(new Date());
+        let prev = null;
+        for(let i=hist.length-1; i>=0; i--){ if(hist[i].date < today){ prev = hist[i]; break; } }
+        const deltaDisp = prev ? convertAmt(nwNow - prev.value, 'USD', nwCcy) : 0;
+        trendEl.innerHTML = (prev && Math.abs(deltaDisp) >= 1)
+          ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp > 0,
+              (deltaDisp > 0 ? 'Up ' : 'Down ') + ccySymbol(nwCcy) + Math.abs(Math.round(deltaDisp)).toLocaleString()
+              + ' since ' + fmtDate(parseLocalDateStr(prev.date)))
+          : '';
+      }
     }
     updateExpUI();
     updateAvatar();

@@ -580,14 +580,33 @@
     });
   });
 
+  // Skins / Accessories switch above the store — the two shops are separate rotations (daily VP
+  // vs weekly Kingdom Credits) and rendering both at once made the store column crowded, so only
+  // the selected one is built. Persisted, so the tab reopens on whichever shop you last looked at.
+  function renderValStoreModeToggle(){
+    const accessories = state.valorant.storeMode === 'accessories';
+    el('valStoreModeBtnSkins').classList.toggle('active', !accessories);
+    el('valStoreModeBtnAccessories').classList.toggle('active', accessories);
+  }
+  el('valStoreModeToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-storemode]');
+    if(!btn) return;
+    state.valorant.storeMode = btn.dataset.storemode;
+    save(); renderValStoreModeToggle(); renderValorantStore();
+  });
+
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
     el('valStoreUnavailable').style.display = unavailable ? 'block' : 'none';
-    if(unavailable){ wrap.innerHTML = ''; return; }
+    if(unavailable){ wrap.innerHTML = ''; el('valStoreModeToggle').style.display = 'none'; return; }
+    renderValStoreModeToggle();
+    const showAccessories = state.valorant.storeMode === 'accessories';
 
     const stores = state.valorant.dailyStores || {};
     const allLabels = Object.keys(stores);
+    // nothing to switch between until at least one account has been checked
+    el('valStoreModeToggle').style.display = allLabels.length ? 'inline-flex' : 'none';
     if(!allLabels.length){
       wrap.innerHTML = '<div class="empty val-store-empty">🛒 No store data yet — run <code>scripts/valorant-login.mjs</code> then <code>scripts/valorant-check-store.mjs</code> locally (see README.md "Setup").</div>';
       return;
@@ -617,49 +636,55 @@
       if(!ds.checkedAt){
         return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
       }
-      const items = ds.items || [];
-      // the daily skins grid only gets a labeled header once there's an accessory grid below it
-      // to distinguish it from — a lone "Daily Offers" caption over the only grid on screen is noise
-      const accessories = ds.accessories || [];
-      let html = accessories.length ? valStoreSectionHdr('Daily Offers', '') : '';
-      html += '<div class="val-store-grid">';
-      items.forEach(it=>{
-        const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
-        const rarity = valSkinRarityInfo(it.price);
-        html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
-          + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
-          + ' title="'+escapeHtml(rarity.name)+' Edition — click to enlarge">'
-          + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
-          + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
-          + '<div class="val-store-item-footer">'
-          + '<span class="val-store-item-name" title="'+escapeHtml(it.name)+'">'+escapeHtml(it.name)+'</span>'
-          + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
-          + '</div></div>';
-      });
-      html += '</div>';
-
-      // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
-      // from stores checked before this was added, so an older dailyStores entry just renders the
-      // skins grid alone as before, until its next check fills this in.
-      if(accessories.length){
-        html += valStoreSectionHdr('Accessories', valAccessoryTimeLeft(ds.checkedAt, ds.accessoriesRemainingSeconds));
-        html += '<div class="val-store-grid val-accessory-grid">';
-        accessories.forEach(ac=>{
-          const color = valAccessoryTypeColor(ac.type);
-          const title = ac.name + (ac.type ? ' — ' + ac.type : '') + ' — click to enlarge';
-          html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
-            + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
-            + ' title="'+escapeHtml(title)+'">'
-            + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
-            + '<div class="val-store-item-img">'
-            + (ac.imageUrl
-                ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
-                // player titles have no art at all — show the actual in-game tag text instead
-                : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
-            + '</div>'
+      // Only one of the two shops is on screen at a time (see the Skins/Accessories toggle above
+      // the store) — stacking both grids per account made the column too crowded to scan.
+      let html;
+      if(showAccessories){
+        // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
+        // from stores checked before this was added, so an older dailyStores entry has nothing to
+        // show here until its next check fills this in.
+        const accessories = ds.accessories || [];
+        if(!accessories.length){
+          html = '<div class="val-peak-note">No accessory offers in this store check — re-run scripts/valorant-check-store.mjs locally (checks from before accessory support don\'t include them).</div>';
+        } else {
+          // the section header is where the weekly rotation countdown lives, so it stays even
+          // though the toggle above already names the shop
+          html = valStoreSectionHdr('Accessories', valAccessoryTimeLeft(ds.checkedAt, ds.accessoriesRemainingSeconds));
+          html += '<div class="val-store-grid val-accessory-grid">';
+          accessories.forEach(ac=>{
+            const color = valAccessoryTypeColor(ac.type);
+            const title = ac.name + (ac.type ? ' — ' + ac.type : '') + ' — click to enlarge';
+            html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
+              + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
+              + ' title="'+escapeHtml(title)+'">'
+              + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
+              + '<div class="val-store-item-img">'
+              + (ac.imageUrl
+                  ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
+                  // player titles have no art at all — show the actual in-game tag text instead
+                  : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
+              + '</div>'
+              + '<div class="val-store-item-footer">'
+              + '<span class="val-store-item-name" title="'+escapeHtml(ac.name)+'">'+escapeHtml(ac.name)+'</span>'
+              + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
+              + '</div></div>';
+          });
+          html += '</div>';
+        }
+      } else {
+        const items = ds.items || [];
+        html = '<div class="val-store-grid">';
+        items.forEach(it=>{
+          const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
+          const rarity = valSkinRarityInfo(it.price);
+          html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
+            + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
+            + ' title="'+escapeHtml(rarity.name)+' Edition — click to enlarge">'
+            + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
+            + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
             + '<div class="val-store-item-footer">'
-            + '<span class="val-store-item-name" title="'+escapeHtml(ac.name)+'">'+escapeHtml(ac.name)+'</span>'
-            + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
+            + '<span class="val-store-item-name" title="'+escapeHtml(it.name)+'">'+escapeHtml(it.name)+'</span>'
+            + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
             + '</div></div>';
         });
         html += '</div>';

@@ -8,7 +8,7 @@
   let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '' }, checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
-    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', storeMode:'skins', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, workModel, hqLocation, companySiteUrl, title, postingUrl,
@@ -51,6 +51,14 @@
   // components directly, unlike new Date(str) (parsed as UTC per spec, which can land on the
   // previous local day in negative-UTC-offset zones once .setHours(0,0,0,0) is applied elsewhere).
   const parseLocalDateStr = str => { const [y,m,day] = str.split('-').map(Number); return new Date(y, m-1, day); };
+
+  // ▲/▼ trend marker for the profile card. Direction and color are separate on purpose: net
+  // worth rising is good (green ▲) while weight rising is not (red ▲), so callers pass the
+  // arrow direction and whether that direction is a good thing independently.
+  function trendMarker(dir, good, title){
+    if(!dir) return '';
+    return '<span class="pf-trend-mark '+(good?'good':'bad')+'" title="'+escapeHtml(title||'')+'">'+(dir>0?'▲':'▼')+'</span>';
+  }
 
   // Goal/finance icon images used to be stored inline as base64 in the single shared app_data
   // row (see js/persistence.js) — that whole row is transferred on every load and every save,

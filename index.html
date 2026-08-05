@@ -347,6 +347,12 @@
     <div class="view-title">Jobs</div>
     <div class="view-sub">Track applications from first submit to offer (or silence).</div>
 
+    <!-- Jobs-scoped conflict/offline banners — Jobs saves to its own storage resource independently
+         of the shared app-data blob, so it needs its own status banners rather than the global
+         #conflictBanner/#offlineBanner (which carry whole-page-reload semantics). Filled by jobs.js. -->
+    <div id="jobConflictBanner" class="confirm-banner" style="display:none;"></div>
+    <div id="jobOfflineBanner" class="confirm-banner" style="display:none;"></div>
+
     <div class="add-row">
       <input id="newJobCompany" type="text" placeholder="Company name" maxlength="100" style="flex:1;">
       <input id="newJobTitle" type="text" placeholder="Job title" maxlength="120" style="flex:1;">

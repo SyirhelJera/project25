@@ -51,9 +51,22 @@
       const { data, error } = await supa.functions.invoke('manage-backups', { body: { action: 'restore', file } });
       if(error) throw error;
       if(data && data.error) throw new Error(data.error);
-      applyLoadedState(data.data);
+      applyLoadedState(data.data); // every tab except Jobs, exactly as before
+      // Jobs lives in its own storage resource now, so it has to be restored alongside the shared
+      // blob rather than falling out of applyLoadedState(). Prefer the backup's dedicated jobs row;
+      // fall back to the copy still embedded in the shared blob for backups taken before the split.
+      // Same precedence as the standing migration in jobs.js:loadJobsData().
+      const jobsSeed = (data.jobsData && Array.isArray(data.jobsData.jobs)) ? data.jobsData.jobs
+                     : (data.data && Array.isArray(data.data.jobs)) ? data.data.jobs
+                     : [];
+      applyLoadedJobsState({ jobs: jobsSeed });
       pendingRestore = null;
-      await save(true); // force: restoring is a deliberate, user-confirmed overwrite
+      // force: restoring is a deliberate, user-confirmed overwrite of both resources. allSettled
+      // rather than all/sequential-await because save()/saveJobs() never reject even on remote
+      // failure (they fall back to their own offline banner + retry-on-reconnect) — so this can't
+      // meaningfully distinguish partial failure, and treating one as fatal would wrongly report
+      // "Restore failed. Nothing was changed." when the data was in fact applied and cached.
+      await Promise.allSettled([ save(true), saveJobs(true) ]);
       el('restoreSlot').innerHTML = '<div class="confirm-banner"><span>Restored '+escapeHtml(file.replace(/\.json$/,''))+'.</span></div>';
       renderAll();
     }catch(e){

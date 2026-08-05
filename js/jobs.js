@@ -17,6 +17,260 @@
   // which saved passwords are currently shown in plaintext (id -> true) — not persisted, resets per page load
   let jobAccountRevealed = {};
 
+  /* ---------- jobs persistence ----------
+     Jobs has its own storage resource, fully decoupled from the shared app-data blob that every
+     other tab shares (see js/persistence.js's top comment). Reason: that blob is re-serialized and
+     re-uploaded in full on EVERY save from ANY tab, so a growing list of job applications would be
+     re-sent every time an unrelated habit got ticked, and vice versa.
+
+     Supabase mode: a second row in the same app_data table, id='jobs' — no schema or RLS change
+     needed (the existing "anyone can read/write" policy covers any id, and the row is created by
+     this file's own .upsert() on first save). Claude-storage mode: a second window.storage key.
+
+     This deliberately mirrors persistence.js's save()/load() 1:1 rather than being a simplified
+     "best effort" version — it keeps the same safety properties: a loadedOk-style gate so a failed
+     load can never trigger an overwrite, optimistic-concurrency conflict detection, an offline
+     localStorage mirror, and a serialized save chain so overlapping saves can't race each other.
+
+     Note state.jobSiteAccounts is NOT part of this split — it's a small bounded list of site logins,
+     not a growth driver, and stays in the shared blob (hydrated by persistence.js as before).
+  ---------------------------------------- */
+  const JOBS_STORAGE_KEY = 'app-data-jobs';
+  const JOBS_ROW_ID = 'jobs';
+  const OFFLINE_JOBS_CACHE_KEY = 'p25-offline-data-jobs';
+  let jobsLoadedOk = false;
+  let lastKnownJobsUpdatedAt = null;
+  let jobsConflictShown = false;
+
+  // Hydration + lazy field defaults for job records — moved verbatim out of
+  // persistence.js:applyLoadedState() when Jobs got its own storage resource. New fields on a job
+  // record get their default added HERE rather than there (the one exception to the convention
+  // documented in CLAUDE.md).
+  function applyLoadedJobsState(parsed){
+    state.jobs = (parsed && parsed.jobs) || [];
+    state.jobs.forEach(j=>{
+      if(j.workModel===undefined) j.workModel = '';
+      if(j.hqLocation===undefined) j.hqLocation = '';
+      if(j.companySiteUrl===undefined) j.companySiteUrl = '';
+      if(j.postingUrl===undefined) j.postingUrl = '';
+      if(j.salaryRange===undefined) j.salaryRange = '';
+      if(j.resumeVersion===undefined) j.resumeVersion = '';
+      if(j.resumeFileId===undefined) j.resumeFileId = '';
+      if(j.resumeFileName===undefined) j.resumeFileName = '';
+      if(j.resumeViewLink===undefined) j.resumeViewLink = '';
+      if(j.coverLetterVersion===undefined) j.coverLetterVersion = '';
+      if(j.portfolioLinks===undefined) j.portfolioLinks = '';
+      if(j.source===undefined) j.source = '';
+      if(j.sourceOther===undefined) j.sourceOther = '';
+      if(j.status===undefined) j.status = 'applied';
+      if(j.appliedDate===undefined) j.appliedDate = localDateStr(new Date(j.createdAt||Date.now()));
+      if(!Array.isArray(j.contacts)) j.contacts = [];
+      if(j.updatedAt===undefined) j.updatedAt = j.createdAt||Date.now();
+    });
+  }
+
+  function cacheJobsStateLocally(){
+    try{ localStorage.setItem(OFFLINE_JOBS_CACHE_KEY, JSON.stringify({ data: { jobs: state.jobs }, cachedAt: Date.now(), updatedAt: lastKnownJobsUpdatedAt })); }
+    catch(e){ /* private browsing / storage quota — best effort only */ }
+  }
+  function loadLocalJobsCache(){
+    try{
+      const raw = localStorage.getItem(OFFLINE_JOBS_CACHE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    }catch(e){ return null; }
+  }
+  // Falls back to the local mirror when a live load fails. Also checks the shared blob's older
+  // full-state cache as a second chance: on the first offline boot after Jobs got its own resource,
+  // only that legacy cache exists yet, and it still holds a jobs array worth recovering.
+  // Deliberately leaves jobsLoadedOk false when nothing is found, so saves stay blocked rather than
+  // risking an empty overwrite of real remote data.
+  function fallbackToLocalJobsCache(){
+    let cached = loadLocalJobsCache();
+    if(!(cached && cached.data)){
+      try{
+        const legacyRaw = localStorage.getItem(OFFLINE_CACHE_KEY);
+        const legacy = legacyRaw ? JSON.parse(legacyRaw) : null;
+        if(legacy && legacy.data && Array.isArray(legacy.data.jobs) && legacy.data.jobs.length){
+          cached = { data: { jobs: legacy.data.jobs }, cachedAt: legacy.cachedAt, updatedAt: undefined };
+        }
+      }catch(e){ /* best effort only */ }
+    }
+    if(cached && cached.data){
+      applyLoadedJobsState(cached.data);
+      if(cached.updatedAt !== undefined) lastKnownJobsUpdatedAt = cached.updatedAt;
+      jobsLoadedOk = true;
+      const when = cached.cachedAt ? new Date(cached.cachedAt).toLocaleString() : 'earlier';
+      showJobsOfflineBanner('You’re offline — showing your last synced copy of your applications (from ' + escapeHtml(when) + '). '
+        + 'Anything you change here is saved on this device and will sync once you’re back online.');
+      return true;
+    }
+    showJobsOfflineBanner('Couldn’t load your saved applications just now, so this tab may be showing an empty or out-of-date list. '
+      + 'Your existing data likely hasn’t been lost — try reloading.');
+    return false;
+  }
+  // Retry a pending write once connectivity returns, same as the shared blob's own handler.
+  window.addEventListener('online', () => { if(jobsLoadedOk) saveJobs(); });
+
+  /* Jobs-scoped conflict/offline banners. Deliberately NOT the global #conflictBanner/#offlineBanner:
+     those are wired to whole-page-reload semantics for the shared blob, which would be the wrong
+     (and confusing) response to a Jobs-only conflict now that the two save independently. */
+  function showJobsConflictBanner(){
+    if(jobsConflictShown) return;
+    jobsConflictShown = true;
+    const b = el('jobConflictBanner');
+    if(!b) return;
+    b.style.display = 'flex';
+    b.innerHTML = '<span>Another tab or device saved newer changes to your applications after this page loaded its copy. Your latest edit here was <b>not saved</b>, to avoid overwriting theirs.</span>'
+      + '<button class="btn btn-sm btn-primary" id="jobConflictReloadBtn">Reload applications</button>'
+      + '<button class="btn btn-sm btn-ghost" id="jobConflictForceBtn">Keep my changes (overwrite theirs)</button>';
+    // An in-place re-fetch is enough here (unlike the global banner's full page reload) precisely
+    // because Jobs is self-contained now — nothing else on the page depends on this data, so there's
+    // no reason to throw away whatever the user has in progress on another tab.
+    el('jobConflictReloadBtn').addEventListener('click', async ()=>{
+      await loadJobsData(null);
+      hideJobsConflictBanner();
+      renderJobs();
+    });
+    el('jobConflictForceBtn').addEventListener('click', async ()=>{ await saveJobs(true); });
+  }
+  function hideJobsConflictBanner(){
+    if(!jobsConflictShown) return;
+    jobsConflictShown = false;
+    const b = el('jobConflictBanner');
+    if(b) b.style.display = 'none';
+  }
+  function showJobsOfflineBanner(msg){
+    const b = el('jobOfflineBanner');
+    if(!b) return;
+    b.style.display = 'flex';
+    b.innerHTML = '<span>' + msg + '</span>';
+  }
+  function hideJobsOfflineBanner(){
+    const b = el('jobOfflineBanner');
+    if(b) b.style.display = 'none';
+  }
+
+  // Serialized like the shared save() for the same reason: two overlapping saves would both read the
+  // same stale lastKnownJobsUpdatedAt and the second would falsely report a conflict against itself.
+  let jobsSavePromise = Promise.resolve();
+  function saveJobs(force){
+    jobsSavePromise = jobsSavePromise.then(()=> doSaveJobs(force));
+    return jobsSavePromise;
+  }
+  async function doSaveJobs(force){
+    if(!jobsLoadedOk) return; // never overwrite remote data before we've confirmed what it contains
+    cacheJobsStateLocally();
+    try{
+      if(usingClaudeStorage){ await setWithRetry(JOBS_STORAGE_KEY, JSON.stringify({ jobs: state.jobs })); hideJobsOfflineBanner(); return; }
+      if(!supa) return;
+      const nowIso = new Date().toISOString();
+      let data, error;
+      if(lastKnownJobsUpdatedAt && !force){
+        ({ data, error } = await supa.from('app_data')
+          .update({ data: { jobs: state.jobs }, updated_at: nowIso })
+          .eq('id', JOBS_ROW_ID)
+          .eq('updated_at', lastKnownJobsUpdatedAt)
+          .select('updated_at'));
+        if(error) throw error;
+        if(!data || data.length === 0){ showJobsConflictBanner(); return; }
+      } else {
+        ({ data, error } = await supa.from('app_data')
+          .upsert({ id: JOBS_ROW_ID, data: { jobs: state.jobs }, updated_at: nowIso })
+          .select('updated_at'));
+        if(error) throw error;
+      }
+      lastKnownJobsUpdatedAt = (data && data[0] && data[0].updated_at) || nowIso;
+      hideJobsConflictBanner();
+      hideJobsOfflineBanner();
+    }catch(e){
+      console.error('jobs save failed', e);
+      showJobsOfflineBanner('Couldn’t reach the server to save your latest change — it’s saved on this device '
+        + 'and will sync automatically once you’re back online.');
+    }
+  }
+
+  /* Loads the dedicated Jobs resource, seeding it from the shared blob's legacy embedded copy the
+     first time this code runs against data saved before the split.
+
+     parsedMainState is the raw payload persistence.js:load() already parsed from the shared row/key
+     this same boot (or null if it didn't exist / that load failed) — reused here purely to look for
+     a pre-split state.jobs to migrate from, never re-fetched.
+
+     ORDERING MATTERS: persistence.js awaits this before setting loadedOk = true, i.e. before the
+     first shared-blob save becomes possible. That save no longer includes `jobs`, and a Supabase
+     jsonb write REPLACES the column rather than merging, so it permanently strips the legacy copy
+     out of the shared row. Seeding the new resource first — and awaiting it — is what guarantees
+     there's never a window where the old copy is gone and the new one isn't durably written. */
+  async function loadJobsData(parsedMainState){
+    const legacyJobs = (parsedMainState && Array.isArray(parsedMainState.jobs)) ? parsedMainState.jobs : null;
+    try{
+      if(usingClaudeStorage){
+        try{
+          const res = await getWithRetry(JOBS_STORAGE_KEY);
+          if(res && res.value){
+            applyLoadedJobsState(JSON.parse(res.value));
+            jobsLoadedOk = true;
+          } else {
+            await seedOrInitJobsState(legacyJobs);
+          }
+          cacheJobsStateLocally();
+          hideJobsOfflineBanner();
+        }catch(e){
+          const msg = (e && e.message) || String(e);
+          if(/not found|no such key|does not exist/i.test(msg)){
+            await seedOrInitJobsState(legacyJobs);
+            cacheJobsStateLocally();
+            hideJobsOfflineBanner();
+          } else {
+            console.error('jobs load failed', e);
+            fallbackToLocalJobsCache();
+          }
+        }
+      } else {
+        if(!supa) return; // Supabase unconfigured — persistence.js already surfaced the setup banner
+        const { data, error } = await supa.from('app_data').select('data, updated_at').eq('id', JOBS_ROW_ID).maybeSingle();
+        if(error){
+          console.error('jobs load failed', error);
+          fallbackToLocalJobsCache();
+        } else if(data){
+          // The resource EXISTS (even if it holds an empty list) — it is the sole source of truth
+          // from here on. Never re-seed over it from the legacy copy: doing so would resurrect
+          // applications the user has since deleted.
+          applyLoadedJobsState(data.data);
+          lastKnownJobsUpdatedAt = data.updated_at;
+          jobsLoadedOk = true;
+          cacheJobsStateLocally();
+          hideJobsOfflineBanner();
+        } else {
+          await seedOrInitJobsState(legacyJobs);
+          cacheJobsStateLocally();
+          hideJobsOfflineBanner();
+        }
+      }
+    }catch(e){
+      // A Jobs-only failure must never propagate into persistence.js:load() and abort the whole
+      // app's boot, which would strand every other tab behind the load screen.
+      console.error('jobs load failed (unexpected)', e);
+      fallbackToLocalJobsCache();
+    }
+  }
+
+  // Only reached once the dedicated resource is positively confirmed absent. If the shared blob still
+  // carries a pre-split jobs array, adopt it and persist it immediately as the new source of truth.
+  async function seedOrInitJobsState(legacyJobs){
+    applyLoadedJobsState({ jobs: legacyJobs && legacyJobs.length ? legacyJobs : [] });
+    // Unlocking the save gate here is correct and required: we've just positively established what
+    // the remote holds (nothing), which is exactly what this flag means — same reasoning as the
+    // shared blob's own "key not found on first run => loadedOk = true" path. Without it the seed
+    // write below would silently no-op, leaving the migrated data unpersisted.
+    jobsLoadedOk = true;
+    if(!(legacyJobs && legacyJobs.length)) return; // nothing to protect yet; the row gets created on first edit
+    // force=true => unconditional upsert. If two devices hit this "first encounter" concurrently they
+    // both write equivalent data and the last one wins, which is harmless; a conditional update could
+    // fail one of them and leave the seed unwritten, which is not.
+    await saveJobs(true);
+  }
+
   function jobSourceLabel(j){
     if(j.source === 'other') return j.sourceOther ? j.sourceOther : 'Other';
     return JOB_SOURCE_LABELS[j.source] || '';
@@ -62,7 +316,7 @@
         changed = true;
       }
     });
-    if(changed) save();
+    if(changed) saveJobs();
   }
 
   /* ---------- resume PDF attachment — uploaded straight to a Google Drive folder named
@@ -123,7 +377,7 @@
       j.resumeFileName = file.name;
       j.resumeViewLink = data.webViewLink || '';
       touchJob(j);
-      save();
+      saveJobs();
       renderJobs();
     }catch(e){
       if(statusEl) statusEl.textContent = (e && e.message) ? e.message : 'Upload failed, try again.';
@@ -189,7 +443,7 @@
       contacts: []
     });
     companyInput.value = ''; titleInput.value = '';
-    save(); renderJobs();
+    saveJobs(); renderJobs();
     companyInput.focus();
   }
   el('addJobBtn').addEventListener('click', addJob);
@@ -225,7 +479,7 @@
   function deleteJob(j){
     if(!window.confirm('Delete the application to "'+j.company+'" ('+j.title+')?')) return;
     state.jobs = state.jobs.filter(x=>x.id!==j.id);
-    save();
+    saveJobs();
     closeJobDetail();
     renderJobs();
   }
@@ -238,13 +492,13 @@
     if(!name) return;
     j.contacts.push({ id:uid(), name, title, email });
     touchJob(j);
-    save(); renderJobs();
+    saveJobs(); renderJobs();
   }
 
   function deleteJobContact(j, contactId){
     j.contacts = j.contacts.filter(c=>c.id!==contactId);
     touchJob(j);
-    save(); renderJobs();
+    saveJobs(); renderJobs();
   }
 
   function renderJobDetail(){
@@ -338,7 +592,7 @@
     body.querySelectorAll('.job-status-set-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         j.status = btn.dataset.status;
-        touchJob(j); save(); renderJobs();
+        touchJob(j); saveJobs(); renderJobs();
       });
     });
 
@@ -346,7 +600,7 @@
       const inp = body.querySelector('#'+id);
       inp.addEventListener('change', ()=>{
         j[field] = transform ? transform(inp.value) : inp.value.trim();
-        touchJob(j); save(); renderJobs();
+        touchJob(j); saveJobs(); renderJobs();
       });
     };
     bindField('jdCompany', 'company', v=>{ const t=v.trim(); return t || j.company; });
@@ -376,7 +630,7 @@
     if(resumeRemoveBtn){
       resumeRemoveBtn.addEventListener('click', ()=>{
         j.resumeFileId = ''; j.resumeFileName = ''; j.resumeViewLink = '';
-        touchJob(j); save(); renderJobs();
+        touchJob(j); saveJobs(); renderJobs();
       });
     }
 
@@ -384,7 +638,7 @@
     sourceSelect.addEventListener('change', ()=>{
       j.source = sourceSelect.value;
       body.querySelector('#jdSourceOtherField').style.display = j.source==='other' ? '' : 'none';
-      touchJob(j); save(); renderJobs();
+      touchJob(j); saveJobs(); renderJobs();
     });
 
     body.querySelectorAll('.job-contact-del').forEach(btn=>{

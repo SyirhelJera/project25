@@ -60,11 +60,34 @@ Deno.serve(async (req) => {
       } catch {
         return json({ error: "Backup file is not valid JSON" }, 500);
       }
-      // Backups are the raw response of `app_data?id=eq.shared&select=data`, i.e.
-      // [{ data: {...state} }] — unwrap it back down to just the state object.
-      const state = Array.isArray(parsed) ? parsed[0]?.data : parsed?.data;
-      if (!state) return json({ error: "Backup file doesn't contain the expected data" }, 500);
-      return json({ data: state });
+      if (!Array.isArray(parsed) || parsed.length === 0) {
+        return json({ error: "Backup file doesn't contain the expected data" }, 500);
+      }
+
+      // Two backup file shapes exist and both must keep working:
+      //  - Legacy (before the Jobs tab got its own app_data row): a single-element array with no
+      //    "id" key, [{ data: {...whole state, jobs still embedded...} }], because the old backup
+      //    script only selected `data`. Every backup taken before that change looks like this.
+      //  - Current: one element per fetched row, tagged by id — [{id:"jobs",...},{id:"shared",...}].
+      //    Rows MUST be selected by .id, never by array position: the script orders by id.asc, so
+      //    "jobs" sorts before "shared" and index 0 is NOT the main state.
+      // The jobs row may legitimately be absent (account never used the Jobs tab, or the backup
+      // predates its first post-split save) — that's not an error, jobsData just stays null and the
+      // client falls back to any copy still embedded in the shared blob.
+      let mainData;
+      let jobsData = null;
+      if (parsed[0].id === undefined) {
+        mainData = parsed[0].data;
+      } else {
+        // deno-lint-ignore no-explicit-any
+        const sharedRow = parsed.find((r: any) => r && r.id === "shared");
+        // deno-lint-ignore no-explicit-any
+        const jobsRow = parsed.find((r: any) => r && r.id === "jobs");
+        mainData = sharedRow ? sharedRow.data : undefined;
+        jobsData = jobsRow ? jobsRow.data : null;
+      }
+      if (!mainData) return json({ error: "Backup file doesn't contain the expected data" }, 500);
+      return json({ data: mainData, jobsData });
     }
 
     return json({ error: "Unknown action" }, 400);

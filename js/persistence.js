@@ -15,6 +15,11 @@
                create policy "Anyone can read and write" on app_data
                  for all using (true) with check (true);
           b) Paste your Project URL and anon public key below.
+
+     Two rows are used in this table: id='shared' (this file — every tab's data, one JSON blob) and
+     id='jobs' (the Jobs tab, which saves/loads independently so a growing application list isn't
+     re-uploaded on every unrelated edit — see js/jobs.js). No extra SQL is needed for the second
+     row: the policy above already covers any id, and the app creates the row itself on first save.
   ---------------------------------- */
   const SUPABASE_URL = 'https://gsmzeqybnacjtxtrpuil.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzbXplcXlibmFjanR4dHJwdWlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1NDI3OTIsImV4cCI6MjEwMDExODc5Mn0.99hVBDa3ZWFxj4rRQFfBW28MCgsaWHT7PTJFZJqca8I';
@@ -249,27 +254,11 @@
       if(w.bought===undefined) w.bought = false;
     });
 
-    state.jobs = parsed.jobs || [];
-    state.jobs.forEach(j=>{
-      if(j.workModel===undefined) j.workModel = '';
-      if(j.hqLocation===undefined) j.hqLocation = '';
-      if(j.companySiteUrl===undefined) j.companySiteUrl = '';
-      if(j.postingUrl===undefined) j.postingUrl = '';
-      if(j.salaryRange===undefined) j.salaryRange = '';
-      if(j.resumeVersion===undefined) j.resumeVersion = '';
-      if(j.resumeFileId===undefined) j.resumeFileId = '';
-      if(j.resumeFileName===undefined) j.resumeFileName = '';
-      if(j.resumeViewLink===undefined) j.resumeViewLink = '';
-      if(j.coverLetterVersion===undefined) j.coverLetterVersion = '';
-      if(j.portfolioLinks===undefined) j.portfolioLinks = '';
-      if(j.source===undefined) j.source = '';
-      if(j.sourceOther===undefined) j.sourceOther = '';
-      if(j.status===undefined) j.status = 'applied';
-      if(j.appliedDate===undefined) j.appliedDate = localDateStr(new Date(j.createdAt||Date.now()));
-      if(!Array.isArray(j.contacts)) j.contacts = [];
-      if(j.updatedAt===undefined) j.updatedAt = j.createdAt||Date.now();
-    });
-
+    // NOTE: state.jobs is deliberately NOT hydrated here — Jobs has its own dedicated storage
+    // resource (a separate app_data row / window.storage key) so editing an unrelated tab doesn't
+    // re-upload every job application and vice versa. Its hydration + field defaults live in
+    // applyLoadedJobsState() in js/jobs.js. state.jobSiteAccounts below deliberately STAYS here:
+    // it's a small bounded list, not a growth driver, and is not part of that split.
     state.jobSiteAccounts = parsed.jobSiteAccounts || [];
     state.jobSiteAccounts.forEach(a=>{
       if(a.loginUrl===undefined) a.loginUrl = '';
@@ -342,14 +331,21 @@
   async function doSave(force){
     if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
     cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
+    // Jobs lives in its own storage resource now (see saveJobs() in js/jobs.js), so it must never be
+    // part of this payload. Rest-destructuring rather than a hand-maintained key list is deliberate:
+    // every OTHER top-level key of state carries forward automatically, including any added later,
+    // with nothing to remember to update here. Note the write below REPLACES the whole jsonb column
+    // (it isn't a merge), so anything accidentally omitted from this object is destroyed on the next
+    // save of any tab — jobSiteAccounts in particular looks Jobs-adjacent but must stay included.
+    const { jobs, ...mainState } = state;
     try{
-      if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(state)); hideOfflineBanner(); return; }
+      if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(mainState)); hideOfflineBanner(); return; }
       if(!supa) return;
       const nowIso = new Date().toISOString();
       let data, error;
       if(lastKnownUpdatedAt && !force){
         ({ data, error } = await supa.from('app_data')
-          .update({ data: state, updated_at: nowIso })
+          .update({ data: mainState, updated_at: nowIso })
           .eq('id', SHARED_ROW_ID)
           .eq('updated_at', lastKnownUpdatedAt)
           .select('updated_at'));
@@ -361,7 +357,7 @@
         }
       } else {
         ({ data, error } = await supa.from('app_data')
-          .upsert({ id: SHARED_ROW_ID, data: state, updated_at: nowIso })
+          .upsert({ id: SHARED_ROW_ID, data: mainState, updated_at: nowIso })
           .select('updated_at'));
         if(error) throw error;
       }
@@ -404,7 +400,9 @@
       if(usingClaudeStorage){
         try{
           const res = await getWithRetry('app-data');
-          if(res && res.value) applyLoadedState(JSON.parse(res.value));
+          let parsedMain = null;
+          if(res && res.value){ parsedMain = JSON.parse(res.value); applyLoadedState(parsedMain); }
+          await loadJobsData(parsedMain);
           loadedOk = true;
           cacheStateLocally();
           hideOfflineBanner();
@@ -412,10 +410,12 @@
           // A missing key on first-ever run is expected and not a real error — only warn on genuine failures.
           const msg = (e && e.message) || String(e);
           if(/not found|no such key|does not exist/i.test(msg)){
+            await loadJobsData(null);
             loadedOk = true;
           } else {
             console.error('load failed', e);
             fallbackToLocalCache();
+            await loadJobsData(null);
           }
         }
       } else {
@@ -428,9 +428,12 @@
           if(error){
             console.error('load failed', error);
             fallbackToLocalCache();
+            await loadJobsData(null);
           } else {
-            if(data && data.data) applyLoadedState(data.data);
+            let parsedMain = null;
+            if(data && data.data){ parsedMain = data.data; applyLoadedState(parsedMain); }
             lastKnownUpdatedAt = data ? data.updated_at : null;
+            await loadJobsData(parsedMain);
             loadedOk = true;
             cacheStateLocally();
             hideOfflineBanner();
@@ -440,6 +443,7 @@
     }catch(e){
       console.error('load failed', e);
       fallbackToLocalCache();
+      await loadJobsData(null);
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';

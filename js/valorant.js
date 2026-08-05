@@ -449,11 +449,38 @@
     if(p >= 1000) return { name:'Deluxe', color:'#2FBE7A' };
     return { name:'Select', color:'#4B9EF0' };
   }
+  // Accessory-shop tiles have no VP price band to infer a rarity color from (Kingdom Credit
+  // offers aren't tiered), so they're colored by item type instead — enough to tell a spray from
+  // a buddy at a glance without pretending the color means rarity.
+  const VAL_ACCESSORY_TYPE_COLORS = { 'Spray':'#4BC6F0', 'Gun Buddy':'#F0954B', 'Player Card':'#8B7BF0', 'Player Title':'#2FBE7A', 'Skin':'#E058CF' };
+  function valAccessoryTypeColor(type){ return VAL_ACCESSORY_TYPE_COLORS[type] || '#8B92A8'; }
+
+  // The accessory shop rotates weekly, and `accessoriesRemainingSeconds` is a snapshot taken at
+  // checkedAt — so the elapsed time since the check has to be subtracted, or a store checked two
+  // days ago would still claim a week left. Returns '' when there's nothing meaningful to show.
+  function valAccessoryTimeLeft(checkedAt, remainingSeconds){
+    if(!remainingSeconds || !checkedAt) return '';
+    const left = remainingSeconds - Math.floor((Date.now() - checkedAt)/1000);
+    if(left <= 0) return 'rotated — re-check';
+    const days = Math.floor(left/86400), hrs = Math.floor((left%86400)/3600), mins = Math.floor((left%3600)/60);
+    if(days) return days+'d '+hrs+'h left';
+    if(hrs) return hrs+'h '+mins+'m left';
+    return mins+'m left';
+  }
+
   function valStoreHeader(label, ds){
     const checkedHtml = ds.checkedAt
       ? '<span class="val-store-checked" title="'+escapeHtml(fmtDate(ds.checkedAt))+'">🕒 '+escapeHtml(valTimeAgo(ds.checkedAt))+'</span>'
       : '';
     return '<div class="val-store-account-hdr"><span class="val-store-account-name">'+escapeHtml(label)+'</span>'+checkedHtml+'</div>';
+  }
+  // sub-header inside one account's section, separating the daily skins grid from the accessory
+  // grid below it — smaller/lighter than the account header above so the account stays the
+  // dominant heading
+  function valStoreSectionHdr(name, note){
+    return '<div class="val-store-section-hdr"><span class="val-store-section-name">'+escapeHtml(name)+'</span>'
+      + (note ? '<span class="val-store-section-note">'+escapeHtml(note)+'</span>' : '')
+      + '</div>';
   }
 
   function renderValorantStore(){
@@ -494,7 +521,11 @@
         return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
       }
       const items = ds.items || [];
-      let html = '<div class="val-store-grid">';
+      // the daily skins grid only gets a labeled header once there's an accessory grid below it
+      // to distinguish it from — a lone "Daily Offers" caption over the only grid on screen is noise
+      const accessories = ds.accessories || [];
+      let html = accessories.length ? valStoreSectionHdr('Daily Offers', '') : '';
+      html += '<div class="val-store-grid">';
       items.forEach(it=>{
         const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
         const rarity = valSkinRarityInfo(it.price);
@@ -507,6 +538,31 @@
           + '</div></div>';
       });
       html += '</div>';
+
+      // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
+      // from stores checked before this was added, so an older dailyStores entry just renders the
+      // skins grid alone as before, until its next check fills this in.
+      if(accessories.length){
+        html += valStoreSectionHdr('Accessories', valAccessoryTimeLeft(ds.checkedAt, ds.accessoriesRemainingSeconds));
+        html += '<div class="val-store-grid val-accessory-grid">';
+        accessories.forEach(ac=>{
+          const color = valAccessoryTypeColor(ac.type);
+          const title = ac.name + (ac.type ? ' — ' + ac.type : '');
+          html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';" title="'+escapeHtml(title)+'">'
+            + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
+            + '<div class="val-store-item-img">'
+            + (ac.imageUrl
+                ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
+                // player titles have no art at all — show the actual in-game tag text instead
+                : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
+            + '</div>'
+            + '<div class="val-store-item-footer">'
+            + '<span class="val-store-item-name" title="'+escapeHtml(ac.name)+'">'+escapeHtml(ac.name)+'</span>'
+            + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
+            + '</div></div>';
+        });
+        html += '</div>';
+      }
       return '<div class="val-store-account">'+hdrHtml+html+'</div>';
     }).join('');
   }

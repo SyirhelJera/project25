@@ -171,8 +171,47 @@ export async function silentReauth(ssid){
   return { accessToken, idToken };
 }
 
+// The accessory shop (Kingdom Credits, refreshes weekly) sells sprays/buddies/cards/titles rather
+// than gun skins, so each offer has to be resolved against a *different* valorant-api.com endpoint
+// depending on Riot's ItemTypeID for its reward. These type uuids are stable, community
+// reverse-engineered constants — an unrecognized one degrades to a nameless "Accessory" tile
+// rather than failing the whole store check (Riot has added new accessory types before).
+const ACCESSORY_ITEM_TYPES = {
+  'd5f120f8-ff8c-4aac-92ea-f2b5acbe9475': { label: 'Spray', path: 'sprays', icon: d => d.fullTransparentIcon || d.displayIcon || '' },
+  'dd3bf334-87f3-40bd-b043-682a57a8dc3a': { label: 'Gun Buddy', path: 'buddies/levels', icon: d => d.displayIcon || '' },
+  // player cards come with four crops of the same art; the wide banner is the one that fills a
+  // grid tile without shrinking to a sliver next to the square spray/buddy icons
+  '3f296c07-64c3-494c-923b-fe692a4fa1bd': { label: 'Player Card', path: 'playercards', icon: d => d.wideArt || d.displayIcon || d.smallArt || '' },
+  // titles are pure text — no art of any kind exists for them, so the tile renders titleText instead
+  'de7caa6b-adf7-4588-bbd1-143831e786c6': { label: 'Player Title', path: 'playertitles', icon: () => '' },
+  'e7c63390-eda7-46e0-bb7a-a6abdacd2433': { label: 'Skin', path: 'weapons/skinlevels', icon: d => d.displayIcon || '' },
+};
+
+// Resolves one accessory-store reward ({ItemTypeID, ItemID}) into display data. Never throws —
+// an unknown type or a failed lookup still returns a renderable tile, same posture as the
+// per-skin lookups in checkAccountStore().
+async function resolveAccessoryReward(reward){
+  const uuid = reward?.ItemID || '';
+  const type = ACCESSORY_ITEM_TYPES[reward?.ItemTypeID];
+  if (!type) return { uuid, name: 'Unknown item', imageUrl: '', text: '', type: 'Accessory' };
+  try {
+    const r = await fetch(`${VALORANT_API_BASE}/${type.path}/${uuid}`);
+    const d = (await r.json())?.data || {};
+    return {
+      uuid,
+      name: d.displayName || type.label,
+      imageUrl: type.icon(d),
+      text: d.titleText || '',
+      type: type.label,
+    };
+  } catch {
+    return { uuid, name: `Unknown ${type.label}`, imageUrl: '', text: '', type: type.label };
+  }
+}
+
 // Runs the full silent-reauth -> storefront fetch for one saved Riot session. Returns
-// { checkedAt, items, bundle, error:'' } on success or throws an Error with a user-facing message.
+// { checkedAt, items, bundle, accessories, accessoriesRemainingSeconds, error:'' } on success or
+// throws an Error with a user-facing message.
 export async function checkAccountStore(label, ssid){
   let accessToken, idToken;
   try {
@@ -279,7 +318,27 @@ export async function checkAccountStore(label, ssid){
     } catch { /* featured bundle is a nice-to-have — a lookup failure shouldn't fail the whole check */ }
   }
 
-  return { checkedAt: Date.now(), items, bundle, error: '' };
+  // 8. Accessory shop — same storefront response, separate panel in-game: Kingdom Credit offers
+  // (sprays, gun buddies, player cards, titles) on their own weekly rotation. Kept as its own
+  // array rather than folded into `items` above, since these have a different currency, a
+  // different refresh timer, and no VP price band to guess a rarity color from.
+  const accessoryOffers = store?.AccessoryStore?.AccessoryStoreOffers || [];
+  const accessories = await Promise.all(accessoryOffers.map(async (entry) => {
+    const offer = entry?.Offer || {};
+    // Rewards is an array, but an accessory offer has always been a single item — take the first
+    // and ignore any extras rather than inventing a multi-item tile for a case that doesn't occur.
+    const info = await resolveAccessoryReward((offer.Rewards || [])[0] || {});
+    return { ...info, price: firstCostValue(offer.Cost) };
+  }));
+
+  return {
+    checkedAt: Date.now(),
+    items,
+    bundle,
+    accessories,
+    accessoriesRemainingSeconds: store?.AccessoryStore?.AccessoryStoreRemainingDurationInSeconds || 0,
+    error: '',
+  };
 }
 
 // Known tier names, ordered lowest -> highest rarity/price. valorant-api.com's contenttiers

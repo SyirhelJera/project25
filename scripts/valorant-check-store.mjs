@@ -52,7 +52,7 @@ async function main(){
     try {
       const result = await checkAccountStore(label, sess.ssid);
       await recordAccountResult(label, result);
-      console.log(`  done: ${result.items.length} skin(s)${result.bundle ? ' + featured bundle' : ''}.`);
+      console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundle ? ' + featured bundle' : ''}.`);
     } catch (err) {
       console.error(`  failed: ${err.message}`);
       await recordAccountError(label, err.message).catch(()=>{});

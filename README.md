@@ -12,7 +12,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
 | **Finance** | Multi-currency accounts (savings/credit/lent/custom), transfers between accounts, subscriptions with monthly-cost rollup, "money goals" (save $X by date, with logged contributions), a currency converter with live or manual exchange rates, a net-worth-over-time trend chart, and a this-month spending-by-category breakdown. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
-| **Valorant** | Tracks competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). |
+| **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers plus its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles), a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Wishlist** | Things you want to buy — name, cost, and an optional picture per item, shown as a card grid. |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
@@ -110,6 +110,13 @@ state = {
                                        // scripts/valorant-login.mjs (e.g. "main","smurf"), one
                                        // entry per tracked Riot account — written by
                                        // scripts/valorant-check-store.mjs (run locally) — see below.
+                                       // Each entry holds both storefront panels: `items` (the four
+                                       // daily VP skin offers) and `accessories` (the Kingdom Credit
+                                       // accessory shop — sprays/gun buddies/player cards/titles, on
+                                       // a weekly rotation, with accessoriesRemainingSeconds counting
+                                       // down from checkedAt). Entries written before accessories were
+                                       // added simply have no `accessories` key and render the skins
+                                       // grid alone until their next check.
                                        // ownedSkins is the same shape/origin, but for every owned
                                        // weapon skin (sorted by tier), written by the Local
                                        // Helper's "🎨 Check Owned Skins" button — see
@@ -177,11 +184,11 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 | API | Used for | Auth |
 |---|---|---|
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
-| valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, weapon skin catalog + content tiers (reference data) | None (public) |
+| valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, accessory-shop item names & art (sprays/buddies/player cards/titles), weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo`/`upload-resume` functions) | Auto-storing fitness progress photos and Jobs-tab resume PDFs | Server-side OAuth refresh token only |
-| Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
+| Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + weekly accessory shop + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
 | ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
 ### PWA / offline
@@ -210,7 +217,7 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
         - *Why not just automate this step?* An earlier version did, via a Puppeteer-driven browser window — see "Getting the initial session" above for why that no longer works (Riot's fraud detection rejects automation-controlled browsers outright) and won't be re-added.
      2. Run `node scripts/valorant-login.mjs [label]` (e.g. `node scripts/valorant-login.mjs main`; omit `[label]` to use "default") and paste the cookie when prompted — or non-interactively, `node scripts/valorant-login.mjs main <ssid>`. It validates the cookie with a quick silent reauth (so a bad paste fails immediately) and saves it under that label to `scripts/.valorant-session.json` (gitignored — never committed, never sent anywhere but Riot).
         - **To track another account**, repeat both steps with a different label, e.g. `node scripts/valorant-login.mjs smurf` — a fresh label doesn't touch any other saved account.
-     3. Run `node scripts/valorant-check-store.mjs`. It re-authenticates using every saved session, pulls each account's personal daily storefront, resolves skin/bundle names and images via valorant-api.com, and writes the result into `state.valorant.dailyStores[label]` on the shared `app_data` row directly (same public anon key the app itself uses — no service-role key needed for this). Pass a single label (e.g. `node scripts/valorant-check-store.mjs main`) to check just that one account instead of all of them.
+     3. Run `node scripts/valorant-check-store.mjs`. It re-authenticates using every saved session, pulls each account's personal daily storefront **and its accessory shop**, resolves skin/bundle/accessory names and images via valorant-api.com, and writes the result into `state.valorant.dailyStores[label]` on the shared `app_data` row directly (same public anon key the app itself uses — no service-role key needed for this). Pass a single label (e.g. `node scripts/valorant-check-store.mjs main`) to check just that one account instead of all of them.
      4. **Run step 3 daily** for the Valorant tab to actually show "today's" store for each tracked account. See "Automating the daily check" below for a Windows Task Scheduler setup so you don't have to run it by hand.
      5. **Each saved session expires in roughly 1-3 weeks** (Riot's own limit, not configurable), independently per account. When one does, `valorant-check-store.mjs` writes a "session expired" message into that account's entry in `state.valorant.dailyStores` (shown as a banner under that account's store section on the Valorant tab) instead of failing silently — other accounts keep updating normally. When you see that, just repeat steps 1-2 with that same label.
    - **Automating the daily check (Windows Task Scheduler)**: open Task Scheduler → Create Basic Task → trigger "Daily" at a time your PC is normally on → action "Start a program" → Program: `node`, Arguments: `scripts\valorant-check-store.mjs`, "Start in": this project's folder. A single scheduled run checks every saved account. Since the check needs your own machine's session, it only runs while the PC is on — a missed day just means yesterday's store stays shown until the next successful run.

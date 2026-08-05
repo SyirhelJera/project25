@@ -145,6 +145,19 @@
       <input id="newHabitInput" type="text" placeholder="Add a new habit... (e.g. Drink water, Read 10 pages)" maxlength="80">
       <button class="btn btn-primary" id="addHabitBtn">+ Add Habit</button>
     </div>
+    <div class="habit-tier-legend">
+      <button class="habit-tier-legend-toggle" id="habitTierLegendToggle">🔥 Streak tiers <span id="habitTierLegendArrow">▾</span></button>
+      <div class="habit-tier-legend-body" id="habitTierLegendBody" style="display:none;">
+        <div class="habit-badge habit-streak streak-t1">3+ days</div>
+        <div class="habit-badge habit-streak streak-t2">7+ days</div>
+        <div class="habit-badge habit-streak streak-t3">15+ days</div>
+        <div class="habit-badge habit-streak streak-t4">30+ days</div>
+        <div class="habit-badge habit-streak streak-t5">50+ days</div>
+        <div class="habit-badge habit-streak streak-t6">100+ days</div>
+        <div class="habit-badge habit-streak streak-t7">150+ days — Jade Dragon</div>
+        <div class="habit-badge habit-streak streak-t8">300+ days — Glorious Divinity</div>
+      </div>
+    </div>
     <div id="habitList"></div>
     <div class="empty" id="habitEmpty" style="display:none;">No habits yet. <b>Add one above</b> and start checking off days.</div>
   </div>

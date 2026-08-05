@@ -444,7 +444,7 @@
   function valSkinRarityInfo(price){
     const p = parseInt(price,10)||0;
     if(p >= 2900) return { name:'Ultra', color:'#F0D449' };
-    if(p >= 2300) return { name:'Exclusive', color:'#F0954B' };
+    if(p >= 2100) return { name:'Exclusive', color:'#F0954B' };
     if(p >= 1600) return { name:'Premium', color:'#E058CF' };
     if(p >= 1000) return { name:'Deluxe', color:'#2FBE7A' };
     return { name:'Select', color:'#4B9EF0' };

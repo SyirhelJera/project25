@@ -55,10 +55,12 @@
   // maps a streak length to a badge color tier — climbs from a muted "just started" tone up to
   // a shimmering gradient once a streak has been kept alive for 300+ days
   function streakTierClass(streak){
-    if(streak>=300) return 'streak-t6';
-    if(streak>=200) return 'streak-t5';
-    if(streak>=100) return 'streak-t4';
-    if(streak>=30) return 'streak-t3';
+    if(streak>=300) return 'streak-t8';
+    if(streak>=150) return 'streak-t7';
+    if(streak>=100) return 'streak-t6';
+    if(streak>=50) return 'streak-t5';
+    if(streak>=30) return 'streak-t4';
+    if(streak>=15) return 'streak-t3';
     if(streak>=7) return 'streak-t2';
     if(streak>=3) return 'streak-t1';
     return 'streak-t0';
@@ -262,4 +264,11 @@
   el('addHabitBtn').addEventListener('click', addHabit);
   el('newHabitInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addHabit(); });
   el('playDailiesBtn').addEventListener('click', ()=> startDailiesPlaySession());
+
+  el('habitTierLegendToggle').addEventListener('click', ()=>{
+    const body = el('habitTierLegendBody');
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'flex';
+    el('habitTierLegendArrow').textContent = open ? '▾' : '▴';
+  });
 

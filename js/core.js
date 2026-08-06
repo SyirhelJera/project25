@@ -13,7 +13,7 @@
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,
               //   title, postingUrl, salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,
-              //   coverLetterVersion, portfolioLinks, source, sourceOther, status, appliedDate,
+              //   coverLetterVersion, notes, source, sourceOther, status, appliedDate,
               //   contacts:[{id,name,title,email}] }
               // group: free-text subcategory ('' = ungrouped), shown as a colored pill on the card;
               // its color comes from state.jobCategoryColors below. logoUrl: company photo/logo,

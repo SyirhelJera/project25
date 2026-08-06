@@ -977,14 +977,20 @@
   /* jobs — a dedicated filter-chip class (NOT .stat) since .stat is driven by a document-wide
      click handler in goals.js keyed on the shared goalFilter variable; reusing it here would let
      clicking a Jobs chip silently reset Goals' filter state. Visually identical to .stat though. */
-  .job-filter-row{grid-template-columns:repeat(6,1fr);}
-  .job-filter-chip{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:13px 8px;text-align:center;cursor:pointer;transition:border-color .12s ease;}
-  .job-filter-chip:hover{border-color:var(--violet);}
-  .job-filter-chip.active-filter{border-color:var(--violet);background:var(--violet-pale);}
+  /* One segmented bar rather than six separate cards: a single border around the whole row, hairline
+     dividers between segments, and the active status shown as a filled pill inside it. */
+  .job-filter-row{grid-template-columns:repeat(6,1fr);gap:0;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:3px;}
+  .job-filter-chip{position:relative;background:none;border:none;border-radius:9px;padding:10px 6px;text-align:center;cursor:pointer;transition:background .12s ease;}
+  /* divider drawn as an inset pseudo-element, not a border, so it doesn't shift the grid tracks and
+     can sit short of the full height the way a segmented control's does */
+  .job-filter-chip + .job-filter-chip::before{content:'';position:absolute;left:0;top:22%;bottom:22%;width:1px;background:var(--border);}
+  .job-filter-chip:hover{background:var(--surface-alt);}
+  .job-filter-chip.active-filter{background:var(--surface-alt);}
   .job-filter-chip .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--text);}
   .job-filter-chip .lbl{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.3px;text-transform:uppercase;}
 
-  .job-search-input{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 11px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .job-search-row{margin:0 0 10px;}
+  .job-search-input{width:100%;min-width:150px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 11px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
   .job-search-input:focus{border-color:var(--violet);}
   .job-search-input::placeholder{color:var(--faint);}
 
@@ -1030,6 +1036,7 @@
   .job-group-color-note{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:11px;color:var(--faint);margin-top:7px;}
   .job-logo-thumb{width:44px;height:44px;border-radius:10px;object-fit:cover;flex:none;border:1px solid var(--border);}
   .job-detail-card .field-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .job-detail-card .field-row textarea.job-notes-input{min-height:92px;line-height:1.55;}
   .job-contact-row{display:flex;gap:10px;align-items:center;margin-bottom:6px;padding:7px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;}
   /* min-width:0 all the way down — without it a long email refuses to shrink and pushes the
      whole overlay wider instead of ellipsizing */

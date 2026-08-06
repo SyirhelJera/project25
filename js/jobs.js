@@ -62,9 +62,9 @@
       if(j.resumeFileName===undefined) j.resumeFileName = '';
       if(j.resumeViewLink===undefined) j.resumeViewLink = '';
       if(j.coverLetterVersion===undefined) j.coverLetterVersion = '';
-      if(j.portfolioLinks===undefined) j.portfolioLinks = '';
       if(j.source===undefined) j.source = '';
       if(j.sourceOther===undefined) j.sourceOther = '';
+      if(j.notes===undefined) j.notes = '';
       if(j.status===undefined) j.status = 'applied';
       if(j.appliedDate===undefined) j.appliedDate = localDateStr(new Date(j.createdAt||Date.now()));
       if(!Array.isArray(j.contacts)) j.contacts = [];
@@ -546,8 +546,8 @@
       company, group:'', logoUrl:'', workModel:'', hqLocation:'', companySiteUrl:'',
       title, postingUrl:'', salaryRange:'',
       resumeVersion:'', resumeFileId:'', resumeFileName:'', resumeViewLink:'',
-      coverLetterVersion:'', portfolioLinks:'',
-      source:'', sourceOther:'',
+      coverLetterVersion:'',
+      source:'', sourceOther:'', notes:'',
       status:'prospect', appliedDate: localDateStr(new Date()),
       contacts: []
     });
@@ -706,7 +706,6 @@
         +   '<div class="field-row"><label>Cover Letter Version</label><input type="text" id="jdCoverLetterVersion" value="'+escapeHtml(j.coverLetterVersion)+'"></div>'
         + '</div>'
         + jobResumeAttachmentHtml(j)
-        + '<div class="field-row"><label>Portfolio Link(s) — one per line</label><textarea id="jdPortfolioLinks" rows="3">'+escapeHtml(j.portfolioLinks)+'</textarea></div>'
 
         + '<div class="section-lbl">Application Source</div>'
         + '<div class="field-2col">'
@@ -720,6 +719,9 @@
         +   '</select></div>'
         +   '<div class="field-row" id="jdSourceOtherField" style="'+(j.source==='other'?'':'display:none;')+'"><label>Specify</label><input type="text" id="jdSourceOther" value="'+escapeHtml(j.sourceOther)+'"></div>'
         + '</div>'
+
+        + '<div class="section-lbl">Notes</div>'
+        + '<div class="field-row"><textarea id="jdNotes" class="job-notes-input" rows="4" placeholder="Interview prep, recruiter chats, salary talk, what to follow up on…">'+escapeHtml(j.notes||'')+'</textarea></div>'
 
         + '<div class="section-lbl">Key Contacts</div>'
         + (contactRows ? contactRows : '<div style="font-size:12px;color:var(--faint);padding:2px 0;">No contacts added yet.</div>')
@@ -787,7 +789,7 @@
     bindField('jdAppliedDate', 'appliedDate');
     bindField('jdResumeVersion', 'resumeVersion');
     bindField('jdCoverLetterVersion', 'coverLetterVersion');
-    bindField('jdPortfolioLinks', 'portfolioLinks', v=>v);
+    bindField('jdNotes', 'notes', v=>v); // raw value — notes keep their newlines and indentation
     bindField('jdSourceOther', 'sourceOther');
 
     const resumeAttachBtn = body.querySelector('#jdResumeAttachBtn');

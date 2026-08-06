@@ -71,6 +71,7 @@
     <div class="nav-item" data-tab="countdowns"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Countdowns</span></div>
     <div class="nav-item" data-tab="clock"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg><span class="nav-label">Clock</span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
+    <div class="nav-item" data-tab="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h10M4 5v14M4 12h7M8 12v7M8 19h6M13 5v3M13 8h7"/><circle cx="4" cy="5" r="1.4" fill="currentColor"/><circle cx="8" cy="12" r="1.4" fill="currentColor"/><circle cx="14" cy="19" r="1.4" fill="currentColor"/></svg><span class="nav-label">Notes</span></div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
   </div>
 
@@ -771,6 +772,35 @@
     <div class="empty" id="clockBlockEmpty" style="display:none;">No time blocks yet. Add one above — try "Sleep" or "Deep Work".</div>
   </div>
 
+  <!-- NOTES -->
+  <div class="view" id="view-notes">
+    <div class="view-title">Notes</div>
+    <div class="view-sub">An outliner — every note can hold sub-notes, as deep as you like. <b>Enter</b> for a new note, <b>Tab</b> / <b>Shift+Tab</b> to nest and un-nest, <b>Shift+Enter</b> for a markdown body. Click a row outside its text to fold it; drag it by the same spot to move it. Type <b>#tags</b> anywhere in a title, and turn any note into a checkbox with <b>☑</b>.</div>
+    <!-- Notes-scoped, like the Jobs pair: Notes saves to its own storage resource, so a conflict
+         or outage here says nothing about the shared blob the other tabs use (see js/notes.js) -->
+    <div id="notesConflictBanner" class="confirm-banner" style="display:none;"></div>
+    <div id="notesOfflineBanner" class="confirm-banner" style="display:none;"></div>
+    <div class="add-row">
+      <input id="newNoteInput" type="text" placeholder="New top-level note…" maxlength="200">
+      <button class="btn btn-primary" id="addNoteBtn">+ Add</button>
+    </div>
+    <div class="notes-toolbar">
+      <div class="notes-search-wrap">
+        <input id="notesSearchInput" type="text" placeholder="Search notes…" maxlength="80">
+        <button class="notes-search-clear" id="notesSearchClear" type="button" title="Clear search" style="display:none;">×</button>
+      </div>
+      <span class="chip" id="notesCount">0 notes</span>
+      <button class="btn btn-ghost btn-sm" id="notesExpandAllBtn" type="button">Expand / collapse all</button>
+    </div>
+    <div class="notes-pinned-strip" id="notesPinned" style="display:none;"></div>
+    <div class="notes-pinned-strip notes-tag-bar" id="notesTagBar" style="display:none;"></div>
+    <div id="notesTree"></div>
+    <div class="empty" id="notesEmpty" style="display:none;">No notes yet. Add one above, then press <b>Tab</b> on a note to tuck it under the one before it.</div>
+    <!-- the escape hatch: an empty result can come from the search box, a tag filter, or both, so
+         this clears all of them rather than making you work out which one is hiding your notes -->
+    <div class="empty" id="notesNoMatch" style="display:none;">Nothing matches the current search or tag filter.<br><button class="btn btn-sm btn-primary" id="notesClearFiltersBtn" type="button" style="margin-top:10px;">Show all notes</button></div>
+  </div>
+
   <!-- MANTRAS -->
   <div class="view" id="view-mantras">
     <div class="view-title">Mantras</div>
@@ -983,6 +1013,7 @@
 <script src="js/mantras.js"></script>
 <script src="js/motivation.js"></script>
 <script src="js/checklists.js"></script>
+<script src="js/notes.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/wishlist.js"></script>
 <script src="js/jobs.js"></script>

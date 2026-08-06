@@ -42,7 +42,14 @@
     dailyActivity: {},
     // vacation/sick/event date ranges (Settings tab) — excuses habit streaks and checklist
     // miss-streaks for any day they cover; see js/protecteddays.js
-    protectedDays: [] };
+    protectedDays: [],
+    // hierarchical outliner notes (Notes tab, js/notes.js) — a FLAT list: nesting is expressed
+    // by parentId (null = top level) and sibling order is this array's own order, so a move is a
+    // splice plus one field write, and a whole subtree follows its parent for free (the children
+    // still point at it). No `order` ints to renumber, no nested children[] to recurse through.
+    // Like state.jobs, this does NOT ride in the shared app_data row — it has its own resource,
+    // hydrated by applyLoadedNotesState() and written by saveNotes(), both in js/notes.js.
+    notes: [] }; // { id, title, body, parentId, collapsed, pinned, createdAt, updatedAt }
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';

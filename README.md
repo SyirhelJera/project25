@@ -14,6 +14,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers and its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles) — one at a time, via a Skins/Accessories toggle next to the account switcher (`state.valorant.storeMode`, persisted) — a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
+| **Notes** | A Workflowy-style outliner — every note is one row and can hold sub-notes, nested as deep as you like, with collapsible branches, a one-line title plus an optional longer body, keyboard-first editing (Enter for a new note, Tab/Shift+Tab to nest and un-nest, Shift+Enter for the body, Backspace on an empty row to remove it), **checkboxes** (turn any note into a task with ☑; parents show a done/total chip for their task children), **#tags** typed inline in a title and surfaced as a clickable filter bar, **markdown** note bodies (headings, bold/italic/strikethrough, inline + fenced code, links, lists, quotes, rules — rendered when you're not editing, raw textarea when you are), search that keeps a match's ancestor path visible, pinned notes in a strip at the top, and drag-to-reorder/reparent a whole subtree by grabbing the row itself — no handle (◀▶▲▼ buttons stand in on touch, where HTML5 drag events don't fire). A note you never typed anything into isn't kept: it's discarded as soon as focus leaves it, so an abandoned row never becomes a permanent blank line. A blank note that has picked up a body or children counts as content and stays. |
 | **Wishlist** | Things you want to buy — name, cost, and an optional picture per item, shown as a card grid. |
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
 | **Countdowns** | Days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. |
@@ -28,7 +29,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 
 ```
 core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
-countdowns.js → insights.js → backups.js → mantras.js → checklists.js →
+countdowns.js → insights.js → backups.js → mantras.js → checklists.js → notes.js →
 finance.js → fitness.js → valorant.js → main.js
 ```
 
@@ -39,7 +40,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks).
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, swipe-to-switch-tabs gesture.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
 Rendering is done by tearing down and rebuilding `innerHTML` for the relevant section on every state change (no virtual DOM, no diffing) — `save()` is called after essentially every mutation, and most mutations are followed by a call to that tab's own `render*()`.
@@ -62,6 +63,19 @@ state = {
                                        // it doesn't break a streak, but doesn't inflate it either
   countdowns: [ { id, label, date, pinned, createdAt } ],
   mantras: [ { id, text } ],
+  notes: [ { id, title, body, parentId, collapsed, pinned, task, done, createdAt, updatedAt } ],
+                                       // the Notes outliner — deliberately a FLAT array. Nesting
+                                       // is the parentId link (null = top level) and sibling order
+                                       // is this array's own order (childrenOf() filters, and
+                                       // filter preserves order), so a subtree does NOT have to be
+                                       // contiguous: moving a note relocates one record and its
+                                       // descendants follow, still pointing at it. No `order` ints
+                                       // to renumber, no nested children[] to recurse through.
+                                       // repairNoteTree() in notes.js re-roots dangling parentIds
+                                       // and breaks cycles before every render — either would make
+                                       // a note unreachable from the roots and so invisible.
+                                       // Like `jobs`, this key does NOT live in the shared row —
+                                       // it has its own resource, see "Persistence" below.
   checklists: [ { id, name, items:[{id,text,done,durationMin,skipCount,missStreak}], resetFreq,
                   lastResetKey, linkedHabitId, group } ],
                                        // skipCount = lifetime times skipped in a Play Session;
@@ -167,7 +181,8 @@ Key mechanics in this layer:
 - **Offline cache**: state is mirrored to `localStorage` after every successful load/save; if a live load fails, the app falls back to that cached copy and shows an offline banner. This is read-fallback only — it doesn't queue writes, it just keeps `save()`'s existing conflict check as the safety net once connectivity returns.
 - **Debounced saves** for high-frequency inputs (typing in number fields) to stay within free-tier request limits; discrete actions (clicks, checkbox toggles) save immediately.
 - `save()` is a no-op until a load has genuinely completed (`loadedOk`), so a failed/ambiguous load can never clobber remote data with in-memory defaults.
-- **Jobs data is stored separately** (`app_data` row `id = 'jobs'`, or the `app-data-jobs` key in Claude-storage mode) and has its own `saveJobs()`/`loadJobsData()` in `js/jobs.js`. Reason: the shared row is re-serialized and re-uploaded *in full* on every save from *any* tab, so a long list of job applications would be re-sent every time an unrelated habit got ticked. The Jobs resource reimplements the same safety properties (its own `loadedOk` gate, optimistic-concurrency conflict detection, offline cache, serialized save chain) and shows its own conflict/offline banners inside the Jobs tab. No extra SQL setup — the row is created by the app on first save. `state.jobSiteAccounts` deliberately stays in the shared row. `loadJobsData()` also carries a permanent migration guard: whenever it finds the dedicated resource absent, it seeds it from any pre-split `jobs` array still embedded in the shared row, and durably writes that seed *before* the shared row's next save strips the legacy copy.
+- **Jobs and Notes are each stored separately** — `app_data` rows `id = 'jobs'` and `id = 'notes'` (or the `app-data-jobs` / `app-data-notes` keys in Claude-storage mode), owned by `saveJobs()`/`loadJobsData()` in `js/jobs.js` and `saveNotes()`/`loadNotesData()` in `js/notes.js`. Reason: the shared row is re-serialized and re-uploaded *in full* on every save from *any* tab, so a long list of job applications would be re-sent every time an unrelated habit got ticked. Notes is the sharper case — it debounce-saves on every keystroke, so leaving the outline in the shared row would mean re-uploading every goal, habit, finance record and Valorant store in the app for each paragraph typed. Each dedicated resource reimplements the same safety properties (its own `loadedOk` gate, optimistic-concurrency conflict detection, offline cache, serialized save chain) and shows its own conflict/offline banners inside its own tab. No extra SQL setup — the rows are created by the app on first save. `state.jobSiteAccounts` deliberately stays in the shared row. Both loaders also carry a permanent migration guard: whenever one finds its dedicated resource absent, it seeds it from any pre-split array still embedded in the shared row, and durably writes that seed *before* the shared row's next save strips the legacy copy.
+- **Notes uses a compact wire format.** `notes.js:serializeNotes()` is the only thing allowed to serialize `state.notes`; it omits every field sitting at its default (`parentId: null`, `body: ''`, `collapsed`/`pinned` false, `updatedAt === createdAt`), which `applyLoadedNotesState()` puts straight back on load. An outliner is mostly short titles, so the fixed per-record key overhead otherwise dominates the payload — measured at ~45% smaller on a representative tree, off both upload *and* download. The typing debounce here is 1.5s rather than the shared `debouncedSave()`'s 700ms, since note bodies are written as continuous prose and every fired timer is a full re-upload of the outline; pending writes are flushed on tab-hide and unload so nothing is lost.
 
 ### Supabase backend
 
@@ -259,7 +274,7 @@ js/
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
   goals.js / habits.js / finance.js / fitness.js / valorant.js /
-  checklists.js / countdowns.js / mantras.js / backups.js / insights.js
+  checklists.js / notes.js / countdowns.js / mantras.js / backups.js / insights.js
                                      one file per feature tab
 supabase/functions/
   manage-backups/                   list/restore daily backups

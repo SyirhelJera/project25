@@ -451,6 +451,11 @@
     .play-btn-skip:hover{background:var(--gold);color:#fff;}
     .play-btn-failed:hover{background:var(--danger);color:#fff;}
     .play-btn-check:hover{filter:brightness(1.08);}
+    /* a 6-button cluster on every row makes a long outline unreadable, so the row actions only
+       appear on hover — guarded to real pointers, since on touch they'd then never appear at all */
+    .notes-row .notes-actions{opacity:0;transition:opacity .12s;}
+    .notes-row:hover .notes-actions,.notes-row:focus-within .notes-actions{opacity:1;}
+    .notes-row:hover{background-color:var(--surface-alt);}
   }
   .play-complete-msg{font-size:18px;font-weight:700;color:var(--text);margin-bottom:20px;}
   .play-complete-insights{text-align:left;border-top:1px solid var(--border);padding-top:14px;margin-bottom:20px;}
@@ -705,6 +710,109 @@
   .checklist-card.done .checklist-name{color:var(--muted);}
   .checklist-done-chip{background:var(--success-pale);color:var(--success);border:1px solid #CDE8D8;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700;}
 
+  /* notes — the outliner tree (js/notes.js). Rows are a flat list; nesting is purely visual,
+     driven by the --depth custom property set inline on each row. */
+  .notes-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .notes-search-wrap{position:relative;flex:1;min-width:150px;}
+  .notes-search-wrap input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:8px 28px 8px 11px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .notes-search-wrap input:focus{border-color:var(--violet);}
+  .notes-search-clear{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--faint);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;}
+  .notes-search-clear:hover{color:var(--danger);}
+  .notes-pinned-strip{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px;padding:9px 11px;background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;}
+  .notes-pinned-lbl{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);}
+  .notes-pin-chip{display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);border-radius:7px;padding:3px 5px 3px 9px;font-size:12px;color:var(--text);cursor:pointer;max-width:220px;}
+  .notes-pin-chip:hover{border-color:var(--violet);}
+  .notes-pin-chip-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .notes-pin-chip-x{background:none;border:none;color:var(--faint);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;}
+  .notes-pin-chip-x:hover{color:var(--danger);}
+
+  /* One repeating-linear-gradient, clipped by background-size to exactly --depth columns, draws
+     the indent guide lines — no extra DOM per level, and it tracks the theme's border color. */
+  /* the row itself is the drag source (no handle) — grab anywhere that isn't the text field or a
+     button, which the inner cursor overrides below carve back out */
+  .notes-row{position:relative;display:flex;align-items:center;gap:6px;padding:4px 8px;border-radius:8px;cursor:grab;padding-left:calc(var(--depth) * 20px + 8px);background-repeat:no-repeat;background-position:15px 0;background-size:calc(var(--depth) * 20px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 20px);}
+  .notes-row:active{cursor:grabbing;}
+  .notes-row .notes-title-input{cursor:text;}
+  .notes-row button{cursor:pointer;}
+  .notes-row.dragging{opacity:.4;}
+  .notes-row.notes-row-ctx .notes-title-input,.notes-row.notes-row-ctx .notes-title-hl{color:var(--faint);}
+  .notes-row.flash{background-color:var(--violet-pale);}
+  .notes-row.drop-into{outline:2px dashed var(--violet);outline-offset:-2px;}
+  .notes-row.drop-before{box-shadow:inset 0 2px 0 var(--violet);}
+  .notes-row.drop-after{box-shadow:inset 0 -2px 0 var(--violet);}
+  .notes-bullet{flex:none;width:20px;text-align:center;color:var(--faint);font-size:15px;line-height:1;}
+  .notes-chevron{flex:none;width:20px;background:none;border:none;color:var(--muted);cursor:pointer;font-size:9px;padding:0;line-height:1;}
+  .notes-chevron:hover{color:var(--violet-dark);}
+  .notes-title-wrap{position:relative;flex:1;min-width:0;display:flex;}
+  .notes-title-input{width:100%;background:none;border:none;border-bottom:1px solid transparent;color:var(--text);font-size:13.5px;font-family:'Inter',sans-serif;padding:3px 2px;outline:none;}
+  .notes-title-input::placeholder{color:var(--faint);font-style:italic;}
+  .notes-title-input:focus{border-bottom-color:var(--violet);}
+  .notes-title-hl{position:absolute;left:0;top:0;right:0;bottom:0;display:flex;align-items:center;padding:3px 2px;font-size:13.5px;color:var(--text);overflow:hidden;}
+  .notes-title-hl-in{white-space:pre;overflow:hidden;text-overflow:ellipsis;}
+  .notes-title-hl mark{background:var(--gold);color:#fff;border-radius:3px;padding:0 2px;}
+  /* The decorated overlay (tag chips + search highlight) stands in for the input's own text until
+     the row is focused for editing, when the real caret-bearing input takes back over — so what
+     you type is always the literal source text, "#tag" and all. */
+  .notes-title-input{color:transparent;}
+  .notes-row.editing .notes-title-hl{display:none;}
+  .notes-row.editing .notes-title-input{color:var(--text);}
+  /* only the chips are clickable; the rest of the overlay lets clicks fall through to the row */
+  .notes-title-hl{pointer-events:none;}
+  .notes-tag{display:inline-block;pointer-events:auto;cursor:pointer;background:var(--violet-pale);color:var(--violet-dark);border-radius:5px;padding:0 5px;font-size:11.5px;font-weight:600;white-space:nowrap;}
+  .notes-tag:hover{background:var(--violet);color:#fff;}
+
+  /* tag filter bar — reuses .notes-pinned-strip's shell, so only the buttons need styling */
+  .notes-tag-btn{display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);color:var(--violet-dark);border-radius:7px;padding:3px 9px;font-size:11.5px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;}
+  .notes-tag-btn:hover{border-color:var(--violet);}
+  .notes-tag-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  /* a filter whose tag no longer exists anywhere — kept visible purely so it can be switched off */
+  .notes-tag-btn.empty{border-style:dashed;opacity:.75;}
+  .notes-tag-count{font-size:10px;font-weight:700;opacity:.65;}
+
+  /* checkbox tasks */
+  .notes-check{flex:none;width:14px;height:14px;margin:0;accent-color:var(--violet);cursor:pointer;}
+  .notes-row.is-done .notes-title-hl{color:var(--faint);text-decoration:line-through;}
+  .notes-row.is-done .notes-title-input{text-decoration:line-through;}
+  .notes-act-btn.is-task{color:var(--violet-dark);}
+  .notes-prog-chip{flex:none;font-variant-numeric:tabular-nums;}
+  .notes-prog-chip.all-done{background:var(--success-pale);color:var(--success);border-color:var(--success);}
+  .notes-chevron-spacer{flex:none;width:20px;}
+
+  /* rendered markdown body */
+  .notes-body-md{padding-left:calc(var(--depth) * 20px + 34px);padding-right:8px;margin:-1px 0 6px;font-size:12.5px;line-height:1.6;color:var(--muted);cursor:text;background-repeat:no-repeat;background-position:15px 0;background-size:calc(var(--depth) * 20px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 20px);}
+  .notes-body-md > *:first-child{margin-top:0;}
+  .notes-body-md > *:last-child{margin-bottom:0;}
+  .notes-body-md p{margin:0 0 7px;}
+  .notes-body-md h3{font-size:14px;font-weight:700;color:var(--text);margin:10px 0 5px;}
+  .notes-body-md h4{font-size:13px;font-weight:700;color:var(--text);margin:9px 0 4px;}
+  .notes-body-md h5,.notes-body-md h6{font-size:12.5px;font-weight:700;color:var(--text);margin:8px 0 4px;}
+  .notes-body-md ul,.notes-body-md ol{margin:0 0 7px;padding-left:20px;}
+  .notes-body-md li{margin:2px 0;}
+  .notes-body-md a{color:var(--violet-dark);text-decoration:underline;}
+  .notes-body-md code{background:var(--surface-alt);border:1px solid var(--border);border-radius:4px;padding:0 4px;font-size:11.5px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;}
+  .notes-body-md pre{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:9px 11px;margin:0 0 7px;overflow-x:auto;}
+  .notes-body-md pre code{background:none;border:none;padding:0;}
+  .notes-body-md blockquote{margin:0 0 7px;padding:2px 0 2px 10px;border-left:3px solid var(--border);color:var(--faint);}
+  .notes-body-md hr{border:none;border-top:1px solid var(--border);margin:9px 0;}
+  .notes-body-md del{color:var(--faint);}
+  .notes-body-hint{font-size:10px;color:var(--faint);margin-top:3px;}
+  .notes-kid-chip{flex:none;}
+  .notes-actions{display:flex;align-items:center;gap:2px;flex:none;}
+  .notes-act-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 5px;line-height:1;border-radius:5px;}
+  .notes-act-btn:hover{background:var(--surface-alt);color:var(--violet-dark);}
+  .notes-act-btn.danger:hover{color:var(--danger);}
+  .notes-act-btn.pinned{color:var(--gold);}
+  .notes-act-btn.has-body{color:var(--violet-dark);}
+  .notes-move-btns{display:none;gap:1px;}
+  .notes-move-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:5px;cursor:pointer;font-size:9px;padding:4px 5px;line-height:1;}
+  .notes-move-btn:disabled{opacity:.3;cursor:default;}
+  .notes-body{width:100%;background:var(--surface-alt);border:1px solid var(--violet);border-radius:9px;color:var(--text);font-size:12.5px;font-family:'Inter',sans-serif;line-height:1.55;padding:9px 11px;outline:none;resize:none;overflow:hidden;}
+  /* the body/preview blocks repeat the row's guide-line gradient so the vertical lines stay
+     unbroken through them — otherwise every open body editor punches a gap in the outline */
+  .notes-row-body{padding-left:calc(var(--depth) * 20px + 34px);padding-right:8px;margin:2px 0 8px;background-repeat:no-repeat;background-position:15px 0;background-size:calc(var(--depth) * 20px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 20px);}
+  .notes-body-preview{padding-left:calc(var(--depth) * 20px + 34px);padding-right:8px;padding-bottom:3px;margin:-2px 0 2px;font-size:11.5px;color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;background-repeat:no-repeat;background-position:15px 0;background-size:calc(var(--depth) * 20px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 20px);}
+  .notes-body-preview:hover{color:var(--muted);}
+
   /* mantras */
   .mantra-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:16px 18px;margin-bottom:9px;display:flex;align-items:center;gap:12px;}
   .mantra-text{flex:1;font-size:14.5px;font-weight:600;font-style:italic;color:var(--text);}
@@ -812,6 +920,15 @@
     /* drag-to-reorder relies on HTML5 drag events, which don't work on touch — hide the handle so it isn't dead clutter */
     .drag-handle{display:none;}
     .val-drag-handle{display:none !important;}
+    /* Notes has no handle to hide — its rows are draggable themselves — but HTML5 drag events
+       don't fire on touch either way, so it needs the same fallback: the indent/outdent/move
+       buttons appear here, mirroring the ▲▼ pattern in js/insights.js. cursor:grab is meaningless
+       without a pointer, so it goes too. */
+    .notes-move-btns{display:flex;}
+    .notes-row{cursor:default;gap:4px;padding-left:calc(var(--depth) * 14px + 6px);background-position:11px 0;background-size:calc(var(--depth) * 14px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 14px);}
+    .notes-row-body,.notes-body-preview{padding-left:calc(var(--depth) * 14px + 24px);background-position:11px 0;background-size:calc(var(--depth) * 14px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 14px);}
+    .notes-act-btn{padding:3px 4px;}
+    .notes-pin-chip{max-width:150px;}
     #valAccountList{grid-template-columns:1fr;}
     .goal-head{padding:12px 14px;gap:7px;}
     .goal-title{font-size:14px;}

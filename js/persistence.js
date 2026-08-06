@@ -16,10 +16,12 @@
                  for all using (true) with check (true);
           b) Paste your Project URL and anon public key below.
 
-     Two rows are used in this table: id='shared' (this file — every tab's data, one JSON blob) and
-     id='jobs' (the Jobs tab, which saves/loads independently so a growing application list isn't
-     re-uploaded on every unrelated edit — see js/jobs.js). No extra SQL is needed for the second
-     row: the policy above already covers any id, and the app creates the row itself on first save.
+     Three rows are used in this table: id='shared' (this file — every tab's data, one JSON blob),
+     id='jobs' (the Jobs tab — see js/jobs.js) and id='notes' (the Notes outliner — see js/notes.js).
+     Those two save/load independently so a growing application list or notes tree isn't re-uploaded
+     on every unrelated edit, and so their own frequent writes don't re-upload everything else. No
+     extra SQL is needed for the additional rows: the policy above already covers any id, and the
+     app creates each row itself on first save.
   ---------------------------------- */
   const SUPABASE_URL = 'https://gsmzeqybnacjtxtrpuil.supabase.co';
   const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzbXplcXlibmFjanR4dHJwdWlsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ1NDI3OTIsImV4cCI6MjEwMDExODc5Mn0.99hVBDa3ZWFxj4rRQFfBW28MCgsaWHT7PTJFZJqca8I';
@@ -298,6 +300,11 @@
       if(p.label === undefined) p.label = '';
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
+    // NOTE: state.notes is deliberately NOT hydrated here — like Jobs, the Notes outliner has its
+    // own dedicated storage resource. It's the app's other unbounded-growth key (free-text bodies,
+    // and every keystroke debounce-saves), so keeping it in this blob would re-upload the whole
+    // outline on every unrelated edit AND re-upload every other tab's data on every keystroke.
+    // Its hydration + field defaults live in applyLoadedNotesState() in js/notes.js.
     {
       const m = parsed.motivation || {};
       const pin = (typeof m.pin === 'string') ? m.pin : '';
@@ -338,13 +345,14 @@
   async function doSave(force){
     if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
     cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
-    // Jobs lives in its own storage resource now (see saveJobs() in js/jobs.js), so it must never be
-    // part of this payload. Rest-destructuring rather than a hand-maintained key list is deliberate:
-    // every OTHER top-level key of state carries forward automatically, including any added later,
-    // with nothing to remember to update here. Note the write below REPLACES the whole jsonb column
-    // (it isn't a merge), so anything accidentally omitted from this object is destroyed on the next
-    // save of any tab — jobSiteAccounts in particular looks Jobs-adjacent but must stay included.
-    const { jobs, ...mainState } = state;
+    // Jobs and Notes each live in their own storage resource now (see saveJobs() in js/jobs.js and
+    // saveNotes() in js/notes.js), so neither may be part of this payload. Rest-destructuring rather
+    // than a hand-maintained key list is deliberate: every OTHER top-level key of state carries
+    // forward automatically, including any added later, with nothing to remember to update here.
+    // Note the write below REPLACES the whole jsonb column (it isn't a merge), so anything
+    // accidentally omitted from this object is destroyed on the next save of any tab —
+    // jobSiteAccounts in particular looks Jobs-adjacent but must stay included.
+    const { jobs, notes, ...mainState } = state;
     try{
       if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(mainState)); hideOfflineBanner(); return; }
       if(!supa) return;
@@ -410,6 +418,7 @@
           let parsedMain = null;
           if(res && res.value){ parsedMain = JSON.parse(res.value); applyLoadedState(parsedMain); }
           await loadJobsData(parsedMain);
+          await loadNotesData(parsedMain);
           loadedOk = true;
           cacheStateLocally();
           hideOfflineBanner();
@@ -418,11 +427,13 @@
           const msg = (e && e.message) || String(e);
           if(/not found|no such key|does not exist/i.test(msg)){
             await loadJobsData(null);
+            await loadNotesData(null);
             loadedOk = true;
           } else {
             console.error('load failed', e);
             fallbackToLocalCache();
             await loadJobsData(null);
+            await loadNotesData(null);
           }
         }
       } else {
@@ -436,11 +447,13 @@
             console.error('load failed', error);
             fallbackToLocalCache();
             await loadJobsData(null);
+            await loadNotesData(null);
           } else {
             let parsedMain = null;
             if(data && data.data){ parsedMain = data.data; applyLoadedState(parsedMain); }
             lastKnownUpdatedAt = data ? data.updated_at : null;
             await loadJobsData(parsedMain);
+            await loadNotesData(parsedMain);
             loadedOk = true;
             cacheStateLocally();
             hideOfflineBanner();
@@ -451,6 +464,7 @@
       console.error('load failed', e);
       fallbackToLocalCache();
       await loadJobsData(null);
+      await loadNotesData(null);
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';

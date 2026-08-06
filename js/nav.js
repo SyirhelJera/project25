@@ -15,6 +15,7 @@
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); }
       if(t.dataset.tab==='checklists') renderChecklists();
+      if(t.dataset.tab==='notes') renderNotes();
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();

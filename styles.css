@@ -984,12 +984,28 @@
   .job-filter-chip .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--text);}
   .job-filter-chip .lbl{font-size:10px;color:var(--muted);margin-top:3px;letter-spacing:0.3px;text-transform:uppercase;}
 
-  .job-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
+  .job-search-input{flex:1;min-width:150px;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 11px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .job-search-input:focus{border-color:var(--violet);}
+  .job-search-input::placeholder{color:var(--faint);}
+
+  /* Deliberately dense: one ~32px single-line row per application, sized for lists of 100+ rather
+     than for looking roomy. Anything that doesn't fit on the line lives in the detail overlay. */
+  .job-card{display:flex;align-items:center;gap:9px;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:5px 10px;margin-bottom:4px;cursor:pointer;}
   .job-card:hover{border-color:var(--violet);}
-  .job-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
-  .job-card-company{font-size:14.5px;font-weight:700;color:var(--text);}
-  .job-card-title{font-size:12.5px;color:var(--muted);margin-top:2px;}
-  .job-card-meta{font-size:10.5px;color:var(--faint);margin-top:8px;}
+  .job-card-logo{display:block;width:20px;height:20px;border-radius:5px;object-fit:cover;flex:none;border:1px solid var(--border);background:var(--surface-alt);}
+  /* the logo slot always renders (initial-letter fallback) so company names stay aligned row to row */
+  .job-card-logo-ph{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--faint);}
+  .job-card-headtext{display:flex;align-items:baseline;gap:7px;flex:1;min-width:0;overflow:hidden;}
+  /* company is capped rather than shrink-to-fit, so the two text columns stay roughly aligned */
+  .job-card-company{font-size:12.5px;font-weight:700;color:var(--text);flex:none;max-width:45%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .job-card-title{font-size:11.5px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .job-card-meta{font-size:10px;color:var(--faint);flex:none;white-space:nowrap;}
+  /* subcategory pill sits beside the status badge, badge kept rightmost so it stays scannable */
+  .job-card-badges{display:flex;align-items:center;justify-content:flex-end;gap:5px;flex:none;}
+  /* subcategory pill — background/text color are set inline from state.jobCategoryColors (js/jobs.js) */
+  .job-group-pill{font-size:10px;font-weight:800;letter-spacing:0.3px;border-radius:999px;padding:3px 9px;white-space:nowrap;}
+  .job-card .job-group-pill{font-size:9.5px;padding:2px 7px;max-width:120px;overflow:hidden;text-overflow:ellipsis;}
+  .job-card .job-status-badge{font-size:9.5px;padding:2px 7px;}
 
   .job-status-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .job-status-badge.job-status-prospect{color:var(--muted);background:var(--surface-alt);}
@@ -1005,9 +1021,27 @@
   .job-detail-card .field-row input,.job-detail-card .field-row select,.job-detail-card .field-row textarea{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:9px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
   .job-detail-card .field-row input:focus,.job-detail-card .field-row select:focus,.job-detail-card .field-row textarea:focus{border-color:var(--violet);}
   .job-detail-card .field-row textarea{resize:vertical;min-height:52px;font-family:'Inter',sans-serif;}
+  /* the field-row input/label rules above are more specific than the shared .swatch-custom / .img-row
+     ones, so re-assert those here rather than letting a color picker or upload button inherit them */
+  .job-detail-card .field-row .swatch-custom{width:22px;height:22px;padding:0;border-radius:50%;background:none;}
+  .job-detail-card .field-row .img-row label{background:var(--violet-pale);border:1px solid var(--border);color:var(--violet-dark);border-radius:8px;padding:7px 11px;font-size:12px;font-weight:700;text-transform:none;letter-spacing:0;}
+  .job-detail-card .field-row .img-row label:hover{background:var(--violet);color:#fff;}
+  .jd-group-swatches{margin-top:9px;}
+  .job-group-color-note{display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:11px;color:var(--faint);margin-top:7px;}
+  .job-logo-thumb{width:44px;height:44px;border-radius:10px;object-fit:cover;flex:none;border:1px solid var(--border);}
   .job-detail-card .field-2col{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
-  .job-contact-row{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
-  .job-contact-row .job-contact-fields{flex:1;display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;}
+  .job-contact-row{display:flex;gap:10px;align-items:center;margin-bottom:6px;padding:7px 10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;}
+  /* min-width:0 all the way down — without it a long email refuses to shrink and pushes the
+     whole overlay wider instead of ellipsizing */
+  .job-contact-row .job-contact-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .job-contact-line{display:flex;align-items:baseline;gap:6px;min-width:0;}
+  .job-contact-name{font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:none;max-width:60%;}
+  .job-contact-title{font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  /* emails have no spaces to break on, so allow a mid-token wrap rather than clipping the domain */
+  .job-contact-email{font-size:11.5px;color:var(--muted);line-height:1.35;overflow-wrap:anywhere;}
+  /* the add-contact row's shared .add-tx-row sizing gives all three inputs equal width; email needs more */
+  .job-detail-card .add-tx-row input{min-width:0;flex:1 1 110px;}
+  .job-detail-card .add-tx-row .job-new-contact-email{flex:1.7 1 160px;}
   .job-contact-del{flex:none;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
   .job-status-select-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;}
   .job-resume-attach{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
@@ -1020,6 +1054,12 @@
   /* job-site login manager — see the plaintext-storage note next to state.jobSiteAccounts in core.js */
   .job-accounts-card{max-width:480px;}
   .job-account-row{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;}
+  .job-account-main{flex:1;min-width:0;}
+  /* the site photo is itself the file-picker control — empty state is a dashed "+" placeholder */
+  .job-account-logo{width:38px;height:38px;flex:none;border-radius:9px;overflow:hidden;border:1px solid var(--border);background:var(--surface-alt);cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .job-account-logo img{width:100%;height:100%;object-fit:cover;display:block;}
+  .job-account-logo.empty{border-style:dashed;color:var(--faint);font-size:14px;}
+  .job-account-logo:hover{border-color:var(--violet);}
   .job-account-site{font-size:13px;font-weight:700;color:var(--text);}
   .job-account-site a{color:var(--violet-dark);font-size:11px;margin-left:6px;text-decoration:none;}
   .job-account-site a:hover{text-decoration:underline;}
@@ -1405,6 +1445,8 @@
     /* two player-card crops side by side leave neither readable at this width — stack them */
     .val-preview-variants{grid-template-columns:1fr;}
     .val-preview-variant.tall .val-preview-variant-img img{max-height:38vh;}
+    /* slim job rows: the meta column goes first — most repetitive, least scanned part of the row */
+    .job-card-meta{display:none;}
   }
 
   @media (max-width:420px){

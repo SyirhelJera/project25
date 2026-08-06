@@ -11,10 +11,13 @@
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', storeMode:'skins', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
-    jobs: [], // { id, createdAt, updatedAt, company, workModel, hqLocation, companySiteUrl, title, postingUrl,
-              //   salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,
+    jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,
+              //   title, postingUrl, salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,
               //   coverLetterVersion, portfolioLinks, source, sourceOther, status, appliedDate,
               //   contacts:[{id,name,title,email}] }
+              // group: free-text subcategory ('' = ungrouped), shown as a colored pill on the card;
+              // its color comes from state.jobCategoryColors below. logoUrl: company photo/logo,
+              // a Supabase Storage URL from uploadCompressedImage(), never embedded base64.
               // resumeFileId/resumeFileName/resumeViewLink: the attached resume PDF, uploaded via the
               // upload-resume Edge Function straight to a Google Drive folder named "Uploaded Resumes"
               // (see supabase/functions/upload-resume) — only the Drive file id/link are stored here,
@@ -22,7 +25,11 @@
     // login credentials for job-search sites (LinkedIn, Indeed, ...) — plaintext, stored in the same
     // shared unauthenticated row as everything else in this app (see js/persistence.js), just masked
     // in the UI; not real encryption
-    jobSiteAccounts: [], // { id, site, loginUrl, username, password, createdAt }
+    jobSiteAccounts: [], // { id, site, loginUrl, username, password, imageUrl, createdAt }
+    // per-Jobs-subcategory pill color: { "<group name>": "#RRGGBB" }. Deliberately lives in the
+    // shared row rather than the dedicated jobs row (see js/jobs.js) — it's a tiny bounded map, and
+    // keeping it here means doSave()'s rest-destructure carries it automatically.
+    jobCategoryColors: {},
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
     // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;

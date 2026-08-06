@@ -19,7 +19,9 @@
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
       if(t.dataset.tab==='wishlist') renderWishlist();
-      if(t.dataset.tab==='jobs') renderJobs();
+      // Jobs always opens on Prospect with a clean search — that's the pile that only moves if you
+      // act on it (and what the nav badge counts). Mirrors Goals resetting to 'working' above.
+      if(t.dataset.tab==='jobs'){ resetJobsView(); renderJobs(); }
     });
   });
 

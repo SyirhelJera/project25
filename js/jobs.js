@@ -11,7 +11,8 @@
 
   // which job's detail overlay is open, if any — not persisted, resets per page load
   let openJobId = null;
-  let jobFilter = 'all';
+  let jobFilter = 'prospect'; // Jobs opens on Prospect; nav.js resets it back to this on every tab click
+  let jobSearch = '';
   let jobSortMode = 'none';
   let jobSortDir = 'desc';
   // which saved passwords are currently shown in plaintext (id -> true) — not persisted, resets per page load
@@ -49,6 +50,8 @@
   function applyLoadedJobsState(parsed){
     state.jobs = (parsed && parsed.jobs) || [];
     state.jobs.forEach(j=>{
+      if(j.group===undefined) j.group = '';
+      if(j.logoUrl===undefined) j.logoUrl = '';
       if(j.workModel===undefined) j.workModel = '';
       if(j.hqLocation===undefined) j.hqLocation = '';
       if(j.companySiteUrl===undefined) j.companySiteUrl = '';
@@ -271,6 +274,31 @@
     await saveJobs(true);
   }
 
+  /* ---------- subcategory pills ----------
+     A job's subcategory is just free text on the record (j.group); its pill color is looked up by
+     name in state.jobCategoryColors, so every application in a subcategory shares one color and
+     recoloring one recolors them all. That map lives in the SHARED row, not the jobs row (see
+     core.js) — so color edits save with save(), while j.group edits save with saveJobs(). */
+  const JOB_GROUP_DEFAULT_COLOR = '#6366F1';
+  // only ever emit a validated hex into an inline style attribute
+  function jobGroupColor(name){
+    const key = (name||'').trim();
+    const raw = key ? ((state.jobCategoryColors||{})[key] || '') : '';
+    return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw : JOB_GROUP_DEFAULT_COLOR;
+  }
+  // dark text on light pills, white on dark ones — perceived-luminance split so any custom color stays readable
+  function jobPillTextColor(hex){
+    const n = parseInt(hex.slice(1), 16);
+    const lum = 0.299*((n>>16)&255) + 0.587*((n>>8)&255) + 0.114*(n&255);
+    return lum > 155 ? '#1F2937' : '#FFFFFF';
+  }
+  function jobGroupPillHtml(name){
+    const key = (name||'').trim();
+    if(!key) return '';
+    const c = jobGroupColor(key);
+    return '<span class="job-group-pill" style="background:'+c+';color:'+jobPillTextColor(c)+';">'+escapeHtml(key)+'</span>';
+  }
+
   function jobSourceLabel(j){
     if(j.source === 'other') return j.sourceOther ? j.sourceOther : 'Other';
     return JOB_SOURCE_LABELS[j.source] || '';
@@ -284,16 +312,59 @@
       else if(mode === 'appliedDate'){ av = a.appliedDate||''; bv = b.appliedDate||''; }
       else if(mode === 'status'){ av = JOB_STATUS_ORDER[a.status]||0; bv = JOB_STATUS_ORDER[b.status]||0; }
       else if(mode === 'salary'){ av = (a.salaryRange||'').toLowerCase(); bv = (b.salaryRange||'').toLowerCase(); }
+      else if(mode === 'group'){
+        const ag = (a.group||'').trim(), bg = (b.group||'').trim();
+        // '' isn't a category — unlabelled applications sink to the bottom either way, rather than
+        // piling up on top in ascending order. Direction only reorders the named subcategories.
+        if(!ag !== !bg) return ag ? -1 : 1;
+        av = ag.toLowerCase(); bv = bg.toLowerCase();
+      }
       else { av = 0; bv = 0; }
       if(av < bv) return -1*factor;
       if(av > bv) return 1*factor;
+      // inside one subcategory, fall back to company so the block has a stable, readable order
+      if(mode === 'group'){
+        const ac = (a.company||'').toLowerCase(), bc = (b.company||'').toLowerCase();
+        if(ac < bc) return -1*factor;
+        if(ac > bc) return 1*factor;
+      }
       return 0;
     });
   }
 
+  /* Free-text search across the fields you'd actually remember an application by: company, job
+     title, HQ location, where it came from, and any key contact (name, their title, their email).
+     Whitespace-separated terms are ANDed, so "google recruiter" finds the Google row whose contact
+     is a recruiter — each term may match a different field. */
+  function jobSearchHaystack(j){
+    return [
+      j.company, j.title, j.hqLocation, jobSourceLabel(j),
+      (j.contacts||[]).map(c=> c.name + ' ' + (c.title||'') + ' ' + (c.email||'')).join(' ')
+    ].join(' ').toLowerCase();
+  }
+  function jobMatchesSearch(j, terms){
+    if(!terms.length) return true;
+    const hay = jobSearchHaystack(j);
+    return terms.every(t=> hay.indexOf(t) !== -1);
+  }
+  function jobSearchTerms(){ return jobSearch.trim().toLowerCase().split(/\s+/).filter(Boolean); }
+  // nav.js calls this on every Jobs tab click — open on the Prospect pile with an empty search box
+  function resetJobsView(){
+    jobFilter = 'prospect';
+    jobSearch = '';
+    const s = el('jobSearch'); if(s) s.value = '';
+  }
+
   function visibleJobs(){
     let arr = state.jobs.slice();
-    if(jobFilter === 'prospect' || jobFilter === 'applied' || jobFilter === 'interviewing' || jobFilter === 'offer'){
+    const terms = jobSearchTerms();
+    /* A search always spans every status, ignoring the active chip. The tab opens on Prospect, so
+       scoping matches to the current pile would hide the very row you're looking for — and you
+       generally search because you don't remember which pile it's in. The chips take over again
+       the moment the box is empty (and clicking one clears the search — see the chip handler). */
+    if(terms.length){
+      arr = arr.filter(j=> jobMatchesSearch(j, terms));
+    } else if(jobFilter === 'prospect' || jobFilter === 'applied' || jobFilter === 'interviewing' || jobFilter === 'offer'){
       arr = arr.filter(j=>j.status===jobFilter);
     } else if(jobFilter === 'rejected-ghosted'){
       arr = arr.filter(j=>j.status==='rejected' || j.status==='ghosted');
@@ -391,24 +462,60 @@
     if(j.appliedDate) metaParts.push('Applied ' + j.appliedDate);
     const srcLabel = jobSourceLabel(j);
     if(srcLabel) metaParts.push('via ' + escapeHtml(srcLabel));
-    card.innerHTML = '<div class="job-card-head">'
-        +   '<div><div class="job-card-company">'+escapeHtml(j.company)+'</div>'
-        +   '<div class="job-card-title">'+escapeHtml(j.title)+'</div></div>'
-        +   '<span class="job-status-badge job-status-'+j.status+'">'+JOB_STATUS_LABELS[j.status]+'</span>'
+    // one single-line row per application — the whole card is deliberately kept to ~32px tall so a
+    // list of 100+ stays scannable; the full record is one click away in the detail overlay.
+    // The logo slot always renders (initial-letter placeholder when there's no photo) so company
+    // names stay vertically aligned down the whole list.
+    card.innerHTML = (j.logoUrl
+            ? '<img class="job-card-logo" src="'+escapeHtml(j.logoUrl)+'" alt="">'
+            : '<span class="job-card-logo job-card-logo-ph">'+escapeHtml((j.company||'?').trim().charAt(0).toUpperCase())+'</span>')
+        + '<div class="job-card-headtext">'
+        +   '<span class="job-card-company">'+escapeHtml(j.company)+'</span>'
+        +   '<span class="job-card-title">'+escapeHtml(j.title)+'</span>'
         + '</div>'
-        + (metaParts.length ? '<div class="job-card-meta">'+metaParts.join(' · ')+'</div>' : '');
+        + (metaParts.length ? '<div class="job-card-meta">'+metaParts.join(' · ')+'</div>' : '')
+        + '<div class="job-card-badges">'
+        +   jobGroupPillHtml(j.group)
+        +   '<span class="job-status-badge job-status-'+j.status+'">'+JOB_STATUS_LABELS[j.status]+'</span>'
+        + '</div>';
     card.addEventListener('click', ()=> openJobDetail(j.id));
     return card;
   }
 
+  // red count bubble on the Jobs nav icon — same .nav-badge pattern as the Goals/Habits reminders.
+  // Prospects are the only status that needs a nudge: nothing has been sent yet, so it's the one
+  // pile that only moves if you act on it.
+  function updateJobReminder(){
+    const badge = el('jobProspectBadge');
+    if(!badge) return;
+    const n = (state.jobs||[]).filter(j=>j.status==='prospect').length;
+    if(n){ badge.style.display = 'inline-flex'; badge.textContent = n; }
+    else { badge.style.display = 'none'; }
+  }
+
   function renderJobs(){
     autoMarkGhostedJobs();
+    updateJobReminder();
     const list = el('jobList'); if(!list) return;
     list.innerHTML = '';
     const items = state.jobs || [];
-    el('jobEmpty').style.display = items.length===0 ? 'block' : 'none';
+    // Flat list — subcategories are surfaced by the colored pill on each card (jobGroupPillHtml),
+    // not by collapsible section headers, so filtering/sorting stays the only thing reordering cards.
+    const shown = visibleJobs();
+    shown.forEach(j=> list.appendChild(buildJobCard(j)));
 
-    visibleJobs().forEach(j=> list.appendChild(buildJobCard(j)));
+    // Empty state tracks the FILTERED view, not just the total: the tab opens on Prospect, so
+    // "50 applications, none of them prospects" would otherwise render a blank page with no message.
+    const empty = el('jobEmpty');
+    empty.style.display = shown.length===0 ? 'block' : 'none';
+    const q = jobSearch.trim();
+    if(items.length === 0){
+      empty.innerHTML = 'No applications tracked yet. <b>Add one above</b> to start.';
+    } else if(q){
+      empty.innerHTML = 'No applications match “'+escapeHtml(q)+'”.';
+    } else {
+      empty.innerHTML = 'Nothing in this filter — pick another above.';
+    }
 
     el('jobStatTotal').textContent = items.length;
     el('jobStatProspect').textContent = items.filter(j=>j.status==='prospect').length;
@@ -417,8 +524,10 @@
     el('jobStatOffer').textContent = items.filter(j=>j.status==='offer').length;
     el('jobStatRejGhost').textContent = items.filter(j=>j.status==='rejected' || j.status==='ghosted').length;
 
+    // while searching, no chip is highlighted — the filter genuinely isn't in effect, so showing one
+    // as active would claim the results are scoped to it
     document.querySelectorAll('.job-filter-chip').forEach(c=>c.classList.remove('active-filter'));
-    if(jobFilter !== 'all'){
+    if(jobFilter !== 'all' && !jobSearch.trim()){
       const match = document.querySelector('.job-filter-chip[data-status="'+jobFilter+'"]');
       if(match) match.classList.add('active-filter');
     }
@@ -434,7 +543,7 @@
     const now = Date.now();
     state.jobs.push({
       id: uid(), createdAt: now, updatedAt: now,
-      company, workModel:'', hqLocation:'', companySiteUrl:'',
+      company, group:'', logoUrl:'', workModel:'', hqLocation:'', companySiteUrl:'',
       title, postingUrl:'', salaryRange:'',
       resumeVersion:'', resumeFileId:'', resumeFileName:'', resumeViewLink:'',
       coverLetterVersion:'', portfolioLinks:'',
@@ -453,10 +562,15 @@
   document.querySelectorAll('.job-filter-chip').forEach(chip=>{
     chip.addEventListener('click', ()=>{
       const f = chip.dataset.status;
+      // picking a pile clears the search, since a search deliberately overrides the chips — otherwise
+      // the click would appear to do nothing at all
+      jobSearch = ''; el('jobSearch').value = '';
       jobFilter = (jobFilter === f && f !== 'all') ? 'all' : f;
       renderJobs();
     });
   });
+  // the search box lives in static markup, not in the re-rendered list, so typing keeps focus
+  el('jobSearch').addEventListener('input', e=>{ jobSearch = e.target.value; renderJobs(); });
   el('jobSortSelect').addEventListener('change', e=>{ jobSortMode = e.target.value; renderJobs(); });
   el('jobSortDirBtn').addEventListener('click', ()=>{
     jobSortDir = jobSortDir === 'asc' ? 'desc' : 'asc';
@@ -478,6 +592,7 @@
 
   function deleteJob(j){
     if(!window.confirm('Delete the application to "'+j.company+'" ('+j.title+')?')) return;
+    deleteStorageImage(j.logoUrl);
     state.jobs = state.jobs.filter(x=>x.id!==j.id);
     saveJobs();
     closeJobDetail();
@@ -510,12 +625,23 @@
       '<button type="button" class="btn btn-sm '+(j.status===s?'btn-primary':'btn-ghost')+' job-status-set-btn" data-status="'+s+'">'+JOB_STATUS_LABELS[s]+'</button>'
     ).join('');
 
+    // existing subcategory names, offered as suggestions so related applications land in the same one
+    const groupOptions = Array.from(new Set((state.jobs||[]).map(x=>(x.group||'').trim()).filter(Boolean)))
+      .sort((a,b)=>a.localeCompare(b))
+      .map(g=>'<option value="'+escapeHtml(g)+'"></option>').join('');
+    const curGroup = (j.group||'').trim();
+    const curGroupColor = jobGroupColor(curGroup);
+
+    // Name + role on one line, email on its own below — three equal columns cramped every field and
+    // let a long unbroken email widen the whole overlay (grid items don't shrink past their content).
     const contactRows = j.contacts.map(c=>
       '<div class="job-contact-row" data-contact-id="'+c.id+'">'
       +   '<div class="job-contact-fields">'
-      +     '<span>'+escapeHtml(c.name)+'</span>'
-      +     '<span style="color:var(--muted);">'+escapeHtml(c.title||'')+'</span>'
-      +     '<span style="color:var(--muted);">'+escapeHtml(c.email||'')+'</span>'
+      +     '<div class="job-contact-line">'
+      +       '<span class="job-contact-name">'+escapeHtml(c.name)+'</span>'
+      +       (c.title ? '<span class="job-contact-title">'+escapeHtml(c.title)+'</span>' : '')
+      +     '</div>'
+      +     (c.email ? '<div class="job-contact-email">'+escapeHtml(c.email)+'</div>' : '')
       +   '</div>'
       +   '<button type="button" class="job-contact-del" title="Remove">✕</button>'
       + '</div>'
@@ -528,8 +654,27 @@
 
         + '<div class="job-status-select-row">'+statusButtons+'</div>'
 
+        + '<div class="field-row"><label>Subcategory</label>'
+        +   '<input type="text" id="jdGroup" maxlength="40" list="jdGroupList" placeholder="e.g. Dream companies — leave blank for none" value="'+escapeHtml(j.group||'')+'">'
+        +   '<datalist id="jdGroupList">'+groupOptions+'</datalist>'
+        +   (curGroup
+                ? '<div class="swatches jd-group-swatches">'
+                  +   SWATCHES.map(c=>'<div class="swatch '+(curGroupColor.toLowerCase()===c.toLowerCase()?'selected':'')+'" style="background:'+c+';" data-color="'+c+'"></div>').join('')
+                  +   '<input type="color" class="swatch-custom" id="jdGroupColor" value="'+curGroupColor+'">'
+                  + '</div>'
+                  + '<div class="job-group-color-note">Pill color for '+jobGroupPillHtml(curGroup)+' — shared by every application in this subcategory.</div>'
+                : '<div class="job-group-color-note">Name a subcategory to color-code it and show it as a pill on the card.</div>')
+        + '</div>'
+
         + '<div class="section-lbl">Company Profile</div>'
         + '<div class="field-row"><label>Company Name</label><input type="text" id="jdCompany" maxlength="100" value="'+escapeHtml(j.company)+'"></div>'
+        + '<div class="field-row"><label>Company Photo</label>'
+        +   '<div class="img-row" id="jdLogoRow">'
+        +     (j.logoUrl ? '<img class="job-logo-thumb" src="'+escapeHtml(j.logoUrl)+'" alt="">' : '')
+        +     '<label>Upload image<input type="file" accept="image/*" style="display:none;"></label>'
+        +     (j.logoUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '')
+        +   '</div>'
+        + '</div>'
         + '<div class="field-2col">'
         +   '<div class="field-row"><label>Work Model</label><select id="jdWorkModel">'
         +     '<option value=""'+(j.workModel===''?' selected':'')+'>— Select —</option>'
@@ -604,6 +749,35 @@
       });
     };
     bindField('jdCompany', 'company', v=>{ const t=v.trim(); return t || j.company; });
+    bindField('jdGroup', 'group');
+
+    // Subcategory color is keyed by NAME in the shared row, so it saves with save(), not saveJobs().
+    const setGroupColor = c => {
+      if(!curGroup) return;
+      if(!state.jobCategoryColors) state.jobCategoryColors = {};
+      state.jobCategoryColors[curGroup] = c;
+      save(); renderJobs();
+    };
+    body.querySelectorAll('.jd-group-swatches .swatch').forEach(sw=>{
+      sw.addEventListener('click', ()=> setGroupColor(sw.dataset.color));
+    });
+    const groupColorInput = body.querySelector('#jdGroupColor');
+    if(groupColorInput) groupColorInput.addEventListener('change', e=> setGroupColor(e.target.value));
+
+    const logoRow = body.querySelector('#jdLogoRow');
+    logoRow.querySelector('input[type=file]').addEventListener('change', e=>{
+      const file = e.target.files[0]; if(!file) return;
+      const prevUrl = j.logoUrl;
+      uploadCompressedImage(file, 320, 0.78, 'jobs').then(url=>{
+        j.logoUrl = url; touchJob(j); saveJobs(); renderJobs();
+        deleteStorageImage(prevUrl);
+      }).catch(err=> window.alert(err.message));
+    });
+    const logoRmBtn = logoRow.querySelector('.del-goal');
+    if(logoRmBtn) logoRmBtn.addEventListener('click', ()=>{
+      deleteStorageImage(j.logoUrl);
+      j.logoUrl = ''; touchJob(j); saveJobs(); renderJobs();
+    });
     bindField('jdWorkModel', 'workModel');
     bindField('jdHqLocation', 'hqLocation');
     bindField('jdCompanySiteUrl', 'companySiteUrl');
@@ -667,7 +841,12 @@
   function buildJobAccountRow(a){
     const row = document.createElement('div'); row.className = 'job-account-row'; row.dataset.acctId = a.id;
     const revealed = !!jobAccountRevealed[a.id];
-    row.innerHTML = '<div>'
+    // the site photo doubles as the upload control — clicking it (image or empty placeholder) picks a file
+    row.innerHTML = '<label class="job-account-logo'+(a.imageUrl?'':' empty')+'" title="'+(a.imageUrl?'Change site photo':'Add a site photo')+'">'
+        +   (a.imageUrl ? '<img src="'+escapeHtml(a.imageUrl)+'" alt="">' : '<span>＋</span>')
+        +   '<input type="file" accept="image/*" style="display:none;">'
+        + '</label>'
+        + '<div class="job-account-main">'
         +   '<div class="job-account-site">'+escapeHtml(a.site)
         +     (a.loginUrl ? ' <a href="'+escapeHtml(a.loginUrl)+'" target="_blank" rel="noopener noreferrer">Open ↗</a>' : '')
         +   '</div>'
@@ -676,9 +855,26 @@
         +     '<span>🔒 '+(revealed ? escapeHtml(a.password||'') : '••••••••')
         +       ' <button type="button" class="job-account-mini-btn job-account-toggle-btn">'+(revealed?'Hide':'Show')+'</button>'
         +       ' <button type="button" class="job-account-mini-btn job-account-copy-btn" data-copy="password">Copy</button></span>'
+        +     (a.imageUrl ? '<span><button type="button" class="job-account-mini-btn job-account-img-del">Remove photo</button></span>' : '')
         +   '</div>'
         + '</div>'
         + '<button type="button" class="job-contact-del job-account-del" title="Delete">✕</button>';
+
+    row.querySelector('.job-account-logo input[type=file]').addEventListener('change', e=>{
+      const file = e.target.files[0];
+      e.target.value = '';
+      if(!file) return;
+      const prevUrl = a.imageUrl;
+      uploadCompressedImage(file, 200, 0.75, 'jobs').then(url=>{
+        a.imageUrl = url; save(); renderJobAccounts();
+        deleteStorageImage(prevUrl);
+      }).catch(err=> window.alert(err.message));
+    });
+    const imgDelBtn = row.querySelector('.job-account-img-del');
+    if(imgDelBtn) imgDelBtn.addEventListener('click', ()=>{
+      deleteStorageImage(a.imageUrl);
+      a.imageUrl = ''; save(); renderJobAccounts();
+    });
 
     row.querySelector('.job-account-toggle-btn').addEventListener('click', ()=>{
       jobAccountRevealed[a.id] = !jobAccountRevealed[a.id];
@@ -689,6 +885,7 @@
     });
     row.querySelector('.job-account-del').addEventListener('click', ()=>{
       if(!window.confirm('Delete the saved login for "'+a.site+'"?')) return;
+      deleteStorageImage(a.imageUrl);
       state.jobSiteAccounts = state.jobSiteAccounts.filter(x=>x.id!==a.id);
       delete jobAccountRevealed[a.id];
       save(); renderJobAccounts();
@@ -710,7 +907,7 @@
     const site = siteInput.value.trim();
     const username = userInput.value.trim();
     if(!site || !username) return;
-    state.jobSiteAccounts.push({ id:uid(), site, loginUrl:urlInput.value.trim(), username, password:passInput.value, createdAt:Date.now() });
+    state.jobSiteAccounts.push({ id:uid(), site, loginUrl:urlInput.value.trim(), username, password:passInput.value, imageUrl:'', createdAt:Date.now() });
     siteInput.value=''; urlInput.value=''; userInput.value=''; passInput.value='';
     save(); renderJobAccounts();
     siteInput.focus();

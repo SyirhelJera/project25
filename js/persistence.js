@@ -267,7 +267,11 @@
       if(a.loginUrl===undefined) a.loginUrl = '';
       if(a.username===undefined) a.username = '';
       if(a.password===undefined) a.password = '';
+      if(a.imageUrl===undefined) a.imageUrl = '';
     });
+    // Jobs subcategory pill colors — see the note in core.js for why this one isn't in the jobs row.
+    state.jobCategoryColors = (parsed.jobCategoryColors && typeof parsed.jobCategoryColors === 'object')
+      ? parsed.jobCategoryColors : {};
 
     state.profile = parsed.profile || {name:'',age:'',netWorth:'',netWorthCurrency:'USD'};
     if(!state.profile.netWorthCurrency) state.profile.netWorthCurrency = 'USD';

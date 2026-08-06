@@ -64,7 +64,7 @@
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg><span class="nav-label">Habits</span><span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg><span class="nav-label">Finance</span></div>
     <div class="nav-item" data-tab="wishlist"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="4" rx="1"/><path d="M12 8v13M3 12v7a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M12 8c-1.5-4-6-4.5-6-1.5S9 8 12 8zM12 8c1.5-4 6-4.5 6-1.5S15 8 12 8z"/></svg><span class="nav-label">Wishlist</span></div>
-    <div class="nav-item" data-tab="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M2 13h20"/></svg><span class="nav-label">Jobs</span></div>
+    <div class="nav-item" data-tab="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M2 13h20"/></svg><span class="nav-label">Jobs</span><span class="nav-badge" id="jobProspectBadge" style="display:none;" title="Applications still sitting in Prospect"></span></div>
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg><span class="nav-label">Fitness</span><span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
     <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg><span class="nav-label">Valorant</span><span class="nav-badge" id="valWishlistBadge" style="display:none;" title="A wishlisted skin is in today's store">✓</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
@@ -360,20 +360,22 @@
     </div>
 
     <div class="stats job-filter-row" id="jobFilterRow">
-      <div class="job-filter-chip" data-status="all"><div class="num" id="jobStatTotal">0</div><div class="lbl">All</div></div>
       <div class="job-filter-chip" data-status="prospect"><div class="num" id="jobStatProspect">0</div><div class="lbl">Prospect</div></div>
       <div class="job-filter-chip" data-status="applied"><div class="num" id="jobStatApplied">0</div><div class="lbl">Applied</div></div>
       <div class="job-filter-chip" data-status="interviewing"><div class="num" id="jobStatInterviewing">0</div><div class="lbl">Interviewing</div></div>
       <div class="job-filter-chip" data-status="offer"><div class="num" id="jobStatOffer">0</div><div class="lbl">Offer</div></div>
       <div class="job-filter-chip" data-status="rejected-ghosted"><div class="num" id="jobStatRejGhost">0</div><div class="lbl">Rejected/Ghosted</div></div>
+      <div class="job-filter-chip" data-status="all"><div class="num" id="jobStatTotal">0</div><div class="lbl">All</div></div>
     </div>
 
     <div class="toolbar">
+      <input type="text" class="job-search-input" id="jobSearch" autocomplete="off" placeholder="Search company, contact, title, location, source…">
       <select class="sort-select" id="jobSortSelect">
         <option value="none">Default order</option>
         <option value="company">Sort: Company</option>
         <option value="appliedDate">Sort: Date Applied</option>
         <option value="status">Sort: Status</option>
+        <option value="group">Sort: Subcategory</option>
         <option value="salary">Sort: Salary (text)</option>
       </select>
       <button class="sort-dir-btn" id="jobSortDirBtn" title="Toggle ascending/descending">↓</button>

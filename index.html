@@ -1015,6 +1015,17 @@
 
 </div>
 
+<!-- MOBILE TAB SWITCHER — press and hold the button, slide onto a tab, release to open it.
+     A plain tap opens the same sheet and keeps it up so tabs can be tapped instead.
+     Built from the sidebar's .nav-item list by js/nav.js; hidden above the mobile breakpoint. -->
+<button id="tabSwitcherFab" class="tab-switcher-fab" type="button" aria-label="Switch tab" title="Hold and slide to switch tabs">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>
+</button>
+<div id="tabSwitcherOverlay" class="tab-switcher-overlay" style="display:none;">
+  <div class="tab-switcher-sheet" id="tabSwitcherSheet"></div>
+  <div class="tab-switcher-hint" id="tabSwitcherHint">Slide onto a tab, then let go</div>
+</div>
+
 <script src="js/core.js"></script>
 <script src="js/persistence.js"></script>
 <script src="js/protecteddays.js"></script>

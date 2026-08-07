@@ -66,6 +66,21 @@
   // previous local day in negative-UTC-offset zones once .setHours(0,0,0,0) is applied elsewhere).
   const parseLocalDateStr = str => { const [y,m,day] = str.split('-').map(Number); return new Date(y, m-1, day); };
 
+  // Scrolls `node` to the middle of the viewport — used when expanding a card, so the newly
+  // revealed content isn't left hanging off the bottom of the screen. Two cases scrollIntoView's
+  // block:'center' gets wrong here: on mobile the sidebar is a sticky top bar, so it has to come
+  // off the usable viewport height; and a card taller than what's left can't be centered without
+  // pushing its own header off the top, so those align to the top instead.
+  function scrollCardIntoCenter(node){
+    if(!node) return;
+    const sidebar = document.querySelector('.sidebar');
+    const barH = (sidebar && window.matchMedia('(max-width:760px)').matches) ? sidebar.getBoundingClientRect().height : 0;
+    const avail = window.innerHeight - barH;
+    const rect = node.getBoundingClientRect();
+    const gap = rect.height < avail ? (avail - rect.height)/2 : 12;
+    window.scrollTo({ top: Math.max(0, window.scrollY + rect.top - barH - gap), behavior:'smooth' });
+  }
+
   // ▲/▼ trend marker for the profile card. Direction and color are separate on purpose: net
   // worth rising is good (green ▲) while weight rising is not (red ▲), so callers pass the
   // arrow direction and whether that direction is a good thing independently.

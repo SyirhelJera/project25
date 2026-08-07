@@ -118,28 +118,16 @@
   });
   habitListEl.addEventListener('dragend', ()=>{ draggedHabitId = null; habitListEl.querySelectorAll('.habit-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
-  // Brings a habit card into view after a re-render. renderHabits() throws away every card node,
-  // so the element has to be re-queried by id — rAF lets the new layout settle before measuring.
-  // Centers the card, except when it's taller than the visible area (long month grid on a short
-  // screen), where centering would push its header off-screen — those align to the top instead.
-  // On mobile the sidebar is a sticky top bar, so its height comes off the usable viewport.
-  function scrollHabitCardIntoView(habitId){
-    requestAnimationFrame(()=>{
-      const card = habitListEl.querySelector('.habit-card[data-habit-id="'+habitId+'"]');
-      if(!card) return;
-      const sidebar = document.querySelector('.sidebar');
-      const barH = (sidebar && window.matchMedia('(max-width:760px)').matches) ? sidebar.getBoundingClientRect().height : 0;
-      const avail = window.innerHeight - barH;
-      const rect = card.getBoundingClientRect();
-      const gap = rect.height < avail ? (avail - rect.height)/2 : 12;
-      const top = window.scrollY + rect.top - barH - gap;
-      window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
-    });
-  }
+  // Expanding centers the card on screen (scrollCardIntoCenter, js/core.js). renderHabits() throws
+  // away every card node, so the element has to be re-queried by id — rAF lets the new layout
+  // settle before it's measured. Collapsing never scrolls.
   function setHabitCollapsed(h, collapsed){
-    h.collapsed = collapsed;
+    // only one habit stays open at a time — expanding one minimizes the rest
+    if(collapsed) h.collapsed = true;
+    else state.habits.forEach(x=>{ x.collapsed = (x.id !== h.id); });
     save(); renderHabits();
-    if(!collapsed) scrollHabitCardIntoView(h.id);
+    if(collapsed) return;
+    requestAnimationFrame(()=> scrollCardIntoCenter(habitListEl.querySelector('.habit-card[data-habit-id="'+h.id+'"]')));
   }
 
   function renderHabits(){

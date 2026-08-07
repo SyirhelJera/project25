@@ -668,6 +668,18 @@
     save(); renderChecklists();
   });
 
+  // Expanding centers the card on screen (scrollCardIntoCenter, js/core.js). renderChecklists()
+  // throws away every card node, so the element has to be re-queried by id — rAF lets the new
+  // layout settle before it's measured. Collapsing never scrolls.
+  function setChecklistCollapsed(c, collapsed){
+    // only one checklist stays open at a time — expanding one minimizes the rest
+    if(collapsed) c.collapsed = true;
+    else state.checklists.forEach(x=>{ x.collapsed = (x.id !== c.id); });
+    save(); renderChecklists();
+    if(collapsed) return;
+    requestAnimationFrame(()=> scrollCardIntoCenter(checklistListEl.querySelector('.checklist-card[data-checklist-id="'+c.id+'"]')));
+  }
+
   function renderChecklists(){
     applyChecklistResets();
     clearExpiredFailedFlags();
@@ -729,7 +741,7 @@
       if(groupInput) groupInput.addEventListener('change', e=>{
         c.group = e.target.value.trim(); save(); renderChecklists();
       });
-      top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ c.collapsed = !c.collapsed; save(); renderChecklists(); });
+      top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ setChecklistCollapsed(c, !c.collapsed); });
       const renameBtn = top.querySelector('[data-act="rename"]');
       if(renameBtn) renameBtn.addEventListener('click', ()=>{
         const nameEl = top.querySelector('.checklist-name');
@@ -775,7 +787,7 @@
       // handle/item-check) toggles minimize/maximize, same as the dedicated collapse button
       card.addEventListener('click', e=>{
         if(e.target.closest('button, input, select, .drag-handle, .sub-check')) return;
-        c.collapsed = !c.collapsed; save(); renderChecklists();
+        setChecklistCollapsed(c, !c.collapsed);
       });
       card.appendChild(top);
 

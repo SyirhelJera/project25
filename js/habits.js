@@ -156,23 +156,23 @@
 
       const card = document.createElement('div'); card.className='habit-card'+(unresolved?' habit-pending':'')+(h.collapsed?' habit-collapsed':'');
       card.dataset.habitId = h.id;
-      // Expanded, the top row fills with badges, so ✎ sits with the other actions at the far right;
-      // collapsed, the row is bare and it reads better tucked straight after the name.
-      const renameBtn = '<button class="rename-btn" data-act="rename" title="Rename">✎</button>';
+      // A collapsed card stays status-only — done mark, name, streak. The restores badge, checklist
+      // links, streak restore, rename and delete are rendered solely when the card is expanded.
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
-        + (h.collapsed ? renameBtn : '')
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
-        + '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
-        + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist: '+escapeHtml(c.name)+'">🔗</button>').join('') : '')
-        + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
-        + (h.collapsed ? '' : renameBtn)
-        + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>';
+        + (h.collapsed ? '' :
+            '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
+          + linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist: '+escapeHtml(c.name)+'">🔗</button>').join('')
+          + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
+          + '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
+          + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>');
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ setHabitCollapsed(h, !h.collapsed); });
-      top.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
+      const renameBtn = top.querySelector('[data-act="rename"]');
+      if(renameBtn) renameBtn.addEventListener('click', ()=>{
         const nameEl = top.querySelector('.habit-name');
         const input = document.createElement('input');
         input.type = 'text'; input.className = 'rename-input'; input.maxLength = 80; input.value = h.name;
@@ -189,7 +189,8 @@
         input.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') renderHabits(); });
         input.addEventListener('blur', commit);
       });
-      top.querySelector('[data-act="delete"]').addEventListener('click', ()=>{
+      const delBtn = top.querySelector('[data-act="delete"]');
+      if(delBtn) delBtn.addEventListener('click', ()=>{
         if(!window.confirm('Delete habit "'+h.name+'"? This can\'t be undone.')) return;
         state.habits = state.habits.filter(x=>x.id!==h.id); save(); renderHabits();
       });

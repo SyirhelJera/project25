@@ -84,10 +84,8 @@
   }
   body[data-theme="dark"] .goal.done,body[data-theme="ios-dark"] .goal.done{border-color:#1E4433;border-left-color:var(--success);}
   body[data-theme="dark"] .goal.done .goal-title,body[data-theme="ios-dark"] .goal.done .goal-title{text-decoration-color:#1E4433;}
-  /* completed checklists keep a legible green edge in the dark themes — muted, not the full
-     --success, but bright enough to pick out a finished card while scanning the list */
-  body[data-theme="dark"] .checklist-card.done,body[data-theme="ios-dark"] .checklist-card.done{border-color:#2E6B4A;}
-  body[data-theme="dark"] .checklist-card.done .checklist-count-chip,body[data-theme="ios-dark"] .checklist-card.done .checklist-count-chip{border-color:#2E6B4A;}
+  body[data-theme="dark"] .checklist-card.done,body[data-theme="ios-dark"] .checklist-card.done{border-color:#1E4433;}
+  body[data-theme="dark"] .checklist-done-chip,body[data-theme="ios-dark"] .checklist-done-chip{border-color:#1E4433;}
   body[data-theme="dark"] .setup-banner,body[data-theme="dark"] .confirm-banner,body[data-theme="ios-dark"] .setup-banner,body[data-theme="ios-dark"] .confirm-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
   body[data-theme="dark"] .confirm-banner span,body[data-theme="ios-dark"] .confirm-banner span{color:#C7CCF5;}
   body[data-theme="dark"] .habit-streak.streak-t0,body[data-theme="ios-dark"] .habit-streak.streak-t0{background:#2A2E42;}
@@ -747,7 +745,7 @@
   .checklist-card.checklist-collapsed .checklist-name{flex:1 1 90px;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal;}
   .checklist-card.checklist-collapsed .habit-collapse-btn{padding:0 4px;}
   .checklist-card.checklist-collapsed .btn{padding:3px 8px;font-size:10.5px;}
-  .checklist-card.checklist-collapsed.done{background:var(--surface);}
+  .checklist-card.checklist-collapsed.done{background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 34px);}
   /* the reorder handle is dead weight in a status row, so it only fades in on hover; on
      touch devices (no hover) it stays put, since there's no other way to reach it */
   @media (hover:hover){
@@ -765,16 +763,14 @@
   .checklist-habit-link{color:var(--violet-dark);font-weight:600;}
   .reset-chk-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 6px;flex:none;}
   .reset-chk-btn:hover{color:var(--danger);}
-  .checklist-card.done{border-color:var(--success);background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 60px);}
+  .checklist-card.done{border-color:#CDE8D8;background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 60px);}
   .checklist-card.done .checklist-name{color:var(--muted);}
-  .checklist-done-chip{color:var(--success);border-radius:5px;padding:1px 4px;font-size:10px;font-weight:800;letter-spacing:0.4px;flex:none;white-space:nowrap;}
+  .checklist-done-chip{background:var(--success-pale);color:var(--success);border:1px solid #CDE8D8;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700;flex:none;white-space:nowrap;}
   /* progress pill (12/15) and the hairline bar along the card's bottom edge — both read at a
      glance without opening the card */
   .checklist-count-chip{flex:none;background:var(--surface-alt);border:1px solid var(--border);border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;color:var(--muted);}
-  .checklist-card.done .checklist-count-chip{color:var(--success);border-color:var(--success);}
   .checklist-progress{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--border);}
   .checklist-progress span{display:block;height:100%;background:var(--violet);border-radius:0 2px 2px 0;transition:width .2s ease;}
-  .checklist-card.done .checklist-progress span{background:var(--success);}
 
   /* notes — the outliner tree (js/notes.js). Rows are a flat list; nesting is purely visual,
      driven by the --depth custom property set inline on each row. */

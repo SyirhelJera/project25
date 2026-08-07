@@ -2,8 +2,23 @@
   let motivationActiveCatIdx = 0;
   let motivationSlideIdx = {};    // { [categoryId]: image index }, remembered per category
   let motivationTimer = null;
-  let motivationUnlocked = false; // session-only — re-locks on every fresh page load
-  let motivationUnlockedCats = {}; // { [categoryId]: true } — session-only per-category unlocks
+  // Unlock state survives reloads (localStorage, so it's per-device and never rides along in the
+  // shared blob). Nothing re-locks on its own — "Lock now" / 🔒 are the only way back, which is
+  // the point: this is a privacy screen, not a security boundary.
+  const MOTIVATION_UNLOCK_KEY = 'motivation-unlocks';
+  let motivationUnlocked = false;  // tab-level; hydrated from storage below
+  let motivationUnlockedCats = {}; // { [categoryId]: true }; hydrated from storage below
+  (function loadMotivationUnlocks(){
+    try{
+      const saved = JSON.parse(localStorage.getItem(MOTIVATION_UNLOCK_KEY) || 'null');
+      if(!saved || typeof saved !== 'object') return;
+      motivationUnlocked = !!saved.tab;
+      if(saved.cats && typeof saved.cats === 'object') motivationUnlockedCats = saved.cats;
+    }catch(e){}
+  })();
+  function persistMotivationUnlocks(){
+    try{ localStorage.setItem(MOTIVATION_UNLOCK_KEY, JSON.stringify({ tab: motivationUnlocked, cats: motivationUnlockedCats })); }catch(e){}
+  }
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
   const MOTIVATION_INTERVAL_MS = 5000;
 
@@ -269,7 +284,7 @@
     cat.images.forEach(img=> deleteStorageImage(img.url));
     state.motivation.categories = state.motivation.categories.filter(c=>c.id!==catId);
     delete motivationSlideIdx[catId];
-    delete motivationUnlockedCats[catId];
+    delete motivationUnlockedCats[catId]; persistMotivationUnlocks();
     if(state.motivation.pinnedCategoryId === catId) state.motivation.pinnedCategoryId = '';
     save(); renderMotivation();
   }
@@ -284,6 +299,7 @@
     cat.pin = v;
     if(v) motivationUnlockedCats[cat.id] = true; // you just proved you know it by setting it
     else delete motivationUnlockedCats[cat.id];
+    persistMotivationUnlocks();
     save(); renderMotivation();
   }
 
@@ -291,7 +307,7 @@
     const cat = activeMotivationCategory(); if(!cat) return;
     const entered = window.prompt('Enter PIN for "'+cat.name+'":');
     if(entered===null) return;
-    if(entered === cat.pin){ motivationUnlockedCats[cat.id] = true; renderMotivation(); }
+    if(entered === cat.pin){ motivationUnlockedCats[cat.id] = true; persistMotivationUnlocks(); renderMotivation(); }
     else window.alert('Incorrect PIN.');
   }
 
@@ -303,13 +319,14 @@
     if(!has && !v) return;
     state.motivation.pin = v;
     if(v) motivationUnlocked = true; // you just proved you know it by setting it — no need to re-enter immediately
+    persistMotivationUnlocks();
     save(); renderMotivation();
   }
 
   function promptMotivationUnlock(){
     const entered = window.prompt('Enter Motivation PIN:');
     if(entered===null) return;
-    if(entered === state.motivation.pin){ motivationUnlocked = true; renderMotivation(); }
+    if(entered === state.motivation.pin){ motivationUnlocked = true; persistMotivationUnlocks(); renderMotivation(); }
     else window.alert('Incorrect PIN.');
   }
 
@@ -323,6 +340,7 @@
   el('motivationCatLockNowBtn').addEventListener('click', ()=>{
     const cat = activeMotivationCategory(); if(!cat) return;
     delete motivationUnlockedCats[cat.id];
+    persistMotivationUnlocks();
     renderMotivation();
   });
   el('motivationCatUnlockBtn').addEventListener('click', promptMotivationCatUnlock);
@@ -344,7 +362,7 @@
     el('mantraRow').classList.toggle('minimized');
   });
   el('motivationPinBtn').addEventListener('click', promptSetMotivationPin);
-  el('motivationLockBtn').addEventListener('click', ()=>{ motivationUnlocked = false; renderMotivation(); });
+  el('motivationLockBtn').addEventListener('click', ()=>{ motivationUnlocked = false; persistMotivationUnlocks(); renderMotivation(); });
   el('motivationUnlockBtn').addEventListener('click', promptMotivationUnlock);
 
   // Swiping switches between categories (not images — tap the image for that). Bound to the

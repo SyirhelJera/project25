@@ -39,11 +39,14 @@
 
   // sums Finance-section accounts: savings/lent/custom-asset are assets, credit/custom-liability are liabilities
   // each account's balance is converted from its own currency into USD before summing
+  function isLiabilityAccount(a){ return a.type==='credit' || a.type==='custom-liability'; }
+  // a liability balance is a *magnitude* of debt, not a signed figure — the account card renders it
+  // with a hard-coded "-" for the same reason. So it's always subtracted: naively multiplying by -1
+  // turned a balance the user typed (or paid) below zero into an asset, pushing net worth *up*.
   function financeNetWorth(){
     return (state.finance.accounts||[]).reduce((sum,a)=>{
-      const sign = (a.type==='credit' || a.type==='custom-liability') ? -1 : 1;
       const usdBal = convertAmt(a.balance, a.currency||'USD', 'USD');
-      return sum + sign*usdBal;
+      return sum + (isLiabilityAccount(a) ? -Math.abs(usdBal) : usdBal);
     }, 0);
   }
   // overall net worth = manually entered profile figure + everything tracked in the Finance section

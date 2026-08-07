@@ -352,7 +352,11 @@
         if(a.imageUrl===undefined) a.imageUrl = '';
         if(a.transactions===undefined) a.transactions = [];
         const bal = parseFloat(a.balance)||0;
-        const isNeg = (a.type==='credit' || a.type==='custom-liability');
+        // what this account actually contributes to net worth — liabilities always subtract their
+        // magnitude (see financeNetWorth()), and an asset can legitimately sit below zero, so the
+        // +/- prefix is derived rather than assumed from the account type
+        const signedBal = isLiabilityAccount(a) ? -Math.abs(bal) : bal;
+        const isNeg = signedBal < 0;
 
         const card = document.createElement('div'); card.className = 'finance-account' + (a.open ? ' open' : '');
         card.dataset.accountId = a.id;
@@ -361,7 +365,7 @@
         head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
           + (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '<div class="finance-icon">'+financeIcon(a.type)+'</div>')
           + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'<span class="finance-ccy-badge">'+a.currency+'</span></div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
-          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(bal,a.currency)+'</div>'
+          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(Math.abs(signedBal),a.currency)+'</div>'
           + '<div class="fa-chevron">▶</div>';
         head.addEventListener('click', (e)=>{
           if(e.target.closest('.drag-handle')) return;

@@ -838,9 +838,10 @@
   // A sub-nav scrolls horizontally (overflow-x:auto, scrollbar hidden) when it doesn't fit —
   // dragging across it with the mouse otherwise still fires a native click on whatever button
   // the pointer happens to release over, switching tabs unintentionally mid-drag. Applied to every
-  // .finance-subnav strip, so the Time tab's Countdowns/Clock toggle gets the same guard.
+  // .finance-subnav strip (so the Time tab's Countdowns/Clock toggle gets the same guard) and to
+  // the Checklists subgroup nav, which scrolls the same way.
   // (The matching touch fix — not letting the same drag swipe to the next view — is in nav.js.)
-  document.querySelectorAll('.finance-subnav').forEach(nav=>{
+  document.querySelectorAll('.finance-subnav, .checklist-group-nav').forEach(nav=>{
     let dragging = false, dragged = false, startX = 0, startScroll = 0;
     nav.addEventListener('pointerdown', e=>{
       if(e.pointerType === 'mouse' && e.button !== 0) return;

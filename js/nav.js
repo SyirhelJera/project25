@@ -49,9 +49,10 @@
     main.addEventListener('touchstart', e => {
       if(e.touches.length !== 1) return;
       if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slide-area') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
-      // the Finance / Time sub-navs scroll horizontally when their buttons don't fit — swiping one
-      // sideways is aimed at that strip, not at leaving the tab, so it must not also switch views
-      if(e.target.closest('.finance-subnav')) return;
+      // the Finance / Time sub-navs and the Checklists subgroup nav scroll horizontally when their
+      // buttons don't fit — swiping one sideways is aimed at that strip, not at leaving the tab,
+      // so it must not also switch views
+      if(e.target.closest('.finance-subnav') || e.target.closest('.checklist-group-nav')) return;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

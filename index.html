@@ -67,7 +67,7 @@
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg><span class="nav-label">Fitness</span><span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
     <div class="nav-item" data-tab="valorant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-5"/></svg><span class="nav-label">Valorant</span><span class="nav-badge" id="valWishlistBadge" style="display:none;" title="A wishlisted skin is in today's store"></span><span class="nav-badge nav-badge-warn" id="valStoreStaleBadge" style="display:none;" title="Couldn't check the store — expired session">⚠</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
-    <div class="nav-item" data-tab="time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Time</span></div>
+    <div class="nav-item" data-tab="time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Time</span><span class="nav-badge" id="cdSoonBadge" style="display:none;" title="A countdown lands in the next few days"></span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
     <div class="nav-item" data-tab="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h10M4 5v14M4 12h7M8 12v7M8 19h6M13 5v3M13 8h7"/><circle cx="4" cy="5" r="1.4" fill="currentColor"/><circle cx="8" cy="12" r="1.4" fill="currentColor"/><circle cx="14" cy="19" r="1.4" fill="currentColor"/></svg><span class="nav-label">Notes</span></div>
     <div class="nav-item" data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.6a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
@@ -719,16 +719,17 @@
     </div>
   </div>
 
-  <!-- TIME — Countdowns and Clock share one tab; the toggle below swaps between them (both are
+  <!-- TIME — Clock and Countdowns share one tab; the toggle below swaps between them (both are
        "where am I in time", and neither fills a tab on its own). Panes are #timetab-*, driven by
-       showTimeSubTab() in js/countdowns.js. -->
+       showTimeSubTab() in js/countdowns.js. Clock is first/default — it's the one that's useful at
+       a glance every time the tab is opened, countdowns barely change day to day. -->
   <div class="view" id="view-time">
     <div class="finance-subnav time-subnav">
-      <button class="finance-subnav-btn active" data-timetab="countdowns" type="button">⏳ Countdowns</button>
-      <button class="finance-subnav-btn" data-timetab="clock" type="button">🕐 Clock</button>
+      <button class="finance-subnav-btn active" data-timetab="clock" type="button">🕐 Clock</button>
+      <button class="finance-subnav-btn" data-timetab="countdowns" type="button">⏳ Countdowns</button>
     </div>
 
-    <div class="timetab" id="timetab-countdowns">
+    <div class="timetab" id="timetab-countdowns" style="display:none;">
       <div class="view-sub" style="margin-top:-4px;">Days remaining until whatever matters to you.</div>
       <div class="add-row">
         <input id="newCdName" type="text" placeholder="What are you counting down to?" maxlength="60" style="flex:2;">
@@ -740,7 +741,7 @@
     </div>
 
     <!-- CLOCK -->
-    <div class="timetab" id="timetab-clock" style="display:none;">
+    <div class="timetab" id="timetab-clock">
       <div class="view-sub" style="margin-top:-4px;">A live clock mapped to your day — set a fasting schedule and add time blocks to see them on the dial.</div>
 
       <div class="clock-face-card">

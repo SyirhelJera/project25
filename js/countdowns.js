@@ -114,7 +114,44 @@
       });
       list.appendChild(card);
     });
+    updateCountdownReminder();
   }
+
+  /* ---- Nav badge on the Time tab (#cdSoonBadge) — same pattern as goalRiskBadge /
+     habitRiskBadge: a count of countdowns landing within CD_SOON_DAYS days. "Past" ones are
+     excluded (they're over, nothing to warn about) and today counts as due. Re-checked on a timer
+     as well as on render, so it appears/clears across midnight on a page that's been left open —
+     the badge is only useful if it's honest about what "3 days left" means right now. ---- */
+  const CD_SOON_DAYS = 3;
+  function countdownsDueSoon(){
+    if(!state || !state.countdowns) return [];
+    return state.countdowns.filter(c=>{ const d = daysLeft(c.date); return d>=0 && d<=CD_SOON_DAYS; })
+      .sort((a,b)=> new Date(a.date) - new Date(b.date));
+  }
+  function updateCountdownReminder(){
+    const soon = countdownsDueSoon();
+    // set as a property, not interpolated markup — escapeHtml() doesn't escape double quotes
+    const tip = soon.map(c=>{
+      const d = daysLeft(c.date);
+      return c.label + ' — ' + (d===0 ? 'today' : d===1 ? 'tomorrow' : 'in ' + d + ' days');
+    }).join('\n');
+
+    const badge = el('cdSoonBadge');
+    if(badge){
+      badge.style.display = soon.length ? 'inline-flex' : 'none';
+      badge.textContent = soon.length || '';
+      badge.title = tip;
+    }
+    // the nav badge only says "something in Time is due" — the red ring on the Countdowns toggle
+    // says which of the tab's two panes it's about, which matters now that Clock is the default
+    // pane and Countdowns isn't what you land on
+    const tabBtn = document.querySelector('#view-time .finance-subnav-btn[data-timetab="countdowns"]');
+    if(tabBtn){
+      tabBtn.classList.toggle('subnav-alert', soon.length > 0);
+      tabBtn.title = tip;
+    }
+  }
+  setInterval(updateCountdownReminder, 60000);
   /* ---- Time tab toggle (Countdowns / Clock) — both panes live in #view-time; this swaps which
      one is showing. Kept here rather than in clock.js because countdowns.js owns the view. ---- */
   function showTimeSubTab(key){

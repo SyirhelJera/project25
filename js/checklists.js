@@ -699,33 +699,39 @@
         if(collapsed) return; // skip rendering this subgroup's checklists while minimized
       }
       groupsMap[gkey].forEach(c=>{
-      const card = document.createElement('div'); card.className='checklist-card';
+      const card = document.createElement('div'); card.className='checklist-card'+(c.collapsed?' checklist-collapsed':'');
       card.dataset.checklistId = c.id;
 
       const top = document.createElement('div'); top.className='checklist-top';
       const doneCt = c.items.filter(i=>i.done).length;
       const allItemsDone = c.items.length>0 && doneCt === c.items.length;
       if(allItemsDone) card.classList.add('done');
+      // A collapsed card stays status-only — name, progress, Play. Subgroup, habit link, reset
+      // frequency, rename, reset and delete are rendered solely when the card is expanded.
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(c.collapsed?'Expand':'Minimize')+'">'+(c.collapsed?'▶':'▼')+'</button>'
         + '<div class="checklist-name">'+escapeHtml(c.name)+'</div>'
-        + '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
         + (allItemsDone ? '<span class="checklist-done-chip">✓ Checklist done</span>' : '')
         + '<span class="chip">'+doneCt+'/'+c.items.length+'</span>'
-        + '<input type="text" class="mini-input checklist-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(c.group||'')+'" style="width:100px;flex:none;padding:5px 8px;font-size:11.5px;" title="Organize this checklist into a subgroup">'
-        + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
-          + '<option value="">🔗 Link a habit…</option>'
-          + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
-        + '</select>'
-        + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
-        + '<button class="reset-chk-btn" data-act="reset" title="Reset all items now">↺</button>'
+        + (c.collapsed ? '' :
+            '<input type="text" class="mini-input checklist-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(c.group||'')+'" style="width:100px;flex:none;padding:5px 8px;font-size:11.5px;" title="Organize this checklist into a subgroup">'
+          + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
+            + '<option value="">🔗 Link a habit…</option>'
+            + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
+          + '</select>'
+          + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
+          + '<button class="reset-chk-btn" data-act="reset" title="Reset all items now">↺</button>')
         + (c.items.some(i=>!i.done && !isItemLocked(i)) ? '<button class="btn btn-primary" data-act="play">▶ Play</button>' : '')
-        + '<button class="del-goal">Delete</button>';
-      top.querySelector('.checklist-group-input').addEventListener('change', e=>{
+        + (c.collapsed ? '' :
+            '<button class="rename-btn" data-act="rename" title="Rename">✎</button>'
+          + '<button class="del-goal">Delete</button>');
+      const groupInput = top.querySelector('.checklist-group-input');
+      if(groupInput) groupInput.addEventListener('change', e=>{
         c.group = e.target.value.trim(); save(); renderChecklists();
       });
       top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ c.collapsed = !c.collapsed; save(); renderChecklists(); });
-      top.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
+      const renameBtn = top.querySelector('[data-act="rename"]');
+      if(renameBtn) renameBtn.addEventListener('click', ()=>{
         const nameEl = top.querySelector('.checklist-name');
         const input = document.createElement('input');
         input.type = 'text'; input.className = 'rename-input'; input.maxLength = 80; input.value = c.name;
@@ -740,22 +746,26 @@
         input.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') renderChecklists(); });
         input.addEventListener('blur', commit);
       });
-      top.querySelector('.checklist-habit-link').addEventListener('change', e=>{
+      const habitLinkSel = top.querySelector('.checklist-habit-link');
+      if(habitLinkSel) habitLinkSel.addEventListener('change', e=>{
         c.linkedHabitId = e.target.value || null;
         syncChecklistHabitLink(c);
         save(); renderChecklists(); renderHabits();
       });
-      top.querySelector('.checklist-freq').addEventListener('change', e=>{
+      const freqSel = top.querySelector('.checklist-freq');
+      if(freqSel) freqSel.addEventListener('change', e=>{
         c.resetFreq = e.target.value;
         c.lastResetKey = resetKeyFor(c.resetFreq);
         save(); renderChecklists();
       });
-      top.querySelector('[data-act="reset"]').addEventListener('click', ()=>{
+      const resetBtn = top.querySelector('[data-act="reset"]');
+      if(resetBtn) resetBtn.addEventListener('click', ()=>{
         if(!window.confirm('Reset all items in "'+c.name+'"? This marks every item as not done.')) return;
         c.items.forEach(it=>{ it.done = false; it.failed = false; });
         save(); renderChecklists(); renderHabits(); updateExpUI();
       });
-      top.querySelector('.del-goal').addEventListener('click', ()=>{
+      const delBtn = top.querySelector('.del-goal');
+      if(delBtn) delBtn.addEventListener('click', ()=>{
         if(!window.confirm('Delete checklist "'+c.name+'"? This can\'t be undone.')) return;
         state.checklists = state.checklists.filter(x=>x.id!==c.id); save(); renderChecklists();
       });

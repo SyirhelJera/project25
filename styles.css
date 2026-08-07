@@ -584,6 +584,17 @@
   .habit-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;overflow:hidden;cursor:pointer;}
   .habit-top{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
   .habit-name{flex:1 1 140px;min-width:0;font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Collapsed cards shrink to a single slim row: no gap under the top row, tight padding, and the
+     name kept on one line (it wraps to 100% on mobile otherwise, which doubles the row height). */
+  .habit-card.habit-collapsed{padding:5px 10px;margin-bottom:5px;border-radius:10px;}
+  .habit-card.habit-collapsed .habit-top{margin-bottom:0;gap:6px;row-gap:4px;}
+  .habit-card.habit-collapsed .habit-name{flex:1 1 90px;font-size:13px;white-space:nowrap;overflow-wrap:normal;word-break:normal;}
+  .habit-card.habit-collapsed .habit-badge{font-size:9.5px;padding:2px 6px;min-width:0;}
+  .habit-card.habit-collapsed .habit-collapse-btn,
+  .habit-card.habit-collapsed .rename-btn,
+  .habit-card.habit-collapsed .habit-link-btn{padding:0 4px;}
+  .habit-card.habit-collapsed .del-goal{padding:3px 8px;font-size:10.5px;}
+  .habit-card.habit-collapsed.habit-pending{background:linear-gradient(180deg,rgba(239,68,68,0.10) 0%, var(--surface) 34px);}
   .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;text-align:center;}
   .habit-streak{min-width:108px;}
   .habit-restores{min-width:126px;}
@@ -709,6 +720,18 @@
   .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
   .checklist-name{flex:1;min-width:120px;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
+  /* Collapsed cards shrink to a single slim row — mirrors .habit-card.habit-collapsed above. The
+     name is pinned to one line (it wraps by default) and the remaining controls shrink so the row
+     keeps fitting on one line; the subgroup input, habit link, frequency select, rename, reset and
+     delete aren't rendered at all when collapsed (js/checklists.js). */
+  .checklist-card.checklist-collapsed{padding:5px 10px;margin-bottom:5px;border-radius:10px;}
+  .checklist-card.checklist-collapsed .checklist-top{margin-bottom:0;gap:6px;row-gap:4px;}
+  .checklist-card.checklist-collapsed .checklist-name{flex:1 1 90px;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal;}
+  .checklist-card.checklist-collapsed .habit-collapse-btn{padding:0 4px;}
+  .checklist-card.checklist-collapsed .chip,
+  .checklist-card.checklist-collapsed .checklist-done-chip{font-size:9.5px;padding:1px 6px;}
+  .checklist-card.checklist-collapsed .btn{padding:3px 8px;font-size:10.5px;}
+  .checklist-card.checklist-collapsed.done{background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 34px);}
   .checklist-freq,.checklist-habit-link{
     appearance:none;-webkit-appearance:none;-moz-appearance:none;
     background:var(--surface-alt) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;
@@ -1011,6 +1034,10 @@
   .finance-subnav::-webkit-scrollbar{display:none;}
   .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;}
   .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  /* red ring on a sub-nav button whose pane needs attention (Countdowns, when one lands within
+     CD_SOON_DAYS days — see updateCountdownReminder in js/countdowns.js). Drawn as a box-shadow
+     rather than border-color alone so it survives .active repainting the border violet. */
+  .finance-subnav-btn.subnav-alert{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger);}
   .finance-ccy-badge{font-size:9.5px;font-weight:800;color:var(--violet-dark);background:var(--violet-pale);border-radius:5px;padding:2px 6px;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;}
   .chip-danger{background:rgba(239,68,68,.12);color:var(--danger);border-color:var(--danger);}
   .fa-thumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:1px solid var(--border);}

@@ -118,6 +118,30 @@
   });
   habitListEl.addEventListener('dragend', ()=>{ draggedHabitId = null; habitListEl.querySelectorAll('.habit-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
+  // Brings a habit card into view after a re-render. renderHabits() throws away every card node,
+  // so the element has to be re-queried by id — rAF lets the new layout settle before measuring.
+  // Centers the card, except when it's taller than the visible area (long month grid on a short
+  // screen), where centering would push its header off-screen — those align to the top instead.
+  // On mobile the sidebar is a sticky top bar, so its height comes off the usable viewport.
+  function scrollHabitCardIntoView(habitId){
+    requestAnimationFrame(()=>{
+      const card = habitListEl.querySelector('.habit-card[data-habit-id="'+habitId+'"]');
+      if(!card) return;
+      const sidebar = document.querySelector('.sidebar');
+      const barH = (sidebar && window.matchMedia('(max-width:760px)').matches) ? sidebar.getBoundingClientRect().height : 0;
+      const avail = window.innerHeight - barH;
+      const rect = card.getBoundingClientRect();
+      const gap = rect.height < avail ? (avail - rect.height)/2 : 12;
+      const top = window.scrollY + rect.top - barH - gap;
+      window.scrollTo({ top: Math.max(0, top), behavior:'smooth' });
+    });
+  }
+  function setHabitCollapsed(h, collapsed){
+    h.collapsed = collapsed;
+    save(); renderHabits();
+    if(!collapsed) scrollHabitCardIntoView(h.id);
+  }
+
   function renderHabits(){
     const list = el('habitList'); list.innerHTML = '';
     el('habitEmpty').style.display = state.habits.length===0 ? 'block':'none';
@@ -142,19 +166,41 @@
       const doneToday = !!h.completions[localDateStr(today)];
       const unresolved = habitIsUnresolved(h);
 
-      const card = document.createElement('div'); card.className='habit-card'+(unresolved?' habit-pending':'');
+      const card = document.createElement('div'); card.className='habit-card'+(unresolved?' habit-pending':'')+(h.collapsed?' habit-collapsed':'');
       card.dataset.habitId = h.id;
+      // Expanded, the top row fills with badges, so ✎ sits with the other actions at the far right;
+      // collapsed, the row is bare and it reads better tucked straight after the name.
+      const renameBtn = '<button class="rename-btn" data-act="rename" title="Rename">✎</button>';
       const top = document.createElement('div'); top.className='habit-top';
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
+        + (h.collapsed ? renameBtn : '')
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'
         + (linkedChecklists.length ? linkedChecklists.map(c=>'<button class="habit-link-btn" data-checklist-id="'+c.id+'" title="Open linked checklist: '+escapeHtml(c.name)+'">🔗</button>').join('') : '')
         + (gapDate && restoresLeft>0 ? '<button class="habit-restore-btn" data-act="restore" title="Retroactively mark the missed day done to restore your streak">🔧 Restore streak ('+restoresLeft+' left)</button>' : '')
+        + (h.collapsed ? '' : renameBtn)
         + '<button class="del-goal" data-act="delete" style="margin-left:4px;">Delete</button>';
-      top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ h.collapsed = !h.collapsed; save(); renderHabits(); });
+      top.querySelector('[data-act="collapse"]').addEventListener('click', ()=>{ setHabitCollapsed(h, !h.collapsed); });
+      top.querySelector('[data-act="rename"]').addEventListener('click', ()=>{
+        const nameEl = top.querySelector('.habit-name');
+        const input = document.createElement('input');
+        input.type = 'text'; input.className = 'rename-input'; input.maxLength = 80; input.value = h.name;
+        input.style.flex = '1'; input.style.minWidth = '120px';
+        nameEl.replaceWith(input);
+        input.focus(); input.select();
+        const commit = () => {
+          const v = input.value.trim();
+          if(v) h.name = v;
+          save(); renderHabits();
+          // habit names appear in the checklist link dropdowns, so keep those in sync
+          if(typeof renderChecklists === 'function') renderChecklists();
+        };
+        input.addEventListener('keydown', e=>{ if(e.key==='Enter') commit(); if(e.key==='Escape') renderHabits(); });
+        input.addEventListener('blur', commit);
+      });
       top.querySelector('[data-act="delete"]').addEventListener('click', ()=>{
         if(!window.confirm('Delete habit "'+h.name+'"? This can\'t be undone.')) return;
         state.habits = state.habits.filter(x=>x.id!==h.id); save(); renderHabits();
@@ -191,7 +237,7 @@
       });
       card.addEventListener('click', e=>{
         if(e.target.closest('button, input, select, a, .drag-handle, .day-box, .month-cell')) return;
-        h.collapsed = !h.collapsed; save(); renderHabits();
+        setHabitCollapsed(h, !h.collapsed);
       });
       card.appendChild(top);
 

@@ -9,9 +9,9 @@
       if(t.dataset.tab!=='motivation') stopMotivationSlideshow();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
-      // Time holds both Countdowns and Clock — always land on Countdowns; showTimeSubTab() renders
+      // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders
       // whichever pane it reveals, and flipping the toggle renders the other one then
-      if(t.dataset.tab==='time') showTimeSubTab('countdowns');
+      if(t.dataset.tab==='time') showTimeSubTab('clock');
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); }

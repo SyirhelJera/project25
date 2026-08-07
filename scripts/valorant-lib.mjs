@@ -14,6 +14,7 @@ export const SESSION_FILE = path.join(__dirname, '.valorant-session.json');
 const RIOT_USER_AGENT = 'RiotClient/60 rso-auth (Windows;10;;Professional, x64)';
 const VALORANT_API_BASE = 'https://valorant-api.com/v1';
 const NOTIFY_CONFIG_FILE = path.join(__dirname, '.valorant-notify-config.json');
+const STORE_SNAPSHOT_FILE = path.join(__dirname, '.valorant-latest-store.json');
 
 // Sessions are stored as { accounts: { <label>: { ssid, savedAt } } } so multiple Riot accounts
 // can be tracked at once. Transparently upgrades the older single-session file shape (which had
@@ -26,6 +27,43 @@ export function loadSessions(){
 }
 export function saveSessions(accounts){
   fs.writeFileSync(SESSION_FILE, JSON.stringify({ accounts }, null, 2));
+}
+
+// Local mirror of the last store result per account, written alongside the Supabase write below
+// purely so scripts/valorant-widget.ps1 (the desktop widget) has something to read without
+// pulling the whole shared app_data row — or any network at all — every time it refreshes.
+// Shape: { updatedAt, accounts: { <label>: { ...checkAccountStore() result, wishlisted:[names] } } }.
+// Nothing else consumes this file: it's a cache, safe to delete, and rewritten by the next check.
+export function readStoreSnapshot(){
+  if(!fs.existsSync(STORE_SNAPSHOT_FILE)) return { updatedAt: 0, accounts: {} };
+  try {
+    const raw = JSON.parse(fs.readFileSync(STORE_SNAPSHOT_FILE, 'utf8'));
+    return { updatedAt: raw.updatedAt || 0, accounts: raw.accounts || {} };
+  } catch {
+    return { updatedAt: 0, accounts: {} };
+  }
+}
+
+// Never throws: the widget's convenience cache must not be able to fail a store check.
+export function writeStoreSnapshot(label, entry){
+  try {
+    const snap = readStoreSnapshot();
+    snap.accounts[label] = entry;
+    snap.updatedAt = Date.now();
+    fs.writeFileSync(STORE_SNAPSHOT_FILE, JSON.stringify(snap, null, 2));
+  } catch (err) {
+    console.error(`  (could not write local widget snapshot: ${err.message})`);
+  }
+}
+
+export function deleteStoreSnapshot(label){
+  try {
+    const snap = readStoreSnapshot();
+    if (!(label in snap.accounts)) return;
+    delete snap.accounts[label];
+    snap.updatedAt = Date.now();
+    fs.writeFileSync(STORE_SNAPSHOT_FILE, JSON.stringify(snap, null, 2));
+  } catch { /* cache-only — a stale entry here is harmless */ }
 }
 
 export function readSupabaseConfig(){
@@ -68,11 +106,24 @@ async function callRpc(fn, args){
 }
 
 export async function recordAccountResult(label, result){
+  // Wishlist first, then the local snapshot, then Supabase: the snapshot is what the desktop
+  // widget reads, so writing it before the network call means a Supabase outage leaves the widget
+  // showing today's real store rather than yesterday's. callRpc still throws on failure, so the
+  // caller's error handling is unchanged.
+  const wishlist = await fetchWishlist(label);
+  writeStoreSnapshot(label, {
+    ...result,
+    wishlisted: (result.items || []).filter(it => wishlistMatchesForItem(it.name, wishlist).length).map(it => it.name),
+  });
   await callRpc('valorant_set_daily_store', { p_label: label, p_result: result });
-  await notifyWishlistMatches(label, result.items).catch(err => console.error(`  wishlist notify failed: ${err.message}`));
+  await notifyWishlistMatches(label, result.items, wishlist).catch(err => console.error(`  wishlist notify failed: ${err.message}`));
 }
 
 export async function recordAccountError(label, message){
+  // Mirror the failure into the snapshot too (keeping the last known items visible underneath),
+  // so the widget can show "session expired" the same way the Valorant tab's banner does.
+  const prev = readStoreSnapshot().accounts[label] || {};
+  writeStoreSnapshot(label, { ...prev, error: message, erroredAt: Date.now() });
   await callRpc('valorant_set_daily_store_error', { p_label: label, p_message: message });
 }
 
@@ -80,6 +131,7 @@ export async function recordAccountError(label, message){
 // the Valorant tab (the account dropdown, "All accounts" view, etc.) once its saved session is
 // gone. Called after the session itself is removed from loadSessions()/saveSessions().
 export async function deleteAccountStore(label){
+  deleteStoreSnapshot(label);
   await callRpc('valorant_delete_daily_store', { p_label: label });
 }
 
@@ -120,29 +172,43 @@ function wishlistMatchesForItem(itemName, wishlist){
   });
 }
 
-// Fetches label's wishlist (via the read-only valorant_get_wishlist RPC — see
-// supabase/setup-valorant-notify.sql), checks it against this run's store items, and fires an
-// ntfy.sh push for any matches. No dedupe: every run that finds a wishlist match pushes a
-// notification, even if a previous run today already flagged the same skin.
-export async function notifyWishlistMatches(label, items){
+// Reads one account's wishlist via the read-only valorant_get_wishlist RPC (see
+// supabase/setup-valorant-notify.sql). Returns [] on any failure — including the RPC simply not
+// existing, which is the normal state for anyone who hasn't run that SQL file — because both
+// callers (the ntfy push below, the widget snapshot above) treat a wishlist as a nice-to-have.
+export async function fetchWishlist(label){
+  try {
+    const { url, anonKey } = readSupabaseConfig();
+    const resp = await fetch(`${url}/rest/v1/rpc/valorant_get_wishlist`, {
+      method: 'POST',
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ p_label: label }),
+    });
+    if (!resp.ok) return [];
+    const wishlist = await resp.json();
+    return Array.isArray(wishlist) ? wishlist : [];
+  } catch {
+    return [];
+  }
+}
+
+// Checks label's wishlist against this run's store items and fires an ntfy.sh push for any
+// matches. No dedupe: every run that finds a wishlist match pushes a notification, even if a
+// previous run today already flagged the same skin. `wishlist` is passed in by
+// recordAccountResult() (which already fetched it for the widget snapshot) to avoid a second RPC
+// round trip; it's fetched here when called without one.
+export async function notifyWishlistMatches(label, items, wishlist){
   const config = loadNotifyConfig();
   if (!config) return;
 
-  const { url, anonKey } = readSupabaseConfig();
-  const resp = await fetch(`${url}/rest/v1/rpc/valorant_get_wishlist`, {
-    method: 'POST',
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${anonKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ p_label: label }),
-  });
-  if (!resp.ok) return;
-  const wishlist = await resp.json();
-  if (!Array.isArray(wishlist) || !wishlist.length) return;
+  const list = wishlist || await fetchWishlist(label);
+  if (!list.length) return;
 
-  const matched = (items || []).filter(it => wishlistMatchesForItem(it.name, wishlist).length);
+  const matched = (items || []).filter(it => wishlistMatchesForItem(it.name, list).length);
   if (!matched.length) return;
 
   await fetch(`https://ntfy.sh/${encodeURIComponent(config.ntfyTopic)}`, {
@@ -343,6 +409,10 @@ export async function checkAccountStore(label, ssid){
   return {
     checkedAt: Date.now(),
     items,
+    // Seconds left on the daily skin rotation as of checkedAt — the widget counts down from it
+    // rather than assuming a fixed reset hour. An extra key here is harmless for the app, which
+    // reads dailyStores entries field by field.
+    itemsRemainingSeconds: store?.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds || 0,
     bundle,
     accessories,
     accessoriesRemainingSeconds: store?.AccessoryStore?.AccessoryStoreRemainingDurationInSeconds || 0,

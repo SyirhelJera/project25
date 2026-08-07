@@ -644,14 +644,20 @@
   <div class="view" id="view-checklists">
     <div class="view-title">Checklists</div>
     <div class="view-sub">Reusable checklists you can store and re-check — they reset automatically on whatever schedule you pick.</div>
+    <!-- one-line teaser: the full list lives in #strugglingTasksOverlay, opened by clicking this -->
     <div class="struggle-panel" id="strugglingTasksPanel" style="display:none;" title="Click to see all">
-      <div class="struggle-panel-title">⚠️ Tasks you're struggling with</div>
-      <div class="struggle-panel-list"><div id="strugglingTasksList"></div></div>
+      <span class="struggle-panel-title">⚠️ Tasks you're struggling with</span>
+      <span class="struggle-panel-count" id="strugglingTasksCount"></span>
+      <span class="struggle-panel-msg">You have tasks to address.</span>
+      <span class="struggle-panel-hint">Click to see all</span>
     </div>
     <div class="add-row">
-      <input id="newChecklistInput" type="text" placeholder='Name a checklist... (e.g. "Grooming Checklist", "Workout Checklist")' maxlength="80">
-      <button class="btn btn-primary" id="addChecklistBtn">+ Add Checklist</button>
+      <input id="newChecklistInput" type="text" placeholder="Add Checklist" maxlength="80" title='e.g. "Grooming Checklist", "Workout Checklist"'>
+      <button class="btn btn-primary" id="addChecklistBtn">+ Add</button>
     </div>
+    <!-- subgroup sub-nav — one button per subgroup, built by renderChecklists(); hidden while
+         every checklist is ungrouped -->
+    <div id="checklistGroupNav" class="checklist-group-nav" style="display:none;"></div>
     <div id="checklistList"></div>
     <div class="empty" id="checklistEmpty" style="display:none;">No checklists yet. <b>Add one above</b> — try "Grooming Checklist" or "Workout Checklist".</div>
   </div>

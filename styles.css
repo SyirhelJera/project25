@@ -84,8 +84,10 @@
   }
   body[data-theme="dark"] .goal.done,body[data-theme="ios-dark"] .goal.done{border-color:#1E4433;border-left-color:var(--success);}
   body[data-theme="dark"] .goal.done .goal-title,body[data-theme="ios-dark"] .goal.done .goal-title{text-decoration-color:#1E4433;}
-  body[data-theme="dark"] .checklist-card.done,body[data-theme="ios-dark"] .checklist-card.done{border-color:#1E4433;}
-  body[data-theme="dark"] .checklist-done-chip,body[data-theme="ios-dark"] .checklist-done-chip{border-color:#1E4433;}
+  /* completed checklists keep a legible green edge in the dark themes — muted, not the full
+     --success, but bright enough to pick out a finished card while scanning the list */
+  body[data-theme="dark"] .checklist-card.done,body[data-theme="ios-dark"] .checklist-card.done{border-color:#2E6B4A;}
+  body[data-theme="dark"] .checklist-card.done .checklist-count-chip,body[data-theme="ios-dark"] .checklist-card.done .checklist-count-chip{border-color:#2E6B4A;}
   body[data-theme="dark"] .setup-banner,body[data-theme="dark"] .confirm-banner,body[data-theme="ios-dark"] .setup-banner,body[data-theme="ios-dark"] .confirm-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
   body[data-theme="dark"] .confirm-banner span,body[data-theme="ios-dark"] .confirm-banner span{color:#C7CCF5;}
   body[data-theme="dark"] .habit-streak.streak-t0,body[data-theme="ios-dark"] .habit-streak.streak-t0{background:#2A2E42;}
@@ -485,9 +487,24 @@
   /* ---- Struggling tasks panel (Checklists tab) ---- */
   /* Minimized: a compact, scrollable preview — click anywhere on it to pop up the full list
      in an overlay (same open/close pattern as .mosaic-overlay: click the backdrop to close). */
-  .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:12px;padding:12px 14px;margin-bottom:14px;cursor:pointer;}
-  .struggle-panel-title{font-size:13px;font-weight:700;color:var(--danger);margin-bottom:8px;}
-  .struggle-panel-list{max-height:140px;overflow-y:auto;}
+  /* checklist subgroup sub-nav — same visual language as .chart-zoom-btn, scrolls sideways
+     rather than wrapping so a long list of subgroups can't eat vertical space */
+  .checklist-group-nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;}
+  .checklist-group-nav::-webkit-scrollbar{height:5px;}
+  .checklist-group-nav::-webkit-scrollbar-track{background:transparent;}
+  .checklist-group-nav::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  .checklist-group-btn{flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;}
+  .checklist-group-btn:hover{border-color:var(--violet);color:var(--text);}
+  .checklist-group-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
+  .checklist-group-btn-count{background:var(--surface-alt);border-radius:20px;padding:0 5px;font-size:10px;line-height:15px;color:var(--faint);}
+  .checklist-group-btn.active .checklist-group-btn-count{background:var(--violet);color:#fff;}
+
+  /* single-line teaser — the tasks themselves are only listed in the overlay it opens */
+  .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:9px;padding:5px 10px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:8px;min-width:0;}
+  .struggle-panel-title{font-size:12px;font-weight:700;color:var(--danger);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .struggle-panel-count{flex:none;background:var(--danger);color:#fff;border-radius:20px;padding:0 6px;font-size:10.5px;font-weight:800;line-height:16px;}
+  .struggle-panel-msg{flex:1;min-width:0;color:var(--muted);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .struggle-panel-hint{flex:none;color:var(--faint);font-size:10.5px;white-space:nowrap;}
   .struggle-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border);font-size:12.5px;}
   .struggle-row:last-child{border-bottom:none;}
   .struggle-row-task{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
@@ -572,6 +589,9 @@
   .photo-carousel::-webkit-scrollbar{height:6px;}
   .photo-carousel::-webkit-scrollbar-track{background:transparent;}
   .photo-carousel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  /* the carousel's horizontal scrollbar sits in that padding-bottom, so the upload button below
+     needs its own gap or the two end up touching */
+  #progressPhotoUploadRow{margin-top:16px;}
   .photo-card{flex:0 0 auto;width:200px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
   .photo-card-img-wrap{width:200px;height:260px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
   .photo-card-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
@@ -715,7 +735,7 @@
 
 
   /* checklists */
-  .checklist-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
+  .checklist-card{position:relative;overflow:hidden;background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;cursor:pointer;}
   .checklist-top{display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
   .checklist-name{flex:1;min-width:120px;font-size:14px;font-weight:700;overflow-wrap:break-word;word-break:break-word;}
   /* Collapsed cards shrink to a single slim row — mirrors .habit-card.habit-collapsed above. The
@@ -726,10 +746,14 @@
   .checklist-card.checklist-collapsed .checklist-top{margin-bottom:0;gap:6px;row-gap:4px;}
   .checklist-card.checklist-collapsed .checklist-name{flex:1 1 90px;min-width:0;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal;word-break:normal;}
   .checklist-card.checklist-collapsed .habit-collapse-btn{padding:0 4px;}
-  .checklist-card.checklist-collapsed .chip,
-  .checklist-card.checklist-collapsed .checklist-done-chip{font-size:9.5px;padding:1px 6px;}
   .checklist-card.checklist-collapsed .btn{padding:3px 8px;font-size:10.5px;}
-  .checklist-card.checklist-collapsed.done{background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 34px);}
+  .checklist-card.checklist-collapsed.done{background:var(--surface);}
+  /* the reorder handle is dead weight in a status row, so it only fades in on hover; on
+     touch devices (no hover) it stays put, since there's no other way to reach it */
+  @media (hover:hover){
+    .checklist-card .drag-handle{opacity:0;transition:opacity .12s ease;}
+    .checklist-card:hover .drag-handle{opacity:.7;}
+  }
   .checklist-freq,.checklist-habit-link{
     appearance:none;-webkit-appearance:none;-moz-appearance:none;
     background:var(--surface-alt) url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%236B7280' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 9px center;
@@ -741,9 +765,16 @@
   .checklist-habit-link{color:var(--violet-dark);font-weight:600;}
   .reset-chk-btn{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 6px;flex:none;}
   .reset-chk-btn:hover{color:var(--danger);}
-  .checklist-card.done{border-color:#CDE8D8;background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 60px);}
+  .checklist-card.done{border-color:var(--success);background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 60px);}
   .checklist-card.done .checklist-name{color:var(--muted);}
-  .checklist-done-chip{background:var(--success-pale);color:var(--success);border:1px solid #CDE8D8;border-radius:5px;padding:1px 7px;font-size:10px;font-weight:700;}
+  .checklist-done-chip{color:var(--success);border-radius:5px;padding:1px 4px;font-size:10px;font-weight:800;letter-spacing:0.4px;flex:none;white-space:nowrap;}
+  /* progress pill (12/15) and the hairline bar along the card's bottom edge — both read at a
+     glance without opening the card */
+  .checklist-count-chip{flex:none;background:var(--surface-alt);border:1px solid var(--border);border-radius:20px;padding:1px 8px;font-size:10px;font-weight:700;color:var(--muted);}
+  .checklist-card.done .checklist-count-chip{color:var(--success);border-color:var(--success);}
+  .checklist-progress{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--border);}
+  .checklist-progress span{display:block;height:100%;background:var(--violet);border-radius:0 2px 2px 0;transition:width .2s ease;}
+  .checklist-card.done .checklist-progress span{background:var(--success);}
 
   /* notes — the outliner tree (js/notes.js). Rows are a flat list; nesting is purely visual,
      driven by the --depth custom property set inline on each row. */

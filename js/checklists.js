@@ -207,9 +207,10 @@
   });
   checklistListEl.addEventListener('dragend', ()=>{ draggedChecklistId = null; checklistListEl.querySelectorAll('.checklist-card.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
-  /* collapse state for named checklist subgroups — not persisted, resets per page load, mirrors
-     the pattern used for weight-log month groups */
-  const checklistGroupCollapsed = {};
+  /* which subgroup the sub-nav is filtered to — 'all', or a group key ('' being Ungrouped).
+     Not persisted; resets to All on each page load. renderChecklists() falls back to 'all'
+     whenever the selected group no longer exists (last checklist in it renamed or deleted). */
+  let checklistGroupFilter = 'all';
 
   /* shared done/undone toggle so the normal checklist row and the Play overlay's ✓ button
      apply the same XP + habit-link side effects instead of duplicating them */
@@ -454,7 +455,9 @@
     const { c, it } = refs;
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
     setItemFailed(c, it);
-    renderChecklists();
+    // failing changes what a linked habit shows (😞 mark, and it stops counting as unresolved),
+    // so the habits tab has to be rebuilt too, not just the checklist
+    renderChecklists(); renderHabits();
     advancePlaySession(c, it, { text: it.text, elapsedSec, failed: true, checklistId: c.id });
   }
 
@@ -646,10 +649,9 @@
     const panel = el('strugglingTasksPanel');
     const rows = getStrugglingItems();
     if(!rows.length){ panel.style.display = 'none'; closeStruggleOverlay(); return; }
-    panel.style.display = 'block';
-    const html = struggleRowsHtml(rows);
-    el('strugglingTasksList').innerHTML = html;
-    el('strugglingTasksOverlayList').innerHTML = html;
+    panel.style.display = 'flex';
+    el('strugglingTasksCount').textContent = rows.length;
+    el('strugglingTasksOverlayList').innerHTML = struggleRowsHtml(rows);
   }
   function openStruggleOverlay(){
     if(!getStrugglingItems().length) return;
@@ -700,15 +702,33 @@
       groupsMap[gkey].push(c);
     });
 
-    groupOrder.forEach(gkey=>{
-      if(gkey){
-        const collapsed = !!checklistGroupCollapsed[gkey];
+    // sub-nav: All + one button per subgroup. Only worth showing once something is actually
+    // grouped, so a single ungrouped bucket hides it entirely.
+    const navEl = el('checklistGroupNav');
+    const hasGroups = groupOrder.some(g=>g);
+    if(checklistGroupFilter !== 'all' && !groupOrder.includes(checklistGroupFilter)) checklistGroupFilter = 'all';
+    navEl.style.display = hasGroups ? 'flex' : 'none';
+    navEl.innerHTML = '';
+    if(hasGroups){
+      const tabs = [{ key:'all', label:'All', count: state.checklists.length }]
+        .concat(groupOrder.map(g=>({ key:g, label: g || 'Ungrouped', count: groupsMap[g].length })));
+      tabs.forEach(t=>{
+        const btn = document.createElement('button');
+        btn.className = 'checklist-group-btn' + (checklistGroupFilter===t.key ? ' active' : '');
+        btn.innerHTML = escapeHtml(t.label) + '<span class="checklist-group-btn-count">'+t.count+'</span>';
+        btn.addEventListener('click', ()=>{ checklistGroupFilter = t.key; renderChecklists(); });
+        navEl.appendChild(btn);
+      });
+    }
+
+    const shownGroups = checklistGroupFilter === 'all' ? groupOrder : [checklistGroupFilter];
+    shownGroups.forEach(gkey=>{
+      // in All view the subgroup name still labels each run of cards; filtered views don't need
+      // it, the active sub-nav button already says which group you're in
+      if(gkey && checklistGroupFilter === 'all'){
         const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header';
-        lbl.style.cursor = 'pointer';
-        lbl.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
-        lbl.addEventListener('click', ()=>{ checklistGroupCollapsed[gkey] = !checklistGroupCollapsed[gkey]; renderChecklists(); });
+        lbl.innerHTML = escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
         list.appendChild(lbl);
-        if(collapsed) return; // skip rendering this subgroup's checklists while minimized
       }
       groupsMap[gkey].forEach(c=>{
       const card = document.createElement('div'); card.className='checklist-card'+(c.collapsed?' checklist-collapsed':'');
@@ -723,8 +743,8 @@
       top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(c.collapsed?'Expand':'Minimize')+'">'+(c.collapsed?'▶':'▼')+'</button>'
         + '<div class="checklist-name">'+escapeHtml(c.name)+'</div>'
-        + (allItemsDone ? '<span class="checklist-done-chip">✓ Checklist done</span>' : '')
-        + '<span class="chip">'+doneCt+'/'+c.items.length+'</span>'
+        + (allItemsDone ? '<span class="checklist-done-chip">✓ COMPLETED</span>' : '')
+        + '<span class="checklist-count-chip">'+doneCt+'/'+c.items.length+'</span>'
         + (c.collapsed ? '' :
             '<input type="text" class="mini-input checklist-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(c.group||'')+'" style="width:100px;flex:none;padding:5px 8px;font-size:11.5px;" title="Organize this checklist into a subgroup">'
           + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
@@ -873,6 +893,13 @@
         itemInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doAddItem(); } });
         card.appendChild(addRow);
       }
+
+      // hairline progress bar pinned to the card's bottom edge — the one piece of detail a
+      // minimized row keeps, so a glance down the list reads as progress rather than numbers
+      const bar = document.createElement('div'); bar.className='checklist-progress';
+      const pct = c.items.length ? Math.round((doneCt/c.items.length)*100) : 0;
+      bar.innerHTML = '<span style="width:'+pct+'%"></span>';
+      card.appendChild(bar);
 
       list.appendChild(card);
       }); // end groupsMap[gkey].forEach

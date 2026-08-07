@@ -9,8 +9,9 @@
       if(t.dataset.tab!=='motivation') stopMotivationSlideshow();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
-      if(t.dataset.tab==='countdowns') renderCountdowns();
-      if(t.dataset.tab==='clock') renderClock();
+      // Time holds both Countdowns and Clock — always land on Countdowns; showTimeSubTab() renders
+      // whichever pane it reveals, and flipping the toggle renders the other one then
+      if(t.dataset.tab==='time') showTimeSubTab('countdowns');
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
       if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); }
@@ -19,7 +20,6 @@
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       if(t.dataset.tab==='valorant') renderValorant();
-      if(t.dataset.tab==='wishlist') renderWishlist();
       // Jobs always opens on Prospect with a clean search — that's the pile that only moves if you
       // act on it (and what the nav badge counts). Mirrors Goals resetting to 'working' above.
       if(t.dataset.tab==='jobs'){ resetJobsView(); renderJobs(); }
@@ -49,6 +49,9 @@
     main.addEventListener('touchstart', e => {
       if(e.touches.length !== 1) return;
       if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slide-area') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
+      // the Finance / Time sub-navs scroll horizontally when their buttons don't fit — swiping one
+      // sideways is aimed at that strip, not at leaving the tab, so it must not also switch views
+      if(e.target.closest('.finance-subnav')) return;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

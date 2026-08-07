@@ -817,24 +817,26 @@
     setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
   });
 
-  /* ---- finance sub-nav (Accounts / Subscriptions / Money Goals / Currency Converter) ---- */
+  /* ---- finance sub-nav (Accounts / Money Goals / Wishlist / Subscriptions / Currency Converter) ---- */
   function showFinanceSubTab(key){
-    document.querySelectorAll('.finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.fintab===key));
+    document.querySelectorAll('#view-finance .finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.fintab===key));
     document.querySelectorAll('.fintab').forEach(t=>t.style.display = (t.id==='fintab-'+key) ? '' : 'none');
     el('financeAccountsOverview').style.display = key==='accounts' ? '' : 'none';
     if(key==='subs') renderFinanceSubs();
     if(key==='moneygoals') renderMoneyGoals();
+    if(key==='wishlist') renderWishlist();
     if(key==='convert') renderFinanceConverter();
   }
-  document.querySelectorAll('.finance-subnav-btn').forEach(btn=>{
+  document.querySelectorAll('#view-finance .finance-subnav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> showFinanceSubTab(btn.dataset.fintab));
   });
 
-  // the sub-nav scrolls horizontally (overflow-x:auto, scrollbar hidden) when it doesn't fit —
+  // A sub-nav scrolls horizontally (overflow-x:auto, scrollbar hidden) when it doesn't fit —
   // dragging across it with the mouse otherwise still fires a native click on whatever button
-  // the pointer happens to release over, switching tabs unintentionally mid-drag
-  (function(){
-    const nav = document.querySelector('.finance-subnav'); if(!nav) return;
+  // the pointer happens to release over, switching tabs unintentionally mid-drag. Applied to every
+  // .finance-subnav strip, so the Time tab's Countdowns/Clock toggle gets the same guard.
+  // (The matching touch fix — not letting the same drag swipe to the next view — is in nav.js.)
+  document.querySelectorAll('.finance-subnav').forEach(nav=>{
     let dragging = false, dragged = false, startX = 0, startScroll = 0;
     nav.addEventListener('pointerdown', e=>{
       if(e.pointerType === 'mouse' && e.button !== 0) return;
@@ -854,7 +856,7 @@
     nav.addEventListener('click', e=>{
       if(dragged){ e.stopPropagation(); e.preventDefault(); dragged = false; }
     }, true);
-  })();
+  });
 
   populateCurrencySelects();
 

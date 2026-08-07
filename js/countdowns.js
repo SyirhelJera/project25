@@ -115,6 +115,18 @@
       list.appendChild(card);
     });
   }
+  /* ---- Time tab toggle (Countdowns / Clock) — both panes live in #view-time; this swaps which
+     one is showing. Kept here rather than in clock.js because countdowns.js owns the view. ---- */
+  function showTimeSubTab(key){
+    document.querySelectorAll('#view-time .finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.timetab===key));
+    document.querySelectorAll('.timetab').forEach(t=>t.style.display = (t.id==='timetab-'+key) ? '' : 'none');
+    if(key==='countdowns') renderCountdowns();
+    if(key==='clock') renderClock();
+  }
+  document.querySelectorAll('#view-time .finance-subnav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> showTimeSubTab(btn.dataset.timetab));
+  });
+
   el('addCdBtn').addEventListener('click', ()=>{
     const nameInput = el('newCdName'), dateInput = el('newCdDate');
     const name = nameInput.value.trim(), date = dateInput.value;

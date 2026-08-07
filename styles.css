@@ -189,6 +189,20 @@
   .nav-item[data-tab="motivation"] svg{color:var(--orange);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
+  /* pulsing glow on the Valorant shield whenever a wishlisted skin is in a tracked account's
+     daily store — same signal as the #valWishlistBadge count, but readable at a glance in the
+     collapsed nav, where the badge shrinks into the icon's corner. */
+  .nav-item[data-tab="valorant"].wish-glow svg{animation:valWishGlow 1.8s ease-in-out infinite;}
+  @keyframes valWishGlow{
+    0%,100%{filter:drop-shadow(0 0 1px var(--danger));}
+    50%{filter:drop-shadow(0 0 6px var(--danger)) drop-shadow(0 0 12px var(--danger));}
+  }
+  @media (prefers-reduced-motion: reduce){
+    .nav-item[data-tab="valorant"].wish-glow svg{animation:none;filter:drop-shadow(0 0 5px var(--danger));}
+  }
+  /* separate yellow tick: the store couldn't be fetched at all (saved Riot session expired), so
+     "no wishlist hits" would be a lie — an absent count and a failed check look identical without it */
+  .nav-badge-warn{background:var(--gold);color:#5A3B00;margin-left:4px;}
   .setup-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#3730A3;line-height:1.6;}
   .setup-banner code{background:#00000010;border-radius:4px;padding:1px 5px;font-size:11.5px;}
   .conflict-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
@@ -909,6 +923,8 @@
     .nav-item.active{gap:6px;padding:8px 12px;}
     .nav-item.active .nav-label{display:inline;}
     .nav-badge{position:absolute;top:2px;right:2px;margin-left:0;}
+    /* both Valorant badges can be up at once — keep the caution tick out of the count's corner */
+    .nav-badge-warn{top:auto;bottom:2px;right:2px;}
 
     .main{padding:20px 16px 70px;}
     .habit-card{padding:12px;}
@@ -942,16 +958,16 @@
     #view-mantras .add-row input, #view-mantras .add-row .btn{flex:unset !important; width:auto;}
     #view-habits .add-row input, #view-checklists .add-row input, #view-mantras .add-row input{flex:1 1 auto !important;min-width:0;}
     #view-habits .add-row .btn, #view-checklists .add-row .btn, #view-mantras .add-row .btn{flex:none !important;white-space:nowrap;}
-    #view-countdowns .add-row{flex-wrap:nowrap;}
-    #view-countdowns .add-row input, #view-countdowns .add-row .btn{flex:unset !important;width:auto;}
-    #view-countdowns .add-row input#newCdName{flex:1 1 auto !important;min-width:0;}
-    #view-countdowns .add-row input#newCdDate{flex:0 0 auto !important;width:128px;}
-    #view-countdowns .add-row .btn{flex:none !important;white-space:nowrap;}
-    #view-wishlist .add-row{flex-wrap:nowrap;}
-    #view-wishlist .add-row input, #view-wishlist .add-row .btn{flex:unset !important;width:auto;}
-    #view-wishlist .add-row input#newWishlistName{flex:1 1 auto !important;min-width:0;}
-    #view-wishlist .add-row input#newWishlistCost{flex:0 0 auto !important;width:78px;}
-    #view-wishlist .add-row .btn{flex:none !important;white-space:nowrap;}
+    #timetab-countdowns .add-row{flex-wrap:nowrap;}
+    #timetab-countdowns .add-row input, #timetab-countdowns .add-row .btn{flex:unset !important;width:auto;}
+    #timetab-countdowns .add-row input#newCdName{flex:1 1 auto !important;min-width:0;}
+    #timetab-countdowns .add-row input#newCdDate{flex:0 0 auto !important;width:128px;}
+    #timetab-countdowns .add-row .btn{flex:none !important;white-space:nowrap;}
+    #fintab-wishlist .add-row{flex-wrap:nowrap;}
+    #fintab-wishlist .add-row input, #fintab-wishlist .add-row .btn{flex:unset !important;width:auto;}
+    #fintab-wishlist .add-row input#newWishlistName{flex:1 1 auto !important;min-width:0;}
+    #fintab-wishlist .add-row input#newWishlistCost{flex:0 0 auto !important;width:78px;}
+    #fintab-wishlist .add-row .btn{flex:none !important;white-space:nowrap;}
     #view-jobs .add-row{flex-wrap:nowrap;}
     #view-jobs .add-row input{flex:1 1 auto !important;width:auto;min-width:0;}
     #view-jobs .add-row .btn{flex:none !important;width:auto;white-space:nowrap;}
@@ -1115,6 +1131,8 @@
      than for looking roomy. Anything that doesn't fit on the line lives in the detail overlay. */
   .job-card{display:flex;align-items:center;gap:9px;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;padding:5px 10px;margin-bottom:4px;cursor:pointer;}
   .job-card:hover{border-color:var(--violet);}
+  /* toned down from the default .star-btn so it fits the ~32px row without inflating it */
+  .job-card-star{font-size:13px;padding:0 1px;}
   .job-card-logo{display:block;width:20px;height:20px;border-radius:5px;object-fit:cover;flex:none;border:1px solid var(--border);background:var(--surface-alt);}
   /* the logo slot always renders (initial-letter fallback) so company names stay aligned row to row */
   .job-card-logo-ph{display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:var(--faint);}
@@ -1129,6 +1147,9 @@
   .job-group-pill{font-size:10px;font-weight:800;letter-spacing:0.3px;border-radius:999px;padding:3px 9px;white-space:nowrap;}
   .job-card .job-group-pill{font-size:9.5px;padding:2px 7px;max-width:120px;overflow:hidden;text-overflow:ellipsis;}
   .job-card .job-status-badge{font-size:9.5px;padding:2px 7px;}
+
+  /* keeps the overlay's star and ✕ as one right-hand cluster under the head's space-between */
+  .job-detail-head-actions{display:flex;align-items:center;gap:4px;flex:none;}
 
   .job-status-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;}
   .job-status-badge.job-status-prospect{color:var(--muted);background:var(--surface-alt);}
@@ -1571,6 +1592,11 @@
     .val-preview-variant.tall .val-preview-variant-img img{max-height:38vh;}
     /* slim job rows: the meta column goes first — most repetitive, least scanned part of the row */
     .job-card-meta{display:none;}
+    /* six chips leave "Rejected/Ghosted" nowhere to go at phone widths — "All" is the one that can
+       be dropped, since tapping the already-active chip clears the filter back to All anyway
+       (see the .job-filter-chip handler in js/jobs.js) */
+    .job-filter-row{grid-template-columns:repeat(5,1fr);}
+    .job-filter-chip[data-status="all"]{display:none;}
   }
 
   @media (max-width:420px){

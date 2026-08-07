@@ -15,6 +15,9 @@
   let jobSearch = '';
   let jobSortMode = 'none';
   let jobSortDir = 'desc';
+  // "★ Starred only" toolbar toggle — narrows whatever the chips/search already selected, rather than
+  // being a seventh pile, since a starred application still belongs to its real status
+  let jobStarredOnly = false;
   // which saved passwords are currently shown in plaintext (id -> true) — not persisted, resets per page load
   let jobAccountRevealed = {};
 
@@ -50,6 +53,7 @@
   function applyLoadedJobsState(parsed){
     state.jobs = (parsed && parsed.jobs) || [];
     state.jobs.forEach(j=>{
+      if(j.starred===undefined) j.starred = false;
       if(j.group===undefined) j.group = '';
       if(j.logoUrl===undefined) j.logoUrl = '';
       if(j.workModel===undefined) j.workModel = '';
@@ -352,7 +356,14 @@
   function resetJobsView(){
     jobFilter = 'prospect';
     jobSearch = '';
+    jobStarredOnly = false;
+    syncJobStarFilterBtn();
     const s = el('jobSearch'); if(s) s.value = '';
+  }
+  function syncJobStarFilterBtn(){
+    const b = el('jobStarFilterBtn'); if(!b) return;
+    b.classList.toggle('btn-primary', jobStarredOnly);
+    b.classList.toggle('btn-ghost', !jobStarredOnly);
   }
 
   function visibleJobs(){
@@ -369,11 +380,21 @@
     } else if(jobFilter === 'rejected-ghosted'){
       arr = arr.filter(j=>j.status==='rejected' || j.status==='ghosted');
     }
+    // stacks on top of the chip/search selection above, so it also narrows a search's results
+    if(jobStarredOnly) arr = arr.filter(j=>j.starred);
+    // An explicit sort is left pure — you asked for the list by date/company/salary, so floating
+    // starred rows out of that order would misreport it. Only the default order pins them on top.
     if(jobSortMode !== 'none') return sortJobsBy(arr, jobSortMode, jobSortDir);
-    return arr.sort((a,b)=> (b.createdAt||0) - (a.createdAt||0));
+    return arr.sort((a,b)=> (b.starred?1:0)-(a.starred?1:0) || (b.createdAt||0)-(a.createdAt||0));
   }
 
   function touchJob(j){ j.updatedAt = Date.now(); }
+
+  function toggleJobStar(j){
+    j.starred = !j.starred;
+    touchJob(j);
+    saveJobs(); renderJobs();
+  }
 
   // silently flips stale 'applied' entries to 'ghosted' — runs on every renderJobs() call (cheap array
   // scan) so it self-corrects as soon as the tab is opened/re-rendered, with no separate scheduler needed
@@ -466,7 +487,10 @@
     // list of 100+ stays scannable; the full record is one click away in the detail overlay.
     // The logo slot always renders (initial-letter placeholder when there's no photo) so company
     // names stay vertically aligned down the whole list.
-    card.innerHTML = (j.logoUrl
+    // star sits in a fixed leftmost gutter (before the logo slot) so it's a single column down the
+    // whole list and never shifts as titles/badges change width
+    card.innerHTML = '<button type="button" class="star-btn job-card-star'+(j.starred?' active':'')+'" title="'+(j.starred?'Unstar':'Star')+'">'+(j.starred?'★':'☆')+'</button>'
+        + (j.logoUrl
             ? '<img class="job-card-logo" src="'+escapeHtml(j.logoUrl)+'" alt="">'
             : '<span class="job-card-logo job-card-logo-ph">'+escapeHtml((j.company||'?').trim().charAt(0).toUpperCase())+'</span>')
         + '<div class="job-card-headtext">'
@@ -478,6 +502,12 @@
         +   jobGroupPillHtml(j.group)
         +   '<span class="job-status-badge job-status-'+j.status+'">'+JOB_STATUS_LABELS[j.status]+'</span>'
         + '</div>';
+    // starring must not fall through to the card's own click — toggling a favorite and opening the
+    // full record are separate gestures
+    card.querySelector('.job-card-star').addEventListener('click', e=>{
+      e.stopPropagation();
+      toggleJobStar(j);
+    });
     card.addEventListener('click', ()=> openJobDetail(j.id));
     return card;
   }
@@ -512,7 +542,11 @@
     if(items.length === 0){
       empty.innerHTML = 'No applications tracked yet. <b>Add one above</b> to start.';
     } else if(q){
-      empty.innerHTML = 'No applications match “'+escapeHtml(q)+'”.';
+      empty.innerHTML = 'No applications match “'+escapeHtml(q)+'”'+(jobStarredOnly?' among your starred ones.':'.');
+    } else if(jobStarredOnly){
+      // named explicitly — the toggle lives in the toolbar, away from the chips, so "pick another
+      // filter above" would send you looking in the wrong place
+      empty.innerHTML = 'Nothing starred in this filter — tap ☆ on an application, or turn off <b>★ Starred only</b>.';
     } else {
       empty.innerHTML = 'Nothing in this filter — pick another above.';
     }
@@ -543,7 +577,7 @@
     const now = Date.now();
     state.jobs.push({
       id: uid(), createdAt: now, updatedAt: now,
-      company, group:'', logoUrl:'', workModel:'', hqLocation:'', companySiteUrl:'',
+      company, starred:false, group:'', logoUrl:'', workModel:'', hqLocation:'', companySiteUrl:'',
       title, postingUrl:'', salaryRange:'',
       resumeVersion:'', resumeFileId:'', resumeFileName:'', resumeViewLink:'',
       coverLetterVersion:'',
@@ -572,6 +606,11 @@
   // the search box lives in static markup, not in the re-rendered list, so typing keeps focus
   el('jobSearch').addEventListener('input', e=>{ jobSearch = e.target.value; renderJobs(); });
   el('jobSortSelect').addEventListener('change', e=>{ jobSortMode = e.target.value; renderJobs(); });
+  el('jobStarFilterBtn').addEventListener('click', ()=>{
+    jobStarredOnly = !jobStarredOnly;
+    syncJobStarFilterBtn();
+    renderJobs();
+  });
   el('jobSortDirBtn').addEventListener('click', ()=>{
     jobSortDir = jobSortDir === 'asc' ? 'desc' : 'asc';
     el('jobSortDirBtn').textContent = jobSortDir === 'asc' ? '↑' : '↓';
@@ -649,7 +688,11 @@
 
     body.innerHTML = '<div class="struggle-overlay-head">'
         +   '<div class="struggle-overlay-title" style="color:var(--text);">'+escapeHtml(j.company || 'New Application')+'</div>'
-        +   '<button class="wishlist-hero-close" type="button" id="jobDetailCloseBtn" style="position:static;background:none;color:var(--faint);">✕</button>'
+        // star + close wrapped together so space-between keeps them as one right-hand cluster
+        +   '<div class="job-detail-head-actions">'
+        +     '<button type="button" class="star-btn'+(j.starred?' active':'')+'" id="jdStarBtn" title="'+(j.starred?'Unstar':'Star')+'">'+(j.starred?'★':'☆')+'</button>'
+        +     '<button class="wishlist-hero-close" type="button" id="jobDetailCloseBtn" style="position:static;background:none;color:var(--faint);">✕</button>'
+        +   '</div>'
         + '</div>'
 
         + '<div class="job-status-select-row">'+statusButtons+'</div>'
@@ -735,6 +778,7 @@
         + '<div class="goal-footer"><button class="del-goal" id="jobDetailDeleteBtn">Delete application</button></div>';
 
     body.querySelector('#jobDetailCloseBtn').addEventListener('click', closeJobDetail);
+    body.querySelector('#jdStarBtn').addEventListener('click', ()=> toggleJobStar(j));
 
     body.querySelectorAll('.job-status-set-btn').forEach(btn=>{
       btn.addEventListener('click', ()=>{

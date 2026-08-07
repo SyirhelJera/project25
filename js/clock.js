@@ -292,8 +292,12 @@
   function tickClock(){
     const now = new Date();
     updateNavClockStatus(now);
-    const view = el('view-clock');
+    // the Clock shares the Time tab with Countdowns, so "visible" means both that the tab is open
+    // and that its toggle is on the Clock pane
+    const view = el('view-time');
     if(!view || !view.classList.contains('active')) return;
+    const pane = el('timetab-clock');
+    if(!pane || pane.style.display === 'none') return;
     if(!el('clockSvg')) return;
     // flips the dial to the other half's schedule right at noon/midnight, even if the tab has
     // been sitting open the whole time (renderClockFace keeps clockLastHalf in sync when called)

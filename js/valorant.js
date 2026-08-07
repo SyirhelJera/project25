@@ -321,10 +321,35 @@
     });
     return matches;
   }
+  // accounts whose last store check failed because the saved Riot session went stale — their store
+  // is unknown rather than empty, so "no wishlist hits" would be misleading without a separate tick
+  function valExpiredSessionLabels(){
+    const stores = state.valorant.dailyStores || {};
+    return Object.keys(stores).filter(label=>{
+      const err = stores[label] && stores[label].error;
+      return !!err && /expired/i.test(err);
+    });
+  }
   function updateValWishlistBadge(){
+    // one wishlist entry can match two store items, so count wishlisted skins, not pairings
+    const matches = valCurrentWishlistMatches();
+    const hits = new Set(matches.map(m=>m.label+'::'+m.wishlistId)).size;
     const badge = el('valWishlistBadge');
-    if(!badge) return;
-    badge.style.display = valCurrentWishlistMatches().length ? 'inline-flex' : 'none';
+    if(badge){
+      badge.style.display = hits ? 'inline-flex' : 'none';
+      badge.textContent = hits ? String(hits) : '';
+      badge.title = hits===1 ? 'A wishlisted skin is in today\'s store'
+                             : hits+' wishlisted skins are in today\'s store';
+    }
+    const stale = valExpiredSessionLabels();
+    const warn = el('valStoreStaleBadge');
+    if(warn){
+      warn.style.display = stale.length ? 'inline-flex' : 'none';
+      warn.title = 'Session expired — couldn\'t check today\'s store for: '+stale.join(', ');
+    }
+    // glow the nav shield too — the badge is tiny and shrinks into the icon in the collapsed nav
+    const navItem = document.querySelector('.nav-item[data-tab="valorant"]');
+    if(navItem) navItem.classList.toggle('wish-glow', hits>0);
   }
 
   function renderValWishlist(){

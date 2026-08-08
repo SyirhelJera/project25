@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v5';
+const SHELL_CACHE = 'p25-shell-v4';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -14,12 +14,8 @@ const SHELL_ASSETS = [
   './index.html',
   './styles.css',
   './manifest.json',
-  // Same order as index.html's <script> tags, so a missing entry is easy to spot by diffing the
-  // two lists. cache.addAll() is all-or-nothing — one 404 here fails the whole install and the
-  // app silently loses its offline shell, so every file listed must actually exist.
   './js/core.js',
   './js/persistence.js',
-  './js/protecteddays.js',
   './js/nav.js',
   './js/goals.js',
   './js/habits.js',
@@ -31,12 +27,8 @@ const SHELL_ASSETS = [
   './js/checklists.js',
   './js/notes.js',
   './js/finance.js',
-  './js/wishlist.js',
-  './js/jobs.js',
   './js/fitness.js',
   './js/valorant.js',
-  './js/clock.js',
-  './js/realtime.js',
   './js/main.js',
   './favicon.ico',
   './icons/icon-180.png',

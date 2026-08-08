@@ -49,17 +49,10 @@
     b.style.display = 'block';
     b.innerHTML = 'Another tab or device saved newer changes to this data after this page loaded its copy. Your latest edit here was <b>not saved</b>, to avoid overwriting theirs.'
       + '<div class="conflict-actions">'
-      + '<button class="btn btn-sm btn-primary" id="conflictReloadBtn">Load their changes</button>'
+      + '<button class="btn btn-sm btn-primary" id="conflictReloadBtn">Reload to see their changes</button>'
       + '<button class="btn btn-sm btn-ghost" id="conflictForceBtn">Keep my changes (overwrite theirs)</button>'
       + '</div>';
-    el('conflictReloadBtn').addEventListener('click', async ()=>{
-      // With the live-sync layer present this is a merge rather than a reload: catchUpFetch()
-      // re-reads the row and folds it in key by key, so anything this device changed on an
-      // unrelated tab survives instead of being thrown away. Same in-place treatment the Jobs
-      // and Notes conflict banners already give their own rows.
-      if(typeof catchUpFetch === 'function'){ hideConflictBanner(); await catchUpFetch(true); }
-      else window.location.reload();
-    });
+    el('conflictReloadBtn').addEventListener('click', ()=> window.location.reload());
     el('conflictForceBtn').addEventListener('click', async ()=>{ await save(true); });
   }
   function hideConflictBanner(){
@@ -361,18 +354,9 @@
     // jobSiteAccounts in particular looks Jobs-adjacent but must stay included.
     const { jobs, notes, ...mainState } = state;
     try{
-      if(usingClaudeStorage){
-        await setWithRetry('app-data', JSON.stringify(mainState));
-        hideOfflineBanner();
-        if(typeof captureSyncBase === 'function') captureSyncBase();
-        return;
-      }
+      if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(mainState)); hideOfflineBanner(); return; }
       if(!supa) return;
       const nowIso = new Date().toISOString();
-      // Claim this stamp as ours before the request goes out: the Realtime event for our own
-      // write regularly beats the HTTP response back, and without this the live-sync layer would
-      // treat it as someone else's change (see js/realtime.js).
-      if(typeof noteOwnWrite === 'function') noteOwnWrite(nowIso);
       let data, error;
       if(lastKnownUpdatedAt && !force){
         ({ data, error } = await supa.from('app_data')
@@ -393,9 +377,6 @@
         if(error) throw error;
       }
       lastKnownUpdatedAt = (data && data[0] && data[0].updated_at) || nowIso;
-      // We just wrote our own state to the row, so both halves of the live-sync base snapshot
-      // coincide — no payload argument needed.
-      if(typeof captureSyncBase === 'function') captureSyncBase();
       hideConflictBanner();
       hideOfflineBanner();
     }catch(e){
@@ -430,11 +411,6 @@
     throw lastErr;
   }
   async function load(){
-    // Fingerprint of the row exactly as it was on the wire, for the live-sync base snapshot at the
-    // bottom of this function. applyLoadedState() fills in field defaults *in place*, so it has to
-    // be taken before that call, not after — see captureRemoteBase() in js/realtime.js. Stays null
-    // on a failed/offline load, which realtime.js reads as "assume we already match".
-    let loadedRemoteBase = null;
     try{
       if(usingClaudeStorage){
         try{
@@ -474,12 +450,7 @@
             await loadNotesData(null);
           } else {
             let parsedMain = null;
-            if(data && data.data){
-              parsedMain = data.data;
-              // Order matters: applyLoadedState() hydrates parsedMain in place.
-              if(typeof captureRemoteBase === 'function') loadedRemoteBase = captureRemoteBase(parsedMain);
-              applyLoadedState(parsedMain);
-            }
+            if(data && data.data){ parsedMain = data.data; applyLoadedState(parsedMain); }
             lastKnownUpdatedAt = data ? data.updated_at : null;
             await loadJobsData(parsedMain);
             await loadNotesData(parsedMain);
@@ -503,11 +474,6 @@
     renderAll();
     resumePlaySessionIfAny();
     hideLoadScreen();
-    // Deliberately after renderAll(): it runs shuffleMotivationImages(), which reorders
-    // state.motivation.categories[].images in place. A base captured before that would read as a
-    // permanent unsaved local edit and re-push the shuffle on every remote change.
-    if(typeof captureSyncBase === 'function') captureSyncBase(loadedRemoteBase);
-    if(typeof initRealtime === 'function') initRealtime();
   }
 
   function hideLoadScreen(){

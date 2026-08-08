@@ -31,6 +31,10 @@
     // keeping it here means doSave()'s rest-destructure carries it automatically.
     jobCategoryColors: {},
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
+    // navbar appearance (Settings tab): tabOrder is the sidebar's tab keys in display order
+    // (empty = the order they appear in index.html), hideTabIcons drops the per-tab logos.
+    // Both are applied by applyTabOrder()/applyTabIcons() in js/insights.js.
+    tabOrder: [], hideTabIcons: false,
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
     // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;
     // perfectStyle picks how ('color' solid fill / 'rainbow' / 'golden' shimmer / 'emoji' overlay);

@@ -161,6 +161,12 @@ state = {
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
+  tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Reorder Navbar Tabs");
+                                       // empty means index.html's own order. Tabs missing from a
+                                       // stale saved order fall in at the end — applyTabOrder()
+  hideTabIcons: false,                 // Settings -> "Tab Icons": drops the per-tab logos for a
+                                       // text-only nav (mobile's icon-only strip switches to
+                                       // labels) — applyTabIcons(), both in js/insights.js
   protectedDays: [ { id, type:'vacation'|'sick'|'event', label, startDate, endDate, createdAt } ]
                                        // global exemption list (Settings tab) — startDate/endDate
                                        // are inclusive YYYY-MM-DD strings (endDate===startDate for

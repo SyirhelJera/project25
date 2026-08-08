@@ -288,6 +288,9 @@
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
+    // navbar appearance — saved by the Settings tab, applied by applyTabOrder()/applyTabIcons()
+    state.tabOrder = Array.isArray(parsed.tabOrder) ? parsed.tabOrder : [];
+    state.hideTabIcons = !!parsed.hideTabIcons;
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
     ['filled','today','empty','perfect'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
     if(state.mosaicColors.perfectGlow === undefined) state.mosaicColors.perfectGlow = true;

@@ -38,6 +38,12 @@
     items.forEach(it=>{ if(!order.includes(it.dataset.tab)) nav.appendChild(it); });
   }
 
+  // Settings > Tab Icons. Just a body class the nav CSS keys off (styles.css, .nav-item svg and its
+  // mobile override), so flipping it never has to rebuild the nav or re-render a tab.
+  function applyTabIcons(){
+    document.body.classList.toggle('hide-tab-icons', !!state.hideTabIcons);
+  }
+
   // commits a new tab key order — used by both the drag-drop handler (desktop) and the up/down
   // move buttons (mobile, where .drag-handle is hidden since HTML5 drag events don't fire on touch)
   function commitTabOrder(order){
@@ -119,6 +125,21 @@
   function renderSettings(){
     applyTheme();
     renderTabOrderSettings();
+
+    const tabIconVisToggle = el('tabIconVisToggle');
+    if(tabIconVisToggle && !tabIconVisToggle.dataset.wired){
+      tabIconVisToggle.dataset.wired = '1';
+      tabIconVisToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-vis]');
+        if(!btn) return;
+        state.hideTabIcons = btn.dataset.vis === 'hide';
+        save(); applyTabIcons(); renderSettings();
+      });
+    }
+    document.querySelectorAll('#tabIconVisToggle [data-vis]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.vis === 'hide') === !!state.hideTabIcons);
+    });
+
     const sel = el('settingsNetWorthCurrency');
     if(!sel.options.length){
       sel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');

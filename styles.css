@@ -937,6 +937,10 @@
 
   /* mobile tab switcher (js/nav.js) — a floating button you hold and slide from. Desktop has the
      whole sidebar on screen, so the whole thing only exists below the mobile breakpoint. */
+  /* iOS treats a long press as "select text / show the callout menu", which fires before any of
+     the JS below and leaves the page highlighted mid-gesture — the whole control has to opt out */
+  .tab-switcher-fab,.tab-switcher-overlay,.tab-switcher-sheet,.tab-switcher-item,.tab-switcher-hint{
+    -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
   .tab-switcher-fab{display:none;position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:900;
     width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;touch-action:none;
     background:linear-gradient(135deg,var(--violet),var(--violet-dark));color:#fff;

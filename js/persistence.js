@@ -326,6 +326,12 @@
         if(c.name===undefined) c.name = '';
         if(!Array.isArray(c.images)) c.images = [];
         if(typeof c.pin !== 'string') c.pin = '';
+        // source '' = an ordinary hand-uploaded category; 'pinterest' = auto-filled daily from
+        // that profile's public RSS feed (see syncPinterestCategory in js/motivation.js).
+        // lastSync is a localDateStr() day key — it's what makes the refresh once-per-day.
+        if(typeof c.source !== 'string') c.source = '';
+        if(typeof c.pinterestUser !== 'string') c.pinterestUser = '';
+        if(typeof c.lastSync !== 'string') c.lastSync = '';
       });
     }
   }

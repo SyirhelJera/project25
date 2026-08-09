@@ -4,6 +4,7 @@
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness(); renderValorant(); renderClock(); renderWishlist(); renderJobs(); renderNotes();
     shuffleMotivationImages(); openToPinnedMotivationCategory(); renderMotivation();
+    maybeSyncPinterestCategories(); // no-op unless a Pinterest category hasn't refreshed today yet
   }
 
   function applyTheme(){

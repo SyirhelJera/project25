@@ -14,7 +14,9 @@
       if(t.dataset.tab==='time') showTimeSubTab('clock');
       if(t.dataset.tab==='habits') renderHabits();
       if(t.dataset.tab==='mantras') renderMantras();
-      if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); }
+      // maybeSyncPinterestCategories() here (not just at load) catches an app left open past
+      // midnight — it's date-gated, so on any other open it does nothing.
+      if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); maybeSyncPinterestCategories(); }
       if(t.dataset.tab==='checklists') renderChecklists();
       if(t.dataset.tab==='notes') renderNotes();
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }

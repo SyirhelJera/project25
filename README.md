@@ -193,12 +193,14 @@ Key mechanics in this layer:
 
 ### Supabase backend
 
-Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
+Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
 
 - **`manage-backups`** — lets the client list/restore daily backups from a private Storage bucket (`backups`) without ever exposing the `service_role` key to the browser. Read-only from the client's perspective.
 - **`suggest-subtasks`** — proxies "suggest subtasks for this goal" to the Anthropic API (`claude-haiku-4-5`) using a server-side `ANTHROPIC_API_KEY` secret, with a shared daily call cap (`ai_usage` table, 30/day) and a 300-token cap per call.
 - **`upload-fitness-photo`** — uploads a Fitness tab progress photo straight to a Google Drive folder on the app owner's behalf. Uses a one-time-obtained Google OAuth refresh token (server secret) to mint a fresh access token per call, so uploads are fully automatic — no per-upload consent prompt. Only the returned Drive file id/link are saved into app state; the image bytes themselves live only in Drive.
 - **`upload-resume`** — same pattern as `upload-fitness-photo`, for the Jobs tab's per-application resume PDF attachment: uploads straight to a Google Drive folder named "Uploaded Resumes" (auto-created on first use if it doesn't exist, or pinned to a specific folder via the optional `GOOGLE_DRIVE_RESUMES_FOLDER_ID` secret), reusing the same `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN` secrets as the fitness-photo function — no separate Google OAuth setup needed if that's already configured. Only the Drive file id/link are saved into app state; the PDF bytes live only in Drive.
+
+- **`pinterest-feed`** — reads a Pinterest profile's public RSS feed (`https://www.pinterest.com/<user>/feed.rss`) and returns its pins as JSON. No secret is involved — it exists purely because Pinterest serves no CORS headers, so the browser can't read that file itself. The Motivation tab uses it for **Pinterest collections**: a category with `source: 'pinterest'` replaces its images with 10 random pins from that feed the first time the app is opened on a new day (`cat.lastSync` holds the day key), so the slideshow shows something different every morning. Images stay as `i.pinimg.com` URLs — nothing is copied into Storage, so a refresh leaves nothing behind. The 📌 on a thumbnail copies that pin into an ordinary category called **Saved Pins**, which the daily refresh never touches. The username is validated against `^[A-Za-z0-9_][A-Za-z0-9_-]{0,58}$` server-side — it's interpolated into the fetched URL's path, so that check is the whole SSRF guard. Note this reads the profile's *own* pins: the logged-in home feed (pins from accounts you follow) is private, with no RSS or public API.
 
 **Backups**: `scripts/backup-supabase.sh` (run daily by `.github/workflows/backup-supabase.yml` via cron at 07:00 UTC) pulls both `app_data` rows (`shared` + `jobs`) with the service-role key and uploads them as `<YYYY-MM-DD>.json` to a private Storage bucket. The Settings tab can list and restore from these via the `manage-backups` function. The file is an array of `{id, data}` objects — **consumers must key off `.id`, never array position** (rows come back ordered by id, so `jobs` precedes `shared`). Backup files written before Jobs was split out have the older single-row shape `[{"data":{…}}]` with no `id` key; `manage-backups` detects and handles both, and restore recovers Jobs data from the legacy embedded copy when a backup predates the split.
 
@@ -215,6 +217,7 @@ Four Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, accessory-shop item names & art (sprays/buddies/player cards/titles), weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
+| Pinterest RSS (`pinterest.com/<user>/feed.rss`, via the `pinterest-feed` function) | The daily 10 random pins in a Motivation "Pinterest collection" | None (public profile feed) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo`/`upload-resume` functions) | Auto-storing fitness progress photos and Jobs-tab resume PDFs | Server-side OAuth refresh token only |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + weekly accessory shop + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
@@ -285,7 +288,7 @@ js/
   protecteddays.js                  vacation/sick/event exemption list (Settings) — consumed by habits.js/checklists.js
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
-  goals.js / habits.js / finance.js / fitness.js / valorant.js /
+  goals.js / habits.js / finance.js / fitness.js / valorant.js / motivation.js /
   checklists.js / notes.js / countdowns.js / mantras.js / backups.js / insights.js
                                      one file per feature tab
 supabase/functions/
@@ -293,6 +296,7 @@ supabase/functions/
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
   upload-resume/                    uploads a Jobs-tab resume PDF to Google Drive ("Uploaded Resumes" folder)
+  pinterest-feed/                   reads a Pinterest profile's public RSS feed (CORS proxy for Motivation's Pinterest collections)
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
 scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront + owned-skins fetch)
 scripts/valorant-login.mjs          run LOCALLY to save a pasted Riot session cookie under a labeled account

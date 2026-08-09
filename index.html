@@ -837,9 +837,12 @@
     <div id="motivationContent">
       <div class="motivation-head" id="motivationHead" style="display:none;">
         <span class="motivation-name" id="motivationActiveName" title="Click to switch categories"></span>
+        <span class="motivation-synced" id="motivationSyncedAt" style="display:none;"></span>
         <div class="motivation-actions">
           <button class="del-goal" id="motivationRenameCatBtn">Rename</button>
           <button class="del-goal" id="motivationCatPinFirstBtn" title="Show this category first when you open the Motivation tab">📌 Pin as default</button>
+          <button class="del-goal" id="motivationSyncPinterestBtn" style="display:none;" title="Pull a fresh set of random pins now">🔄 Refresh pins</button>
+          <button class="del-goal" id="motivationPinterestUserBtn" style="display:none;">Change Pinterest user</button>
           <button class="del-goal" id="motivationCatPinBtn">Set category PIN</button>
           <button class="del-goal" id="motivationCatLockNowBtn" style="display:none;">Lock now</button>
           <button class="del-goal" id="motivationDelCatBtn">Delete category</button>
@@ -873,6 +876,7 @@
 
       <div class="motivation-bottom-row">
         <button class="btn btn-primary" id="addMotivationCategoryBtn">+ Add category</button>
+        <button class="btn btn-ghost" id="addPinterestCategoryBtn" title="A collection that pulls 10 random pins from your Pinterest, fresh every day">📌 Add Pinterest collection</button>
         <div class="img-row" id="motivationUploadRow" style="display:none;"><label>+ Upload<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label></div>
         <div class="motivation-pin-actions">
           <button class="btn btn-ghost btn-sm" id="motivationPinBtn">Set PIN</button>

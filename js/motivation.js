@@ -22,6 +22,16 @@
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
   const MOTIVATION_INTERVAL_MS = 5000;
 
+  // A category with source==='pinterest' fills itself: PINTEREST_PICK_COUNT random pins from that
+  // profile's public RSS feed, swapped for a fresh set the first time the app is opened on a new
+  // day (cat.lastSync holds the day key). Nothing is uploaded to Storage — the images stay as
+  // i.pinimg.com URLs, so a category costs nothing and a refresh leaves nothing behind.
+  // The 📌 button on a thumbnail copies that pin into PINTEREST_SAVED_CAT_NAME, an ordinary
+  // category the daily refresh never touches — that's how a good pin outlives its day.
+  const PINTEREST_PICK_COUNT = 10;
+  const PINTEREST_SAVED_CAT_NAME = 'Saved Pins';
+  let pinterestSyncing = false; // one sync at a time — renderAll and the tab-open hook can both fire
+
   function activeMotivationCategory(){
     return state.motivation.categories[motivationActiveCatIdx] || null;
   }
@@ -75,6 +85,19 @@
     el('motivationCatPinFirstBtn').textContent = isPinnedFirst ? '📌 Unpin as default' : '📌 Pin as default';
     el('motivationCatPinFirstBtn').classList.toggle('active', isPinnedFirst);
 
+    const isPinterest = cat.source === 'pinterest';
+    el('motivationSyncPinterestBtn').style.display = isPinterest ? 'inline-flex' : 'none';
+    el('motivationPinterestUserBtn').style.display = isPinterest ? 'inline-flex' : 'none';
+    el('motivationSyncedAt').style.display = isPinterest ? 'inline' : 'none';
+    if(isPinterest){
+      el('motivationSyncedAt').textContent = cat.pinterestUser
+        ? '@' + cat.pinterestUser + (cat.lastSync ? ' · refreshed ' + cat.lastSync : ' · not refreshed yet')
+        : 'no Pinterest username set';
+    }
+    // Uploading into a Pinterest category would look like it worked and then vanish at the next
+    // daily refresh, which replaces the whole image list — so don't offer it there.
+    el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
+
     const catLocked = !!cat.pin && !motivationUnlockedCats[cat.id];
     el('motivationCatLockNowBtn').style.display = (cat.pin && !catLocked) ? 'inline-flex' : 'none';
     el('motivationCatLock').style.display = catLocked ? 'flex' : 'none';
@@ -106,14 +129,23 @@
   function renderMotivationThumbsAndDots(cat){
     const thumbs = el('motivationThumbs'); thumbs.innerHTML = '';
     const dots = el('motivationDots'); dots.innerHTML = '';
+    const isPinterest = cat.source === 'pinterest';
+    const savedUrls = isPinterest ? savedPinUrls() : null;
     cat.images.forEach((img, i)=>{
       // loading="lazy" matters here: without it, opening a category with many images would
       // immediately download every full-resolution image just to paint a 74px thumbnail —
       // this way only the ones scrolled into view actually fetch anything.
       const thumb = document.createElement('div'); thumb.className = 'motivation-thumb'; thumb.draggable = true; thumb.dataset.imageId = img.id;
-      thumb.innerHTML = '<img src="'+img.url+'" loading="lazy" decoding="async"><button class="motivation-thumb-del" aria-label="Delete image">&times;</button>';
-      thumb.querySelector('img').addEventListener('click', ()=> goToMotivationImage(i));
+      const alreadySaved = savedUrls ? savedUrls.has(img.url) : false;
+      thumb.innerHTML = '<img src="'+img.url+'" loading="lazy" decoding="async">'
+        + (isPinterest ? '<button class="motivation-thumb-keep'+(alreadySaved?' saved':'')+'" aria-label="'+(alreadySaved?'Already in Saved Pins':'Keep this pin')+'" title="'+(alreadySaved?'Already in Saved Pins':'Keep in '+PINTEREST_SAVED_CAT_NAME)+'">'+(alreadySaved?'✓':'📌')+'</button>' : '')
+        + '<button class="motivation-thumb-del" aria-label="Delete image">&times;</button>';
+      const thumbImg = thumb.querySelector('img');
+      thumbImg.addEventListener('click', ()=> goToMotivationImage(i));
+      applyMotivationImageFallback(thumbImg, img);
       thumb.querySelector('.motivation-thumb-del').addEventListener('click', e=>{ e.stopPropagation(); deleteMotivationImage(cat.id, img.id); });
+      const keepBtn = thumb.querySelector('.motivation-thumb-keep');
+      if(keepBtn) keepBtn.addEventListener('click', e=>{ e.stopPropagation(); keepMotivationImage(cat.id, img.id); });
       thumbs.appendChild(thumb);
 
       const dot = document.createElement('div'); dot.className = 'motivation-dot';
@@ -169,11 +201,14 @@
     let idx = motivationSlideIdx[cat.id] || 0;
     idx = ((idx % cat.images.length) + cat.images.length) % cat.images.length;
     motivationSlideIdx[cat.id] = idx;
-    const url = cat.images[idx].url;
+    const img = cat.images[idx];
+    const url = img.url;
 
     const layerA = el('motivationLayerA'), layerB = el('motivationLayerB');
     const current = layerA.classList.contains('active') ? layerA : layerB;
     const next = current === layerA ? layerB : layerA;
+    applyMotivationImageFallback(current, img);
+    applyMotivationImageFallback(next, img);
 
     if(!animate){
       current.src = url;
@@ -269,6 +304,144 @@
     promptRenameMotivationCategory(cat.id);
   }
 
+  /* ---------- Pinterest-backed categories ---------- */
+
+  // Pinterest's RSS gives a 236px thumbnail URL; the Edge Function asks for the /736x/ render
+  // instead, which exists for nearly every pin but not quite all. Fall back to the URL the feed
+  // actually handed us rather than leaving a blank slide. `tried` stops a broken fallback looping.
+  function applyMotivationImageFallback(imgEl, img){
+    if(!img.fallbackUrl || img.fallbackUrl === img.url){ imgEl.onerror = null; return; }
+    let tried = false;
+    imgEl.onerror = ()=>{ if(tried) return; tried = true; imgEl.src = img.fallbackUrl; };
+  }
+
+  function savedPinsCategory(){
+    return state.motivation.categories.find(c=>c.name === PINTEREST_SAVED_CAT_NAME) || null;
+  }
+  function savedPinUrls(){
+    const cat = savedPinsCategory();
+    return new Set(cat ? cat.images.map(i=>i.url) : []);
+  }
+
+  function addPinterestCategory(){
+    const entered = window.prompt('Your Pinterest username (the part after pinterest.com/) — its public pins get pulled in:', '');
+    if(entered===null) return;
+    const user = normalizePinterestUser(entered);
+    if(!user) return;
+    const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '' };
+    state.motivation.categories.push(cat);
+    motivationActiveCatIdx = state.motivation.categories.length - 1;
+    save(); renderMotivation();
+    syncPinterestCategory(cat.id, true);
+  }
+
+  function promptPinterestUser(){
+    const cat = activeMotivationCategory(); if(!cat || cat.source !== 'pinterest') return;
+    const entered = window.prompt('Pinterest username:', cat.pinterestUser || '');
+    if(entered===null) return;
+    const user = normalizePinterestUser(entered);
+    if(!user) return;
+    if(user === cat.pinterestUser){ syncPinterestCategory(cat.id, true); return; }
+    cat.pinterestUser = user;
+    cat.lastSync = ''; // different account — today's images are no longer the right ones
+    save(); renderMotivation();
+    syncPinterestCategory(cat.id, true);
+  }
+
+  // Accepts a bare username or a pasted profile URL, and rejects anything the Edge Function
+  // would refuse anyway (it validates again server-side — that check is the real guard).
+  function normalizePinterestUser(raw){
+    let v = String(raw||'').trim();
+    const m = v.match(/pinterest\.[a-z.]+\/([^\/?#]+)/i);
+    if(m) v = m[1];
+    v = v.replace(/^@/, '').replace(/\/+$/, '');
+    if(!/^[A-Za-z0-9_][A-Za-z0-9_-]{0,58}$/.test(v)){
+      if(v) window.alert('That doesn’t look like a Pinterest username.');
+      return '';
+    }
+    return v;
+  }
+
+  // Pulls the profile's public feed and keeps PINTEREST_PICK_COUNT random pins, replacing whatever
+  // was showing. Any failure leaves the existing images alone — a Pinterest hiccup shouldn't empty
+  // the collection — and only speaks up when the user asked for this (manual), not on the silent
+  // once-a-day refresh.
+  async function syncPinterestCategory(catId, manual){
+    const cat = state.motivation.categories.find(c=>c.id===catId);
+    if(!cat || cat.source !== 'pinterest' || !cat.pinterestUser) return;
+    if(pinterestSyncing) return;
+    if(!supa){
+      if(manual) window.alert('Pinterest sync needs the Supabase connection — it isn’t available in this copy of the app.');
+      return;
+    }
+
+    pinterestSyncing = true;
+    const btn = el('motivationSyncPinterestBtn');
+    const btnLabel = btn.textContent;
+    btn.textContent = 'Refreshing…'; btn.disabled = true;
+
+    try{
+      const { data, error } = await supa.functions.invoke('pinterest-feed', { body: { username: cat.pinterestUser } });
+      if(error){
+        // A non-2xx from the function arrives as a generic "non-2xx status code" message; the
+        // readable one is in the response body, same unwrapping as uploadJobResume() in jobs.js.
+        let detail = '';
+        if(error.context && typeof error.context.json === 'function'){
+          try{ detail = (await error.context.json())?.error || ''; }catch(_){}
+        }
+        throw new Error(detail || error.message);
+      }
+      if(data && data.error) throw new Error(data.error);
+      const pins = (data && data.pins) || [];
+      if(!pins.length) throw new Error('That Pinterest profile has no public pins to show.');
+
+      for(let i = pins.length - 1; i > 0; i--){
+        const j = Math.floor(Math.random() * (i + 1));
+        const tmp = pins[i]; pins[i] = pins[j]; pins[j] = tmp;
+      }
+      const picked = pins.slice(0, PINTEREST_PICK_COUNT);
+
+      // No-op for i.pinimg.com URLs (it only matches Storage paths), but it keeps the bucket
+      // clean if a real upload ever ended up in here.
+      cat.images.forEach(img=> deleteStorageImage(img.url));
+      cat.images = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, createdAt: Date.now() }));
+      cat.lastSync = localDateStr(new Date());
+      delete motivationSlideIdx[cat.id]; // start the new set from the top
+      save(); renderMotivation();
+    }catch(err){
+      console.error('Pinterest sync failed', err);
+      if(manual) window.alert((err && err.message) || 'Could not refresh from Pinterest.');
+    }finally{
+      pinterestSyncing = false;
+      btn.textContent = btnLabel; btn.disabled = false;
+    }
+  }
+
+  // Once per day, on the first app load (or first Motivation tab open) after the date rolls over.
+  // The day-key comparison makes every other call a cheap no-op.
+  function maybeSyncPinterestCategories(){
+    const today = localDateStr(new Date());
+    const due = state.motivation.categories.find(c=> c.source==='pinterest' && c.pinterestUser && c.lastSync !== today);
+    if(due) syncPinterestCategory(due.id, false);
+  }
+
+  // Copies a pin into the "Saved Pins" category — an ordinary category, so the daily refresh
+  // never touches it. The image URL is shared, not moved: the original stays in the Pinterest
+  // category until that refresh replaces it.
+  function keepMotivationImage(catId, imageId){
+    const cat = state.motivation.categories.find(c=>c.id===catId); if(!cat) return;
+    const img = cat.images.find(x=>x.id===imageId); if(!img) return;
+
+    let saved = savedPinsCategory();
+    if(!saved){
+      saved = { id: uid(), name: PINTEREST_SAVED_CAT_NAME, images: [], pin: '', source: '', pinterestUser: '', lastSync: '' };
+      state.motivation.categories.push(saved);
+    }
+    if(saved.images.some(x=>x.url === img.url)) return; // already kept — the ✓ already says so
+    saved.images.push({ id: uid(), url: img.url, fallbackUrl: img.fallbackUrl, link: img.link, createdAt: Date.now() });
+    save(); renderMotivation();
+  }
+
   function promptRenameMotivationCategory(catId){
     const cat = state.motivation.categories.find(c=>c.id===catId); if(!cat) return;
     const entered = window.prompt('Rename category:', cat.name);
@@ -331,6 +504,9 @@
   }
 
   el('addMotivationCategoryBtn').addEventListener('click', addMotivationCategory);
+  el('addPinterestCategoryBtn').addEventListener('click', addPinterestCategory);
+  el('motivationSyncPinterestBtn').addEventListener('click', ()=>{ const cat = activeMotivationCategory(); if(cat) syncPinterestCategory(cat.id, true); });
+  el('motivationPinterestUserBtn').addEventListener('click', promptPinterestUser);
   // Click the category name to cycle to the next one — the only way to switch categories on
   // desktop, since the swipe gesture only exists for touch. Renaming now has its own button.
   el('motivationActiveName').addEventListener('click', nextMotivationCategory);

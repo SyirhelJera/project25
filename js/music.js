@@ -26,7 +26,8 @@
   let musicShuffled = false; // setShuffle() only sticks once a playlist is actually loaded
 
   function sessionMusicCfg(){
-    if(!state.sessionMusic) state.sessionMusic = { url:'', enabled:true, volume:35, shuffle:true };
+    if(!state.sessionMusic) state.sessionMusic = { url:'', enabled:true, volume:35, shuffle:true, playlists:[] };
+    if(!Array.isArray(state.sessionMusic.playlists)) state.sessionMusic.playlists = [];
     return state.sessionMusic;
   }
 
@@ -208,6 +209,84 @@
     if(musicStatusIsError) el('playMusicHint').textContent = musicStatusText;
   }
 
+  /* ---------- saved playlists ----------
+     state.sessionMusic.playlists = [{ id, name, url }], with `url` on the config itself pointing
+     at whichever one is currently loaded (that's what marks a row active — no separate activeId to
+     keep in sync). Switching mid-session rebuilds the player straight away: the ▶ click is itself
+     the user gesture the browser wants, so the new playlist starts without a second tap. */
+  function setMusicHint(text){ el('playMusicHint').textContent = text; }
+
+  function renderSavedPlaylists(focusRecordId){
+    const wrap = el('playMusicSaved');
+    if(!wrap) return;
+    const cfg = sessionMusicCfg();
+    wrap.innerHTML = '';
+    cfg.playlists.forEach(p=>{
+      const row = document.createElement('div');
+      row.className = 'play-music-saved-row' + (p.url === cfg.url ? ' active' : '');
+      row.innerHTML = '<button class="play-music-saved-play" title="Switch to this playlist">▶</button>'
+        + '<input class="play-music-saved-name" spellcheck="false" placeholder="Name">'
+        + '<button class="play-music-saved-del" title="Remove from list">×</button>';
+      // assigned, never interpolated into the markup above — escapeHtml() leaves double quotes
+      // alone, so a name with one in it would break out of a value="…" attribute
+      const nameInput = row.querySelector('.play-music-saved-name');
+      nameInput.value = p.name || '';
+      nameInput.title = p.url;
+      nameInput.addEventListener('change', ()=>{
+        p.name = nameInput.value.trim() || defaultPlaylistName(cfg.playlists.indexOf(p));
+        nameInput.value = p.name;
+        save();
+      });
+      row.querySelector('.play-music-saved-play').addEventListener('click', ()=> selectSavedPlaylist(p));
+      row.querySelector('.play-music-saved-del').addEventListener('click', ()=>{
+        if(!window.confirm('Remove “'+(p.name||'this playlist')+'” from the saved list?')) return;
+        cfg.playlists = cfg.playlists.filter(x=>x !== p);
+        save();
+        renderSavedPlaylists();
+      });
+      wrap.appendChild(row);
+      if(focusRecordId && p.id === focusRecordId){ nameInput.focus(); nameInput.select(); }
+    });
+  }
+
+  function defaultPlaylistName(index){ return 'Playlist ' + (index + 1); }
+
+  function selectSavedPlaylist(p){
+    const cfg = sessionMusicCfg();
+    const { id, error } = parsePlaylistUrl(p.url);
+    cfg.url = p.url;
+    cfg.enabled = true;
+    save();
+    syncMusicSettingsInputs();
+    if(error){ setMusicStatus(error, true); return; }
+    musicStatusText = ''; musicStatusIsError = false;
+    createMusicPlayer(id, true);
+  }
+
+  el('playMusicSaveBtn').addEventListener('click', ()=>{
+    const cfg = sessionMusicCfg();
+    const url = el('playMusicUrl').value.trim();
+    const { id, error } = parsePlaylistUrl(url);
+    if(!id){ setMusicStatus(error || 'Paste a playlist link first, then press ＋.', true); return; }
+    // same playlist pasted twice (a /watch link and a /playlist link resolve to one id) — don't
+    // stack duplicates, just point at the copy that's already saved
+    const existing = cfg.playlists.find(p=>parsePlaylistUrl(p.url).id === id);
+    if(existing){
+      cfg.url = existing.url;
+      save();
+      syncMusicSettingsInputs();
+      setMusicHint('Already saved as “'+existing.name+'”.');
+      return;
+    }
+    const rec = { id: uid(), name: defaultPlaylistName(cfg.playlists.length), url };
+    cfg.playlists.push(rec);
+    cfg.url = url;
+    save();
+    syncMusicSettingsInputs();
+    renderSavedPlaylists(rec.id);   // focuses the new row's name so you can type over it
+    setMusicHint('Saved — give it a name, or press ▶ to switch to it any time.');
+  });
+
   // ---- controls ----
   el('playMusicToggle').addEventListener('click', ()=>{
     const cfg = sessionMusicCfg();
@@ -252,7 +331,8 @@
     musicStatusText = error || '';
     musicStatusIsError = !!error;
     renderSessionMusic();
-    el('playMusicHint').textContent = error || (id ? '✓ Playlist ' + id : MUSIC_HINT_DEFAULT);
+    renderSavedPlaylists();   // the active-row highlight follows cfg.url
+    setMusicHint(error || (id ? '✓ Playlist ' + id + ' — press ＋ to keep it' : MUSIC_HINT_DEFAULT));
   });
 
   el('playMusicUrl').addEventListener('change', e=>{
@@ -290,6 +370,7 @@
     el('playMusicShuffle').checked = !!cfg.shuffle;
     el('playMusicEnabled').checked = !!cfg.enabled;
     el('playMusicVol').value = cfg.volume;
+    renderSavedPlaylists();
     const { id, error } = parsePlaylistUrl(cfg.url);
-    el('playMusicHint').textContent = error || (id ? '✓ Playlist ' + id : MUSIC_HINT_DEFAULT);
+    setMusicHint(error || (id ? '✓ Playlist ' + id : MUSIC_HINT_DEFAULT));
   }

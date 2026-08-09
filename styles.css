@@ -471,8 +471,18 @@
   .play-music-track-warn{color:var(--danger);}
   .play-music-vol{flex:none;width:64px;accent-color:var(--violet);cursor:pointer;}
   .play-music-settings{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
-  .play-music-url{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box;}
+  .play-music-url-row{display:flex;gap:6px;align-items:center;}
+  .play-music-url{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;flex:1;min-width:0;box-sizing:border-box;}
   .play-music-url:focus{border-color:var(--violet);}
+  /* saved playlists — one row each, ▶ switches, the middle field renames in place */
+  .play-music-saved{display:flex;flex-direction:column;gap:5px;}
+  .play-music-saved-row{display:flex;align-items:center;gap:6px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:4px 6px;}
+  .play-music-saved-row.active{border-color:var(--violet);background:var(--violet-pale);}
+  .play-music-saved-play{background:none;border:none;color:var(--violet-dark);font-size:11px;line-height:1;cursor:pointer;padding:2px 3px;flex:none;}
+  .play-music-saved-name{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--text);font-size:12px;font-family:'Inter',sans-serif;padding:2px 0;}
+  .play-music-saved-name:focus{border-bottom:1px solid var(--violet);}
+  .play-music-saved-del{background:none;border:none;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;padding:2px 4px;flex:none;}
+  .play-music-saved-del:hover{color:var(--danger);}
   .play-music-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);cursor:pointer;}
   /* the strip above is a single ellipsised line, so this is where a full error sentence lands —
      it has to wrap (see setMusicStatus in js/music.js) */

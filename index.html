@@ -713,7 +713,12 @@
           <button class="play-music-btn" id="playMusicSettingsBtn" title="Playlist settings">⚙</button>
         </div>
         <div class="play-music-settings" id="playMusicSettings" style="display:none;">
-          <input type="text" class="play-music-url" id="playMusicUrl" placeholder="Paste a YouTube Music / YouTube playlist link" spellcheck="false">
+          <!-- saved playlists: ▶ switches to one mid-session, the name is renameable in place -->
+          <div class="play-music-saved" id="playMusicSaved"></div>
+          <div class="play-music-url-row">
+            <input type="text" class="play-music-url" id="playMusicUrl" placeholder="Paste a YouTube Music / YouTube playlist link" spellcheck="false">
+            <button class="play-music-btn" id="playMusicSaveBtn" title="Save this playlist to the list above">＋</button>
+          </div>
           <label class="play-music-check"><input type="checkbox" id="playMusicShuffle"> Shuffle</label>
           <label class="play-music-check"><input type="checkbox" id="playMusicEnabled"> Play music during sessions</label>
           <div class="play-music-hint" id="playMusicHint"></div>

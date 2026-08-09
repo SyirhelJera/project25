@@ -160,10 +160,14 @@ state = {
   profile: { name, age, netWorth, netWorthCurrency, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
-  sessionMusic: { url, enabled, volume, shuffle },
-                                       // background music for a Play session (js/music.js) — url is
-                                       // any YouTube/YouTube Music playlist link, volume 0-100.
-                                       // Settings only; no playback state is persisted.
+  sessionMusic: { url, enabled, volume, shuffle,
+                  playlists: [ { id, name, url } ] },
+                                       // background music for a Play session (js/music.js) — `url`
+                                       // is the playlist currently loaded (any YouTube/YouTube Music
+                                       // link), `playlists` the saved shortlist you switch between
+                                       // mid-session; the row whose url matches `url` is the active
+                                       // one, so there's no separate activeId to keep in sync.
+                                       // volume 0-100. Settings only; no playback state persisted.
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
   tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Reorder Navbar Tabs");
                                        // empty means index.html's own order. Tabs missing from a
@@ -222,7 +226,9 @@ Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 
 ### Session music
 
-A checklist Play session can run a playlist in the background (`js/music.js`, controls in the strip at the bottom of the Play card: ▶/⏸, ⏭, volume, and ⚙ for the playlist link, shuffle, and an on/off switch). Settings live in `state.sessionMusic` and are shared like everything else in the row.
+A checklist Play session can run a playlist in the background (`js/music.js`, controls in the strip at the bottom of the Play card: ▶/⏸, ⏭, volume, and ⚙ for the playlist list, shuffle, and an on/off switch). Settings live in `state.sessionMusic` and are shared like everything else in the row.
+
+**Saved playlists.** Paste a link and press ＋ to keep it; each saved row switches with one ▶ tap (mid-session too — the tap is itself the gesture YouTube needs, so the new playlist starts immediately), renames in place, and removes with ×. Pasting a link that resolves to an already-saved id selects that entry instead of stacking a duplicate, so a `/watch?…&list=` and a `/playlist?list=` copy of the same playlist can't both end up in the list.
 
 YouTube Music playlists **are** YouTube playlists — the `list=` id in a `music.youtube.com` link is the same id `youtube.com` serves — so this is one lazily-loaded [YouTube IFrame Player](https://developers.google.com/youtube/iframe_api_reference) with no API key, no OAuth, and nothing to deploy. The API script is only fetched once a session actually starts with a playlist configured, so the app still opens instantly and offline for anyone who never sets one. Paste either a playlist URL or a bare id; the `VL` prefix YT Music puts on library links is stripped automatically.
 

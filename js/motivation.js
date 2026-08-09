@@ -21,6 +21,13 @@
   }
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
   const MOTIVATION_INTERVAL_MS = 5000;
+  // A video slide runs until the clip ends; this is only the ceiling, so one long pin can't park
+  // the slideshow on itself indefinitely.
+  const MOTIVATION_VIDEO_MAX_MS = 30000;
+  // Set once the browser refuses an autoplay (no user gesture yet, or data-saver). While it's set
+  // every slide is treated as a still, which is why it's cleared on the next real tap — by then
+  // we're inside a gesture and play() will be allowed.
+  let motivationVideoBlocked = false;
 
   // A category with source==='pinterest' fills itself: PINTEREST_PICK_COUNT random pins from that
   // profile's public RSS feed, swapped for a fresh set the first time the app is opened on a new
@@ -76,6 +83,7 @@
       el('motivationCatLock').style.display = 'none';
       el('motivationThumbs').style.display = 'none';
       stopMotivationSlideshow();
+      hideMotivationVideo();
       return;
     }
     if(motivationActiveCatIdx >= categories.length) motivationActiveCatIdx = categories.length - 1;
@@ -104,6 +112,7 @@
       el('motivationCatEmpty').style.display = 'none';
       el('motivationThumbs').style.display = 'none';
       stopMotivationSlideshow();
+      hideMotivationVideo(); // a locked category must not keep playing its clip behind the lock
       return;
     }
 
@@ -120,7 +129,11 @@
       renderMotivationThumbsAndDots(cat);
       startMotivationSlideshow();
     } else {
+      // hideMotivationVideo() as well as stopping: showMotivationSlide() is what normally clears
+      // the video, and it isn't reached here — without this a clip from the previous category
+      // would stay parked on screen over the "no images" message, still playing.
       stopMotivationSlideshow();
+      hideMotivationVideo();
     }
   }
 
@@ -135,7 +148,10 @@
       // this way only the ones scrolled into view actually fetch anything.
       const thumb = document.createElement('div'); thumb.className = 'motivation-thumb'; thumb.draggable = true; thumb.dataset.imageId = img.id;
       const alreadySaved = savedUrls ? savedUrls.has(img.url) : false;
+      // The badge only — the thumbnail itself stays the pin's cover <img> even for a video, so
+      // the strip costs the same to paint either way and never pulls a clip.
       thumb.innerHTML = '<img src="'+img.url+'" loading="lazy" decoding="async">'
+        + (img.videoUrl ? '<span class="motivation-thumb-play" aria-hidden="true">▶</span>' : '')
         + (isPinterest ? '<button class="motivation-thumb-keep'+(alreadySaved?' saved':'')+'" aria-label="'+(alreadySaved?'Already in Saved Pins':'Keep this pin')+'" title="'+(alreadySaved?'Already in Saved Pins':'Keep in '+PINTEREST_SAVED_CAT_NAME)+'">'+(alreadySaved?'✓':'📌')+'</button>' : '')
         + '<button class="motivation-thumb-del" aria-label="Delete image">&times;</button>';
       const thumbImg = thumb.querySelector('img');
@@ -220,13 +236,101 @@
     el('motivationThumbs').querySelectorAll('.motivation-thumb').forEach((t, i)=> t.classList.toggle('active', i===idx));
     el('motivationDots').querySelectorAll('.motivation-dot').forEach((d, i)=> d.classList.toggle('active', i===idx));
 
+    applyMotivationVideo(img);
+
     // Warm the browser cache for just the next image (not the whole category) so the following
     // auto-advance/tap crossfades in instantly instead of showing a load delay — bounded to one
     // image ahead at a time, so this doesn't turn into a bulk-preload traffic cost.
+    // Deliberately the cover image even when the next pin is a video: prefetching the clip would
+    // pull megabytes per rotation for a slide that may never be reached (a tap or swipe can move
+    // somewhere else first), which is exactly the bulk-traffic case this line already avoids.
     if(cat.images.length > 1){
       const nextIdx = (idx + 1) % cat.images.length;
       new Image().src = cat.images[nextIdx].url;
     }
+  }
+
+  /* ---------- video pins ----------
+     The clip streams straight from v1.pinimg.com into the <video>, exactly as the stills load
+     from i.pinimg.com — nothing is proxied through the Edge Function and nothing is uploaded to
+     Storage, so a video collection costs Supabase no more than an image one. */
+
+  function hideMotivationVideo(){
+    const v = el('motivationVideo');
+    if(!v) return;
+    v.pause();
+    // Dropping the src (not just hiding the element) is what actually stops the download. A
+    // hidden <video> with a src set keeps buffering the rest of the clip in the background.
+    if(v.getAttribute('src')){ v.removeAttribute('src'); v.load(); }
+    v.style.display = 'none';
+  }
+
+  // Individual clips that turned out to be unplayable (Pinterest 404'd it, or the browser can't
+  // decode it). Session-only and keyed by URL, so one dead pin degrades to its cover still without
+  // costing the rest of the collection its video — unlike motivationVideoBlocked, which is the
+  // whole-session autoplay verdict.
+  const motivationDeadVideos = new Set();
+
+  // Returns true if this slide is showing as a video. Callers care about that rather than about
+  // the record, because a blocked autoplay makes a video pin behave as a still.
+  function applyMotivationVideo(img){
+    const v = el('motivationVideo');
+    if(!v) return false;
+    if(!motivationSlideIsVideo(img)){ hideMotivationVideo(); return false; }
+
+    v.style.display = 'block';
+    v.poster = img.url;
+    // Assigned as a property, never interpolated into markup — same rule the rest of this file
+    // follows for URLs, since escapeHtml() doesn't escape the quotes that would break an attribute.
+    if(v.getAttribute('src') !== img.videoUrl){ v.src = img.videoUrl; }
+    // Same clip again, already finished — rewind before playing. This is the single-video
+    // collection: `ended` advances, the index wraps straight back to this same pin, and calling
+    // play() on a video parked at its end would fire `ended` again instantly, spinning. Rewinding
+    // turns that into what it should be, an ordinary loop.
+    else if(v.ended) v.currentTime = 0;
+    const played = v.play();
+    if(played && played.catch){
+      const attempted = img.videoUrl;
+      played.catch(err=>{
+        const name = err && err.name;
+        // AbortError just means a newer slide replaced this one mid-play (tapping through the
+        // collection does it constantly). Nothing failed — the newer slide owns the element now,
+        // so touching it here would fight whatever it just set up.
+        if(name === 'AbortError') return;
+        // NotAllowedError is the autoplay refusal, and it's a property of the page, not the clip
+        // — no point retrying it per slide until there's been a user gesture.
+        if(name === 'NotAllowedError') motivationVideoBlocked = true;
+        else motivationDeadVideos.add(attempted);
+        // Either way the cover is already painted in the <img> layer underneath, so drop to the
+        // still and re-arm the ordinary 5s beat — otherwise this slide would sit here for the
+        // full 30s video ceiling with nothing playing.
+        hideMotivationVideo();
+        startMotivationSlideshow();
+      });
+    }
+    return true;
+  }
+
+  // A clip that fails after playback starts (mid-stream network drop, bad transcode) rejects no
+  // promise — this is the only signal for it.
+  el('motivationVideo').addEventListener('error', ()=>{
+    const src = el('motivationVideo').getAttribute('src');
+    if(!src) return; // fires once more as removeAttribute('src') tears the element down
+    motivationDeadVideos.add(src);
+    hideMotivationVideo();
+    startMotivationSlideshow();
+  });
+
+  function motivationSlideIsVideo(img){
+    return !!(img && img.videoUrl && !motivationVideoBlocked && !motivationDeadVideos.has(img.videoUrl));
+  }
+
+  function isMotivationVideoSlide(){
+    const cat = activeMotivationCategory();
+    if(!cat || !cat.images.length) return false;
+    const n = cat.images.length;
+    const idx = (((motivationSlideIdx[cat.id] || 0) % n) + n) % n;
+    return motivationSlideIsVideo(cat.images[idx]);
   }
 
   function nextMotivationImage(){
@@ -268,12 +372,29 @@
     renderMotivation(true);
   }
 
+  // setTimeout rather than setInterval now that the delay varies per slide. Not a behaviour change
+  // for images: nextMotivationImage() already ended by calling back in here, so the old interval
+  // was being torn down and recreated on every tick anyway.
+  //
+  // Deliberately clears the timer inline instead of calling stopMotivationSlideshow() — that one
+  // also pauses the video, and this runs immediately after showMotivationSlide() has started it.
   function startMotivationSlideshow(){
-    clearInterval(motivationTimer);
+    clearTimeout(motivationTimer); motivationTimer = null;
     const cat = activeMotivationCategory();
-    motivationTimer = (cat && cat.images.length > 1) ? setInterval(nextMotivationImage, MOTIVATION_INTERVAL_MS) : null;
+    if(!cat || cat.images.length < 2) return;
+    // On a video slide this is only the ceiling — the `ended` handler below normally advances
+    // first, as soon as the clip actually finishes.
+    const ms = isMotivationVideoSlide() ? MOTIVATION_VIDEO_MAX_MS : MOTIVATION_INTERVAL_MS;
+    motivationTimer = setTimeout(nextMotivationImage, ms);
   }
-  function stopMotivationSlideshow(){ clearInterval(motivationTimer); motivationTimer = null; }
+  function stopMotivationSlideshow(){
+    clearTimeout(motivationTimer); motivationTimer = null;
+    // Pause but keep the src: the callers that stop the slideshow temporarily (tab hidden, page
+    // backgrounded) resume this same slide, and re-fetching the clip to do that would be waste.
+    // The callers that leave the slide entirely call hideMotivationVideo() instead.
+    const v = el('motivationVideo');
+    if(v && v.getAttribute('src')) v.pause();
+  }
 
   function addMotivationImage(catId, file){
     const cat = state.motivation.categories.find(c=>c.id===catId);
@@ -402,7 +523,10 @@
       // No-op for i.pinimg.com URLs (it only matches Storage paths), but it keeps the bucket
       // clean if a real upload ever ended up in here.
       cat.images.forEach(img=> deleteStorageImage(img.url));
-      cat.images = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, createdAt: Date.now() }));
+      // videoUrl starts empty for every pin and is filled in afterwards by resolvePinterestVideos()
+      // — the feed can't tell us which of these are videos.
+      const created = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, videoUrl: '', createdAt: Date.now() }));
+      cat.images = created;
       cat.lastSync = localDateStr(new Date());
       // Logged, not shown: the header stays clean, but this is how you check whether board
       // discovery actually found your boards (a pool in the hundreds) or fell back to the
@@ -410,6 +534,7 @@
       console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length + ' pins across ' + ((data && data.boards) || 0) + ' boards');
       delete motivationSlideIdx[cat.id]; // start the new set from the top
       save(); renderMotivation();
+      resolvePinterestVideos(cat.id, created); // not awaited — see below
     }catch(err){
       console.error('Pinterest sync failed', err);
       if(manual) window.alert((err && err.message) || 'Could not refresh from Pinterest.');
@@ -417,6 +542,46 @@
       pinterestSyncing = false;
       btn.textContent = btnLabel; btn.disabled = false;
     }
+  }
+
+  // Second pass over the pins the sync just picked, asking which of them are videos. Deliberately
+  // fire-and-forget, after the images are already on screen and saved: resolving means the Edge
+  // Function fetches ~25 pin pages, which is slower than the feed read itself, and none of it is
+  // needed for the collection to work. So a slow or failed resolve costs nothing visible — the
+  // pins simply stay stills, exactly as they were before this existed. Only the picked pins are
+  // resolved, not the whole 138-380 pin pool, which is what keeps it to one extra call a day.
+  async function resolvePinterestVideos(catId, images){
+    const links = images.map(i=>i.link).filter(Boolean);
+    if(!links.length || !supa) return;
+
+    let videos;
+    try{
+      const { data, error } = await supa.functions.invoke('pinterest-feed', { body: { resolve: links } });
+      if(error || !data || !data.videos) return;
+      videos = data.videos;
+    }catch(err){
+      console.error('Pinterest video resolve failed', err);
+      return;
+    }
+
+    const cat = state.motivation.categories.find(c=>c.id===catId);
+    if(!cat) return; // collection deleted while we were resolving
+
+    let changed = 0;
+    images.forEach(rec=>{
+      const url = rec.link && videos[rec.link];
+      if(!url) return;
+      // Matched by record id, never by index: another sync (or a delete, or a drag-reorder) may
+      // have rewritten cat.images while this was in flight, and patching by position would then
+      // staple a video URL onto whatever unrelated pin now sits at that slot.
+      const live = cat.images.find(x=>x.id===rec.id);
+      if(!live) return;
+      live.videoUrl = url; changed++;
+    });
+    if(!changed) return;
+
+    console.info('Pinterest sync: ' + changed + ' of ' + links.length + ' picked pins are videos');
+    save(); renderMotivation();
   }
 
   // Once per day, on the first app load (or first Motivation tab open) after the date rolls over.
@@ -440,7 +605,9 @@
       state.motivation.categories.push(saved);
     }
     if(saved.images.some(x=>x.url === img.url)) return; // already kept — the ✓ already says so
-    saved.images.push({ id: uid(), url: img.url, fallbackUrl: img.fallbackUrl, link: img.link, createdAt: Date.now() });
+    // videoUrl comes along too — without it, keeping a video pin would silently downgrade it to
+    // its cover still, and Saved Pins is never re-synced so nothing would ever restore it.
+    saved.images.push({ id: uid(), url: img.url, fallbackUrl: img.fallbackUrl, link: img.link, videoUrl: img.videoUrl || '', createdAt: Date.now() });
     save(); renderMotivation();
   }
 
@@ -544,8 +711,17 @@
   });
   el('motivationGlowWrap').addEventListener('click', ()=>{
     if(motivationSuppressClick) return;
+    // A tap is the user gesture browsers want before they'll allow autoplay, so retry video from
+    // here — a collection that fell back to stills on load starts playing once you interact.
+    motivationVideoBlocked = false;
     nextMotivationImage();
     rerollMantra();
+  });
+  // What normally advances a video slide: the 30s ceiling in startMotivationSlideshow() is just
+  // the backstop. Bound once here rather than per slide, since the element is reused.
+  el('motivationVideo').addEventListener('ended', ()=>{
+    const view = el('view-motivation');
+    if(view && view.classList.contains('active') && !document.hidden) nextMotivationImage();
   });
   // Sits on top of the slideshow image (z-index above it) so this click never also reaches
   // motivationGlowWrap's reroll/advance handler underneath.
@@ -583,5 +759,8 @@
   document.addEventListener('visibilitychange', ()=>{
     if(document.hidden){ stopMotivationSlideshow(); return; }
     const view = el('view-motivation');
-    if(view && view.classList.contains('active')) startMotivationSlideshow();
+    // showMotivationSlide() rather than only restarting the timer: stopMotivationSlideshow()
+    // paused any video, and this is what presses play again. It's idempotent for a still, and
+    // for a video it reuses the already-buffered src rather than re-fetching.
+    if(view && view.classList.contains('active')){ showMotivationSlide(false); startMotivationSlideshow(); }
   });

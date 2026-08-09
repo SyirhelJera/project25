@@ -859,6 +859,12 @@
           <div class="motivation-glow-wrap" id="motivationGlowWrap">
             <img class="motivation-slide-img active" id="motivationLayerA" alt="">
             <img class="motivation-slide-img" id="motivationLayerB" alt="">
+            <!-- Video pins. One element reused across slides rather than one per image, layered
+                 over the two <img> layers so the pin's cover still crossfades in underneath it —
+                 which is also the fallback: if autoplay is refused this hides and the cover is
+                 already there. No `loop` (the `ended` event is what advances the slideshow) and
+                 preload="none" so merely passing through a video slide fetches nothing. -->
+            <video class="motivation-slide-video" id="motivationVideo" muted playsinline preload="none" style="display:none;"></video>
           </div>
           <div class="motivation-dots" id="motivationDots"></div>
         </div>

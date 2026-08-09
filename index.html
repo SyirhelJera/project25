@@ -719,6 +719,16 @@
             <input type="text" class="play-music-url" id="playMusicUrl" placeholder="Paste a YouTube Music / YouTube playlist link" spellcheck="false">
             <button class="play-music-btn" id="playMusicSaveBtn" title="Save this playlist to the list above">＋</button>
           </div>
+          <!-- playback mode: the in-app player is a cross-site iframe, so it only gets Premium if
+               the browser hands YouTube its cookies there. "external" sidesteps that entirely. -->
+          <label class="play-music-check play-music-mode-row">
+            <span>Play via</span>
+            <select class="play-music-mode" id="playMusicMode">
+              <option value="embed">In the app (may show ads)</option>
+              <option value="external">YouTube Music — ad-free with Premium</option>
+            </select>
+          </label>
+          <div class="play-music-note" id="playMusicModeNote"></div>
           <label class="play-music-check"><input type="checkbox" id="playMusicShuffle"> Shuffle</label>
           <label class="play-music-check"><input type="checkbox" id="playMusicEnabled"> Play music during sessions</label>
           <div class="play-music-hint" id="playMusicHint"></div>

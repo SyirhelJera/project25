@@ -701,6 +701,25 @@
           <button class="play-action-btn play-btn-check" id="playCheckBtn" title="Done — next task">✓</button>
         </div>
       </div>
+      <!-- background music for the session (YouTube / YouTube Music playlist) — see js/music.js.
+           The player frame has to stay in the layout for playback to continue, so it sits behind
+           the card at 1px rather than being hidden with display:none. -->
+      <div class="play-music" id="playMusic">
+        <div class="play-music-bar">
+          <button class="play-music-btn" id="playMusicToggle" title="Play / pause music">▶</button>
+          <div class="play-music-track" id="playMusicTrack">No playlist yet — tap ⚙</div>
+          <button class="play-music-btn" id="playMusicNext" title="Next track">⏭</button>
+          <input type="range" class="play-music-vol" id="playMusicVol" min="0" max="100" step="1" value="35" title="Volume">
+          <button class="play-music-btn" id="playMusicSettingsBtn" title="Playlist settings">⚙</button>
+        </div>
+        <div class="play-music-settings" id="playMusicSettings" style="display:none;">
+          <input type="text" class="play-music-url" id="playMusicUrl" placeholder="Paste a YouTube Music / YouTube playlist link" spellcheck="false">
+          <label class="play-music-check"><input type="checkbox" id="playMusicShuffle"> Shuffle</label>
+          <label class="play-music-check"><input type="checkbox" id="playMusicEnabled"> Play music during sessions</label>
+          <div class="play-music-hint" id="playMusicHint"></div>
+        </div>
+        <div class="play-music-frame" id="playMusicFrameWrap"><div id="playMusicFrame"></div></div>
+      </div>
       <div class="play-complete" id="playComplete" style="display:none;">
         <div class="play-complete-msg">🎉 Checklist complete!</div>
         <div class="play-complete-insights" id="playCompleteInsights"></div>
@@ -1073,6 +1092,7 @@
 <script src="js/backups.js"></script>
 <script src="js/mantras.js"></script>
 <script src="js/motivation.js"></script>
+<script src="js/music.js"></script>
 <script src="js/checklists.js"></script>
 <script src="js/notes.js"></script>
 <script src="js/finance.js"></script>

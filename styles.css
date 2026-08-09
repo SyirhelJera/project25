@@ -442,7 +442,12 @@
   .play-overlay.minimized .play-progress,
   .play-overlay.minimized .play-progress-bars,
   .play-overlay.minimized .play-task-source,
-  .play-overlay.minimized .play-actions{display:none;}
+  .play-overlay.minimized .play-actions,
+  .play-overlay.minimized .play-music-bar,
+  .play-overlay.minimized .play-music-settings{display:none;}
+  /* the strip's chrome hides in the pill, but .play-music itself (and the player frame inside it)
+     must stay in the layout so the music keeps playing while minimized */
+  .play-overlay.minimized .play-music{margin:0;padding:0;border-top:none;}
   .play-overlay.minimized .play-task-text{font-size:12px;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .play-overlay.minimized .play-timer{font-size:20px;margin-bottom:0;}
   .play-checklist-name{font-size:13px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
@@ -456,6 +461,25 @@
   .play-timer{font-family:'Manrope',sans-serif;font-size:44px;font-weight:800;color:var(--violet-dark);letter-spacing:1px;margin-bottom:26px;}
   .play-timer.play-timer-zero{color:var(--danger);animation:checklistFlash 1.2s ease-in-out infinite;}
   .play-actions{display:flex;gap:16px;justify-content:center;}
+
+  /* ---- session music strip (YouTube / YT Music playlist, js/music.js) ---- */
+  .play-music{margin-top:20px;padding-top:14px;border-top:1px solid var(--border);text-align:left;}
+  .play-music-bar{display:flex;align-items:center;gap:8px;}
+  .play-music-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:999px;width:28px;height:28px;flex:none;font-size:12px;line-height:1;cursor:pointer;padding:0;transition:filter .12s ease,transform .12s ease;}
+  .play-music-btn:active{transform:scale(0.92);}
+  .play-music-track{flex:1;min-width:0;font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .play-music-track-warn{color:var(--danger);}
+  .play-music-vol{flex:none;width:64px;accent-color:var(--violet);cursor:pointer;}
+  .play-music-settings{margin-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .play-music-url{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;width:100%;box-sizing:border-box;}
+  .play-music-url:focus{border-color:var(--violet);}
+  .play-music-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);cursor:pointer;}
+  /* the strip above is a single ellipsised line, so this is where a full error sentence lands —
+     it has to wrap (see setMusicStatus in js/music.js) */
+  .play-music-hint{font-size:10.5px;color:var(--faint);line-height:1.45;white-space:normal;word-break:break-word;}
+  /* The YouTube player has to stay laid out for audio to keep running — parked behind the card,
+     transparent and click-through, rather than hidden with display:none. */
+  .play-music-frame{position:absolute;right:0;bottom:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;}
   .play-action-btn{width:64px;height:64px;border-radius:999px;border:none;cursor:pointer;font-size:24px;font-weight:800;transition:transform .12s ease, filter .12s ease;}
   .play-action-btn:active{transform:scale(0.94);}
   .play-btn-x{background:var(--surface-alt);color:var(--danger);border:2px solid var(--danger);}

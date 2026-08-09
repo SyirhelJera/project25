@@ -31,6 +31,9 @@
     // keeping it here means doSave()'s rest-destructure carries it automatically.
     jobCategoryColors: {},
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
+    // background music for Play sessions (js/music.js) — url is any YouTube / YouTube Music
+    // playlist link, volume is 0-100. Settings only; nothing about playback state is persisted.
+    sessionMusic: { url:'', enabled:true, volume:35, shuffle:true },
     // navbar appearance (Settings tab): tabOrder is the sidebar's tab keys in display order
     // (empty = the order they appear in index.html), hideTabIcons drops the per-tab logos.
     // Both are applied by applyTabOrder()/applyTabIcons() in js/insights.js.

@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v5';
+const SHELL_CACHE = 'p25-shell-v6';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -24,6 +24,7 @@ const SHELL_ASSETS = [
   './js/backups.js',
   './js/mantras.js',
   './js/motivation.js',
+  './js/music.js',
   './js/checklists.js',
   './js/notes.js',
   './js/finance.js',
@@ -63,7 +64,10 @@ self.addEventListener('fetch', (event) => {
   // so persistence.js's own offline handling (local cache fallback) kicks in. This
   // also covers the Valorant APIs (rank/history/store data changes constantly —
   // unlike the fonts/supabase-js bundle below, it must never be served from cache).
-  const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com'];
+  // The YouTube IFrame API (session music, js/music.js) is a versioned loader that pulls the real
+  // widget code itself — caching it would pin a stale player, and it's useless offline anyway.
+  const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
+    'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com'];
   if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;
 
   if (req.mode === 'navigate' || url.origin === self.location.origin) {

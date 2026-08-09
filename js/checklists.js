@@ -282,14 +282,19 @@
     return (c && it) ? {c, it} : null;
   }
 
-  function openPlayOverlay(){
+  // `fromGesture` is true when a click opened this session (the Play buttons) and false when it's
+  // being restored on page load — session music can only start on its own in the first case, see
+  // startSessionMusic() in js/music.js.
+  function openPlayOverlay(fromGesture){
     if(playTimerHandle) clearInterval(playTimerHandle);
     setPlayMinimized(false);
     el('playBody').style.display = '';
     el('playComplete').style.display = 'none';
     el('playCheckpoint').style.display = 'none';
+    el('playMusicSettings').style.display = 'none';
     el('playOverlay').style.display = 'flex';
     renderPlayOverlay();
+    startSessionMusic(fromGesture);
     playTimerHandle = setInterval(tickPlayTimer, 1000);
   }
 
@@ -298,7 +303,7 @@
     if(!first) return;
     state.playSession = { checklistId: c.id, itemId: first.id, startedAt: Date.now(), durationSec: (first.durationMin||5)*60, sessionStartedAt: Date.now(), log: [], skippedIds: [] };
     save();
-    openPlayOverlay();
+    openPlayOverlay(true);
   }
 
   /* ---------- Combined "Dailies" Play Session (Habits tab) ----------
@@ -339,7 +344,7 @@
     const now = Date.now();
     state.playSession = { combined: true, checklistId: c.id, itemId: it.id, startedAt: now, durationSec: (it.durationMin||5)*60, sessionStartedAt: now, checklistStartedAt: now, log: [], skippedIds: [], queue, totalCt: queue.length+1 };
     save();
-    openPlayOverlay();
+    openPlayOverlay(true);
   }
 
   // pulls the next still-undone item off a combined session's queue, skipping over any entries
@@ -566,6 +571,8 @@
     state.playSession = null;
     save();
     setPlayMinimized(false);
+    // the music belongs to the session, not the page — it must not outlive the overlay
+    stopSessionMusic();
     el('playOverlay').style.display = 'none';
   }
 
@@ -596,7 +603,7 @@
         save();
       }
     }
-    openPlayOverlay();
+    openPlayOverlay(false);
   }
 
   // Refresh the countdown the instant the tab regains focus, instead of waiting up to 1s for

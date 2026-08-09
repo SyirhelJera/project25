@@ -13,7 +13,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Finance** | Five sub-tabs. *Accounts*: multi-currency accounts (savings/credit/lent/custom) with transfers between them, a net-worth-over-time trend chart, and a this-period earnings/spending-by-category breakdown. *Money Goals*: save $X by date, with logged contributions. *Wishlist*: things you want to buy — name, cost, and an optional picture per item, shown as a card grid, each with its own saved-so-far progress. *Subscriptions*: recurring costs with a monthly rollup. *Currency*: a converter with live or manual exchange rates. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers and its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles) — one at a time, via a Skins/Accessories toggle next to the account switcher (`state.valorant.storeMode`, persisted) — a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
-| **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer, and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
+| **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer (optionally with background music from a YouTube Music / YouTube playlist — see "Session music"), and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Notes** | A Workflowy-style outliner — every note is one row and can hold sub-notes, nested as deep as you like, with collapsible branches, a one-line title plus an optional longer body, keyboard-first editing (Enter for a new note, Tab/Shift+Tab to nest and un-nest, Shift+Enter for the body, Backspace on an empty row to remove it), **checkboxes** (turn any note into a task with ☑; parents show a done/total chip for their task children), **#tags** typed inline in a title and surfaced as a clickable filter bar, **markdown** note bodies (headings, bold/italic/strikethrough, inline + fenced code, links, lists, quotes, rules — rendered when you're not editing, raw textarea when you are), search that keeps a match's ancestor path visible, pinned notes in a strip at the top, and drag-to-reorder/reparent a whole subtree by grabbing the row itself — no handle (◀▶▲▼ buttons stand in on touch, where HTML5 drag events don't fire). A note you never typed anything into isn't kept: it's discarded as soon as focus leaves it, so an abandoned row never becomes a permanent blank line. A blank note that has picked up a body or children counts as content and stays. |
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, starring/favoriting (starred applications pin to the top of the default order, plus a "★ Starred only" toolbar toggle that narrows whatever the chips/search already selected), per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
 | **Time** | Two panes behind a toggle. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. |
@@ -160,6 +160,10 @@ state = {
   profile: { name, age, netWorth, netWorthCurrency, hideAvatar },
   focus: { date, pick },              // today's "focus task" suggestion
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
+  sessionMusic: { url, enabled, volume, shuffle },
+                                       // background music for a Play session (js/music.js) — url is
+                                       // any YouTube/YouTube Music playlist link, volume 0-100.
+                                       // Settings only; no playback state is persisted.
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
   tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Reorder Navbar Tabs");
                                        // empty means index.html's own order. Tabs missing from a
@@ -216,6 +220,22 @@ Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 
 **Local Helper server — a browser-to-localhost bridge, not a cloud service.** `scripts/valorant-local-server.mjs` is an optional plain `node:http` server that only ever binds to `127.0.0.1`. It exists so the Valorant tab's "Check Store Now", "+ Add Account", and "🗑 Delete" buttons can trigger `valorant-check-store.mjs`/`valorant-login.mjs`/account removal (via functions imported from `scripts/valorant-lib.mjs`) without you opening a terminal each time. The deployed page (an `https://` origin) calling an `http://127.0.0.1` server works because loopback addresses are a "potentially trustworthy origin" under the Secure Contexts spec — browsers don't treat it as mixed content — but every request still needs a token: on first run the server generates one (saved to `scripts/.valorant-local-token.json`, gitignored) and prints it once for you to paste into the tab's "Local Helper" panel. Without a matching token, `/check`, `/login`, and `/delete-account` all 401; `/status` (which only lists saved account *labels*, never session cookies) needs no token, just enough to drive the connection indicator and the account picker.
 
+### Session music
+
+A checklist Play session can run a playlist in the background (`js/music.js`, controls in the strip at the bottom of the Play card: ▶/⏸, ⏭, volume, and ⚙ for the playlist link, shuffle, and an on/off switch). Settings live in `state.sessionMusic` and are shared like everything else in the row.
+
+YouTube Music playlists **are** YouTube playlists — the `list=` id in a `music.youtube.com` link is the same id `youtube.com` serves — so this is one lazily-loaded [YouTube IFrame Player](https://developers.google.com/youtube/iframe_api_reference) with no API key, no OAuth, and nothing to deploy. The API script is only fetched once a session actually starts with a playlist configured, so the app still opens instantly and offline for anyone who never sets one. Paste either a playlist URL or a bare id; the `VL` prefix YT Music puts on library links is stripped automatically.
+
+Two limits come from YouTube, not from this code:
+
+- **Auto-generated feeds have no embeddable playlist.** Liked Music (`LM`), Watch Later (`WL`), Liked Videos (`LL`) and per-song radio mixes (`RDAMVM…`, `RDMM…`, `SR…` — what you get from Share while a *song* is playing) are rejected with an explanation rather than failing silently inside the iframe. Two `RD` forms *are* recoverable and handled: `RDAMPL<id>` (radio built from a playlist) is unwrapped to the real id, and YT Music's own curated playlists (`RDCLAK…`/`RDTMAK…`) are passed straight through. A playlist that's private, or whose owner disabled embedding, surfaces as player error 101/150 — make it Public or Unlisted.
+
+  Errors print in full in the ⚙ panel (which opens itself), because the strip is one ellipsised line — a message telling you what to paste instead is useless truncated.
+- **Audio can only start from a user gesture.** Pressing Play on a checklist is one, so a fresh session starts the music by itself. A session *resumed* on page load isn't, so the playlist is only cued and the ▶ button waits for a click.
+- **The page needs a real origin.** This is the one part of the app that doesn't work when `index.html` is opened straight off disk: a `file://` page has no origin and sends no `Referer`, so the player refuses with **error 153** (undocumented, but that's what it means) no matter which playlist you use. Run `node scripts/serve.mjs` and open `http://localhost:8025` instead — same files, nothing to install. The error message in the ⚙ panel says as much when it detects `file://`.
+
+The player element stays in the layout at 1px/transparent behind the Play card (including while the overlay is minimized) — `display:none` or detaching it suspends playback in some browsers. Music is owned by the session: `stopPlaySession()` destroys the player, so it never outlives the overlay.
+
 ### External APIs used
 
 | API | Used for | Auth |
@@ -228,15 +248,16 @@ Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo`/`upload-resume` functions) | Auto-storing fitness progress photos and Jobs-tab resume PDFs | Server-side OAuth refresh token only |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + weekly accessory shop + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
+| YouTube IFrame Player API (`www.youtube.com/iframe_api`) | Background music during a checklist Play session, from a YouTube / YouTube Music playlist | None — public playlists only, no key |
 | ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
 ### PWA / offline
 
-`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, or `valorant-api.com` requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state).
+`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, `valorant-api.com`, or YouTube (`youtube.com`/`ytimg.com`, the session-music player) requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state).
 
 ## Setup
 
-1. Open `index.html` directly, or serve the folder statically (any static host works — no build step).
+1. Open `index.html` directly, or serve the folder statically (any static host works — no build step). `node scripts/serve.mjs` is a zero-install loopback static server for that (`http://localhost:8025`); use it rather than `file://` if you want session music, which YouTube won't embed into an origin-less page — see "Session music".
 2. **If deploying outside Claude** (e.g. GitHub Pages), create a Supabase project and:
    - Run the SQL in the comment at the top of `js/persistence.js` to create the `app_data` table + open RLS policy.
    - Replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `js/persistence.js`.
@@ -295,6 +316,7 @@ js/
   protecteddays.js                  vacation/sick/event exemption list (Settings) — consumed by habits.js/checklists.js
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
+  music.js                          background music for a checklist Play session (YouTube IFrame player)
   goals.js / habits.js / finance.js / fitness.js / valorant.js / motivation.js /
   checklists.js / notes.js / countdowns.js / mantras.js / backups.js / insights.js
                                      one file per feature tab
@@ -304,6 +326,7 @@ supabase/functions/
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
   upload-resume/                    uploads a Jobs-tab resume PDF to Google Drive ("Uploaded Resumes" folder)
   pinterest-feed/                   merges a Pinterest profile's public RSS feeds — profile + every board (CORS proxy for Motivation's Pinterest collections); also resolves mp4 URLs for video pins
+scripts/serve.mjs                   `node scripts/serve.mjs` → serves the app at http://localhost:8025 (loopback, no install); needed for session music, which YouTube won't embed into a file:// page
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
 scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront + owned-skins fetch)
 scripts/valorant-login.mjs          run LOCALLY to save a pasted Riot session cookie under a labeled account

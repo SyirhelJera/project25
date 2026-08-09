@@ -240,6 +240,8 @@ Two limits come from YouTube, not from this code:
 - **Audio can only start from a user gesture.** Pressing Play on a checklist is one, so a fresh session starts the music by itself. A session *resumed* on page load isn't, so the playlist is only cued and the ▶ button waits for a click.
 - **The page needs a real origin.** This is the one part of the app that doesn't work when `index.html` is opened straight off disk: a `file://` page has no origin and sends no `Referer`, so the player refuses with **error 153** (undocumented, but that's what it means) no matter which playlist you use. Run `node scripts/serve.mjs` and open `http://localhost:8025` instead — same files, nothing to install. The error message in the ⚙ panel says as much when it detects `file://`.
 
+The player iframe is created at **640×360 on purpose**: YouTube serves the smallest rendition that covers the player's viewport, and the low ones carry a matching low-bitrate audio track (a 160×90 player gets 144p video with ~48kbps audio, which sounds terrible). 360p pairs with ~128kbps audio. `setPlaybackQuality()` is ignored by the player now, so size is the only lever. Its wrapper clips it to 1px so nothing shows — clipping hides the iframe without shrinking its viewport, so the quality choice is unaffected. The wasted video frames are the price of listenable audio; a larger player would only buy more of them.
+
 The player element stays in the layout at 1px/transparent behind the Play card (including while the overlay is minimized) — `display:none` or detaching it suspends playback in some browsers. Music is owned by the session: `stopPlaySession()` destroys the player, so it never outlives the overlay.
 
 ### External APIs used

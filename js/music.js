@@ -113,8 +113,17 @@
       };
       // opened from file:// there is no real origin to hand the player (it'd be "null")
       if(/^https?:$/.test(location.protocol)) vars.origin = location.origin;
+      /* Size drives audio quality, and it's the only lever that still works. YouTube picks the
+         smallest rendition that covers the player's viewport, and the low ones carry a matching
+         low-bitrate audio track — at 160x90 you get the 144p "tiny" stream with ~48kbps audio,
+         which sounds awful. 640x360 lands on 360p, whose audio is ~128kbps. (setPlaybackQuality()
+         is ignored by the player these days, so there's nothing to call instead.)
+
+         The iframe keeps this viewport regardless of the 1px clipping on .play-music-frame — the
+         wrapper only hides it visually, so this doesn't put anything on screen. Video frames we
+         never show are the cost of decent audio; going higher would only buy more of those. */
       ytPlayer = new YT.Player('playMusicFrame', {
-        height: '90', width: '160',
+        height: '360', width: '640',
         playerVars: vars,
         events: {
           onReady: e=>{

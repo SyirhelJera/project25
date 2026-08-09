@@ -488,7 +488,9 @@
      it has to wrap (see setMusicStatus in js/music.js) */
   .play-music-hint{font-size:10.5px;color:var(--faint);line-height:1.45;white-space:normal;word-break:break-word;}
   /* The YouTube player has to stay laid out for audio to keep running — parked behind the card,
-     transparent and click-through, rather than hidden with display:none. */
+     transparent and click-through, rather than hidden with display:none. The iframe inside is a
+     real 640x360 (see js/music.js — player size is what picks the audio bitrate); this wrapper
+     clips it to a pixel, which hides it without shrinking its viewport. */
   .play-music-frame{position:absolute;right:0;bottom:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none;}
   .play-action-btn{width:64px;height:64px;border-radius:999px;border:none;cursor:pointer;font-size:24px;font-weight:800;transition:transform .12s ease, filter .12s ease;}
   .play-action-btn:active{transform:scale(0.94);}

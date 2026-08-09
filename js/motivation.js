@@ -88,12 +88,6 @@
     const isPinterest = cat.source === 'pinterest';
     el('motivationSyncPinterestBtn').style.display = isPinterest ? 'inline-flex' : 'none';
     el('motivationPinterestUserBtn').style.display = isPinterest ? 'inline-flex' : 'none';
-    el('motivationSyncedAt').style.display = isPinterest ? 'inline' : 'none';
-    if(isPinterest){
-      el('motivationSyncedAt').textContent = cat.pinterestUser
-        ? '@' + cat.pinterestUser + (cat.lastSync ? ' · refreshed ' + cat.lastSync : ' · not refreshed yet')
-        : 'no Pinterest username set';
-    }
     // Uploading into a Pinterest category would look like it worked and then vanish at the next
     // daily refresh, which replaces the whole image list — so don't offer it there.
     el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
@@ -406,6 +400,10 @@
       cat.images.forEach(img=> deleteStorageImage(img.url));
       cat.images = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, createdAt: Date.now() }));
       cat.lastSync = localDateStr(new Date());
+      // Logged, not shown: the header stays clean, but this is how you check whether board
+      // discovery actually found your boards (a pool in the hundreds) or fell back to the
+      // profile feed's ~25 most recent saves. Only the 10 picked above are stored.
+      console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length + ' pins across ' + ((data && data.boards) || 0) + ' boards');
       delete motivationSlideIdx[cat.id]; // start the new set from the top
       save(); renderMotivation();
     }catch(err){

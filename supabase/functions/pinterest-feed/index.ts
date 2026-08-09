@@ -1,15 +1,22 @@
 // supabase/functions/pinterest-feed/index.ts
 //
-// Reads a Pinterest profile's public RSS feed and returns its pins as JSON.
+// Reads a Pinterest profile's public RSS feeds and returns its pins as JSON.
 //
 // Why a server-side function at all: Pinterest serves no CORS headers, so the browser
-// can't fetch the .rss file directly. This function is a plain proxy — no API key, no
-// service-role client, no usage counter (unlike suggest-subtasks): the feed is a free
-// public file and nothing here is billable.
+// can't fetch the .rss files directly. This function is a plain proxy — no API key, no
+// service-role client, no usage counter (unlike suggest-subtasks): the feeds are free
+// public files and nothing here is billable.
 //
-// Scope note: https://www.pinterest.com/<user>/feed.rss is the user's OWN recent pins
-// across their boards. The logged-in home feed (pins from accounts you follow) is private
-// and has no RSS or public API, so it deliberately isn't what this reads.
+// Why it fetches every board instead of just the profile feed: /feed.rss is a fixed
+// window of the ~25 most recent saves, with no pagination — ?page= and ?limit= are
+// ignored, verified. So on its own it can only ever surface what you pinned lately.
+// Each BOARD's feed has its own ~26-item window, and a board you last touched a year
+// ago returns year-old pins, so merging every board is what reaches back into the
+// archive: measured 138-380 unique pins across real profiles, versus 23 from the
+// profile feed alone.
+//
+// Scope note: this reads the profile's OWN pins. The logged-in home feed (pins from
+// accounts you follow) is private and has no RSS or public API, so it isn't what this reads.
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -21,7 +28,15 @@ const CORS_HEADERS = {
 // point the fetch at some other host or path.
 const USERNAME_RE = /^[A-Za-z0-9_][A-Za-z0-9_-]{0,58}$/;
 
-const MAX_PINS = 50;
+// Path segments under /<user>/ that are Pinterest's own pages, not boards.
+const RESERVED_SLUGS = new Set([
+  "_saved", "_created", "_shop", "_tools", "pins", "boards", "followers", "following",
+  "activity", "likes", "about", "more_ideas", "sent", "topics", "today", "ideas", "settings",
+]);
+
+const MAX_PINS = 500;
+const MAX_BOARDS = 30;   // bounds the fan-out; profiles surface ~5-15 boards in their HTML anyway
+const CONCURRENCY = 6;   // parallel feed fetches — the whole merge lands in ~1-4s
 const FETCH_TIMEOUT_MS = 10000;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36";
 
@@ -37,30 +52,99 @@ Deno.serve(async (req) => {
       return json({ error: "Invalid Pinterest username." }, 400);
     }
 
-    let resp: Response;
-    try {
-      resp = await fetch(`https://www.pinterest.com/${username}/feed.rss`, {
-        headers: { "User-Agent": UA, "Accept": "application/rss+xml, text/xml, */*" },
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
-    } catch (err) {
-      console.error("Pinterest fetch failed", err);
-      return json({ error: "Couldn't reach Pinterest — try again in a moment." }, 502);
-    }
+    const slugs = (await discoverBoards(username)).slice(0, MAX_BOARDS);
 
-    if (!resp.ok) {
+    // The profile feed goes first: it's the only one that's guaranteed to exist, and it's
+    // also the freshest, so it still carries today's saves even if board discovery fails.
+    const urls = [
+      `https://www.pinterest.com/${username}/feed.rss`,
+      ...slugs.map((s) => `https://www.pinterest.com/${username}/${s}.rss`),
+    ];
+
+    const pins: Array<Record<string, string>> = [];
+    const seen = new Set<string>();
+    let profileFeedOk = false;
+
+    // Worker pool rather than a bare Promise.all over every URL — a profile with 30 boards
+    // would otherwise open 31 sockets at once, which is where Pinterest starts rate-limiting.
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        while (cursor < urls.length) {
+          const idx = cursor++;
+          const got = await fetchPins(urls[idx]);
+          if (idx === 0 && got !== null) profileFeedOk = true;
+          for (const p of got || []) {
+            // A pin saved to a board also shows in the profile feed — dedupe on the pin page
+            // URL so it can't win the random draw twice.
+            const key = p.link || p.url;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            if (pins.length < MAX_PINS) pins.push(p);
+          }
+        }
+      }),
+    );
+
+    if (!pins.length) {
       return json({
-        error: "Couldn't read that Pinterest profile — check the username is right and the profile is public.",
+        error: profileFeedOk
+          ? "That Pinterest profile has no public pins to show."
+          : "Couldn't read that Pinterest profile — check the username is right and the profile is public.",
       }, 404);
     }
 
-    const pins = parsePins(await resp.text());
-    return json({ pins });
+    return json({ pins, boards: slugs.length });
   } catch (err) {
     console.error(err);
     return json({ error: "Unexpected error" }, 500);
   }
 });
+
+// Board slugs come from the profile page's own HTML (board links appear as "/<user>/<slug>/",
+// sometimes with escaped slashes inside embedded JSON). Best-effort by design: Pinterest lazy-
+// loads boards past the first screenful, so a profile with dozens of boards yields the first
+// ~10-15 — still an order of magnitude more pins than the profile feed alone. Any failure here
+// returns [] and the caller falls back to just the profile feed.
+async function discoverBoards(username: string): Promise<string[]> {
+  let html: string;
+  try {
+    const resp = await fetch(`https://www.pinterest.com/${username}/`, {
+      headers: { "User-Agent": UA },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!resp.ok) return [];
+    html = await resp.text();
+  } catch (err) {
+    console.error("Board discovery failed", err);
+    return [];
+  }
+
+  const re = new RegExp('[\\\\"]/' + username + '\\\\?/([A-Za-z0-9_-]{2,80})\\\\?/', "gi");
+  const slugs = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    const slug = m[1];
+    if (RESERVED_SLUGS.has(slug.toLowerCase())) continue;
+    slugs.add(slug);
+  }
+  return [...slugs];
+}
+
+// null = the feed couldn't be read at all (vs [] = read fine, no pins in it).
+async function fetchPins(url: string): Promise<Array<Record<string, string>> | null> {
+  try {
+    const resp = await fetch(url, {
+      headers: { "User-Agent": UA, "Accept": "application/rss+xml, text/xml, */*" },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    return parsePins(await resp.text());
+  } catch (err) {
+    console.error("Feed fetch failed", url, err);
+    return null;
+  }
+}
 
 // Regex parsing rather than a DOM/XML parser: Deno has no built-in XML parser, and the
 // shape here is fixed and simple — each <item> holds the pin page <link> and an <img>
@@ -90,8 +174,6 @@ function parsePins(xml: string) {
       link: link.trim(),
       title: decodeEntities(title).trim().slice(0, 200),
     });
-
-    if (pins.length >= MAX_PINS) break;
   }
 
   return pins;

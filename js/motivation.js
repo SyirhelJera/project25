@@ -59,12 +59,15 @@
     if(locked){ stopMotivationSlideshow(); return; }
 
     el('motivationPinBtn').textContent = state.motivation.pin ? 'Change PIN' : 'Set PIN';
-    el('motivationLockBtn').style.display = state.motivation.pin ? 'inline-flex' : 'none';
+    el('motivationLockBtn').style.display = state.motivation.pin ? '' : 'none';
 
     const categories = state.motivation.categories;
     const hasCats = categories.length > 0;
     el('motivationEmpty').style.display = hasCats ? 'none' : 'block';
-    el('motivationHead').style.display = hasCats ? 'flex' : 'none';
+    // The head itself always shows — the ⋯ inside it is the only route to "new collection", so
+    // hiding it with no collections would leave no way to make the first one. Only the name goes.
+    el('motivationActiveName').style.display = hasCats ? '' : 'none';
+    el('motivationMenuCatGroup').style.display = hasCats ? '' : 'none';
     el('motivationUploadRow').style.display = hasCats ? 'flex' : 'none';
 
     if(!hasCats){
@@ -80,20 +83,21 @@
 
     const cat = categories[motivationActiveCatIdx];
     el('motivationActiveName').textContent = cat.name;
-    el('motivationCatPinBtn').textContent = cat.pin ? 'Change category PIN' : 'Set category PIN';
+    el('motivationMenuCatLabel').textContent = cat.name;
+    el('motivationCatPinBtn').textContent = cat.pin ? 'Change collection PIN' : 'Set collection PIN';
     const isPinnedFirst = state.motivation.pinnedCategoryId === cat.id;
     el('motivationCatPinFirstBtn').textContent = isPinnedFirst ? '📌 Unpin as default' : '📌 Pin as default';
     el('motivationCatPinFirstBtn').classList.toggle('active', isPinnedFirst);
 
     const isPinterest = cat.source === 'pinterest';
-    el('motivationSyncPinterestBtn').style.display = isPinterest ? 'inline-flex' : 'none';
-    el('motivationPinterestUserBtn').style.display = isPinterest ? 'inline-flex' : 'none';
+    el('motivationSyncPinterestBtn').style.display = isPinterest ? '' : 'none';
+    el('motivationPinterestUserBtn').style.display = isPinterest ? '' : 'none';
     // Uploading into a Pinterest category would look like it worked and then vanish at the next
     // daily refresh, which replaces the whole image list — so don't offer it there.
     el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
 
     const catLocked = !!cat.pin && !motivationUnlockedCats[cat.id];
-    el('motivationCatLockNowBtn').style.display = (cat.pin && !catLocked) ? 'inline-flex' : 'none';
+    el('motivationCatLockNowBtn').style.display = (cat.pin && !catLocked) ? '' : 'none';
     el('motivationCatLock').style.display = catLocked ? 'flex' : 'none';
     if(catLocked){
       el('motivationSlideshow').style.display = 'none';
@@ -500,6 +504,19 @@
     if(entered === state.motivation.pin){ motivationUnlocked = true; persistMotivationUnlocks(); renderMotivation(); }
     else window.alert('Incorrect PIN.');
   }
+
+  /* ---------- options menu ---------- */
+  // Everything that used to be a row of buttons above the slideshow. renderMotivation() runs on
+  // open so labels ("Set" vs "Change PIN") and the Pinterest-only items are current.
+  function openMotivationMenu(){ renderMotivation(); el('motivationMenu').style.display = 'flex'; }
+  function closeMotivationMenu(){ el('motivationMenu').style.display = 'none'; }
+  el('motivationMenuBtn').addEventListener('click', openMotivationMenu);
+  el('motivationMenuCloseBtn').addEventListener('click', closeMotivationMenu);
+  el('motivationMenu').addEventListener('click', e=>{ if(e.target === el('motivationMenu')) closeMotivationMenu(); });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && el('motivationMenu').style.display === 'flex') closeMotivationMenu(); });
+  // Capture phase on purpose: picking an item closes the menu *before* that item's own handler
+  // runs, so the window.prompt several of them open isn't left sitting on top of an open modal.
+  el('motivationMenu').addEventListener('click', e=>{ if(e.target.closest('.motivation-menu-item')) closeMotivationMenu(); }, true);
 
   el('addMotivationCategoryBtn').addEventListener('click', addMotivationCategory);
   el('addPinterestCategoryBtn').addEventListener('click', addPinterestCategory);

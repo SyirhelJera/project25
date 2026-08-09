@@ -835,17 +835,12 @@
     </div>
 
     <div id="motivationContent">
-      <div class="motivation-head" id="motivationHead" style="display:none;">
-        <span class="motivation-name" id="motivationActiveName" title="Click to switch categories"></span>
-        <div class="motivation-actions">
-          <button class="del-goal" id="motivationRenameCatBtn">Rename</button>
-          <button class="del-goal" id="motivationCatPinFirstBtn" title="Show this category first when you open the Motivation tab">📌 Pin as default</button>
-          <button class="del-goal" id="motivationSyncPinterestBtn" style="display:none;" title="Pull a fresh set of random pins now">🔄 Refresh pins</button>
-          <button class="del-goal" id="motivationPinterestUserBtn" style="display:none;">Change Pinterest user</button>
-          <button class="del-goal" id="motivationCatPinBtn">Set category PIN</button>
-          <button class="del-goal" id="motivationCatLockNowBtn" style="display:none;">Lock now</button>
-          <button class="del-goal" id="motivationDelCatBtn">Delete category</button>
-        </div>
+      <!-- Deliberately just the name and one ⋯ — every action lives in #motivationMenu below, so
+           nothing competes with the image for attention. The head stays visible even with no
+           collections, since the ⋯ is the only way to create the first one. -->
+      <div class="motivation-head" id="motivationHead">
+        <span class="motivation-name" id="motivationActiveName" title="Click to switch collections"></span>
+        <button class="motivation-menu-btn" id="motivationMenuBtn" title="Options" aria-label="Options">⋯</button>
       </div>
 
       <!-- Always visible (unlike its children) so swiping still works to switch categories
@@ -870,16 +865,41 @@
         <div class="empty" id="motivationCatEmpty" style="display:none;">No images in this category yet.</div>
       </div>
 
-      <div class="empty" id="motivationEmpty" style="display:none;">No categories yet. Add one below.</div>
+      <div class="empty" id="motivationEmpty" style="display:none;">No collections yet — open ⋯ to add one.</div>
       <div class="motivation-thumbs" id="motivationThumbs"></div>
 
       <div class="motivation-bottom-row">
-        <button class="btn btn-primary" id="addMotivationCategoryBtn">+ Add category</button>
-        <button class="btn btn-ghost" id="addPinterestCategoryBtn" title="A collection that pulls 10 random pins from your Pinterest, fresh every day">📌 Add Pinterest collection</button>
         <div class="img-row" id="motivationUploadRow" style="display:none;"><label>+ Upload<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label></div>
-        <div class="motivation-pin-actions">
-          <button class="btn btn-ghost btn-sm" id="motivationPinBtn">Set PIN</button>
-          <button class="btn btn-ghost btn-sm" id="motivationLockBtn" style="display:none;">Lock now</button>
+      </div>
+
+      <!-- Everything that used to sit in a row above the slideshow. Same button ids as before, so
+           renderMotivation() keeps driving their labels/visibility exactly as it did inline. -->
+      <div class="motivation-menu" id="motivationMenu" style="display:none;">
+        <div class="motivation-menu-card">
+          <div class="motivation-menu-group" id="motivationMenuCatGroup">
+            <div class="motivation-menu-label" id="motivationMenuCatLabel">This collection</div>
+            <button class="motivation-menu-item" id="motivationRenameCatBtn">Rename collection</button>
+            <button class="motivation-menu-item" id="motivationCatPinFirstBtn" title="Show this collection first when you open the Motivation tab">📌 Pin as default</button>
+            <button class="motivation-menu-item" id="motivationSyncPinterestBtn" style="display:none;" title="Pull a fresh set of random pins now">🔄 Refresh pins</button>
+            <button class="motivation-menu-item" id="motivationPinterestUserBtn" style="display:none;">Change Pinterest user</button>
+            <button class="motivation-menu-item" id="motivationCatPinBtn">Set collection PIN</button>
+            <button class="motivation-menu-item" id="motivationCatLockNowBtn" style="display:none;">Lock this collection now</button>
+            <button class="motivation-menu-item danger" id="motivationDelCatBtn">Delete collection</button>
+          </div>
+
+          <div class="motivation-menu-group">
+            <div class="motivation-menu-label">Add</div>
+            <button class="motivation-menu-item" id="addMotivationCategoryBtn">+ New collection</button>
+            <button class="motivation-menu-item" id="addPinterestCategoryBtn" title="A collection that pulls 10 random pins from your Pinterest, fresh every day">📌 New Pinterest collection</button>
+          </div>
+
+          <div class="motivation-menu-group">
+            <div class="motivation-menu-label">Privacy</div>
+            <button class="motivation-menu-item" id="motivationPinBtn">Set PIN</button>
+            <button class="motivation-menu-item" id="motivationLockBtn" style="display:none;">Lock tab now</button>
+          </div>
+
+          <button class="btn btn-ghost btn-sm motivation-menu-close" id="motivationMenuCloseBtn">Close</button>
         </div>
       </div>
     </div>

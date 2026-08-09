@@ -226,13 +226,13 @@ Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invo
 
 ### Session music
 
-A checklist Play session can run a playlist in the background (`js/music.js`, controls in the strip at the bottom of the Play card: ▶/⏸, ⏭, volume, and ⚙ for the playlist list, shuffle, and an on/off switch). Settings live in `state.sessionMusic` and are shared like everything else in the row.
+A checklist Play session can run a playlist in the background (`js/music.js`, controls in the strip at the bottom of the Play card: ▶/⏸, ⏭, volume, and ⚙ for the playlist list, the playback mode, shuffle, and an on/off switch). Settings live in `state.sessionMusic` and are shared like everything else in the row.
 
 **Saved playlists.** Paste a link and press ＋ to keep it; each saved row switches with one ▶ tap (mid-session too — the tap is itself the gesture YouTube needs, so the new playlist starts immediately), renames in place, and removes with ×. Pasting a link that resolves to an already-saved id selects that entry instead of stacking a duplicate, so a `/watch?…&list=` and a `/playlist?list=` copy of the same playlist can't both end up in the list.
 
 YouTube Music playlists **are** YouTube playlists — the `list=` id in a `music.youtube.com` link is the same id `youtube.com` serves — so this is one lazily-loaded [YouTube IFrame Player](https://developers.google.com/youtube/iframe_api_reference) with no API key, no OAuth, and nothing to deploy. The API script is only fetched once a session actually starts with a playlist configured, so the app still opens instantly and offline for anyone who never sets one. Paste either a playlist URL or a bare id; the `VL` prefix YT Music puts on library links is stripped automatically.
 
-Two limits come from YouTube, not from this code:
+Three limits come from YouTube, not from this code:
 
 - **Auto-generated feeds have no embeddable playlist.** Liked Music (`LM`), Watch Later (`WL`), Liked Videos (`LL`) and per-song radio mixes (`RDAMVM…`, `RDMM…`, `SR…` — what you get from Share while a *song* is playing) are rejected with an explanation rather than failing silently inside the iframe. Two `RD` forms *are* recoverable and handled: `RDAMPL<id>` (radio built from a playlist) is unwrapped to the real id, and YT Music's own curated playlists (`RDCLAK…`/`RDTMAK…`) are passed straight through. A playlist that's private, or whose owner disabled embedding, surfaces as player error 101/150 — make it Public or Unlisted.
 
@@ -243,6 +243,23 @@ Two limits come from YouTube, not from this code:
 The player iframe is created at **640×360 on purpose**: YouTube serves the smallest rendition that covers the player's viewport, and the low ones carry a matching low-bitrate audio track (a 160×90 player gets 144p video with ~48kbps audio, which sounds terrible). 360p pairs with ~128kbps audio. `setPlaybackQuality()` is ignored by the player now, so size is the only lever. Its wrapper clips it to 1px so nothing shows — clipping hides the iframe without shrinking its viewport, so the quality choice is unaffected. The wasted video frames are the price of listenable audio; a larger player would only buy more of them.
 
 The player element stays in the layout at 1px/transparent behind the Play card (including while the overlay is minimized) — `display:none` or detaching it suspends playback in some browsers. Music is owned by the session: `stopPlaySession()` destroys the player, so it never outlives the overlay.
+
+**Ads, even with a Premium account.** The in-app player is a *cross-site* iframe: it's `www.youtube.com` inside a page served from somewhere else. YouTube recognises your account in there only if the browser hands it your `youtube.com` cookies in that third-party position, and a signed-out player serves ads no matter what the account owns. Nothing in `js/music.js` can change that — it's a property of the frame, not of how the player is configured (it already uses the real `www.youtube.com` host rather than `youtube-nocookie.com`, sets no `sandbox`, and the page sends no restrictive referrer policy or CSP). Where it stands per browser:
+
+| Where | Third-party cookies | Fix |
+|---|---|---|
+| Chrome / Edge, normal window | Allowed by default | Usually already ad-free; make sure the Premium account is the one signed in *in that profile* |
+| Chrome Incognito / Tracking Protection on | Blocked | `chrome://settings/cookies` → allow, or add a `[*.]youtube.com` exception |
+| Safari | Blocked (Prevent Cross-Site Tracking) | Settings → Privacy → turn it off |
+| Firefox | Partitioned unconditionally (Total Cookie Protection) | Shield icon in the URL bar → turn off Enhanced Tracking Protection for this site |
+| Installed PWA / iOS home-screen app | Own storage jar, has never seen the login | **No setting fixes this** — use the external mode below |
+
+**Playback mode — `state.sessionMusic.mode`.** The ⚙ panel picks between the two:
+
+- `embed` (default) — the iframe player described above. Controllable from the strip, subject to the table.
+- `external` — ▶ turns into ↗ and hands the playlist to `music.youtube.com/watch?list=<id>` in a new tab, which on a phone deep-links straight into the YouTube Music app. That's a first-party page, so Premium applies, there are no ads, and you get real background playback and lock-screen controls (which a clipped 1px iframe never gave you on mobile anyway). The playlist id is the same one `parsePlaylistUrl()` normalizes for the embed, so saved playlists, `VL`/`RDAMPL` stripping and the unsupported-feed messages all behave identically.
+
+  Two things you give up, both stated in the ⚙ panel rather than hidden: the strip's ⏭ and volume are disabled (they can't reach another tab, let alone another app), and the music **outlives the session** — `stopSessionMusic()` owns the embed, but a YouTube Music tab is not ours to close. External mode also never opens anything on its own: starting or resuming a session just arms the ↗ button, since throwing the screen over to YouTube the instant you press Play on a checklist would be worse than one extra tap (and a resumed session has no user gesture to open a window with anyway).
 
 ### External APIs used
 

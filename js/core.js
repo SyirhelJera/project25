@@ -33,8 +33,10 @@
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // background music for Play sessions (js/music.js) — `url` is the playlist currently loaded
     // (any YouTube / YouTube Music link), `playlists` the saved shortlist you can switch between
-    // mid-session, volume is 0-100. Settings only; nothing about playback state is persisted.
-    sessionMusic: { url:'', enabled:true, volume:35, shuffle:true, playlists:[] },
+    // mid-session, volume is 0-100. `mode` is 'embed' (in-app iframe player) or 'external' (hand
+    // the playlist to YouTube Music itself, the only way Premium applies — see js/music.js).
+    // Settings only; nothing about playback state is persisted.
+    sessionMusic: { url:'', enabled:true, volume:35, shuffle:true, mode:'embed', playlists:[] },
     // navbar appearance (Settings tab): tabOrder is the sidebar's tab keys in display order
     // (empty = the order they appear in index.html), hideTabIcons drops the per-tab logos.
     // Both are applied by applyTabOrder()/applyTabIcons() in js/insights.js.

@@ -28,7 +28,7 @@
   // i.pinimg.com URLs, so a category costs nothing and a refresh leaves nothing behind.
   // The 📌 button on a thumbnail copies that pin into PINTEREST_SAVED_CAT_NAME, an ordinary
   // category the daily refresh never touches — that's how a good pin outlives its day.
-  const PINTEREST_PICK_COUNT = 10;
+  const PINTEREST_PICK_COUNT = 25;
   const PINTEREST_SAVED_CAT_NAME = 'Saved Pins';
   let pinterestSyncing = false; // one sync at a time — renderAll and the tab-open hook can both fire
 

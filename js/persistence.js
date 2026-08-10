@@ -151,6 +151,7 @@
     if(!state.finance.accounts) state.finance.accounts = [];
     if(!state.finance.subscriptions) state.finance.subscriptions = [];
     if(!state.finance.moneyGoals) state.finance.moneyGoals = [];
+    if(!state.finance.debts) state.finance.debts = [];
     if(!state.finance.rates) state.finance.rates = Object.assign({}, DEFAULT_RATES);
     if(!state.finance.netWorthHistory) state.finance.netWorthHistory = [];
     CURRENCIES.forEach(c=>{ if(state.finance.rates[c]===undefined) state.finance.rates[c] = DEFAULT_RATES[c]; });
@@ -175,6 +176,24 @@
         // upgrade from the old single "saved" number into an equivalent first contribution entry
         m.contributions = (m.saved && parseFloat(m.saved)>0) ? [{ id:uid(), amount:parseFloat(m.saved), note:'', createdAt:m.createdAt||Date.now() }] : [];
       }
+    });
+    state.finance.debts.forEach(d=>{
+      if(d.direction===undefined) d.direction = 'lent';
+      if(d.currency===undefined) d.currency = 'USD';
+      if(d.dueDate===undefined) d.dueDate = '';
+      if(d.note===undefined) d.note = '';
+      if(d.imageUrl===undefined) d.imageUrl = '';
+      if(d.open===undefined) d.open = false;
+      if(d.payments===undefined) d.payments = [];
+      // accountId/accountTxId link a debt (and each payment) back to the account transaction it
+      // created, so deleting the payment can reverse it — blank means "no account was involved"
+      if(d.accountId===undefined) d.accountId = '';
+      if(d.accountTxId===undefined) d.accountTxId = '';
+      d.payments.forEach(p=>{
+        if(p.note===undefined) p.note = '';
+        if(p.accountId===undefined) p.accountId = '';
+        if(p.accountTxId===undefined) p.accountTxId = '';
+      });
     });
     state.fitness = parsed.fitness || { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[] };
     if(!state.fitness.unit) state.fitness.unit = 'kg';

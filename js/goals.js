@@ -43,11 +43,15 @@
   // a liability balance is a *magnitude* of debt, not a signed figure — the account card renders it
   // with a hard-coded "-" for the same reason. So it's always subtracted: naively multiplying by -1
   // turned a balance the user typed (or paid) below zero into an asset, pushing net worth *up*.
+  // debts (Finance > Debts) are folded in the same way — what's still owed to you is an asset,
+  // what you still owe is a liability. debtsNetWorth() lives in finance.js, which loads after this
+  // file but well before anything calls net worth.
   function financeNetWorth(){
-    return (state.finance.accounts||[]).reduce((sum,a)=>{
+    const accountsUsd = (state.finance.accounts||[]).reduce((sum,a)=>{
       const usdBal = convertAmt(a.balance, a.currency||'USD', 'USD');
       return sum + (isLiabilityAccount(a) ? -Math.abs(usdBal) : usdBal);
     }, 0);
+    return accountsUsd + debtsNetWorth();
   }
   // overall net worth = manually entered profile figure + everything tracked in the Finance section
   function getNetWorthNum(){

@@ -10,7 +10,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 |---|---|
 | **Goals** | Freeform goal list with subtasks, tiers (F/B/A/S/S+/Mythical), star/"working on" flags, target dates, per-goal color/image, AI-suggested subtasks, and a "locked until net worth X" mechanic. Drives the XP/level system. |
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
-| **Finance** | Five sub-tabs. *Accounts*: multi-currency accounts (savings/credit/lent/custom) with transfers between them, a net-worth-over-time trend chart, and a this-period earnings/spending-by-category breakdown. *Money Goals*: save $X by date, with logged contributions. *Wishlist*: things you want to buy — name, cost, and an optional picture per item, shown as a card grid, each with its own saved-so-far progress. *Subscriptions*: recurring costs with a monthly rollup. *Currency*: a converter with live or manual exchange rates. Feeds into net worth. |
+| **Finance** | Six sub-tabs. *Accounts*: multi-currency accounts (savings/credit/lent/custom) with transfers between them, a net-worth-over-time trend chart, and a this-period earnings/spending-by-category breakdown. *Debts*: money you lent out and money you owe, one card per person (same look as an account card), repaid in full or in any number of small portions, with an optional link to a real account so the cash movement is logged there too. *Money Goals*: save $X by date, with logged contributions. *Wishlist*: things you want to buy — name, cost, and an optional picture per item, shown as a card grid, each with its own saved-so-far progress. *Subscriptions*: recurring costs with a monthly rollup. *Currency*: a converter with live or manual exchange rates. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
 | **Valorant** | Two sub-tabs. *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers and its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles) — one at a time, via a Skins/Accessories toggle next to the account switcher (`state.valorant.storeMode`, persisted) — a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer (optionally with background music from a YouTube Music / YouTube playlist — see "Session music"), and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
@@ -91,6 +91,22 @@ state = {
                                        // account/subscription imageUrl: same Storage-URL scheme
                                        // as goals.imageUrl above, not embedded base64
     moneyGoals: [ {id,name,target,currency,deadline,contributions:[...],...} ],
+    debts: [ {id,direction,person,amount,currency,dueDate,note,imageUrl,open,createdAt,
+              accountId,accountTxId,
+              payments:[{id,amount,note,accountId,accountTxId,createdAt}]} ],
+                                       // direction: 'lent' (they owe you) | 'borrowed' (you owe).
+                                       // amount is the *original* principal — what's outstanding is
+                                       // always derived (principal − payments, clamped at 0) by
+                                       // debtRemaining(), never stored, so a payment can't drift out
+                                       // of sync with a balance. accountId/accountTxId are the
+                                       // optional link to the account transaction the debt (or that
+                                       // one payment) created; blank means no account was involved.
+                                       // Outstanding debts feed net worth like the account types
+                                       // they mirror (owed-to-you = asset, you-owe = liability, via
+                                       // debtsNetWorth()), and the account transactions they log
+                                       // carry the DEBT_TX_PREFIX note so isTransferTx() keeps them
+                                       // out of the spending/earnings breakdown — being repaid isn't
+                                       // income, it's your own money coming back.
     rates: { USD:1, PHP:58.5, ... },  // "units per 1 USD", user-editable or live-fetched
     netWorthHistory: [ {date, value} ] // one snapshot/day (USD), captured on save() — see snapshotNetWorth()
   },

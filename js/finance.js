@@ -22,7 +22,7 @@
   // one-time population of every currency <select> in the Finance view
   function populateCurrencySelects(){
     const opts = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');
-    ['finCurrency','subCurrency','mgCurrency','convFrom','convTo'].forEach(id=>{ const s = el(id); if(s) s.innerHTML = opts; });
+    ['finCurrency','subCurrency','mgCurrency','debtCurrency','convFrom','convTo'].forEach(id=>{ const s = el(id); if(s) s.innerHTML = opts; });
     if(el('convFrom')) el('convFrom').value = 'USD';
     if(el('convTo')) el('convTo').value = CURRENCIES.includes('PHP') ? 'PHP' : 'USD';
   }
@@ -30,6 +30,7 @@
   function renderFinance(){
     renderNetWorthChart();
     renderFinanceAccounts();
+    renderDebts();
     renderFinanceSubs();
     renderFinanceConverter();
     renderMoneyGoals();
@@ -173,9 +174,14 @@
   // Account transfers (see transferFunds()) are logged as ordinary transactions so account balances
   // stay accurate, but they're money moving between your own accounts, not spending — the note
   // is code-generated (never user-editable), so matching its fixed prefix is reliable.
+  // Debt transactions (see logDebtPayment()) are excluded for the same reason: lending money out or
+  // being paid back moves value between an account and a debt you already hold, so counting it as
+  // spending/earnings would double-count money you never gained or lost.
+  const DEBT_TX_PREFIX = 'Debt: ';
   function isTransferTx(tx){
     const note = tx.note || '';
-    return note.indexOf('Transfer to ') === 0 || note.indexOf('Transfer from ') === 0;
+    return note.indexOf('Transfer to ') === 0 || note.indexOf('Transfer from ') === 0
+      || note.indexOf(DEBT_TX_PREFIX) === 0;
   }
 
   // Returns the [start, end) range for the period `offset` steps before the current one, plus a
@@ -577,6 +583,367 @@
     return { from, to, converted, fee };
   }
 
+  /* ================= DEBTS (money lent out / money owed) =================
+     A debt is deliberately rendered with the same .finance-account card as an account, but it is
+     *not* one: the outstanding figure is derived (principal − payments) rather than stored, so a
+     logged payment can never drift out of sync with the balance the way a hand-edited one could.
+     Payments can be any size — several small ones or a single "Full" one — which is the whole
+     point of tracking a debt separately from a plain 'lent' account. */
+
+  function debtPaid(d){ return (d.payments||[]).reduce((sum,p)=> sum + (parseFloat(p.amount)||0), 0); }
+  function debtRemaining(d){ return Math.max(0, (parseFloat(d.amount)||0) - debtPaid(d)); }
+  // half a cent of slack — payments are stored rounded, so an exact ">= principal" test can leave a
+  // fully repaid debt showing a fraction of a cent outstanding forever
+  function isDebtSettled(d){ return debtRemaining(d) < 0.005; }
+  function debtDirectionLabel(dir){ return dir==='borrowed' ? 'You owe' : 'Owed to you'; }
+  function debtIcon(dir){ return dir==='borrowed' ? '💸' : '🤝'; }
+
+  // Outstanding debts count toward net worth exactly like the account types they mirror: what's
+  // still owed to you is an asset, what you still owe is a liability. Only the unpaid remainder
+  // counts, so a payment logged against a linked account is net-worth-neutral (the account gains
+  // what the debt loses) and settling a debt outright changes nothing. Called by financeNetWorth().
+  function debtsNetWorth(){
+    return (state.finance.debts||[]).reduce((sum,d)=>{
+      const usd = convertAmt(debtRemaining(d), d.currency||'USD', 'USD');
+      return sum + (d.direction==='borrowed' ? -usd : usd);
+    }, 0);
+  }
+
+  // "— no account —" plus every account, for the optional cash-movement link on a debt/payment
+  function debtAccountOptions(selectedId){
+    return '<option value="">— no account —</option>'
+      + (state.finance.accounts||[]).map(a=>
+          '<option value="'+a.id+'"'+(a.id===selectedId?' selected':'')+'>'+escapeHtml(a.name)+' ('+(a.currency||'USD')+')</option>'
+        ).join('');
+  }
+
+  /* Mirrors the money in/out of a real account when a debt is created or paid, and records the
+     transaction's id on the debt/payment so deleting that payment can reverse it. The note carries
+     DEBT_TX_PREFIX so isTransferTx() keeps it out of the spending/earnings breakdown. */
+  function addDebtAccountTx(accountId, debtCcy, amount, note){
+    const acct = (state.finance.accounts||[]).find(a=>a.id===accountId);
+    if(!acct) return null;
+    const signed = convertAmt(amount, debtCcy||'USD', acct.currency||'USD');
+    const tx = { id:uid(), amount:signed, note:DEBT_TX_PREFIX+note, category:'Other', createdAt:Date.now() };
+    acct.transactions = acct.transactions || []; acct.transactions.push(tx);
+    acct.balance = (parseFloat(acct.balance)||0) + signed;
+    return tx;
+  }
+  // reverses one of the above. A no-op if the transaction is already gone — deleting it by hand from
+  // the account card is allowed, and leaves the id on the payment dangling rather than broken.
+  function removeDebtAccountTx(accountId, txId){
+    if(!accountId || !txId) return;
+    const acct = (state.finance.accounts||[]).find(a=>a.id===accountId);
+    if(!acct) return;
+    const tx = (acct.transactions||[]).find(t=>t.id===txId);
+    if(!tx) return;
+    acct.balance = (parseFloat(acct.balance)||0) - tx.amount;
+    acct.transactions = acct.transactions.filter(t=>t.id!==txId);
+  }
+
+  function logDebtPayment(d, amount, note, accountId){
+    const amt = parseFloat(amount);
+    if(isNaN(amt) || amt<=0) return null;
+    const payment = { id:uid(), amount:amt, note:(note||'').trim(), accountId:accountId||'', accountTxId:'', createdAt:Date.now() };
+    if(accountId){
+      // being paid back puts money into the account; paying down what you owe takes it out
+      const signedAmt = d.direction==='borrowed' ? -amt : amt;
+      const label = d.direction==='borrowed' ? 'paid '+d.person : 'repayment from '+d.person;
+      const tx = addDebtAccountTx(accountId, d.currency, signedAmt, label);
+      if(tx) payment.accountTxId = tx.id;
+    }
+    d.payments = d.payments || []; d.payments.push(payment);
+    save(); renderDebts(); renderFinanceAccounts(); renderGoals();
+    return payment;
+  }
+
+  function deleteDebtPayment(d, paymentId){
+    const p = (d.payments||[]).find(x=>x.id===paymentId); if(!p) return;
+    removeDebtAccountTx(p.accountId, p.accountTxId);
+    d.payments = (d.payments||[]).filter(x=>x.id!==paymentId);
+    save(); renderDebts(); renderFinanceAccounts(); renderGoals();
+  }
+
+  /* drag-to-reorder debts — same delegated pattern as #financeList above */
+  let draggedDebtId = null;
+  const debtListEl = el('debtList');
+  debtListEl.addEventListener('dragstart', e=>{
+    const handle = e.target.closest('.drag-handle');
+    if(!handle) return;
+    const card = handle.closest('.finance-account');
+    draggedDebtId = card ? card.dataset.debtId : null;
+    e.dataTransfer.effectAllowed = 'move';
+  });
+  debtListEl.addEventListener('dragover', e=>{
+    if(!draggedDebtId) return;
+    e.preventDefault();
+    const overCard = e.target.closest('.finance-account');
+    debtListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    if(overCard && overCard.dataset.debtId !== draggedDebtId) overCard.classList.add('drag-over');
+  });
+  debtListEl.addEventListener('drop', e=>{
+    if(!draggedDebtId) return;
+    e.preventDefault();
+    debtListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over'));
+    const overCard = e.target.closest('.finance-account');
+    const toId = overCard ? overCard.dataset.debtId : null;
+    const fromId = draggedDebtId; draggedDebtId = null;
+    if(!toId || toId === fromId) return;
+    const debts = state.finance.debts || [];
+    const fromIdx = debts.findIndex(x=>x.id===fromId);
+    const toIdx = debts.findIndex(x=>x.id===toId);
+    if(fromIdx<0 || toIdx<0) return;
+    const [moved] = debts.splice(fromIdx,1);
+    debts.splice(toIdx,0,moved);
+    save(); renderDebts();
+  });
+  debtListEl.addEventListener('dragend', ()=>{ draggedDebtId = null; debtListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over')); });
+
+  function renderDebts(){
+    const list = el('debtList'); if(!list) return; list.innerHTML = '';
+    const debts = state.finance.debts || [];
+    el('debtEmpty').style.display = debts.length===0 ? 'block' : 'none';
+    // a debt shifts net worth the moment it's created or paid, so keep the trend chart in step —
+    // same reasoning as renderFinanceAccounts()
+    renderNetWorthChart();
+
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    let owedToYouUsd = 0, youOweUsd = 0;
+    debts.forEach(d=>{
+      const usd = convertAmt(debtRemaining(d), d.currency||'USD', 'USD');
+      if(d.direction==='borrowed') youOweUsd += usd; else owedToYouUsd += usd;
+    });
+    el('debtOwedToYouTotal').textContent = fmtMoney(convertAmt(owedToYouUsd,'USD',nwCcy), nwCcy);
+    el('debtYouOweTotal').textContent = fmtMoney(convertAmt(youOweUsd,'USD',nwCcy), nwCcy);
+
+    const today = localDateStr(new Date());
+    // settled debts drop out of their direction group into one archive group at the bottom, so the
+    // top of the tab only ever shows money that's actually still moving
+    const groups = [
+      ['lent','Owed To You', d=> d.direction!=='borrowed' && !isDebtSettled(d)],
+      ['borrowed','You Owe', d=> d.direction==='borrowed' && !isDebtSettled(d)],
+      ['settled','Settled', d=> isDebtSettled(d)]
+    ];
+    groups.forEach(([key,label,match])=>{
+      const items = debts.filter(match);
+      if(!items.length) return;
+      const lbl = document.createElement('div'); lbl.className='finance-group-lbl'; lbl.textContent = label; list.appendChild(lbl);
+      items.forEach(d=>{
+        const principal = parseFloat(d.amount)||0;
+        const paid = debtPaid(d);
+        const remaining = debtRemaining(d);
+        const settled = isDebtSettled(d);
+        const pct = principal>0 ? Math.min(100, Math.round((paid/principal)*100)) : 100;
+        const overdue = !settled && d.dueDate && d.dueDate < today;
+
+        const card = document.createElement('div');
+        card.className = 'finance-account' + (d.open ? ' open' : '');
+        card.dataset.debtId = d.id;
+
+        let sub = debtDirectionLabel(d.direction) + ' · ' + fmtMoney(paid, d.currency) + ' of ' + fmtMoney(principal, d.currency) + ' paid';
+        if(settled) sub += ' · settled';
+        else if(d.dueDate) sub += overdue ? ' · overdue' : ' · due '+fmtDate(new Date(d.dueDate).getTime());
+
+        // outstanding is shown the way the matching account type would show it: money coming back
+        // to you reads as a positive balance, money you still owe as a negative one
+        const amtHtml = settled
+          ? '<div class="finance-amt" style="color:var(--muted);">✓ Paid</div>'
+          : '<div class="finance-amt '+(d.direction==='borrowed'?'negative':'positive')+'">'
+              + (d.direction==='borrowed'?'-':'+') + fmtMoney(remaining, d.currency) + '</div>';
+
+        const head = document.createElement('div'); head.className = 'finance-account-head';
+        head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+          + (d.imageUrl ? '<img class="fa-thumb" src="'+d.imageUrl+'">' : '<div class="finance-icon">'+debtIcon(d.direction)+'</div>')
+          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(d.person)+'<span class="finance-ccy-badge">'+(d.currency||'USD')+'</span></div>'
+          +   '<div class="finance-type"'+(overdue?' style="color:var(--danger);"':'')+'>'+escapeHtml(sub)+'</div></div>'
+          + amtHtml
+          + '<div class="fa-chevron">▶</div>';
+        head.addEventListener('click', e=>{
+          if(e.target.closest('.drag-handle')) return;
+          d.open = !d.open; save(); renderDebts();
+        });
+        card.appendChild(head);
+
+        const detail = document.createElement('div'); detail.className = 'finance-account-detail';
+        const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
+
+        const actionRow = document.createElement('div'); actionRow.className='inline-fields'; actionRow.style.marginTop='12px';
+        const editBtn = document.createElement('button'); editBtn.className='btn'; editBtn.type='button'; editBtn.textContent='✎ Edit Debt';
+        editBtn.addEventListener('click', ()=> openEditDebtModal(d.id));
+        actionRow.appendChild(editBtn);
+        inner.appendChild(actionRow);
+
+        const prog = document.createElement('div');
+        prog.style.cssText = 'display:flex;align-items:center;gap:10px;margin:12px 0 2px;';
+        prog.innerHTML = '<div class="mini-track" style="flex:1;"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
+          + '<span class="progress-pct">'+pct+'%</span>';
+        inner.appendChild(prog);
+        if(d.note){
+          const noteEl = document.createElement('div');
+          noteEl.style.cssText = 'font-size:12px;color:var(--muted);margin-top:8px;';
+          noteEl.textContent = d.note;
+          inner.appendChild(noteEl);
+        }
+
+        const pLbl = document.createElement('div'); pLbl.className='section-lbl';
+        pLbl.textContent = d.direction==='borrowed' ? 'Payments You Made' : 'Payments Received';
+        inner.appendChild(pLbl);
+
+        const addPay = document.createElement('div'); addPay.className='add-tx-row';
+        addPay.innerHTML = '<input type="text" placeholder="Note (optional)" maxlength="80">'
+          + '<input type="number" step="0.01" min="0" placeholder="Amount">'
+          + '<select class="debt-pay-account" title="Optionally move the money in or out of a real account too">'+debtAccountOptions(d.accountId)+'</select>'
+          + '<button class="btn debt-fill-btn" type="button" title="Fill in everything that\'s left">Full</button>'
+          + '<button class="btn btn-primary debt-pay-btn" type="button">+ Log Payment</button>';
+        const payNote = addPay.querySelector('input[type=text]');
+        const payAmt = addPay.querySelector('input[type=number]');
+        const paySel = addPay.querySelector('.debt-pay-account');
+        addPay.querySelector('.debt-fill-btn').addEventListener('click', ()=>{
+          payAmt.value = remaining.toFixed(2);
+          payAmt.focus();
+        });
+        addPay.querySelector('.debt-pay-btn').addEventListener('click', ()=>{
+          logDebtPayment(d, payAmt.value, payNote.value, paySel.value);
+        });
+        inner.appendChild(addPay);
+
+        const payList = document.createElement('div'); payList.className = 'tx-list-scroll';
+        const pays = (d.payments||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
+        if(!pays.length){
+          const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;';
+          noneRow.textContent='No payments logged yet.';
+          payList.appendChild(noneRow);
+        }
+        pays.forEach(p=>{
+          const acct = p.accountId ? (state.finance.accounts||[]).find(a=>a.id===p.accountId) : null;
+          const row = document.createElement('div'); row.className='tx-row';
+          row.innerHTML = '<span class="tx-date">'+fmtDate(p.createdAt)+'</span>'
+            + '<span class="tx-note">'+escapeHtml(p.note||'')+(acct ? ' <span class="chip">'+escapeHtml(acct.name)+'</span>' : '')+'</span>'
+            + '<span class="tx-amt positive">'+fmtMoney(parseFloat(p.amount)||0, d.currency)+'</span>'
+            + '<button class="del-goal" style="padding:2px 8px;font-size:11px;" title="Delete this payment (also reverses the account transaction it created)">✕</button>';
+          row.querySelector('.del-goal').addEventListener('click', ()=> deleteDebtPayment(d, p.id));
+          payList.appendChild(row);
+        });
+        inner.appendChild(payList);
+
+        const footer = document.createElement('div'); footer.className='goal-footer'; footer.style.marginTop='12px';
+        footer.innerHTML = '<span class="completed-tag">'+(settled?'✦ Settled':'')+'</span>'
+          + '<button class="del-goal" title="Removes the record only — any account transactions it logged are real money movements and stay put">Delete debt</button>';
+        footer.querySelector('.del-goal').addEventListener('click', ()=>{
+          state.finance.debts = state.finance.debts.filter(x=>x.id!==d.id);
+          save(); renderDebts(); renderGoals();
+        });
+        inner.appendChild(footer);
+
+        detail.appendChild(inner);
+        card.appendChild(detail);
+        list.appendChild(card);
+      });
+    });
+  }
+
+  /* ---- add debt modal ---- */
+  function openAddDebtModal(){
+    el('debtAccount').innerHTML = debtAccountOptions('');
+    el('addDebtOverlay').style.display = 'flex';
+  }
+  function closeAddDebtModal(){ el('addDebtOverlay').style.display = 'none'; }
+  el('openAddDebtBtn').addEventListener('click', openAddDebtModal);
+  el('addDebtCloseBtn').addEventListener('click', closeAddDebtModal);
+  el('addDebtOverlay').addEventListener('click', e=>{ if(e.target === el('addDebtOverlay')) closeAddDebtModal(); });
+  el('addDebtBtn').addEventListener('click', ()=>{
+    const person = el('debtPerson').value.trim();
+    const amount = parseFloat(el('debtAmount').value);
+    if(!person || isNaN(amount) || amount<=0) return;
+    const direction = el('debtDirection').value;
+    const currency = el('debtCurrency').value||'USD';
+    const accountId = el('debtAccount').value || '';
+    const debt = { id:uid(), direction, person, amount, currency, dueDate: el('debtDueDate').value||'',
+      note:'', imageUrl:'', payments:[], accountId, accountTxId:'', open:false, createdAt: Date.now() };
+    if(accountId){
+      // lending money out leaves the account; money you borrow arrives in it
+      const signedAmt = direction==='borrowed' ? amount : -amount;
+      const label = direction==='borrowed' ? 'borrowed from '+person : 'lent to '+person;
+      const tx = addDebtAccountTx(accountId, currency, signedAmt, label);
+      if(tx) debt.accountTxId = tx.id;
+    }
+    state.finance.debts.push(debt);
+    el('debtPerson').value=''; el('debtAmount').value=''; el('debtDueDate').value='';
+    save(); renderDebts(); renderFinanceAccounts(); renderGoals();
+    closeAddDebtModal();
+  });
+
+  /* ---- edit debt modal (person / direction, currency & amount / due date & note / icon image) —
+     same shape as openEditAccountModal(), opened from inside an expanded debt ---- */
+  let editingDebtId = null;
+  function openEditDebtModal(debtId){
+    const d = (state.finance.debts||[]).find(x=>x.id===debtId); if(!d) return;
+    editingDebtId = debtId;
+    el('editDebtTitle').textContent = 'Edit Debt — '+d.person;
+    populateEditDebtBody();
+    el('editDebtOverlay').style.display = 'flex';
+  }
+  function closeEditDebtModal(){ el('editDebtOverlay').style.display = 'none'; editingDebtId = null; }
+  function populateEditDebtBody(){
+    const d = (state.finance.debts||[]).find(x=>x.id===editingDebtId); if(!d) return;
+    const body = el('editDebtBody'); body.innerHTML = '';
+
+    const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Person'; body.appendChild(nameLbl);
+    const nameRow = document.createElement('div'); nameRow.className='inline-fields';
+    const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=d.person; nameInput.maxLength=60; nameInput.style.width='220px';
+    nameInput.addEventListener('change', ()=>{
+      const v = nameInput.value.trim();
+      if(v){ d.person = v; save(); renderDebts(); el('editDebtTitle').textContent = 'Edit Debt — '+d.person; }
+    });
+    nameRow.appendChild(nameInput);
+    body.appendChild(nameRow);
+
+    const amtLbl = document.createElement('div'); amtLbl.className='section-lbl'; amtLbl.textContent='Direction, Currency & Amount'; body.appendChild(amtLbl);
+    const amtRow = document.createElement('div'); amtRow.className='inline-fields';
+    const dirSel = document.createElement('select');
+    dirSel.innerHTML = '<option value="lent"'+(d.direction!=='borrowed'?' selected':'')+'>They owe me</option>'
+      + '<option value="borrowed"'+(d.direction==='borrowed'?' selected':'')+'>I owe them</option>';
+    dirSel.addEventListener('change', ()=>{ d.direction = dirSel.value; save(); renderDebts(); renderGoals(); });
+    const ccySel = document.createElement('select');
+    ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(d.currency===c?'selected':'')+'>'+c+'</option>').join('');
+    ccySel.addEventListener('change', ()=>{ d.currency = ccySel.value; save(); renderDebts(); renderGoals(); });
+    const amtInput = document.createElement('input'); amtInput.type='number'; amtInput.min='0'; amtInput.step='0.01'; amtInput.value=d.amount; amtInput.style.width='120px';
+    amtInput.title = 'The original amount lent or borrowed — payments are subtracted from it';
+    amtInput.addEventListener('change', ()=>{ d.amount = parseFloat(amtInput.value)||0; save(); renderDebts(); renderGoals(); });
+    amtRow.appendChild(dirSel); amtRow.appendChild(ccySel); amtRow.appendChild(amtInput);
+    body.appendChild(amtRow);
+
+    const dueLbl = document.createElement('div'); dueLbl.className='section-lbl'; dueLbl.textContent='Due Date & Note'; body.appendChild(dueLbl);
+    const dueRow = document.createElement('div'); dueRow.className='inline-fields';
+    const dueInput = document.createElement('input'); dueInput.type='date'; dueInput.value=d.dueDate||'';
+    dueInput.addEventListener('change', ()=>{ d.dueDate = dueInput.value||''; save(); renderDebts(); });
+    const noteInput = document.createElement('input'); noteInput.type='text'; noteInput.maxLength=200; noteInput.placeholder='What was it for?'; noteInput.style.width='240px';
+    noteInput.value = d.note||'';
+    noteInput.addEventListener('change', ()=>{ d.note = noteInput.value.trim(); save(); renderDebts(); });
+    dueRow.appendChild(dueInput); dueRow.appendChild(noteInput);
+    body.appendChild(dueRow);
+
+    const iLbl = document.createElement('div'); iLbl.className='section-lbl'; iLbl.textContent='Icon Image'; body.appendChild(iLbl);
+    const imgRow = document.createElement('div'); imgRow.className='img-row';
+    imgRow.innerHTML = (d.imageUrl ? '<img class="fa-thumb" src="'+d.imageUrl+'">' : '')
+      + '<label>Upload image<input type="file" accept="image/*" style="display:none;"></label>'
+      + (d.imageUrl ? '<button class="del-goal" style="margin-left:4px;">Remove image</button>' : '');
+    imgRow.querySelector('input[type=file]').addEventListener('change', e=>{
+      const file = e.target.files[0]; if(!file) return;
+      const prevUrl = d.imageUrl;
+      uploadCompressedImage(file, 200, 0.75, 'finance').then(url=>{
+        d.imageUrl = url; save(); renderDebts();
+        populateEditDebtBody();
+        deleteStorageImage(prevUrl);
+      }).catch(err=> window.alert(err.message));
+    });
+    const rmBtn = imgRow.querySelector('.del-goal');
+    if(rmBtn) rmBtn.addEventListener('click', ()=>{ deleteStorageImage(d.imageUrl); d.imageUrl=''; save(); renderDebts(); populateEditDebtBody(); });
+    body.appendChild(imgRow);
+  }
+  el('editDebtCloseBtn').addEventListener('click', closeEditDebtModal);
+  el('editDebtOverlay').addEventListener('click', e=>{ if(e.target === el('editDebtOverlay')) closeEditDebtModal(); });
+
   /* ---- subscriptions ---- */
   function renderFinanceSubs(){
     const list = el('subsList'); if(!list) return; list.innerHTML = '';
@@ -821,11 +1188,12 @@
     setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
   });
 
-  /* ---- finance sub-nav (Accounts / Money Goals / Wishlist / Subscriptions / Currency Converter) ---- */
+  /* ---- finance sub-nav (Accounts / Debts / Money Goals / Wishlist / Subscriptions / Currency Converter) ---- */
   function showFinanceSubTab(key){
     document.querySelectorAll('#view-finance .finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.fintab===key));
     document.querySelectorAll('.fintab').forEach(t=>t.style.display = (t.id==='fintab-'+key) ? '' : 'none');
     el('financeAccountsOverview').style.display = key==='accounts' ? '' : 'none';
+    if(key==='debts') renderDebts();
     if(key==='subs') renderFinanceSubs();
     if(key==='moneygoals') renderMoneyGoals();
     if(key==='wishlist') renderWishlist();

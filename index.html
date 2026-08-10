@@ -167,6 +167,7 @@
 
     <div class="finance-subnav">
       <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
+      <button class="finance-subnav-btn" data-fintab="debts" type="button">Debts</button>
       <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
       <button class="finance-subnav-btn" data-fintab="wishlist" type="button">Wishlist</button>
       <button class="finance-subnav-btn" data-fintab="subs" type="button">Subscriptions</button>
@@ -203,6 +204,22 @@
       <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one below</b> to start tracking your net worth.</div>
       <div class="finance-add-row" style="justify-content:flex-end;">
         <button class="btn btn-primary" id="openAddAccountBtn" type="button">+ Add Account</button>
+      </div>
+    </div>
+
+    <!-- DEBTS — money lent out or borrowed, repaid in full or in portions. The cards deliberately
+         reuse the .finance-account look: a debt behaves like a tiny account whose balance is
+         whatever is still outstanding, and its payments behave like that account's transactions. -->
+    <div class="fintab" id="fintab-debts" style="display:none;">
+      <div class="view-sub" style="margin-top:-4px;">Money you lent out and money you owe. Log repayments in full or in small portions — each card tracks what's left. Outstanding amounts count toward your net worth.</div>
+      <div class="finance-summary" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:16px;">
+        <div class="stat" style="cursor:default;" title="Converted to your net worth display currency"><div class="num" id="debtOwedToYouTotal">$0</div><div class="lbl">Still Owed To You</div></div>
+        <div class="stat" style="cursor:default;" title="Converted to your net worth display currency"><div class="num" id="debtYouOweTotal">$0</div><div class="lbl">You Still Owe</div></div>
+      </div>
+      <div id="debtList"></div>
+      <div class="empty" id="debtEmpty" style="display:none;">Nothing tracked yet. <b>Add one below</b> — someone who owes you, or someone you owe.</div>
+      <div class="finance-add-row" style="justify-content:flex-end;">
+        <button class="btn btn-primary" id="openAddDebtBtn" type="button">+ Add Debt</button>
       </div>
     </div>
 
@@ -323,6 +340,43 @@
         <button class="btn btn-ghost btn-sm" id="editAccountCloseBtn" type="button">Close</button>
       </div>
       <div id="editAccountBody"></div>
+    </div>
+  </div>
+
+  <!-- ADD DEBT — opened by the "+ Add Debt" button on the Debts tab -->
+  <div id="addDebtOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title">Add Debt</div>
+        <button class="btn btn-ghost btn-sm" id="addDebtCloseBtn" type="button">Close</button>
+      </div>
+      <div class="finance-add-row" style="margin-bottom:0;">
+        <select id="debtDirection">
+          <option value="lent">They owe me (I lent it out)</option>
+          <option value="borrowed">I owe them (I borrowed it)</option>
+        </select>
+        <input type="text" id="debtPerson" placeholder="Who? (name)" maxlength="60">
+        <input type="number" id="debtAmount" placeholder="Amount" min="0" step="0.01">
+        <select id="debtCurrency"></select>
+        <input type="date" id="debtDueDate" title="Due date (optional)">
+      </div>
+      <div class="section-lbl">Move The Money (optional)</div>
+      <div class="view-sub" style="margin-top:-4px;margin-bottom:8px;">Pick an account and the cash movement is logged there too, so your balances stay right — lending takes it out, borrowing puts it in. Leave it on "no account" if the money never touched a tracked account.</div>
+      <div class="finance-add-row" style="margin-bottom:0;">
+        <select id="debtAccount"></select>
+        <button class="btn btn-primary" id="addDebtBtn" type="button">+ Add Debt</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT DEBT — opened by the "Edit Debt" button inside an expanded debt -->
+  <div id="editDebtOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title" id="editDebtTitle">Edit Debt</div>
+        <button class="btn btn-ghost btn-sm" id="editDebtCloseBtn" type="button">Close</button>
+      </div>
+      <div id="editDebtBody"></div>
     </div>
   </div>
 

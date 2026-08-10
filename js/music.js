@@ -7,6 +7,18 @@
      actually starts with a playlist configured — so the app still opens instantly (and offline)
      for everyone who never sets one.
 
+     Two playback modes, `state.sessionMusic.mode`:
+       embed     the iframe player below — controllable from the strip (▶/⏸, ⏭, volume), but it
+                 is a *cross-site* frame, so YouTube only recognises your account in it if the
+                 browser hands youtube.com its cookies there. Firefox partitions them always,
+                 Safari's Prevent Cross-Site Tracking blocks them, and an installed PWA has its
+                 own storage jar that has never seen the login. Signed out ⇒ ads, whatever the
+                 account owns. Nothing in this file can change that; it's a property of the frame.
+       external  ▶ becomes ↗ and hands the playlist to music.youtube.com instead (deep-links into
+                 the YouTube Music app on a phone). First-party, so Premium applies and there are
+                 no ads — at the price of the app not being able to reach playback any more:
+                 ⏭/volume are disabled and the music outlives the session.
+
      Two limits come from YouTube itself; neither is a bug to fix here:
        - Auto-generated feeds have no embeddable playlist. Liked Music (LM), Watch Later (WL) and
          radio mixes (RD…/SR…) are rejected up front with a readable message instead of failing
@@ -26,10 +38,16 @@
   let musicShuffled = false; // setShuffle() only sticks once a playlist is actually loaded
 
   function sessionMusicCfg(){
-    if(!state.sessionMusic) state.sessionMusic = { url:'', enabled:true, volume:35, shuffle:true, playlists:[] };
+    if(!state.sessionMusic) state.sessionMusic = { url:'', enabled:true, volume:35, shuffle:true, mode:'embed', playlists:[] };
     if(!Array.isArray(state.sessionMusic.playlists)) state.sessionMusic.playlists = [];
+    if(state.sessionMusic.mode !== 'external') state.sessionMusic.mode = 'embed';
     return state.sessionMusic;
   }
+
+  const MUSIC_MODE_NOTE = {
+    embed: 'Ads even with Premium? The in-app player is a YouTube frame inside this page, and YouTube only sees your account in it if your browser allows third-party cookies for youtube.com — an installed home-screen app never does. Switch to YouTube Music above for ad-free playback.',
+    external: '↗ opens the playlist in YouTube Music (the app, on a phone), where your Premium applies. The trade: ⏭ and volume here can’t reach it, and it keeps playing after the session ends.'
+  };
 
   const MUSIC_HINT_DEFAULT = 'Open the playlist in YouTube Music → ⋮ → Share → Copy link. It should look like music.youtube.com/playlist?list=…';
 
@@ -92,7 +110,24 @@
     const { id, error } = parsePlaylistUrl(cfg.url);
     if(error){ setMusicStatus(error, true); return; }
     if(!id) return;
+    // external mode never opens anything by itself: a session starting shouldn't throw the screen
+    // over to YouTube, and a session *resumed* on load has no gesture to open a tab with anyway
+    if(cfg.mode === 'external') return;
     createMusicPlayer(id, !!fromGesture);
+  }
+
+  /* Hands the playlist to YouTube Music itself — a first-party page (and a deep link into the
+     YouTube Music app on a phone), which is the only way a Premium account is actually recognised;
+     see the mode notes at the top. Must be called straight out of a click handler, or the popup
+     blocker eats the window. */
+  function openInYouTubeMusic(){
+    const cfg = sessionMusicCfg();
+    const { id, error } = parsePlaylistUrl(cfg.url);
+    if(error){ setMusicStatus(error, true); return; }
+    if(!id){ setMusicStatus('No playlist yet — tap ⚙ and paste one.', true); return; }
+    // /watch?list= starts the first track; /playlist?list= would only open the listing page
+    window.open('https://music.youtube.com/watch?list=' + encodeURIComponent(id), '_blank', 'noopener');
+    setMusicStatus('Playing in YouTube Music ↗');
   }
 
   function createMusicPlayer(playlistId, autoplay){
@@ -204,12 +239,22 @@
     const bar = el('playMusic');
     if(!bar) return;
     const cfg = sessionMusicCfg();
-    el('playMusicToggle').textContent = musicIsPlaying() ? '⏸' : '▶';
+    const external = cfg.mode === 'external';
+    const toggle = el('playMusicToggle');
+    toggle.textContent = external ? '↗' : (musicIsPlaying() ? '⏸' : '▶');
+    toggle.title = external ? 'Open the playlist in YouTube Music' : 'Play / pause music';
+    // playback lives in another tab (or another app) in external mode — nothing here can reach it
+    const outOfReach = 'Controlled from YouTube Music, not here';
+    el('playMusicNext').disabled = external;
+    el('playMusicNext').title = external ? outOfReach : 'Next track';
+    el('playMusicVol').disabled = external;
+    el('playMusicVol').title = external ? outOfReach : 'Volume';
     const label = el('playMusicTrack');
     const title = currentMusicTitle();
     label.textContent = !cfg.enabled ? 'Music off'
       : musicStatusIsError ? '⚠ Can’t play this playlist — see below'
       : musicStatusText ? musicStatusText
+      : external ? (cfg.url ? 'Tap ↗ to play in YouTube Music' : 'No playlist yet — tap ⚙')
       : title ? title
       : cfg.url ? 'Paused'
       : 'No playlist yet — tap ⚙';
@@ -269,6 +314,8 @@
     syncMusicSettingsInputs();
     if(error){ setMusicStatus(error, true); return; }
     musicStatusText = ''; musicStatusIsError = false;
+    // this ▶ tap is itself the gesture, in either mode
+    if(cfg.mode === 'external'){ openInYouTubeMusic(); return; }
     createMusicPlayer(id, true);
   }
 
@@ -300,6 +347,7 @@
   el('playMusicToggle').addEventListener('click', ()=>{
     const cfg = sessionMusicCfg();
     if(!cfg.enabled){ cfg.enabled = true; save(); }
+    if(cfg.mode === 'external'){ openInYouTubeMusic(); return; }
     if(ytPlayer && ytPlayer.getPlayerState){
       if(musicIsPlaying()) ytPlayer.pauseVideo(); else ytPlayer.playVideo();
       setTimeout(renderSessionMusic, 250);
@@ -349,12 +397,26 @@
     cfg.url = e.target.value.trim();
     save();
     const { id } = parsePlaylistUrl(cfg.url);
+    // external mode has no player to swap — ↗ reads cfg.url when it's tapped
+    if(cfg.mode === 'external') destroyMusicPlayer();
     // swap to the new playlist immediately if a session is running; the click that landed on this
     // field counts as the gesture, so it can start playing right away
-    if(state.playSession && cfg.enabled && id) createMusicPlayer(id, true);
+    else if(state.playSession && cfg.enabled && id) createMusicPlayer(id, true);
     // no usable id — drop the player, but leave the warning from the `input` handler standing
     // (stopSessionMusic() would clear it, so the field would look accepted on blur)
     else if(!id) destroyMusicPlayer();
+    renderSessionMusic();
+  });
+
+  el('playMusicMode').addEventListener('change', e=>{
+    const cfg = sessionMusicCfg();
+    cfg.mode = e.target.value === 'external' ? 'external' : 'embed';
+    save();
+    setMusicModeNote();
+    musicStatusText = ''; musicStatusIsError = false;
+    // leaving embed mode has to take the player with it, or it keeps playing (with ads) underneath
+    if(cfg.mode === 'external') destroyMusicPlayer();
+    else if(state.playSession && cfg.enabled) startSessionMusic(true);
     renderSessionMusic();
   });
 
@@ -373,9 +435,17 @@
     renderSessionMusic();
   });
 
+  // the standing "why ads / what you give up" line under the mode picker. Deliberately not
+  // playMusicHint — that one is transient and gets overwritten by every paste and every error.
+  function setMusicModeNote(){
+    el('playMusicModeNote').textContent = MUSIC_MODE_NOTE[sessionMusicCfg().mode] || '';
+  }
+
   function syncMusicSettingsInputs(){
     const cfg = sessionMusicCfg();
     el('playMusicUrl').value = cfg.url || '';
+    el('playMusicMode').value = cfg.mode;
+    setMusicModeNote();
     el('playMusicShuffle').checked = !!cfg.shuffle;
     el('playMusicEnabled').checked = !!cfg.enabled;
     el('playMusicVol').value = cfg.volume;

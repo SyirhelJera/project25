@@ -10,7 +10,7 @@ Project 25 — a single-page personal life-dashboard web app (goals, habits, fin
 
 Plain HTML/CSS/JS, no npm, no bundler, no framework.
 
-- **Run/test the app**: open `index.html` directly in a browser, or run `node scripts/serve.mjs` and open `http://localhost:8025` (plain `node:http` static server, no install). There is still no build, lint, or test command in this repo. Session music is the one feature that needs the served form — YouTube refuses to embed its player into a `file://` page (error 153), see README's "Session music".
+- **Run/test the app**: open `index.html` directly in a browser, or run `node scripts/serve.mjs` and open `http://localhost:8025` (plain `node:http` static server, no install). There is still no build, lint, or test command in this repo. Session music is the one feature that needs the served form — YouTube refuses to embed its player into a `file://` page (error 153), see README's "Session music". That section also covers the two playback modes (`state.sessionMusic.mode`): the in-app iframe player can't see a Premium account, because a cross-site frame only gets YouTube's cookies when the browser allows them there — `external` mode hands the playlist to YouTube Music instead. Don't try to "fix" the ads inside the embed; the mode picker is the fix.
 - **Scripts in `scripts/`** (Valorant helpers, backup): plain Node.js built-ins only, run directly with `node scripts/<file>.mjs` — no `npm install` anywhere in the project.
 - Supabase Edge Functions live in `supabase/functions/*/index.ts`, deployed via the Supabase CLI (not part of this repo's build).
 

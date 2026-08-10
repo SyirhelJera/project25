@@ -306,9 +306,11 @@
     ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=> delete state.profile[k]);
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
-    state.sessionMusic = parsed.sessionMusic || { url:'', enabled:true, volume:35, shuffle:true, playlists:[] };
+    state.sessionMusic = parsed.sessionMusic || { url:'', enabled:true, volume:35, shuffle:true, mode:'embed', playlists:[] };
     if(typeof state.sessionMusic.volume !== 'number') state.sessionMusic.volume = 35;
     if(!Array.isArray(state.sessionMusic.playlists)) state.sessionMusic.playlists = [];
+    // anything saved before the external mode existed was the embed player, so that's the default
+    if(state.sessionMusic.mode !== 'external') state.sessionMusic.mode = 'embed';
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
     // navbar appearance — saved by the Settings tab, applied by applyTabOrder()/applyTabIcons()
     state.tabOrder = Array.isArray(parsed.tabOrder) ? parsed.tabOrder : [];

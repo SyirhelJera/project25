@@ -484,6 +484,14 @@
   .play-music-saved-del{background:none;border:none;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;padding:2px 4px;flex:none;}
   .play-music-saved-del:hover{color:var(--danger);}
   .play-music-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);cursor:pointer;}
+  /* playback mode picker (in-app player vs. handing off to YouTube Music) */
+  .play-music-mode-row>span{flex:none;}
+  .play-music-mode{flex:1;min-width:0;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:6px 8px;font-size:11.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;cursor:pointer;}
+  .play-music-mode:focus{border-color:var(--violet);}
+  /* external mode can't reach playback happening in another tab/app — say so by greying them out */
+  .play-music-btn:disabled,.play-music-vol:disabled{opacity:.4;cursor:default;}
+  .play-music-btn:disabled:active{transform:none;}
+  .play-music-note{font-size:10.5px;color:var(--faint);line-height:1.45;}
   /* the strip above is a single ellipsised line, so this is where a full error sentence lands —
      it has to wrap (see setMusicStatus in js/music.js) */
   .play-music-hint{font-size:10.5px;color:var(--faint);line-height:1.45;white-space:normal;word-break:break-word;}

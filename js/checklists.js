@@ -3,31 +3,75 @@
   /* ---------- completion celebration: confetti burst + chime ----------
      Fires the instant a checklist becomes fully checked off — whether that happens inside a Play
      session (showPlayComplete / showPlayCheckpoint) or by hand in the regular checklist list.
-     Both effects are self-contained (canvas particles, a synthesized Web Audio tone) so there's
+     Both effects are self-contained (canvas particles, synthesized Web Audio tones) so there's
      no image/audio asset or external library dependency, and either can silently no-op if the
      browser blocks it (e.g. AudioContext before a user gesture) without breaking anything else. */
-  let celebrateAudioCtx = null;
-  function playCelebrateChime(){
+  let sfxCtx = null;
+  let sfxBus = null;
+  // One AudioContext and one output bus for every sound in here, built on first use (which is
+  // always inside a click, so it starts unsuspended). The compressor is what lets the loud
+  // variant below overlap three notes plus their octaves without clipping into a buzz.
+  function sfxOutput(){
     try{
-      celebrateAudioCtx = celebrateAudioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const ctx = celebrateAudioCtx;
-      if(ctx.state === 'suspended') ctx.resume();
-      const now = ctx.currentTime;
-      // three quick ascending notes (C5-E5-G5), each a short decaying sine — reads as a bright
-      // "success" chime rather than a flat beep
-      [523.25, 659.25, 783.99].forEach((freq, i)=>{
-        const t = now + i*0.09;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, t);
-        gain.gain.setValueAtTime(0, t);
-        gain.gain.linearRampToValueAtTime(0.22, t+0.015);
-        gain.gain.exponentialRampToValueAtTime(0.001, t+0.35);
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.start(t); osc.stop(t+0.36);
-      });
-    }catch(e){ /* Web Audio unavailable/blocked — confetti still carries the celebration */ }
+      if(!sfxCtx){
+        sfxCtx = new (window.AudioContext || window.webkitAudioContext)();
+        sfxBus = sfxCtx.createDynamicsCompressor();
+        sfxBus.connect(sfxCtx.destination);
+      }
+      if(sfxCtx.state === 'suspended') sfxCtx.resume();
+      return sfxBus;
+    }catch(e){ return null; } // Web Audio unavailable/blocked — confetti still carries the celebration
+  }
+
+  // one decaying note; every sound here is a handful of these
+  function sfxTone(freq, startAt, peak, decay, type){
+    const out = sfxOutput();
+    if(!out) return;
+    const osc = sfxCtx.createOscillator();
+    const gain = sfxCtx.createGain();
+    osc.type = type || 'sine';
+    osc.frequency.setValueAtTime(freq, startAt);
+    gain.gain.setValueAtTime(0, startAt);
+    gain.gain.linearRampToValueAtTime(peak, startAt + 0.015);
+    gain.gain.exponentialRampToValueAtTime(0.001, startAt + decay);
+    osc.connect(gain); gain.connect(out);
+    osc.start(startAt); osc.stop(startAt + decay + 0.01);
+  }
+
+  /* Three ascending notes (C5-E5-G5) — a bright "success" arpeggio rather than a flat beep.
+     It has to be heard over whatever is playing, and how much room it gets depends on the music
+     mode (js/music.js):
+       embed     the in-app player is ours, so duckSessionMusic() dips it under the chime and the
+                 quiet version is plenty.
+       external  playback is in YouTube Music's own tab/app. No web page can turn that down — it
+                 isn't our audio stream — so the chime instead plays LOUD: roughly double the gain,
+                 each note doubled an octave up (a bright partial cuts through a dense mix far
+                 better than raw volume at the same pitch), and a longer tail so it isn't lost in
+                 a busy bar. Same when there's no session music at all, which costs nothing since
+                 then there's nothing to compete with.
+     Both variants are level-controlled by the compressor on the bus, not by luck. */
+  function playCelebrateChime(){
+    if(!sfxOutput()) return;
+    // duckSessionMusic() reports false when there's no reachable player to dip
+    const ducked = (typeof duckSessionMusic === 'function') ? duckSessionMusic(900) : false;
+    const now = sfxCtx.currentTime;
+    const peak = ducked ? 0.22 : 0.42;
+    const decay = ducked ? 0.35 : 0.55;
+    [523.25, 659.25, 783.99].forEach((freq, i)=>{
+      const t = now + i*0.09;
+      sfxTone(freq, t, peak, decay);
+      if(!ducked) sfxTone(freq*2, t, peak*0.4, decay*0.8, 'triangle');
+    });
+    // A final octave-up C6 to land on, only in the loud variant — an unmistakable "done" marker
+    // for when the ear is picking it out of a song rather than out of silence.
+    if(!ducked) sfxTone(1046.5, now + 0.30, 0.34, 0.75);
+  }
+
+  // Checking off a single item. Deliberately short and quiet — a keystroke, not an event — so
+  // completing the whole checklist still clearly outranks it. Never ducks the music.
+  function playItemTick(){
+    if(!sfxOutput()) return;
+    sfxTone(987.77, sfxCtx.currentTime, 0.09, 0.09, 'triangle'); // B5
   }
 
   function fireConfettiBurst(){
@@ -228,6 +272,10 @@
       if(it.skipCount) it.skipCount = Math.max(0, it.skipCount - 1);
       if(it.failCount) it.failCount = Math.max(0, it.failCount - 1);
     }
+    // Tick for this one item — but not when it was the item that finished the checklist, since
+    // the caller fires celebrateChecklistComplete() for that and the chime should own the moment.
+    // Only on check: un-ticking a box is a correction, not an achievement.
+    if(done && !c.items.every(i=>i.done)) playItemTick();
     syncChecklistHabitLink(c);
     save();
   }

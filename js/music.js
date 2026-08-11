@@ -199,7 +199,50 @@
     }).catch(()=> setMusicStatus('Couldn’t reach YouTube — music is offline.', true));
   }
 
+  /* ---------- ducking ----------
+     The checklist completion chime (js/checklists.js) plays through the page's own AudioContext,
+     on top of whatever the playlist is doing — at the default volume of 35 the music simply
+     swallows it. So dip the player for the length of the chime and fade it back afterwards.
+     Only the embed player can be ducked: in external mode playback is in YouTube Music's own
+     tab/app, which nothing here can reach, so this no-ops exactly like ⏭ and the volume slider do.
+     Nothing is persisted — cfg.volume is never written, so a duck interrupted by a reload or a
+     destroyed player can't leave the saved volume stuck at the dipped value. */
+  const MUSIC_DUCK_FACTOR = 0.18;  // fraction of the set volume held under the chime
+  const MUSIC_DUCK_RAMP_MS = 600;  // fade back up, so the music doesn't snap in behind the chime
+  let musicDuckTimeouts = [];
+
+  function clearMusicDuck(){
+    musicDuckTimeouts.forEach(clearTimeout);
+    musicDuckTimeouts = [];
+  }
+  function setPlayerVolume(v){
+    if(!ytPlayer || !ytPlayer.setVolume) return;
+    try{ ytPlayer.setVolume(Math.max(0, Math.min(100, Math.round(v)))); }catch(e){}
+  }
+  // Returns whether it actually ducked anything — the caller uses that to decide how loud the
+  // chime has to be, since in external mode it is competing with the music rather than sitting
+  // in a hole made for it.
+  function duckSessionMusic(holdMs){
+    if(!ytPlayer || !ytPlayer.setVolume) return false;
+    clearMusicDuck();   // a second completion landing mid-fade restarts the dip rather than racing it
+    const hold = holdMs || 900;
+    const steps = 6;
+    setPlayerVolume(sessionMusicCfg().volume * MUSIC_DUCK_FACTOR);
+    for(let i = 1; i <= steps; i++){
+      const t = i / steps;
+      musicDuckTimeouts.push(setTimeout(()=>{
+        // Re-read the configured volume at every step instead of capturing it up front: if the
+        // slider is dragged mid-duck, the fade should land on the *new* level, not overwrite it.
+        setPlayerVolume(sessionMusicCfg().volume * (MUSIC_DUCK_FACTOR + (1 - MUSIC_DUCK_FACTOR) * t));
+        if(i === steps) musicDuckTimeouts = [];
+      }, hold + MUSIC_DUCK_RAMP_MS * t));
+    }
+    return true;
+  }
+
   function destroyMusicPlayer(){
+    // a pending fade would otherwise fire against the *next* player and set it to a ramp value
+    clearMusicDuck();
     if(ytPlayer){
       try{ ytPlayer.destroy(); }catch(e){ /* already gone */ }
       ytPlayer = null;

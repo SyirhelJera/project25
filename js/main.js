@@ -1,6 +1,7 @@
   function renderAll(){
     applyTabOrder();
     applyTabIcons();
+    applyTabVisibility();
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness(); renderValorant(); renderClock(); renderWishlist(); renderJobs(); renderNotes();
     shuffleMotivationImages(); openToPinnedMotivationCategory(); renderMotivation();

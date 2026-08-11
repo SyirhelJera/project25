@@ -59,9 +59,10 @@
     const buzz = ms => { if(navigator.vibrate) try{ navigator.vibrate(ms); }catch(_){} };
 
     // rebuilt on every open so labels, the active tab and any visible nav badges are current
+    // (visibleNavItems() drops tabs switched off in Settings > Navbar Tabs)
     function buildSheet(){
       sheet.innerHTML = '';
-      document.querySelectorAll('.nav-item').forEach(nav=>{
+      visibleNavItems().forEach(nav=>{
         const btn = document.createElement('div');
         btn.className = 'tab-switcher-item' + (nav.classList.contains('active') ? ' active' : '');
         btn.dataset.tab = nav.dataset.tab;
@@ -159,7 +160,7 @@
       const dx = e.changedTouches[0].clientX - startX;
       const dy = e.changedTouches[0].clientY - startY;
       if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      const items = Array.from(document.querySelectorAll('.nav-item'));
+      const items = visibleNavItems(); // swiping walks the navbar as shown, skipping hidden tabs
       const curIdx = items.findIndex(t => t.classList.contains('active'));
       if(curIdx === -1) return;
       const nextIdx = dx < 0 ? curIdx + 1 : curIdx - 1;

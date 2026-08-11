@@ -185,12 +185,20 @@ state = {
                                        // one, so there's no separate activeId to keep in sync.
                                        // volume 0-100. Settings only; no playback state persisted.
   theme: 'light' | 'dark' | 'ios-light' | 'ios-dark',
-  tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Reorder Navbar Tabs");
+  tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Navbar Tabs");
                                        // empty means index.html's own order. Tabs missing from a
                                        // stale saved order fall in at the end — applyTabOrder()
+  hiddenTabs: [ '<tab key>', … ],      // Settings -> "Navbar Tabs", the Shown/Hidden pill: tabs
+                                       // kept out of the sidebar, the mobile switcher sheet and
+                                       // the swipe order (all read visibleNavItems()). Presentation
+                                       // only — the view and its data are untouched. 'settings' is
+                                       // never hideable and is filtered out on load too, so a bad
+                                       // saved value can't lock the settings screen away; if the
+                                       // active tab is hidden, applyTabVisibility() falls through
+                                       // to the first visible one
   hideTabIcons: false,                 // Settings -> "Tab Icons": drops the per-tab logos for a
                                        // text-only nav (mobile's icon-only strip switches to
-                                       // labels) — applyTabIcons(), both in js/insights.js
+                                       // labels) — applyTabIcons(), all three in js/insights.js
   protectedDays: [ { id, type:'vacation'|'sick'|'event', label, startDate, endDate, createdAt } ]
                                        // global exemption list (Settings tab) — startDate/endDate
                                        // are inclusive YYYY-MM-DD strings (endDate===startDate for

@@ -312,9 +312,13 @@
     // anything saved before the external mode existed was the embed player, so that's the default
     if(state.sessionMusic.mode !== 'external') state.sessionMusic.mode = 'embed';
     state.theme = parsed.theme || (parsed.darkMode ? 'dark' : 'light');
-    // navbar appearance — saved by the Settings tab, applied by applyTabOrder()/applyTabIcons()
+    // navbar appearance — saved by the Settings tab, applied by
+    // applyTabOrder()/applyTabIcons()/applyTabVisibility()
     state.tabOrder = Array.isArray(parsed.tabOrder) ? parsed.tabOrder : [];
     state.hideTabIcons = !!parsed.hideTabIcons;
+    // 'settings' is filtered out on the way in as well as on the way out — a saved order from a
+    // build that let it through must not be able to lock the Settings tab away
+    state.hiddenTabs = (Array.isArray(parsed.hiddenTabs) ? parsed.hiddenTabs : []).filter(k=>k!=='settings');
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
     ['filled','today','empty','perfect'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
     if(state.mosaicColors.perfectGlow === undefined) state.mosaicColors.perfectGlow = true;

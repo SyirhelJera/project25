@@ -44,6 +44,41 @@
     document.body.classList.toggle('hide-tab-icons', !!state.hideTabIcons);
   }
 
+  /* Settings > Show Tabs. Hiding is presentation only — the view and its data stay put, the tab is
+     just marked .nav-hidden so it drops out of the sidebar, the mobile switcher sheet and the
+     swipe-between-tabs order (both read visibleNavItems()). Settings can never be hidden; it's the
+     only way back to this control. */
+  function applyTabVisibility(){
+    const nav = el('navList'); if(!nav) return;
+    const hidden = Array.isArray(state.hiddenTabs) ? state.hiddenTabs : [];
+    const items = Array.from(nav.querySelectorAll('.nav-item'));
+    items.forEach(it=>{
+      it.classList.toggle('nav-hidden', it.dataset.tab !== 'settings' && hidden.includes(it.dataset.tab));
+    });
+    // hiding the tab you're standing on would leave the main pane blank — move to the first
+    // surviving tab instead (its own nav click handler does the rendering)
+    const active = items.find(it=>it.classList.contains('active'));
+    if(active && active.classList.contains('nav-hidden')){
+      const first = items.find(it=>!it.classList.contains('nav-hidden'));
+      if(first) first.click();
+    }
+  }
+
+  // the nav as the user actually sees it — hidden tabs are skipped by everything that walks it
+  function visibleNavItems(){
+    return Array.from(document.querySelectorAll('#navList .nav-item:not(.nav-hidden)'));
+  }
+
+  function setTabHidden(key, hide){
+    if(key === 'settings') return;
+    const hidden = (Array.isArray(state.hiddenTabs) ? state.hiddenTabs : []).filter(k=>k!==key);
+    if(hide) hidden.push(key);
+    state.hiddenTabs = hidden;
+    save();
+    applyTabVisibility();
+    renderTabOrderSettings();
+  }
+
   // commits a new tab key order — used by both the drag-drop handler (desktop) and the up/down
   // move buttons (mobile, where .drag-handle is hidden since HTML5 drag events don't fire on touch)
   function commitTabOrder(order){
@@ -67,10 +102,16 @@
       const key = item.dataset.tab;
       const label = item.querySelector('.nav-label').textContent;
       const iconHtml = item.querySelector('svg').outerHTML;
-      return '<div class="tab-order-row" data-tab-key="'+key+'">'
+      const isHidden = item.classList.contains('nav-hidden');
+      const locked = key === 'settings'; // can't hide the way back to this screen
+      return '<div class="tab-order-row'+(isHidden?' is-hidden':'')+'" data-tab-key="'+key+'">'
         + '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
         + '<span class="tab-order-icon">'+iconHtml+'</span>'
         + '<span class="tab-order-label">'+escapeHtml(label)+'</span>'
+        + '<button class="tab-vis-btn'+(isHidden?' off':'')+'" type="button" data-vis-tab="'+key+'"'
+        +   (locked?' disabled title="Settings always stays in the navbar"':' title="'+(isHidden?'Show in navbar':'Hide from navbar')+'"')+'>'
+        +   (isHidden?'Hidden':'Shown')
+        + '</button>'
         + '<div class="tab-order-move-btns">'
         +   '<button class="tab-order-move-btn" type="button" data-dir="up" title="Move up"'+(idx===0?' disabled':'')+'>▲</button>'
         +   '<button class="tab-order-move-btn" type="button" data-dir="down" title="Move down"'+(idx===navItems.length-1?' disabled':'')+'>▼</button>'
@@ -80,6 +121,11 @@
     if(!list.dataset.wired){
       list.dataset.wired = '1';
       list.addEventListener('click', e=>{
+        const visBtn = e.target.closest('.tab-vis-btn');
+        if(visBtn){
+          if(!visBtn.disabled) setTabHidden(visBtn.dataset.visTab, !visBtn.classList.contains('off'));
+          return;
+        }
         const btn = e.target.closest('.tab-order-move-btn');
         if(!btn || btn.disabled) return;
         const row = btn.closest('.tab-order-row');

@@ -173,6 +173,9 @@
     font-size:13.5px;font-weight:600;color:var(--muted);
     transition:background-color .15s ease, color .15s ease, padding .18s ease, gap .18s ease, transform .1s ease;
   }
+  /* Settings > Navbar Tabs (state.hiddenTabs, applied by applyTabVisibility() in js/insights.js).
+     !important so the mobile strip's own .nav-item display rule can't bring it back. */
+  .nav-item.nav-hidden{display:none !important;}
   .nav-item:hover{background:var(--surface-alt);color:var(--text);}
   .nav-item:active{transform:scale(.96);}
   .nav-item.active{background:var(--violet-pale);color:var(--violet-dark);}
@@ -400,6 +403,12 @@
   .tab-order-icon{flex:none;width:18px;height:18px;color:var(--muted);}
   .tab-order-icon svg{width:100%;height:100%;}
   .tab-order-label{flex:1;font-size:12.5px;font-weight:600;color:var(--text);}
+  .tab-order-row.is-hidden .tab-order-icon,
+  .tab-order-row.is-hidden .tab-order-label{opacity:.5;}
+  .tab-vis-btn{flex:none;background:var(--violet-pale);border:1px solid transparent;color:var(--violet-dark);border-radius:999px;padding:3px 9px;font-size:10.5px;font-weight:700;cursor:pointer;}
+  .tab-vis-btn.off{background:var(--surface-alt);border-color:var(--border);color:var(--muted);}
+  .tab-vis-btn:hover:not(:disabled){border-color:var(--violet);}
+  .tab-vis-btn:disabled{background:var(--surface-alt);border-color:var(--border);color:var(--muted);opacity:.5;cursor:not-allowed;}
   .tab-order-move-btns{display:flex;flex-direction:column;gap:2px;flex:none;}
   .tab-order-move-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:5px;width:22px;height:16px;line-height:1;font-size:9px;cursor:pointer;padding:0;}
   .tab-order-move-btn:hover:not(:disabled){color:var(--violet-dark);border-color:var(--violet);}
@@ -429,15 +438,19 @@
   .confetti-canvas{position:fixed;inset:0;z-index:2000;pointer-events:none;}
 
   /* ---- Play Checklist (pomodoro-style task runner) ---- */
-  .play-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:20px;}
-  .play-card{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:32px 28px;width:100%;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);}
+  /* align-items is flex-start + auto block margins rather than align-items:center on purpose: auto
+     margins still centre the card, but only while there's free space — when the card is taller than
+     the viewport (short window, phone in landscape, music settings open) centring would push its top
+     edge above the scroll origin and make it unreachable, so it falls back to the top and scrolls. */
+  .play-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;}
+  .play-card{position:relative;margin-block:auto;background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:32px 28px;width:100%;max-width:380px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.35);}
 
   /* Minimized: shrink the full-screen takeover to a small, non-blocking floating pill so the
      rest of the app (e.g. logging a weight entry in Fitness for a checklist task) stays usable
      while a Play session — and its wall-clock timer — keeps running in the background. Triggered
      by clicking the backdrop outside the card; click the pill again to restore. */
-  .play-overlay.minimized{inset:auto;bottom:20px;right:20px;left:auto;top:auto;background:none;padding:0;pointer-events:none;display:block;}
-  .play-overlay.minimized .play-card{pointer-events:auto;width:auto;max-width:200px;padding:14px 16px;border-radius:14px;cursor:pointer;text-align:left;}
+  .play-overlay.minimized{inset:auto;bottom:20px;right:20px;left:auto;top:auto;background:none;padding:0;pointer-events:none;display:block;overflow:visible;}
+  .play-overlay.minimized .play-card{pointer-events:auto;margin-block:0;width:auto;max-width:200px;padding:14px 16px;border-radius:14px;cursor:pointer;text-align:left;}
   .play-overlay.minimized .play-checklist-name,
   .play-overlay.minimized .play-progress,
   .play-overlay.minimized .play-progress-bars,
@@ -529,6 +542,36 @@
   .play-insight-time{font-size:11.5px;color:var(--muted);font-weight:700;flex:none;}
   .play-insight-time.play-insight-skipped{color:var(--gold);}
   .play-insight-time.play-insight-failed{color:var(--danger);}
+
+  /* Phone held sideways: ~330px of usable height, but plenty of width. The portrait card (44px
+     timer over 64px buttons over the music strip, all stacked) is roughly twice that tall, so the
+     ✓/✕ row ends up off-screen. Spend the width instead — the timer moves beside the task text
+     into a second column, and the type/controls shrink. Bounded by max-height so it can't catch a
+     tablet in landscape, and by min-width so a short *portrait* window keeps the single column.
+     Rows are placed explicitly because .play-task-source is display:none for non-combined
+     sessions — auto-placement would slide everything up a row when it's absent. */
+  @media (orientation:landscape) and (max-height:520px) and (min-width:560px){
+    .play-overlay{padding:10px;}
+    .play-card{max-width:620px;padding:16px 20px;}
+    .play-checklist-name{font-size:11.5px;}
+    .play-progress{margin-bottom:6px;}
+    .play-progress-bars{gap:5px;margin-bottom:10px;}
+    #playBody{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:22px;align-items:center;text-align:left;}
+    /* the minimized pill is already short and only 200px wide — it keeps its stacked layout */
+    .play-overlay.minimized #playBody{display:block;}
+    .play-task-source{grid-column:1;grid-row:1;margin-bottom:4px;}
+    .play-task-text{grid-column:1;grid-row:2;font-size:17px;margin-bottom:12px;}
+    .play-timer{grid-column:2;grid-row:1 / span 3;font-size:38px;margin-bottom:0;}
+    .play-actions{grid-column:1;grid-row:3;justify-content:flex-start;gap:12px;}
+    .play-action-btn{width:52px;height:52px;font-size:21px;}
+    .play-btn-skip,.play-btn-failed{font-size:17px;}
+    .play-music{margin-top:12px;padding-top:10px;}
+    /* settings panel + a long saved-playlist list can still outgrow the screen on its own */
+    .play-music-settings{max-height:38vh;overflow-y:auto;}
+    .play-complete-msg{font-size:16px;margin-bottom:12px;}
+    .play-complete-insights{padding-top:10px;margin-bottom:12px;}
+    .play-insight-list{max-height:96px;}
+  }
 
   /* ---- Struggling tasks panel (Checklists tab) ---- */
   /* Minimized: a compact, scrollable preview — click anywhere on it to pop up the full list

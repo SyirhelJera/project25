@@ -362,6 +362,7 @@
       // "All accounts" is selected in the switcher above — wishlists are per-account, so there's
       // no single list to show or add to until one specific account is picked
       bodyEl.style.display = 'none';
+      el('valWishlistToggle').setAttribute('aria-expanded', 'false');
       if(noAccEl) noAccEl.style.display = 'block';
       el('valWishlistCount').textContent = '';
       updateValWishlistBadge();
@@ -371,6 +372,7 @@
     const wishlist = state.valorant.wishlist[label] || (state.valorant.wishlist[label] = []);
     const collapsed = !!state.valorant.wishlistCollapsed;
     bodyEl.style.display = collapsed ? 'none' : 'block';
+    el('valWishlistToggle').setAttribute('aria-expanded', String(!collapsed));
     el('valWishlistChevron').textContent = collapsed ? '▶' : '▼';
     el('valWishlistCount').textContent = wishlist.length ? '('+wishlist.length+')' : '';
     el('valWishlistEmpty').style.display = wishlist.length ? 'none' : 'block';
@@ -380,12 +382,14 @@
     listEl.innerHTML = wishlist.map(w=>{
       const hit = matches.find(m=>m.wishlistId===w.id);
       return '<div class="val-wishlist-row'+(hit?' matched':'')+'" data-wish-id="'+w.id+'">'
-        + (w.imageUrl ? '<img class="val-wishlist-row-img" src="'+escapeHtml(w.imageUrl)+'" alt="">' : '<span class="val-wishlist-row-img"></span>')
-        + '<span class="val-wishlist-row-name" title="'+escapeHtml(w.name)+'">'+escapeHtml(w.name)+'</span>'
-        + (hit ? '<span class="val-wishlist-row-hit" title="In today\'s store">✓</span>' : '')
-        + '<button class="val-icon-btn" data-wish-del="'+w.id+'" title="Remove from wishlist">✕</button>'
+        + (w.imageUrl ? '<img class="val-wishlist-row-img" alt="" data-img-src="'+escapeHtml(w.imageUrl)+'">' : '<span class="val-wishlist-row-img"></span>')
+        + '<span class="val-wishlist-row-name" data-tile-title="'+escapeHtml(w.name)+'">'+escapeHtml(w.name)+'</span>'
+        + (hit ? '<span class="val-wishlist-row-hit" title="In today\'s store"><span aria-hidden="true">✓</span></span>' : '')
+        + '<button type="button" class="val-icon-btn" data-wish-del="'+w.id+'" data-tile-title="Remove '+escapeHtml(w.name)+' from wishlist"><span aria-hidden="true">✕</span></button>'
         + '</div>';
     }).join('');
+    applyValTileTitles(listEl);
+    listEl.querySelectorAll('[data-img-src]').forEach(img=>{ img.src = img.dataset.imgSrc; });
     listEl.querySelectorAll('[data-wish-del]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         state.valorant.wishlist[label] = (state.valorant.wishlist[label]||[]).filter(w=>w.id!==btn.dataset.wishDel);
@@ -495,7 +499,7 @@
 
   function valStoreHeader(label, ds){
     const checkedHtml = ds.checkedAt
-      ? '<span class="val-store-checked" title="'+escapeHtml(fmtDate(ds.checkedAt))+'">🕒 '+escapeHtml(valTimeAgo(ds.checkedAt))+'</span>'
+      ? '<span class="val-store-checked" title="'+escapeHtml(fmtDate(ds.checkedAt))+'">Checked '+escapeHtml(valTimeAgo(ds.checkedAt))+'</span>'
       : '';
     return '<div class="val-store-account-hdr"><span class="val-store-account-name">'+escapeHtml(label)+'</span>'+checkedHtml+'</div>';
   }
@@ -524,6 +528,7 @@
   // `view` is a normalized { name, subtitle, color, imageUrl, text, art } — daily skins, accessory
   // offers, and owned skins all carry different fields, so each click handler below maps its own
   // item into this shape rather than this function having to know which list it came from.
+  let valPreviewReturnFocus = null; // element to hand focus back to when the preview closes
   function openValItemPreview(view){
     const body = el('valItemPreviewBody');
     const art = view.art || null;
@@ -551,8 +556,16 @@
     body.style.setProperty('--rarity-color', view.color || '#8B92A8');
     body.querySelector('.val-preview-close').addEventListener('click', closeValItemPreview);
     el('valItemPreviewOverlay').style.display = 'flex';
+    // remember where focus came from so closing puts it back on the tile — otherwise a keyboard
+    // user lands at the top of the document and has to tab all the way back into the grid
+    valPreviewReturnFocus = document.activeElement;
+    body.querySelector('.val-preview-close').focus();
   }
-  function closeValItemPreview(){ el('valItemPreviewOverlay').style.display = 'none'; }
+  function closeValItemPreview(){
+    el('valItemPreviewOverlay').style.display = 'none';
+    if(valPreviewReturnFocus && document.contains(valPreviewReturnFocus)) valPreviewReturnFocus.focus();
+    valPreviewReturnFocus = null;
+  }
   el('valItemPreviewOverlay').addEventListener('click', e=>{
     if(e.target === el('valItemPreviewOverlay')) closeValItemPreview();
   });
@@ -633,7 +646,7 @@
     // nothing to switch between until at least one account has been checked
     el('valStoreModeToggle').style.display = allLabels.length ? 'inline-flex' : 'none';
     if(!allLabels.length){
-      wrap.innerHTML = '<div class="empty val-store-empty">🛒 No store data yet — run <code>scripts/valorant-login.mjs</code> then <code>scripts/valorant-check-store.mjs</code> locally (see README.md "Setup").</div>';
+      wrap.innerHTML = '<div class="empty val-store-empty">No store data yet — run <code>scripts/valorant-login.mjs</code> then <code>scripts/valorant-check-store.mjs</code> locally (see README.md "Setup").</div>';
       return;
     }
     // the account switcher under the store doubles as a filter here — pick one account to show
@@ -656,7 +669,7 @@
       const ds = stores[label] || {};
       const hdrHtml = valStoreHeader(label, ds);
       if(ds.error){
-        return '<div class="val-store-account val-store-account-error">'+hdrHtml+'<div class="val-err">⚠️ '+escapeHtml(ds.error)+'</div></div>';
+        return '<div class="val-store-account val-store-account-error">'+hdrHtml+'<div class="val-err"><span aria-hidden="true">⚠</span> '+escapeHtml(ds.error)+'</div></div>';
       }
       if(!ds.checkedAt){
         return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
@@ -679,20 +692,20 @@
           accessories.forEach(ac=>{
             const color = valAccessoryTypeColor(ac.type);
             const title = ac.name + (ac.type ? ' — ' + ac.type : '') + ' — click to enlarge';
-            html += '<div class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
+            html += '<button type="button" class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
               + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
-              + ' title="'+escapeHtml(title)+'">'
+              + ' data-tile-title="'+escapeHtml(title)+'">'
               + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
-              + '<div class="val-store-item-img">'
+              + '<span class="val-store-item-img">'
               + (ac.imageUrl
                   ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
                   // player titles have no art at all — show the actual in-game tag text instead
                   : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
-              + '</div>'
-              + '<div class="val-store-item-footer">'
-              + '<span class="val-store-item-name" title="'+escapeHtml(ac.name)+'">'+escapeHtml(ac.name)+'</span>'
+              + '</span>'
+              + '<span class="val-store-item-footer">'
+              + '<span class="val-store-item-name">'+escapeHtml(ac.name)+'</span>'
               + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
-              + '</div></div>';
+              + '</div></button>';
           });
           html += '</div>';
         }
@@ -702,20 +715,32 @@
         items.forEach(it=>{
           const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
           const rarity = valSkinRarityInfo(it.price);
-          html += '<div class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
+          html += '<button type="button" class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
             + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
-            + ' title="'+escapeHtml(rarity.name)+' Edition — click to enlarge">'
-            + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist">★</span>' : '')
-            + '<div class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="'+escapeHtml(it.name)+'">' : '')+'</div>'
-            + '<div class="val-store-item-footer">'
-            + '<span class="val-store-item-name" title="'+escapeHtml(it.name)+'">'+escapeHtml(it.name)+'</span>'
-            + '<span class="val-store-item-price">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
-            + '</div></div>';
+            + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
+            + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
+            + '<span class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
+            + '<span class="val-store-item-footer">'
+            + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
+            + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
+            + '</span></button>';
         });
         html += '</div>';
       }
       return '<div class="val-store-account">'+hdrHtml+html+'</div>';
     }).join('');
+    applyValTileTitles(wrap);
+  }
+
+  // Tooltip text is carried as data-tile-title and applied as a property here rather than being
+  // interpolated into a title="…" attribute above: escapeHtml() intentionally leaves double quotes
+  // alone, so a skin name containing one would otherwise escape its own attribute.
+  function applyValTileTitles(root){
+    root.querySelectorAll('[data-tile-title]').forEach(tileEl=>{
+      tileEl.title = tileEl.dataset.tileTitle;
+      // only buttons get an accessible name from this — aria-label on a plain <span> is ignored
+      if(tileEl.tagName === 'BUTTON') tileEl.setAttribute('aria-label', tileEl.dataset.tileTitle);
+    });
   }
 
   // Same tier -> color mapping the store already uses for its price-band rarity flash
@@ -810,6 +835,7 @@
 
     const collapsed = !!state.valorant.ownedSkinsCollapsed;
     el('valOwnedSkinsChevron').textContent = collapsed ? '▶' : '▼';
+    el('valOwnedSkinsToggle').setAttribute('aria-expanded', String(!collapsed));
     const bodyEl = el('valOwnedSkinsBody');
     bodyEl.style.display = collapsed ? 'none' : 'block';
     if(collapsed) return; // nothing below the header needs updating while hidden
@@ -852,14 +878,14 @@
     }
     if(os.error){
       showOnly('err');
-      errEl.innerHTML = '⚠️ '+escapeHtml(os.error);
+      errEl.innerHTML = '<span aria-hidden="true">⚠</span> '+escapeHtml(os.error);
       checkedEl.style.display = 'none';
       el('valOwnedSkinsCount').textContent = '';
       return;
     }
 
     checkedEl.style.display = os.checkedAt ? 'inline' : 'none';
-    if(os.checkedAt) checkedEl.innerHTML = '🕒 '+escapeHtml(valTimeAgo(os.checkedAt));
+    if(os.checkedAt) checkedEl.innerHTML = 'Checked '+escapeHtml(valTimeAgo(os.checkedAt));
     if(os.checkedAt) checkedEl.title = escapeHtml(fmtDate(os.checkedAt));
 
     const allSkins = os.skins || [];
@@ -888,14 +914,15 @@
     listEl.innerHTML = skins.map(s=>{
       const color = valSkinTierColor(s.tierName);
       const sub = [s.weaponType, tierDisplayName(s.tierName)].filter(Boolean).join(' — ');
-      return '<div class="val-store-item" style="--rarity-color:'+color+';"'
+      return '<button type="button" class="val-store-item" style="--rarity-color:'+color+';"'
         + ' data-preview-kind="owned" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(s.uuid||'')+'"'
-        + ' title="'+escapeHtml(s.name)+(sub?' — '+escapeHtml(sub):'')+' — click to enlarge">'
-        + '<div class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="'+escapeHtml(s.name)+'">' : '')+'</div>'
-        + '<div class="val-store-item-footer">'
-        + '<span class="val-store-item-name" title="'+escapeHtml(s.name)+'">'+escapeHtml(s.name)+'</span>'
-        + '</div></div>';
+        + ' data-tile-title="'+escapeHtml(s.name+(sub?' — '+sub:'')+' — click to enlarge')+'">'
+        + '<span class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="">' : '')+'</span>'
+        + '<span class="val-store-item-footer">'
+        + '<span class="val-store-item-name">'+escapeHtml(s.name)+'</span>'
+        + '</span></button>';
     }).join('');
+    applyValTileTitles(listEl);
   }
 
   /* ---- Local Helper: talks to scripts/valorant-local-server.mjs running on this machine, so
@@ -1094,6 +1121,24 @@
     setInterval(pollValLocalStatus, 15000);
   }
 
+  /* The add form is a slim row under the toolbar rather than a permanent block: collapsed it
+     costs nothing, and it auto-opens exactly once on an empty list so a first run still lands
+     on it. Opening focuses the Riot ID field, so "+ Add" is one click to typing. */
+  let valAddRowOpened = false;
+  function setValAddRowOpen(open){
+    if(open) valAddRowOpened = true;
+    el('valAddRow').style.display = open ? 'flex' : 'none';
+    el('valAddToggleBtn').setAttribute('aria-expanded', String(open));
+    el('valAddToggleBtn').textContent = open ? '− Add' : '+ Add';
+    if(open) el('valNewRiotId').focus();
+    else { el('valAddErr').style.display = 'none'; el('valNewRiotId').value = ''; }
+  }
+  el('valAddToggleBtn').addEventListener('click', ()=>{
+    setValAddRowOpen(el('valAddRow').style.display === 'none');
+  });
+  el('valAddCancelBtn').addEventListener('click', ()=> setValAddRowOpen(false));
+  el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key === 'Escape') setValAddRowOpen(false); });
+
   function renderValorant(){
     renderValSubtabs();
     renderValWishlist();
@@ -1101,11 +1146,25 @@
     renderValOwnedSkins();
     renderValLocalPanel();
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
+    const keyStateEl = el('valApiKeyState');
+    if(keyStateEl){
+      keyStateEl.textContent = state.valorant.apiKey ? 'Key saved' : 'No key set — rank lookups will fail';
+      keyStateEl.className = 'val-key-state' + (state.valorant.apiKey ? ' ok' : ' warn');
+    }
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;
     el('valAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
-    el('valToolbar').style.display = accounts.length > 1 ? 'flex' : 'none';
+    // The toolbar always shows, because it carries "+ Add" — hiding it on an empty list would
+    // leave no way back if the add row were dismissed. Its other two controls need accounts to
+    // mean anything, and sort needs more than one.
+    el('valSortGroup').style.display = accounts.length > 1 ? 'inline-flex' : 'none';
+    el('valRefreshAllBtn').style.display = accounts.length ? '' : 'none';
+    // first run: nothing to look at, so the add row starts open instead of behind a button
+    if(!accounts.length && !valAddRowOpened) setValAddRowOpen(true);
     el('valSortMode').value = state.valorant.sortMode;
+    // rescue the chart panel before the wipe below — while a card is selected it lives inside the
+    // grid, and innerHTML='' would destroy the element along with its zoom-button listeners
+    el('valChartHome').appendChild(el('valChartCard'));
     listEl.innerHTML = '';
 
     const manualOrder = state.valorant.sortMode === 'manual';
@@ -1123,71 +1182,153 @@
     groupOrder.forEach(gkey=>{
       if(gkey){
         const collapsed = !!valGroupCollapsed[gkey];
-        const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header val-group-header';
-        lbl.style.cursor = 'pointer';
-        lbl.innerHTML = '<span class="wlg-chevron">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
+        const lbl = document.createElement('button');
+        lbl.type = 'button';
+        lbl.className='finance-group-lbl checklist-group-header val-group-header';
+        lbl.setAttribute('aria-expanded', String(!collapsed));
+        lbl.innerHTML = '<span class="wlg-chevron" aria-hidden="true">'+(collapsed?'▶':'▼')+'</span> '+escapeHtml(gkey)
+          + ' <span class="val-group-count">('+groupsMap[gkey].length+')</span>';
         lbl.addEventListener('click', ()=>{ valGroupCollapsed[gkey] = !valGroupCollapsed[gkey]; renderValorant(); });
         listEl.appendChild(lbl);
         if(collapsed) return; // skip rendering this subgroup's accounts while minimized
       }
       groupsMap[gkey].forEach(acc=>{
       const card = document.createElement('div');
+      const selected = state.valorant.selectedAccountId===acc.id;
+      const recentCls = valRecentActivityClass(acc);
+      // "expanded" is the same card, grown to the full grid width and holding the RR chart in
+      // place of its own summary — there is no second card for the graph
       card.className = 'val-account-card'
-        + (state.valorant.selectedAccountId===acc.id ? ' selected' : '')
-        + (' '+valRecentActivityClass(acc));
+        + (selected ? ' selected expanded' : '')
+        + (recentCls ? ' '+recentCls : '');
       card.dataset.accId = acc.id;
       const cur = acc.current;
-      const updatedTxt = acc.lastFetched ? ('Updated '+valTimeAgo(acc.lastFetched)) : '';
-      let bodyHtml = '';
+      const riotId = acc.name+'#'+acc.tag;
+      const updatedTxt = acc.lastFetched ? ('updated '+valTimeAgo(acc.lastFetched)) : '';
+
+      /* The collapsed card is one line of identity over one line of rank, ~57px tall, so a dozen
+         accounts fit on a screen without scrolling. Everything that isn't "who is this and where
+         are they now" — region, elo, peak, timestamps, the subgroup field — moves into the
+         expanded state rather than costing height on every card. */
+      let iconHtml = '<span class="val-rank-icon val-rank-icon-empty" aria-hidden="true"></span>';
+      let statusHtml, metaHtml = '', barHtml = '', deltaHtml = '';
       if(acc.error){
-        bodyHtml = '<div class="val-err">'+escapeHtml(acc.error)+'</div>';
+        statusHtml = '<div class="val-card-status"><span class="val-card-err" role="alert">'
+          + '<span aria-hidden="true">⚠</span> '+escapeHtml(acc.error)+'</span></div>';
       } else if(cur){
-        const color = valTierColor(cur.tierName);
+        // the tier color drives the whole card via one custom property — CSS derives a readable
+        // text shade from it per theme (--tier-ink), so nothing paints a raw tier color onto text
+        card.style.setProperty('--tier', valTierColor(cur.tierName));
         const rrPct = Math.max(0, Math.min(100, cur.rr));
-        const changeCls = cur.lastChange > 0 ? 'up' : (cur.lastChange < 0 ? 'down' : '');
+        const changeCls = cur.lastChange > 0 ? 'up' : (cur.lastChange < 0 ? 'down' : 'flat');
         const changeTxt = cur.lastChange > 0 ? ('+'+cur.lastChange) : String(cur.lastChange||0);
+        // never color alone: the arrow carries the same up/down meaning as the green/red
+        const changeGlyph = cur.lastChange > 0 ? '▲' : (cur.lastChange < 0 ? '▼' : '–');
         const iconInfo = (valTierIconCache && cur.tierId!=null) ? valTierIconCache[cur.tierId] : null;
-        const iconHtml = (iconInfo && iconInfo.large) ? '<img class="val-rank-icon" src="'+iconInfo.large+'" alt="'+escapeHtml(cur.tierName||'')+'">' : '';
-        const recentCls = valRecentActivityClass(acc);
-        const recentChip = recentCls ? '<span class="val-recent-chip '+(recentCls==='val-recent-up'?'up':'down')+'" title="RR changed on the last refreshed match">'+(recentCls==='val-recent-up'?'▲ Recent gain':'▼ Recent loss')+'</span>' : '';
+        // alt is empty on purpose — the tier name sits right beside the icon, so a label here
+        // would just be read out twice
+        if(iconInfo && iconInfo.large) iconHtml = '<img class="val-rank-icon" src="'+iconInfo.large+'" alt="">';
         // if RR changed on the last refreshed match, start the fill bar at its pre-change width and
         // animate it up to the current width (plus a brief color pulse) instead of jumping straight there
         const prevPct = recentCls ? Math.max(0, Math.min(100, cur.rr - (cur.lastChange||0))) : rrPct;
         const fillAnimCls = recentCls ? (recentCls==='val-recent-up' ? ' val-rr-anim-up' : ' val-rr-anim-down') : '';
-        const lastMatchTxt = valTimeAgo(valLastMatchTime(acc));
-        bodyHtml = '<div class="val-account-body">'
-          + '<span class="val-rank-cluster">' + iconHtml
-          + '<span class="val-rank-badge" style="background:'+color+';">'+escapeHtml(cur.tierName||'Unranked')+'</span></span>'
-          + recentChip
-          + '<div class="val-rr-wrap"><div class="val-rr-top"><span>RR</span><b>'+cur.rr+' / 100</b></div>'
-          + '<div class="val-rr-track"><div class="val-rr-fill'+fillAnimCls+'" style="width:'+prevPct+'%;background:'+color+';" data-target-pct="'+rrPct+'"></div></div></div>'
-          + '<div class="val-card-stats">'
-          + '<div class="val-stat-mini"><div class="num '+changeCls+'">'+changeTxt+'</div><div class="lbl">Last Game</div></div>'
-          + '<div class="val-stat-mini"><div class="num">'+cur.elo+'</div><div class="lbl">Elo</div></div>'
-          + '</div>'
-          + '</div>'
-          + ((lastMatchTxt || cur.peakTierName) ? '<div class="val-peak-note">'
-              + (lastMatchTxt ? 'Last match '+escapeHtml(lastMatchTxt) : '')
-              + (lastMatchTxt && cur.peakTierName ? ' · ' : '')
-              + (cur.peakTierName ? 'Peak this act: '+escapeHtml(cur.peakTierName) : '')
-              + '</div>' : '');
+
+        // the delta rides the name line, not the rank line: sharing a ~150px row with it forced
+        // the tier name to truncate to "Immort…", and the tier name is the thing being monitored
+        deltaHtml = '<span class="val-delta '+changeCls+'" data-delta-label="Last match: '+changeTxt+' RR">'
+          + '<span aria-hidden="true">'+changeGlyph+'</span>'+escapeHtml(changeTxt)+'</span>';
+        // Elo, not RR, is the figure on a collapsed card: RR resets to near zero on every
+        // promotion, so across a list of accounts it doesn't rank or compare — elo is continuous.
+        // RR is still one line away in the expanded meta, on the bar below, and in the tooltip.
+        // Falls back to RR when elo is missing (unranked, or the API didn't return one).
+        const figureHtml = cur.elo
+          ? '<span class="val-card-figure"><b>'+cur.elo.toLocaleString()+'</b> elo</span>'
+          : '<span class="val-card-figure"><b>'+cur.rr+'</b> RR</span>';
+        statusHtml = '<div class="val-card-status">'
+          + '<span class="val-tier-name">'+escapeHtml(cur.tierName||'Unranked')+'</span>'
+          + figureHtml
+          + '</div>';
+        // hairline along the card's bottom edge rather than a row of its own — no height cost
+        barHtml = '<div class="val-rr-track" role="img" data-rr-label="'+cur.rr+' of 100 RR">'
+          + '<div class="val-rr-fill'+fillAnimCls+'" style="width:'+prevPct+'%;" data-target-pct="'+rrPct+'"></div></div>';
+
+        if(selected){
+          const metaBits = [ (VAL_REGION_LABELS[acc.region]||acc.region) + ' · ' + String(acc.platform||'').toUpperCase() ];
+          // RR lives here now that elo has taken the collapsed card's figure slot — unless elo was
+          // missing, in which case the line above is already showing RR
+          if(cur.elo) metaBits.push(cur.rr+' RR');
+          if(cur.peakTierName) metaBits.push('Peak '+cur.peakTierName);
+          const lastMatchTxt = valTimeAgo(valLastMatchTime(acc));
+          if(lastMatchTxt) metaBits.push('last match '+lastMatchTxt);
+          if(updatedTxt) metaBits.push(updatedTxt);
+          metaHtml = '<div class="val-meta">'+escapeHtml(metaBits.join(' · '))+'</div>';
+        }
       } else {
-        bodyHtml = '<div class="val-peak-note">Not fetched yet — click refresh to pull current rank.</div>';
+        statusHtml = '<div class="val-card-status"><span class="val-card-idle">Not fetched yet — hit ⟳</span></div>';
       }
       const agentInfo = (acc.lastAgent && valAgentCache) ? valAgentCache[acc.lastAgent.toLowerCase()] : null;
       const agentBgHtml = (agentInfo && agentInfo.background)
-        ? '<div class="val-agent-bg" style="background-image:url(\''+agentInfo.background+'\');" title="Last played: '+escapeHtml(agentInfo.name)+'"></div>' : '';
+        ? '<div class="val-agent-bg" data-agent-name="'+escapeHtml(agentInfo.name)+'" aria-hidden="true"></div>' : '';
       card.innerHTML = agentBgHtml + '<div class="val-account-top">'
-        + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder">⠿</span>'
+        + '<span class="val-drag-handle'+(manualOrder?' active':'')+'" draggable="'+manualOrder+'" title="Drag to reorder" aria-hidden="true">⠿</span>'
+        + iconHtml
         + '<div class="val-card-id">'
-        + '<span class="val-riotid" title="'+escapeHtml(acc.name)+'#'+escapeHtml(acc.tag)+'">'+escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></span>'
-        + '<span class="val-region-chip">'+escapeHtml(VAL_REGION_LABELS[acc.region]||acc.region)+' · '+escapeHtml(acc.platform)+(updatedTxt?' · '+escapeHtml(updatedTxt):'')+'</span>'
-        + '<span class="val-group-field"><input type="text" class="mini-input val-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(acc.group||'')+'" title="Organize this account into a subgroup"></span>'
+        + '<div class="val-card-name-row">'
+        // a real button so the expand/collapse this card drives is reachable by keyboard; the
+        // click still bubbles to the card handler below
+        + '<button type="button" class="val-riotid" data-select="'+acc.id+'" aria-expanded="'+selected+'">'
+        + escapeHtml(acc.name)+'<span class="val-tag">#'+escapeHtml(acc.tag)+'</span></button>'
+        + deltaHtml
+        + '</div>'
+        + statusHtml
         + '</div>'
         + '<span class="val-acc-actions">'
-        + '<button class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'" title="Refresh rank">⟳</button>'
-        + '<button class="val-icon-btn" data-del="'+acc.id+'" title="Remove account">✕</button>'
-        + '</span></div>' + bodyHtml;
+        + '<button type="button" class="val-icon-btn'+(acc.loading?' spinning':'')+'" data-refresh="'+acc.id+'">'
+        + '<span aria-hidden="true">⟳</span></button>'
+        + '<button type="button" class="val-icon-btn val-icon-btn-danger" data-del="'+acc.id+'">'
+        + '<span aria-hidden="true">✕</span></button>'
+        + '</span></div>'
+        + barHtml
+        + (selected
+            ? metaHtml
+              + '<div class="val-card-chart"></div>'
+              + '<div class="val-group-field"><input type="text" class="mini-input val-group-input" placeholder="Subgroup…" maxlength="40"></div>'
+            : '');
+
+      // Everything user-supplied (Riot IDs, agent names, subgroups) is assigned as a property
+      // rather than interpolated into an attribute above — escapeHtml() deliberately leaves double
+      // quotes alone, so a name containing one would otherwise break out of its attribute.
+      const nameBtn = card.querySelector('.val-riotid');
+      nameBtn.title = selected ? riotId+' — collapse RR history' : riotId+' — show RR history';
+      // a collapsed card carries no subgroup field; the full detail only exists when expanded
+      const groupInput = card.querySelector('.val-group-input');
+      if(groupInput){
+        groupInput.value = acc.group||'';
+        groupInput.title = 'Organize this account into a subgroup';
+        groupInput.setAttribute('aria-label', 'Subgroup for '+riotId);
+      }
+      // the collapsed card truncates its status line, so the full text lives on the card itself
+      card.title = acc.error ? riotId+' — '+acc.error
+        : (cur ? riotId+' — '+(cur.tierName||'Unranked')+', '+cur.rr+' RR'
+                 + (cur.elo ? ', '+cur.elo.toLocaleString()+' elo' : '')
+          : riotId+' — not fetched yet');
+      card.querySelector('[data-refresh]').setAttribute('aria-label', 'Refresh rank for '+riotId);
+      card.querySelector('[data-refresh]').title = 'Refresh rank';
+      card.querySelector('[data-del]').setAttribute('aria-label', 'Remove '+riotId);
+      card.querySelector('[data-del]').title = 'Remove account';
+      const agentEl = card.querySelector('.val-agent-bg');
+      if(agentEl && agentInfo){
+        agentEl.style.backgroundImage = 'url("'+agentInfo.background.replace(/"/g,'%22')+'")';
+        agentEl.title = 'Last played: '+agentInfo.name;
+      }
+      const deltaEl = card.querySelector('.val-delta');
+      if(deltaEl){
+        deltaEl.setAttribute('aria-label', deltaEl.dataset.deltaLabel);
+        deltaEl.title = deltaEl.dataset.deltaLabel;
+      }
+      const trackEl = card.querySelector('.val-rr-track');
+      if(trackEl) trackEl.setAttribute('aria-label', trackEl.dataset.rrLabel);
+
       listEl.appendChild(card);
       }); // end groupsMap[gkey].forEach
     }); // end groupOrder.forEach
@@ -1202,15 +1343,17 @@
       });
     });
 
-    // clicking anywhere on the card (outside the drag handle / action buttons) selects that
-    // account and scrolls the RR History graph above into view for it
+    // Clicking a card turns it into its own RR history; clicking it again turns it back.
+    // The chart now lives *inside* the card, so .val-chart-panel has to be excluded too —
+    // otherwise picking a zoom range or dragging across the plot would collapse the card
+    // out from under the pointer.
     listEl.querySelectorAll('.val-account-card').forEach(card=>{
       card.addEventListener('click', (e)=>{
-        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle') || e.target.closest('.val-group-field')) return;
-        state.valorant.selectedAccountId = card.dataset.accId;
+        if(e.target.closest('.val-acc-actions') || e.target.closest('.val-drag-handle')
+           || e.target.closest('.val-group-field') || e.target.closest('.val-chart-panel')) return;
+        state.valorant.selectedAccountId =
+          (state.valorant.selectedAccountId === card.dataset.accId) ? null : card.dataset.accId;
         save(); renderValorant();
-        const chartCard = el('valChartCard');
-        if(chartCard && chartCard.style.display !== 'none') chartCard.scrollIntoView({behavior:'smooth', block:'start'});
       });
     });
     listEl.querySelectorAll('[data-refresh]').forEach(x=>{
@@ -1220,10 +1363,13 @@
       x.addEventListener('click', (e)=>{
         e.stopPropagation();
         const id = x.dataset.del;
+        // the slim card puts a 26px delete button next to a 26px refresh button, so a mis-tap is
+        // cheap to make and impossible to undo — the tracked history for that account is gone
+        const victim = state.valorant.accounts.find(a=>a.id===id);
+        if(victim && !window.confirm('Stop tracking '+victim.name+'#'+victim.tag+'? Its stored RR history will be lost.')) return;
         state.valorant.accounts = state.valorant.accounts.filter(a=>a.id!==id);
-        if(state.valorant.selectedAccountId===id){
-          state.valorant.selectedAccountId = state.valorant.accounts.length ? state.valorant.accounts[0].id : null;
-        }
+        // close the panel rather than sliding it onto an unrelated account
+        if(state.valorant.selectedAccountId===id) state.valorant.selectedAccountId = null;
         save(); renderValorant();
       });
     });
@@ -1236,34 +1382,98 @@
       });
     });
 
-    renderValorantChartSelector();
+    mountValChartPanel(listEl);
     renderValorantChart();
   }
 
-  function renderValorantChartSelector(){
-    const row = el('valChartAccountRow');
-    const accounts = state.valorant.accounts;
-    if(!accounts.length){
-      row.style.display = 'none';
-      el('valChartLbl').style.display = 'none';
-      el('valChartCard').style.display = 'none';
+  // How many columns the account grid is currently showing. A laid-out grid reports its used
+  // track sizes here ("228px 228px …"); a grid inside a display:none view instead reports the
+  // authored repeat(auto-fill, …) string, which is the signal that no measurement is possible yet
+  // — the ResizeObserver below re-runs this once the view is actually shown.
+  function valGridColumnCount(listEl){
+    const tpl = getComputedStyle(listEl).gridTemplateColumns;
+    if(!tpl || tpl === 'none' || /[a-z]+\(/i.test(tpl)) return 1;
+    return Math.max(1, tpl.trim().split(/\s+/).length);
+  }
+
+  /* The selected card *becomes* the chart: it spans the full grid width and holds the RR history
+     in place of its own summary. Because a full-width item can't share a row with the cards around
+     it, the browser would otherwise push it onto the next row and leave a hole in the one above —
+     so the card is first moved to sit just past the last complete row of its neighbours.
+
+     Grouped cards are handled per subgroup, since a subgroup header spans every column and so
+     always starts a fresh row. */
+  function mountValChartPanel(listEl){
+    const panel = el('valChartCard');
+    const selId = state.valorant.selectedAccountId;
+    const card = selId
+      ? Array.from(listEl.querySelectorAll('.val-account-card')).find(c=>c.dataset.accId===selId)
+      : null;
+    if(!card){
+      panel.style.display = 'none';
+      el('valChartHome').appendChild(panel);
       return;
     }
-    if(!state.valorant.selectedAccountId || !accounts.find(a=>a.id===state.valorant.selectedAccountId)){
-      state.valorant.selectedAccountId = accounts[0].id;
-    }
-    el('valChartLbl').style.display = 'block';
-    el('valChartCard').style.display = 'block';
-    row.style.display = accounts.length > 1 ? 'flex' : 'none';
-    row.innerHTML = accounts.map(a=>
-      '<button class="chart-zoom-btn'+(state.valorant.selectedAccountId===a.id?' active':'')+'" data-acc="'+a.id+'">'+escapeHtml(a.name)+'#'+escapeHtml(a.tag)+'</button>'
-    ).join('');
-    row.querySelectorAll('[data-acc]').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        state.valorant.selectedAccountId = btn.dataset.acc;
-        save(); renderValorant();
-      });
+
+    const cols = valGridColumnCount(listEl);
+    const segments = []; let cur = [];
+    Array.from(listEl.children).forEach(ch=>{
+      if(ch.classList.contains('val-group-header')){ if(cur.length) segments.push(cur); cur = []; }
+      else if(ch.classList.contains('val-account-card')) cur.push(ch);
     });
+    if(cur.length) segments.push(cur);
+    const seg = segments.find(s=> s.indexOf(card) >= 0);
+    if(seg && seg.length > 1){
+      const k = seg.indexOf(card);
+      const rest = seg.filter(c=> c !== card);
+      const segEnd = seg[seg.length-1].nextSibling; // captured before the move
+      // round up to a whole number of rows, so the cards before it always fill their rows exactly
+      const at = Math.min(rest.length, Math.ceil(k/cols)*cols);
+      const ref = at < rest.length ? rest[at] : segEnd;
+      if(ref !== card) listEl.insertBefore(card, ref);
+    }
+
+    card.querySelector('.val-card-chart').appendChild(panel);
+    panel.style.display = 'block';
+  }
+
+  el('valChartCloseBtn').addEventListener('click', ()=>{
+    state.valorant.selectedAccountId = null;
+    save(); renderValorant();
+  });
+
+  /* The chart now sits inside the account card, whose click handler toggles the card shut — so no
+     click inside the chart may reach it. Testing e.target against .val-chart-panel in that handler
+     is not enough on its own: a zoom button rebuilds the zoom row from its own click handler, so by
+     the time the event bubbles up, e.target has been detached from the document and closest() walks
+     a parentless node. Stopping at the panel is independent of what the target did to itself.
+     The panel element itself is never replaced, so this binds once. */
+  el('valChartCard').addEventListener('click', e=> e.stopPropagation());
+
+  /* Both the panel's row position and the chart's geometry depend on the grid's rendered width,
+     and neither is knowable while the tab is hidden — every offsetTop reads 0 in a display:none
+     view, which would park the panel at the end of the list instead of under its card. Watching
+     the list itself covers all three cases that matter: the window resizing, the nav collapsing,
+     and this view being shown for the first time.
+
+     Width only: inserting the panel changes the list's *height*, so reacting to height as well
+     would have the observer retrigger itself. */
+  let valLastListWidth = 0;
+  let valResizeTimer = null;
+  if(typeof ResizeObserver === 'function'){
+    new ResizeObserver(entries=>{
+      const w = Math.round(entries[0].contentRect.width);
+      if(!w || w === valLastListWidth) return;
+      valLastListWidth = w;
+      if(!state.valorant || !state.valorant.selectedAccountId) return;
+      clearTimeout(valResizeTimer);
+      valResizeTimer = setTimeout(()=>{
+        const listEl2 = el('valAccountList');
+        if(!listEl2.querySelector('.val-account-card')) return;
+        mountValChartPanel(listEl2);
+        renderValorantChart();
+      }, 120);
+    }).observe(valAccountListEl);
   }
 
   // RR history is per-match, not per-day, so "zoom" narrows to the N most recent matches
@@ -1275,24 +1485,27 @@
     {key:'all', label:'All', count:null}
   ];
   let valChartZoom = 'all'; // not persisted — resets to a sensible default each page load
+  let chartGradId = 0; // keeps each render's area-gradient id unique rather than reusing one name
 
   function renderValorantChart(){
     const wrap = el('valChartWrap');
     const accounts = state.valorant.accounts;
     const zoomRow = el('valChartZoomRow');
-    const legendEl = el('valChartLegend');
-    if(!accounts.length){ wrap.innerHTML=''; zoomRow.style.display='none'; return; }
-    const acc = accounts.find(a=>a.id===state.valorant.selectedAccountId) || accounts[0];
+    const statsEl = el('valChartStats');
+    const acc = accounts.find(a=>a.id===state.valorant.selectedAccountId);
+    if(!acc){ wrap.innerHTML=''; zoomRow.style.display='none'; statsEl.innerHTML=''; return; }
     const fullHist = (acc.history||[]).filter(h=> typeof h.rr === 'number');
     if(fullHist.length < 2){
-      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough match history yet for '+escapeHtml(acc.name)+' — refresh after a competitive match to build the graph.</div>';
+      wrap.innerHTML = '<div class="val-chart-empty">Not enough match history yet — refresh after a competitive match to start building the graph.</div>';
       zoomRow.style.display = 'none';
+      statsEl.innerHTML = '';
       return;
     }
 
     zoomRow.style.display = 'flex';
     zoomRow.innerHTML = VAL_CHART_ZOOMS.map(z=>
-      '<button class="chart-zoom-btn'+(valChartZoom===z.key?' active':'')+'" data-vzoom="'+z.key+'">'+z.label+'</button>'
+      '<button type="button" class="chart-zoom-btn'+(valChartZoom===z.key?' active':'')+'"'
+      + (valChartZoom===z.key?' aria-pressed="true"':'')+' data-vzoom="'+z.key+'">'+z.label+'</button>'
     ).join('');
     zoomRow.querySelectorAll('[data-vzoom]').forEach(btn=>{
       btn.addEventListener('click', ()=>{ valChartZoom = btn.dataset.vzoom; renderValorantChart(); });
@@ -1301,7 +1514,8 @@
     const zoomOpt = VAL_CHART_ZOOMS.find(z=>z.key===valChartZoom) || VAL_CHART_ZOOMS[3];
     const hist = zoomOpt.count ? fullHist.slice(-zoomOpt.count) : fullHist;
     if(hist.length < 2){
-      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Not enough matches in this range — try a wider zoom.</div>';
+      wrap.innerHTML = '<div class="val-chart-empty">Only one match in this range — try a wider zoom.</div>';
+      statsEl.innerHTML = '';
       return;
     }
 
@@ -1322,108 +1536,215 @@
     hist.forEach(h=>{ const tid = tierIdOf(h); if(tid != null && h.tier) tierIdToName[tid] = h.tier; });
     if(acc.current && typeof acc.current.tierId === 'number' && acc.current.tierName) tierIdToName[acc.current.tierId] = acc.current.tierName;
 
-    const W = 780, H = 250, padL = 46, padR = 14, padT = 26, padB = 26;
+    // Drawn at the container's real pixel width so one viewBox unit is one CSS pixel. The old
+    // fixed 780-unit viewBox was scaled to fit, which shrank every label along with it — on a
+    // phone the axis text was rendering around 5px.
+    const W = Math.max(300, Math.round(wrap.clientWidth) || 720);
+    const narrow = W < 520;
+    // height tracks width so a full-width card doesn't get a 1200×250 letterbox that flattens
+    // every RR swing into a near-horizontal line
+    const H = Math.round(Math.max(190, Math.min(300, W * 0.26)));
+    const padL = 12, padR = 14, padT = 26, padB = 26;
     const vals = hist.map(valOf);
     // Y-axis is dynamic rather than hard-clamped to 0-100: Radiant accounts can carry RR well
     // past 100 (Riot's "combined rating" used to separate Radiant players), so capping at 100
     // used to flatten/crop those graphs. We still never go below 0.
-    let minV = Math.max(0, Math.min(...vals) - 5);
-    let maxV = Math.max(...vals) + 5;
+    const rawSpan = Math.max(20, Math.max(...vals) - Math.min(...vals));
+    let minV = Math.max(0, Math.min(...vals) - rawSpan*0.14);
+    let maxV = Math.max(...vals) + rawSpan*0.14;
     if(minV >= maxV){ minV = 0; maxV = 100; }
     const xOf = i => padL + (hist.length===1 ? 0 : (i/(hist.length-1)) * (W-padL-padR));
     const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
+    const plotBottom = H - padB;
 
-    // background bands: one colored strip per 100-unit tier segment on the y-axis, tinted with
-    // that tier's color, so it's immediately obvious which rank band each part of the line sits
-    // in — not just from the on-line labels, but as a constant visual backdrop.
-    function valTierBandsSvg(){
-      const tidLo = Math.floor(minV/100);
-      const tidHi = Math.floor((maxV - 0.0001)/100);
-      let svg = '';
-      for(let tid=tidLo; tid<=tidHi; tid++){
-        const bandLo = Math.max(minV, tid*100);
-        const bandHi = Math.min(maxV, (tid+1)*100);
-        if(bandHi <= bandLo) continue;
-        const name = tierIdToName[tid];
-        if(!name) continue; // unknown tier in this range — leave it as plain background rather than guessing
-        const yTop = yOf(bandHi), yBot = yOf(bandLo);
-        svg += '<rect x="'+padL+'" y="'+yTop.toFixed(1)+'" width="'+(W-padL-padR)+'" height="'+(yBot-yTop).toFixed(1)+'" fill="'+hexToRgba(valTierColor(name), 0.13)+'"/>';
-      }
-      return svg;
-    }
-    const bandsSvg = valTierBandsSvg();
-
-    // Color each line segment by the rank tier of its destination point, so the line visually
-    // tracks rank changes (e.g. a climb into Diamond turns the line diamond-blue) instead of a flat color.
-    let lineSvg = '';
-    for(let i=1;i<hist.length;i++){
-      const segColor = valTierColor(hist[i].tier || hist[i-1].tier);
-      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(vals[i-1]).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(vals[i]).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2.5" stroke-linecap="round"/>';
-    }
-    const dotsSvg = hist.map((h,i)=>
-      '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="3.5" fill="'+valTierColor(h.tier)+'" stroke="var(--surface)" stroke-width="1"><title>'+escapeHtml(h.tier||'')+' — '+h.rr+' RR</title></circle>'
-    ).join('');
-
-    // Visible tier labels: rather than relying on hover-only tooltips, show the rank icon
-    // directly on the chart at the first point and at every point where the tier actually
-    // changes from the previous one (e.g. climbing from "Gold 2" into "Gold 3"). Falls back to
-    // the tier name as text if the icon hasn't been fetched/cached yet.
-    let tierLabelSvg = '';
-    const tierLabelSize = 20;
-    hist.forEach((h,i)=>{
-      const isFirst = i===0;
-      const changed = i>0 && h.tier && h.tier !== hist[i-1].tier;
-      if((isFirst && h.tier) || changed){
-        const y = yOf(vals[i]);
-        const above = y > padT + 14;
-        const iconInfo = (valTierIconCache && h.tierId!=null) ? valTierIconCache[h.tierId] : null;
-        const iconUrl = iconInfo && (iconInfo.small || iconInfo.large);
-        if(iconUrl){
-          const iy = above ? y - 9 - tierLabelSize : y + 8;
-          const ix = xOf(i) - tierLabelSize/2;
-          tierLabelSvg += '<image href="'+iconUrl+'" x="'+ix.toFixed(1)+'" y="'+iy.toFixed(1)+'" width="'+tierLabelSize+'" height="'+tierLabelSize+'"><title>'+escapeHtml(h.tier||'')+'</title></image>';
-        } else {
-          const ly = above ? y - 9 : y + 16;
-          tierLabelSvg += '<text class="val-tier-label" x="'+xOf(i).toFixed(1)+'" y="'+ly.toFixed(1)+'" text-anchor="middle" fill="'+valTierColor(h.tier)+'">'+escapeHtml(h.tier)+'</text>';
-        }
-      }
-    });
-
-    // y-axis gridline labels: express each line in "tier name + RR-in-tier" terms rather than a
-    // raw combined number, since the combined value itself has no meaning to the player.
+    // express a combined value in "tier name + RR-in-tier" terms — the combined number itself
+    // means nothing to a player
     function combinedLabel(v){
       const tid = Math.floor(v/100);
       const rrPart = Math.max(0, Math.min(99, Math.round(v - tid*100)));
       const name = tierIdToName[tid];
       return name ? (name+' · '+rrPart) : String(Math.round(v));
     }
+
+    /* Y axis is the tier boundaries themselves — a dashed rule wherever a tier begins, labelled
+       with the tier it opens. The old chart filled every band with a translucent tint, which meant
+       tier color was being said five ways at once (bands + line + dots + icons + legend) and the
+       line had to fight its own background. One thin rule carries the same information. */
     let gridSvg = '';
-    const steps = 4;
-    for(let i=0;i<=steps;i++){
-      const v = minV + (maxV-minV)*(i/steps);
-      const y = yOf(v);
-      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
-      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="9.5" fill="var(--muted)" text-anchor="end">'+escapeHtml(combinedLabel(v))+'</text>';
+    let boundaries = 0;
+    for(let tid=Math.ceil(minV/100); tid<=Math.floor(maxV/100); tid++){
+      const name = tierIdToName[tid];
+      if(!name) continue; // unknown tier — don't guess a label for it
+      const y = yOf(tid*100);
+      const c = valTierColor(name);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="'+hexToRgba(c,0.5)+'" stroke-width="1" stroke-dasharray="3 4"/>';
+      gridSvg += '<text class="val-chart-tierlbl" x="'+(padL+3)+'" y="'+(y-5).toFixed(1)+'" fill="'+c+'">'+escapeHtml(name)+'</text>';
+      boundaries++;
     }
-    const labelIdxs = [0, Math.floor((hist.length-1)/2), hist.length-1];
+    // the whole range can sit inside one tier (no boundary crossed), which would leave the plot
+    // with no horizontal reference at all — fall back to two neutral rules labelled in RR
+    if(boundaries < 1){
+      [1/3, 2/3].forEach(f=>{
+        const v = minV + (maxV-minV)*f;
+        const y = yOf(v);
+        gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 4"/>';
+        gridSvg += '<text class="val-chart-tierlbl" x="'+(padL+3)+'" y="'+(y-5).toFixed(1)+'" fill="var(--muted)">'+escapeHtml(combinedLabel(v))+'</text>';
+      });
+    }
+
+    // the line as one path, plus a soft area beneath it tinted with the tier the account ended the
+    // range in — gives the line weight without another layer of color competing with it
+    let linePath = '';
+    hist.forEach((h,i)=>{ linePath += (i?'L':'M') + xOf(i).toFixed(1)+' '+yOf(vals[i]).toFixed(1)+' '; });
+    const endColor = valTierColor(hist[hist.length-1].tier || (acc.current && acc.current.tierName));
+    const areaSvg = '<path d="'+linePath+'L'+xOf(hist.length-1).toFixed(1)+' '+plotBottom+' L'+xOf(0).toFixed(1)+' '+plotBottom+' Z" fill="url(#valArea'+chartGradId+')"/>';
+    const defsSvg = '<defs><linearGradient id="valArea'+chartGradId+'" x1="0" y1="0" x2="0" y2="1">'
+      + '<stop offset="0%" stop-color="'+endColor+'" stop-opacity="0.28"/>'
+      + '<stop offset="100%" stop-color="'+endColor+'" stop-opacity="0"/></linearGradient></defs>';
+
+    // Each segment keeps its destination tier's color, so a climb into Diamond visibly turns
+    // diamond-blue. Drawn as one polyline per segment with round joins so it reads as a line
+    // rather than a chain of sticks.
+    let lineSvg = '';
+    for(let i=1;i<hist.length;i++){
+      const segColor = valTierColor(hist[i].tier || hist[i-1].tier);
+      lineSvg += '<line x1="'+xOf(i-1).toFixed(1)+'" y1="'+yOf(vals[i-1]).toFixed(1)+'" x2="'+xOf(i).toFixed(1)+'" y2="'+yOf(vals[i]).toFixed(1)+'" stroke="'+segColor+'" stroke-width="2" stroke-linecap="round"/>';
+    }
+
+    /* Dots only where something happened. The old chart drew one at every match, which at "All"
+       zoom on an active account turned the line into a solid bead chain; the hover cursor covers
+       reading any individual match now. */
+    const changeIdx = [];
+    hist.forEach((h,i)=>{ if(i>0 && h.tier && h.tier !== hist[i-1].tier) changeIdx.push(i); });
+    const keyIdx = new Set([0].concat(changeIdx));
+    let dotsSvg = '';
+    keyIdx.forEach(i=>{
+      dotsSvg += '<circle cx="'+xOf(i).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="3" fill="'+valTierColor(hist[i].tier)+'" stroke="var(--surface)" stroke-width="1.5"/>';
+    });
+    // where the account stands now gets a ring, so the eye lands on the current value first
+    const lastX = xOf(hist.length-1), lastY = yOf(vals[hist.length-1]);
+    dotsSvg += '<circle cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="7" fill="'+hexToRgba(endColor,0.22)+'"/>'
+      + '<circle cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="3.8" fill="'+endColor+'" stroke="var(--surface)" stroke-width="1.5"/>';
+
+    // rank icons at promotions/demotions only, and only when there's room for them — past a
+    // handful they collide with each other and with the line
+    let tierLabelSvg = '';
+    if(!narrow && changeIdx.length && changeIdx.length <= 6){
+      const size = 18;
+      changeIdx.forEach(i=>{
+        const iconInfo = (valTierIconCache && hist[i].tierId!=null) ? valTierIconCache[hist[i].tierId] : null;
+        const iconUrl = iconInfo && (iconInfo.small || iconInfo.large);
+        if(!iconUrl) return;
+        const y = yOf(vals[i]);
+        const above = y > padT + size + 4;
+        tierLabelSvg += '<image href="'+iconUrl+'" x="'+(xOf(i)-size/2).toFixed(1)+'" y="'+((above ? y-8-size : y+8)).toFixed(1)+'" width="'+size+'" height="'+size+'"/>';
+      });
+    }
+
+    const labelIdxs = narrow ? [0, hist.length-1] : [0, Math.floor((hist.length-1)/2), hist.length-1];
     let xLabelSvg = '';
-    labelIdxs.forEach(i=>{
-      xLabelSvg += '<text x="'+xOf(i).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+escapeHtml(fmtDate(new Date(hist[i].date).getTime()))+'</text>';
+    [...new Set(labelIdxs)].forEach(i=>{
+      const anchor = i===0 ? 'start' : (i===hist.length-1 ? 'end' : 'middle');
+      const x = i===0 ? padL : (i===hist.length-1 ? W-padR : xOf(i));
+      xLabelSvg += '<text class="val-chart-axlbl" x="'+x.toFixed(1)+'" y="'+(H-7)+'" text-anchor="'+anchor+'">'+escapeHtml(fmtDate(new Date(hist[i].date).getTime()))+'</text>';
     });
 
-    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
-      + bandsSvg
-      + gridSvg + xLabelSvg
-      + lineSvg
-      + dotsSvg
-      + tierLabelSvg
-      + '</svg>';
+    const net = vals[vals.length-1] - vals[0];
+    const first = hist[0], last = hist[hist.length-1];
+    const summary = 'RR history, '+hist.length+' matches, from '+(first.tier||'unranked')+' at '+first.rr
+      + ' RR to '+(last.tier||'unranked')+' at '+last.rr+' RR, net '+(net>0?'plus ':'')+net+' RR.';
 
-    // legend: one chip per distinct rank tier that appears in the currently zoomed range
-    const seenTiers = [];
-    hist.forEach(h=>{ if(h.tier && !seenTiers.includes(h.tier)) seenTiers.push(h.tier); });
-    legendEl.innerHTML = '<span><span class="dot" style="background:var(--violet);"></span>RR at match end (rank-adjusted)</span>'
-      + seenTiers.map(t=>'<span><span class="dot" style="background:'+valTierColor(t)+';"></span>'+escapeHtml(t)+'</span>').join('');
+    wrap.innerHTML = '<svg class="val-chart-svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'"'
+      + ' role="img" tabindex="0">'
+      + defsSvg + gridSvg + areaSvg + lineSvg + dotsSvg + tierLabelSvg + xLabelSvg
+      + '<line class="val-chart-cursor" x1="0" y1="'+padT+'" x2="0" y2="'+plotBottom+'"/>'
+      + '<circle class="val-chart-hoverdot" cx="0" cy="0" r="5" stroke="var(--surface)" stroke-width="2"/>'
+      + '</svg>'
+      + '<div class="val-chart-tip" hidden>'
+      + '<div class="val-chart-tip-date"></div>'
+      + '<div class="val-chart-tip-rank"></div>'
+      + '<div class="val-chart-tip-rr"><span class="val-chart-tip-rrval"></span><span class="val-chart-tip-delta"></span></div>'
+      + '</div>';
+    chartGradId++;
+    // .hovering lives on the container, which survives the innerHTML above — without this, a
+    // re-render (zoom change, resize) leaves the previous hover state on, stranding the crosshair
+    // and dot at the fresh SVG's default 0,0
+    wrap.classList.remove('hovering');
+
+    // stats strip: the headline the chart is making, stated in words above it — and the only form
+    // of the chart's content that a screen reader or a reduced-motion/no-hover user can read
+    const ups = hist.filter(h=> (h.lastChange||0) > 0).length;
+    const downs = hist.filter(h=> (h.lastChange||0) < 0).length;
+    const netCls = net > 0 ? 'up' : (net < 0 ? 'down' : 'flat');
+    const netGlyph = net > 0 ? '▲' : (net < 0 ? '▼' : '–');
+    statsEl.innerHTML =
+        '<div class="val-chart-stat"><div class="val-chart-stat-num '+netCls+'">'
+      + '<span aria-hidden="true">'+netGlyph+'</span> '+(net>0?'+':'')+net+'</div>'
+      + '<div class="val-chart-stat-lbl">Net RR this range</div></div>'
+      + '<div class="val-chart-stat"><div class="val-chart-stat-num">'+hist.length+'</div>'
+      + '<div class="val-chart-stat-lbl">Matches</div></div>'
+      + '<div class="val-chart-stat"><div class="val-chart-stat-num">'+ups+' <span class="val-chart-stat-sep">/</span> '+downs+'</div>'
+      + '<div class="val-chart-stat-lbl">RR gained / lost</div></div>';
+
+    /* Hover readout. Replaces the old per-dot <title> tooltips, which needed a pixel-accurate hit
+       on a 3.5px circle and then waited on the OS tooltip delay. This snaps to the nearest match
+       anywhere in the plot and reads instantly. */
+    const svgEl = wrap.querySelector('svg');
+    svgEl.setAttribute('aria-label', summary); // set as a property — tier names reach it unescaped
+    const tipEl = wrap.querySelector('.val-chart-tip');
+    const cursorEl = wrap.querySelector('.val-chart-cursor');
+    const hoverDotEl = wrap.querySelector('.val-chart-hoverdot');
+    const step = hist.length > 1 ? (W-padL-padR)/(hist.length-1) : 1;
+    let hoverIdx = -1;
+
+    function showHoverAt(i){
+      i = Math.max(0, Math.min(hist.length-1, i));
+      if(i === hoverIdx) return;
+      hoverIdx = i;
+      const h = hist[i], x = xOf(i), y = yOf(vals[i]);
+      const c = valTierColor(h.tier);
+      cursorEl.setAttribute('x1', x.toFixed(1)); cursorEl.setAttribute('x2', x.toFixed(1));
+      hoverDotEl.setAttribute('cx', x.toFixed(1)); hoverDotEl.setAttribute('cy', y.toFixed(1));
+      hoverDotEl.setAttribute('fill', c);
+      wrap.classList.add('hovering');
+      tipEl.hidden = false;
+      // the tier color goes in as a custom property so CSS can derive a readable text shade for
+      // the active theme, same as the account cards do
+      tipEl.style.setProperty('--tier', c);
+      tipEl.querySelector('.val-chart-tip-date').textContent = fmtDate(new Date(h.date).getTime());
+      tipEl.querySelector('.val-chart-tip-rank').textContent = h.tier || 'Unranked';
+      tipEl.querySelector('.val-chart-tip-rrval').textContent = h.rr + ' RR';
+      const d = h.lastChange || 0;
+      const deltaEl2 = tipEl.querySelector('.val-chart-tip-delta');
+      deltaEl2.textContent = d > 0 ? ('▲ +'+d) : (d < 0 ? ('▼ '+d) : '–');
+      deltaEl2.className = 'val-chart-tip-delta ' + (d > 0 ? 'up' : (d < 0 ? 'down' : 'flat'));
+      // clamp inside the plot so the tooltip never hangs off either edge
+      const tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+      tipEl.style.left = Math.max(2, Math.min(W - tw - 2, x - tw/2)).toFixed(1) + 'px';
+      tipEl.style.top  = Math.max(2, y - th - 14).toFixed(1) + 'px';
+    }
+    function hideHover(){ hoverIdx = -1; wrap.classList.remove('hovering'); tipEl.hidden = true; }
+    function idxFromEvent(e){
+      const rect = svgEl.getBoundingClientRect();
+      if(!rect.width) return 0;
+      return Math.round(((e.clientX - rect.left) * (W / rect.width) - padL) / step);
+    }
+    svgEl.addEventListener('pointermove', e=> showHoverAt(idxFromEvent(e)));
+    svgEl.addEventListener('pointerdown', e=> showHoverAt(idxFromEvent(e)));
+    svgEl.addEventListener('pointerleave', hideHover);
+    svgEl.addEventListener('pointercancel', hideHover);
+    svgEl.addEventListener('blur', hideHover);
+    // arrow keys walk the same readout, so the per-match detail isn't pointer-only
+    svgEl.addEventListener('keydown', e=>{
+      if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+        e.preventDefault();
+        showHoverAt((hoverIdx < 0 ? hist.length-1 : hoverIdx) + (e.key === 'ArrowRight' ? 1 : -1));
+      } else if(e.key === 'Home'){ e.preventDefault(); showHoverAt(0); }
+      else if(e.key === 'End'){ e.preventDefault(); showHoverAt(hist.length-1); }
+      else if(e.key === 'Escape'){ hideHover(); }
+    });
+    // clicking a card re-renders this whole panel, so nothing here needs teardown — the listeners
+    // die with the elements they're bound to
   }
 
   function showValAddErr(msg){

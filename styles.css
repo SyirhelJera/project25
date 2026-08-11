@@ -1747,87 +1747,281 @@
     .fin-flow .fin-seg .seg-short{display:inline;}
   }
 
-  /* ---------- valorant ---------- */
-  .val-api-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;}
+  /* ---------- valorant ----------
+     The RR tab has one job: show where each account's rank sits right now. So exactly one thing on
+     an account card carries visual weight — the tier name — with the rank icon and RR bar
+     reinforcing it and everything else (region, elo, peak, timestamps, subgroup) held at a single
+     low weight beneath. Type here is a four-step scale (20 / 14 / 12 / 11), spacing a 4px rhythm.
+
+     Tier color arrives as one custom property, --tier, set per card in renderValorant(). --tier-ink
+     is the theme-corrected *text* shade derived from it: the raw tier colors are tuned for Riot's
+     dark UI, and gold/radiant on a white surface land near 2:1. Nothing paints a raw tier color
+     onto text. The plain var() line before each color-mix() is the fallback for engines without it. */
+  #view-valorant{--val-err-ink:#C2262B;}
+  body[data-theme="dark"] #view-valorant,
+  body[data-theme="ios-dark"] #view-valorant{--val-err-ink:var(--danger);}
+
+  /* Nothing in this tab may remove a focus ring without replacing it — several controls here are
+     the only way to reach a panel by keyboard. */
+  #view-valorant :is(button,input,select,summary,[tabindex]):focus-visible,
+  .val-preview-card :is(button,input):focus-visible{
+    outline:2px solid var(--violet);
+    outline-offset:2px;
+  }
+
+  .val-api-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;}
   .val-api-row .fitness-field{flex:1;min-width:220px;margin-bottom:0;}
-  .val-add-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;}
-  .val-add-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
-  .val-add-row input:focus, .val-add-row select:focus{border-color:var(--violet);}
-  .val-add-row input.val-riotid-input{flex:2;min-width:160px;}
-  .val-add-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  /* API key status, under the field in Settings — the text carries the meaning, the dot only
+     reinforces it */
+  .val-key-state{margin-top:8px;font-size:11.5px;font-weight:700;color:var(--muted);display:inline-flex;align-items:center;gap:7px;}
+  .val-key-state::before{content:'';width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none;}
+  .val-key-state.ok::before{background:var(--success);}
+  .val-key-state.warn::before{background:var(--gold);}
+
+  .val-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .val-sort-group{display:inline-flex;align-items:center;gap:7px;}
+  .val-toolbar .val-sort-lbl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
+  .val-toolbar select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 9px;font-size:12px;font-family:'Inter',sans-serif;}
+  .val-add-toggle{flex:none;}
+  .val-refresh-all-btn{margin-left:auto;}
+
+  /* one slim line under the toolbar, sized to match the toolbar's own controls so the two read as
+     a single strip rather than a form that opened on top of the list */
+  .val-add-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .val-add-row input,
+  .val-add-row select{
+    background:var(--surface);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:6px 9px;font-size:12.5px;font-family:'Inter',sans-serif;height:30px;box-sizing:border-box;
+  }
+  /* capped rather than flex:1 — stretched across a wide screen the field read as a search bar
+     over the list instead of a compact control in the strip */
+  .val-add-row input.val-riotid-input{flex:1 1 240px;min-width:150px;max-width:320px;}
+  .val-add-row select{flex:none;}
+  .val-add-row .btn{flex:none;}
+  .val-add-row input:hover,.val-add-row select:hover{border-color:var(--violet);}
+  #valAddErr{margin:-4px 0 12px;}
 
   /* account list as a grid of compact "cube" tiles instead of one long stacked list */
-  #valAccountList{display:grid;grid-template-columns:repeat(auto-fill, minmax(215px, 1fr));gap:12px;}
+  #valAccountList{display:grid;grid-template-columns:repeat(auto-fill, minmax(236px, 1fr));gap:10px;align-items:start;}
+  .val-account-card,
+  .val-chart-panel,
+  .val-chart-tip{
+    --tier:#8B92A8;
+    --tier-ink:var(--tier);
+    --tier-ink:color-mix(in srgb, var(--tier) 58%, #14161F);
+  }
+  body[data-theme="dark"] .val-chart-panel, body[data-theme="ios-dark"] .val-chart-panel,
+  body[data-theme="dark"] .val-chart-tip, body[data-theme="ios-dark"] .val-chart-tip{
+    --tier-ink:color-mix(in srgb, var(--tier) 88%, #FFFFFF);
+  }
   .val-account-card{
-    background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 14px;
-    transition:border-color .12s ease,box-shadow .12s ease;cursor:pointer;display:flex;flex-direction:column;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 11px 11px;
+    transition:border-color .16s ease,box-shadow .16s ease;cursor:pointer;
     position:relative;overflow:hidden;
   }
-  .val-account-card:hover{box-shadow:0 2px 10px rgba(20,22,31,0.07);}
-  .val-account-card.selected{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet) inset;}
+  body[data-theme="dark"] .val-account-card,
+  body[data-theme="ios-dark"] .val-account-card{--tier-ink:color-mix(in srgb, var(--tier) 88%, #FFFFFF);}
+  /* one soft shadow, downward, matching the rest of the app */
+  .val-account-card:hover{box-shadow:0 1px 2px rgba(16,20,34,.05),0 8px 20px rgba(16,20,34,.07);}
+  .val-account-card.selected{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet);}
   .val-account-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
-  .val-account-card.val-recent-up{border-left:3px solid var(--success);}
-  .val-account-card.val-recent-down{border-left:3px solid var(--danger);}
   .val-account-card > *{position:relative;z-index:1;}
+  /* last-played agent art, bled in from the right edge only — the card's text all sits left of it,
+     and it's held far enough back that it can't eat the meta line's contrast */
   .val-account-card > .val-agent-bg{
-    position:absolute;inset:0;z-index:0;background-size:cover;background-position:top center;
-    opacity:.5;pointer-events:none;
-    -webkit-mask-image:linear-gradient(115deg, rgba(0,0,0,0) 8%, rgba(0,0,0,.9) 55%);
-    mask-image:linear-gradient(115deg, rgba(0,0,0,0) 8%, rgba(0,0,0,.9) 55%);
+    position:absolute;top:0;right:0;bottom:0;width:46%;z-index:0;
+    background-size:cover;background-position:top center;opacity:.14;pointer-events:none;
+    -webkit-mask-image:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 62%);
+    mask-image:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 62%);
   }
-  .val-group-header{grid-column:1/-1;}
-  .val-group-field{display:block;margin-top:3px;}
-  .val-group-field input{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px 8px;font-size:11px;outline:none;font-family:'Inter',sans-serif;width:110px;}
+  body[data-theme="dark"] .val-account-card > .val-agent-bg,
+  body[data-theme="ios-dark"] .val-account-card > .val-agent-bg{opacity:.26;}
 
-  .val-account-top{display:flex;align-items:flex-start;gap:6px;}
-  .val-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
-  .val-riotid{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .val-tag{font-size:10px;color:var(--violet-dark);font-weight:700;}
-  .val-region-chip{font-size:9.5px;color:var(--muted);text-transform:uppercase;background:var(--surface-alt);border:1px solid var(--border);padding:2px 7px;border-radius:999px;font-weight:700;letter-spacing:0.3px;align-self:flex-start;}
-  .val-acc-actions{display:flex;gap:5px;align-items:center;flex:none;}
-  .val-icon-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:8px;width:26px;height:26px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;}
-  .val-icon-btn:hover{border-color:var(--violet);color:var(--violet-dark);}
+  .val-group-header{
+    grid-column:1/-1;display:flex;align-items:center;gap:7px;width:100%;text-align:left;
+    background:none;border:none;cursor:pointer;padding:10px 2px 2px;font-family:'Inter',sans-serif;
+    font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);
+  }
+  .val-group-header:hover{color:var(--text);}
+  .val-group-count{font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted);}
+
+  .val-account-top{display:flex;align-items:center;gap:9px;}
+  .val-card-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+  .val-card-name-row{display:flex;align-items:center;gap:6px;min-width:0;}
+  .val-riotid{
+    flex:0 1 auto;min-width:0;text-align:left;background:none;border:none;padding:0;cursor:pointer;
+    font-family:'Manrope',sans-serif;font-weight:800;font-size:13px;line-height:1.25;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .val-riotid:hover{color:var(--violet-dark);}
+  .val-riotid[aria-expanded="true"]{color:var(--violet-dark);}
+  .val-tag{font-size:10.5px;color:var(--muted);font-weight:700;}
+  .val-acc-actions{display:flex;gap:2px;align-items:center;flex:none;}
+  .val-icon-btn{
+    background:transparent;border:1px solid transparent;color:var(--muted);border-radius:8px;
+    width:26px;height:26px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;flex:none;
+    transition:background-color .12s ease,color .12s ease,border-color .12s ease;
+  }
+  .val-icon-btn:hover{background:var(--surface-alt);border-color:var(--border);color:var(--text);}
+  .val-icon-btn-danger:hover{background:var(--danger-pale);border-color:transparent;color:var(--val-err-ink,var(--danger));}
   .val-icon-btn.spinning{animation:val-spin 0.8s linear infinite;}
   @keyframes val-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
-  .val-recent-chip{font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:0.3px;border-radius:999px;padding:2px 6px;flex:none;align-self:flex-start;}
-  .val-recent-chip.up{background:var(--success-pale);color:var(--success);}
-  .val-recent-chip.down{background:#FCE8E8;color:var(--danger);}
-  body.dark-mode .val-recent-chip.down{background:#3B1A1A;}
-  .val-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
-  .val-toolbar .val-sort-lbl{font-size:11.5px;color:var(--muted);font-weight:700;}
-  .val-toolbar select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
-  .val-toolbar select:focus{border-color:var(--violet);}
-  .val-refresh-all-btn{margin-left:auto;}
+  /* a finger has no hover and needs a real target */
+  @media (pointer:coarse){ .val-icon-btn{width:40px;height:40px;} }
+
+  .val-toolbar select:hover{border-color:var(--violet);}
   .val-drag-handle{display:none;color:var(--faint);font-size:13px;padding:1px 4px 1px 0;flex:none;letter-spacing:-1px;cursor:grab;}
   .val-drag-handle.active{display:inline-block;}
   .val-drag-handle:active{cursor:grabbing;}
-  .val-tier-label{font-size:9px;font-weight:700;font-family:'Inter',sans-serif;}
   .habit-badge.habit-restores{color:var(--muted);background:var(--surface-alt);}
   .habit-badge.habit-restores.habit-restores-empty{color:#B45309;background:#FEF3C7;border:1px solid #FBBF24;}
-  body.dark-mode .habit-badge.habit-restores.habit-restores-empty{color:#FBBF24;background:#3A2F14;border-color:#7A5A12;}
+  body[data-theme="dark"] .habit-badge.habit-restores.habit-restores-empty,
+  body[data-theme="ios-dark"] .habit-badge.habit-restores.habit-restores-empty{color:#FBBF24;background:#3A2F14;border-color:#7A5A12;}
 
-  .val-account-body{display:flex;flex-direction:column;gap:9px;margin-top:11px;}
-  .val-rank-cluster{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .val-rank-icon{width:30px;height:30px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.25));}
-  .val-rank-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:9px;font-weight:800;font-size:11.5px;color:#fff;white-space:nowrap;}
-  .val-rr-wrap{width:100%;}
-  .val-rr-top{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-bottom:5px;}
-  .val-rr-top b{color:var(--text);font-family:'Manrope',sans-serif;font-size:12px;}
-  .val-rr-track{position:relative;height:8px;border-radius:8px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
-  .val-rr-fill{height:100%;border-radius:8px;transition:width .6s ease;}
+  /* Line two of the slim card: the rank, which is the thing being monitored. The tier name carries
+     the weight through color and weight rather than size, because size is the budget being spent
+     on fitting more accounts on screen. */
+  .val-rank-icon{width:30px;height:30px;flex:none;object-fit:contain;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.25));}
+  /* a span, so it needs an explicit box to hold the icon's slot while the tier art loads */
+  .val-rank-icon-empty{display:block;border-radius:50%;background:var(--surface-alt);filter:none;}
+  .val-card-status{display:flex;align-items:baseline;gap:6px;min-width:0;}
+  .val-tier-name{
+    font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;line-height:1.2;letter-spacing:-.1px;
+    color:var(--tier-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:0 1 auto;
+  }
+  .val-card-figure{font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap;flex:none;}
+  .val-card-figure b{font-family:'Manrope',sans-serif;font-size:11.5px;font-weight:800;color:var(--text);}
+  .val-card-err{font-size:11px;line-height:1.4;color:var(--val-err-ink,var(--danger));min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .val-card-idle{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* the arrow, not the color, is what says "up" — the color only doubles it */
+  .val-delta{
+    margin-left:auto;flex:none;align-self:center;display:inline-flex;align-items:center;gap:2px;
+    font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;letter-spacing:.2px;
+  }
+  .val-delta.up{background:var(--success-pale);color:#0F7A38;}
+  .val-delta.down{background:var(--danger-pale);color:#C2262B;}
+  .val-delta.flat{background:var(--surface-alt);color:var(--muted);}
+  body[data-theme="dark"] .val-delta.up,
+  body[data-theme="ios-dark"] .val-delta.up{color:var(--success);}
+  body[data-theme="dark"] .val-delta.down,
+  body[data-theme="ios-dark"] .val-delta.down{color:var(--danger);}
+
+  /* the RR bar rides the card's bottom edge instead of taking a row of its own — no height cost */
+  .val-rr-track{position:absolute;left:0;right:0;bottom:0;height:3px;overflow:hidden;
+    background:var(--surface-alt);
+    background:color-mix(in srgb, var(--tier) 16%, var(--surface-alt));}
+  .val-rr-fill{height:100%;background:var(--tier);transition:width .6s ease;}
   @keyframes valRRPulseUp{0%{box-shadow:0 0 0 0 rgba(34,197,94,.65);}70%{box-shadow:0 0 7px 4px rgba(34,197,94,0);}100%{box-shadow:0 0 0 0 rgba(34,197,94,0);}}
   @keyframes valRRPulseDown{0%{box-shadow:0 0 0 0 rgba(239,68,68,.65);}70%{box-shadow:0 0 7px 4px rgba(239,68,68,0);}100%{box-shadow:0 0 0 0 rgba(239,68,68,0);}}
   .val-rr-fill.val-rr-anim-up{animation:valRRPulseUp 1.1s ease-out .6s;}
   .val-rr-fill.val-rr-anim-down{animation:valRRPulseDown 1.1s ease-out .6s;}
-  .val-card-stats{display:flex;gap:8px;}
-  .val-stat-mini{text-align:center;flex:1;background:var(--surface-alt);border-radius:8px;padding:6px 4px;}
-  .val-stat-mini .num{font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;}
-  .val-stat-mini .num.up{color:var(--success);}
-  .val-stat-mini .num.down{color:var(--danger);}
-  .val-stat-mini .lbl{font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;margin-top:2px;}
-  .val-peak-note{font-size:10px;color:var(--faint);margin-top:2px;}
-  .val-err{font-size:11.5px;color:var(--danger);margin-top:8px;}
-  .val-empty-accounts{text-align:center;padding:30px 20px;color:var(--faint);border:1px dashed var(--border);border-radius:14px;font-size:13px;margin-bottom:16px;}
+
+  .val-peak-note{font-size:11.5px;line-height:1.5;color:var(--muted);}
+  .val-err{font-size:11.5px;line-height:1.5;color:var(--val-err-ink,var(--danger));}
+
+  /* ---- the expanded card: same card, grown to the full grid width, holding the chart ----
+     Region, elo, peak, timestamps and the subgroup field live only here. On a collapsed card each
+     of them would cost height on every row, which is exactly what makes a long account list
+     unscannable. */
+  .val-account-card.expanded{grid-column:1/-1;padding:12px 14px 14px;cursor:default;}
+  /* on a full-width card, margin-left:auto would fling the delta to the far edge, away from the
+     RR figure it qualifies */
+  .val-account-card.expanded .val-delta{margin-left:4px;}
+  .val-account-card.expanded .val-rr-track{display:none;}
+  /* the agent art is a nice touch at card size and visual noise behind a chart */
+  .val-account-card.expanded > .val-agent-bg{display:none;}
+  .val-account-card.expanded .val-meta{margin-top:9px;font-size:11px;line-height:1.5;color:var(--muted);}
+  .val-card-chart{margin-top:12px;}
+
+  /* optional, so it stays invisible until pointed at rather than drawing a box on every card */
+  .val-group-field{margin-top:12px;}
+  .val-group-input.mini-input{
+    width:100%;box-sizing:border-box;background:transparent;border:1px solid transparent;
+    border-radius:8px;padding:5px 8px;font-size:11px;
+    transition:background-color .12s ease,border-color .12s ease;
+  }
+  .val-group-input.mini-input::placeholder{color:var(--muted);}
+  .val-group-input.mini-input:hover,
+  .val-group-input.mini-input:focus{background:var(--surface-alt);border-color:var(--border);}
+
+  .val-empty-accounts{text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:14px;}
+  .val-empty-title{font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px;}
+  .val-empty-sub{font-size:12px;line-height:1.6;color:var(--muted);max-width:46ch;margin:0 auto;}
+
+  /* ---- RR history ----
+     This has no chrome of its own: mountValChartPanel() puts it inside the selected account card,
+     which supplies the surface, the border and the identity header. */
+  #valChartHome{display:none;}
+  .val-chart-panel{
+    background:none;border:none;border-radius:0;padding:0;
+    animation:valChartIn .18s ease-out;
+  }
+  @keyframes valChartIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
+  .val-chart-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    border-top:1px solid var(--border);padding-top:12px;}
+  .val-chart-title{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);}
+  .val-chart-zooms{margin-bottom:0;margin-left:auto;}
+  .val-chart-close{flex:none;}
+
+  /* the chart's headline in words — also the only readable form of its content without a pointer */
+  .val-chart-stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 2px;}
+  .val-chart-stat{flex:1 1 100px;min-width:0;background:var(--surface-alt);border-radius:10px;padding:9px 11px;}
+  .val-chart-stat-num{font-family:'Manrope',sans-serif;font-size:16px;font-weight:800;line-height:1.1;color:var(--text);}
+  .val-chart-stat-num.up{color:#0F7A38;}
+  .val-chart-stat-num.down{color:#C2262B;}
+  body[data-theme="dark"] .val-chart-stat-num.up, body[data-theme="ios-dark"] .val-chart-stat-num.up{color:var(--success);}
+  body[data-theme="dark"] .val-chart-stat-num.down, body[data-theme="ios-dark"] .val-chart-stat-num.down{color:var(--danger);}
+  .val-chart-stat-sep{color:var(--muted);font-weight:600;}
+  .val-chart-stat-lbl{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-top:4px;}
+
+  .val-chart-plot{position:relative;margin-top:8px;}
+  .val-chart-svg{display:block;width:100%;height:auto;touch-action:pan-y;}
+  /* drawn at the container's true pixel width, so these are real px and stay legible at any size */
+  .val-chart-tierlbl{font-family:'Inter',sans-serif;font-size:10px;font-weight:700;letter-spacing:.3px;
+    paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;}
+  .val-chart-axlbl{font-family:'Inter',sans-serif;font-size:10px;font-weight:600;fill:var(--muted);}
+  .val-chart-cursor{stroke:var(--muted);stroke-width:1;stroke-dasharray:2 3;opacity:0;transition:opacity .12s ease;}
+  .val-chart-hoverdot{opacity:0;transition:opacity .12s ease;}
+  .val-chart-plot.hovering .val-chart-cursor,
+  .val-chart-plot.hovering .val-chart-hoverdot{opacity:1;}
+
+  .val-chart-tip{
+    position:absolute;z-index:2;pointer-events:none;min-width:106px;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 10px;
+    box-shadow:0 1px 2px rgba(16,20,34,.06),0 8px 22px rgba(16,20,34,.14);
+  }
+  .val-chart-tip[hidden]{display:none;}
+  .val-chart-tip-date{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+  .val-chart-tip-rank{font-family:'Manrope',sans-serif;font-size:13px;font-weight:800;color:var(--tier-ink);margin-top:2px;}
+  .val-chart-tip-rr{display:flex;align-items:baseline;gap:8px;margin-top:2px;font-size:12px;font-weight:700;color:var(--text);}
+  .val-chart-tip-delta{font-size:11px;font-weight:800;margin-left:auto;}
+  .val-chart-tip-delta.up{color:#0F7A38;}
+  .val-chart-tip-delta.down{color:#C2262B;}
+  .val-chart-tip-delta.flat{color:var(--muted);}
+  body[data-theme="dark"] .val-chart-tip-delta.up, body[data-theme="ios-dark"] .val-chart-tip-delta.up{color:var(--success);}
+  body[data-theme="dark"] .val-chart-tip-delta.down, body[data-theme="ios-dark"] .val-chart-tip-delta.down{color:var(--danger);}
+
+  .val-chart-note{font-size:10.5px;line-height:1.5;color:var(--muted);margin-top:10px;}
+  .val-chart-empty{text-align:center;padding:28px 16px;font-size:12.5px;line-height:1.6;color:var(--muted);}
+
+  @media (max-width:560px){
+    /* the zoom row needs the full width here, so it drops to its own line — but the collapse
+       button must ride up next to the title rather than being stranded on a third line */
+    .val-chart-title{order:1;}
+    .val-chart-close{order:2;margin-left:auto;}
+    .val-chart-zooms{order:3;flex:1 1 100%;margin-left:0;}
+    /* stay one row: three stacked full-width tiles pushed the chart itself off the screen */
+    .val-chart-stats{gap:7px;}
+    .val-chart-stat{flex:1 1 0;padding:8px 9px;}
+    .val-chart-stat-num{font-size:14px;}
+    .val-chart-stat-lbl{font-size:9px;letter-spacing:.2px;margin-top:3px;}
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    /* the refresh spinner is the only feedback that a fetch is in flight, so it survives */
+    #view-valorant *{transition:none !important;}
+    #view-valorant *:not(.spinning){animation:none !important;}
+  }
 
   /* "Local Helper" panel (see valLocal* functions in valorant.js) — lets the Check Store Now /
      + Add Account buttons drive scripts/valorant-local-server.mjs running on the user's own
@@ -1859,7 +2053,9 @@
     --border:#323B4C;
     --text:#F1F3F8;
     --muted:#9AA3B7;
-    --faint:#5C6478;
+    /* lightened from #5C6478: at that value it landed near 2.7:1 on this panel, and --faint is
+       used for real content here (rotation countdowns, filter labels), not just hairlines */
+    --faint:#848DA0;
     --violet:#FF4655;
     --violet-dark:#FF4655;
     --violet-pale:#3A1E22;
@@ -1877,17 +2073,25 @@
   .val-tracker-grid{display:flex;gap:22px;align-items:flex-start;}
   .val-tracker-items-col{flex:2;min-width:0;}
   .val-tracker-wishlist-col{flex:1;min-width:220px;padding-left:22px;border-left:1px solid var(--border);}
-  .val-tracker-wishlist-col .view-sub{margin-bottom:10px;}
-  .val-wishlist-hdr{font-size:12px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text);font-weight:800;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none;}
+  .val-tracker-wishlist-col .view-sub{margin-bottom:10px;color:var(--muted);}
+  /* below this the two columns can't both hold their minimum without the store grid collapsing to
+     one tile per row, so the wishlist drops underneath instead */
+  @media (max-width:760px){
+    .val-tracker-grid{flex-direction:column;gap:18px;}
+    .val-tracker-wishlist-col{width:100%;padding-left:0;padding-top:18px;border-left:none;border-top:1px solid var(--border);}
+  }
+  .val-wishlist-hdr{font-size:12px;text-transform:uppercase;letter-spacing:0.6px;color:var(--text);font-weight:800;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none;
+    width:100%;text-align:left;background:none;border:none;padding:0;font-family:'Inter',sans-serif;}
   .val-wishlist-hdr .wlg-chevron{font-size:9px;color:var(--faint);flex:none;}
-  .val-wishlist-count{font-weight:700;text-transform:none;letter-spacing:0;color:var(--faint);margin-left:auto;}
+  .val-wishlist-count{font-weight:700;text-transform:none;letter-spacing:0;color:var(--muted);margin-left:auto;}
 
   /* account switcher, above the store card — filters which tracked account's store shows below;
      works purely off already-fetched data, so it's independent of the local helper (whose
      Check Store Now / Add Account / Delete controls live in Settings → Valorant Local Helper) */
   .val-store-switcher-row{margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .val-store-switcher-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:7px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;width:100%;max-width:220px;}
-  .val-store-switcher-row select:focus{border-color:var(--violet);}
+  .val-store-switcher-lbl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex:none;}
+  .val-store-switcher-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:'Inter',sans-serif;flex:1;min-width:150px;max-width:220px;}
+  .val-store-switcher-row select:hover{border-color:var(--violet);}
   /* Skins / Accessories switch — same pill toggle as elsewhere, minus the standalone bottom
      margin since it's sharing a flex row with the account dropdown */
   .val-store-switcher-row .unit-toggle{margin-bottom:0;}
@@ -1899,28 +2103,33 @@
   .val-store-account{padding-bottom:18px;border-bottom:1px solid var(--border);}
   .val-store-account:last-child{padding-bottom:0;border-bottom:none;}
   .val-store-account-hdr{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--border);user-select:none;}
+  .val-store-account-hdr-btn{width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--border);padding:0 0 10px;cursor:pointer;font-family:'Inter',sans-serif;}
+  .val-store-account-hdr-btn:hover .val-store-account-name{color:var(--violet);}
   .val-store-account-hdr .wlg-chevron{font-size:9px;color:var(--faint);flex:none;}
-  .val-store-account-name{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text);font-weight:800;}
+  .val-store-account-name{font-size:12px;text-transform:uppercase;letter-spacing:1.4px;color:var(--text);font-weight:800;transition:color .12s ease;}
   .val-store-checked{font-size:10.5px;color:var(--vp-gold,var(--faint));font-weight:700;letter-spacing:.3px;white-space:nowrap;margin-left:auto;}
 
   /* "Daily Offers" / "Accessories" sub-headers inside one account's section (valStoreSectionHdr()
      in valorant.js) — only rendered when both grids are present, so they never appear alone */
   .val-store-section-hdr{display:flex;align-items:baseline;gap:8px;margin:2px 0 10px;}
   .val-store-section-name{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:800;}
-  .val-store-section-note{font-size:10px;color:var(--faint);font-weight:700;letter-spacing:.3px;white-space:nowrap;margin-left:auto;}
+  .val-store-section-note{font-size:10.5px;color:var(--muted);font-weight:700;letter-spacing:.3px;white-space:nowrap;margin-left:auto;}
 
   .val-owned-skins-toolbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
   .val-owned-skins-toolbar .sort-select{margin-left:auto;}
   .val-owned-skins-filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
-  .val-owned-skins-filter-label{font-size:10.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.4px;flex:none;margin-right:2px;}
+  .val-owned-skins-filter-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;flex:none;margin-right:2px;}
 
   /* item cards mimic Valorant's own Daily Offers tiles: big art on top, a solid name+price bar
      pinned to the bottom, and a thin rarity-colored edge (Select/Deluxe/Premium/Exclusive/Ultra —
      see valSkinRarityInfo()) standing in for the in-game edition flash */
   .val-store-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:12px;}
+  /* a real <button>, so every tile is reachable and openable by keyboard — the preview modal it
+     opens is the only way to see a skin's art at a usable size */
   .val-store-item{
     position:relative;display:flex;flex-direction:column;overflow:hidden;cursor:pointer;
     background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:0;text-align:left;font-family:'Inter',sans-serif;width:100%;
     transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
   }
   .val-store-item::before{content:'';position:absolute;inset:0;pointer-events:none;
@@ -1932,7 +2141,7 @@
     position:relative;display:flex;align-items:center;justify-content:space-between;gap:6px;
     background:var(--surface-alt);padding:8px 10px;border-top:2px solid var(--rarity-color,var(--border));
   }
-  .val-store-item-name{font-size:10.5px;font-weight:800;letter-spacing:.2px;text-transform:uppercase;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
+  .val-store-item-name{font-size:11px;font-weight:800;letter-spacing:.2px;text-transform:uppercase;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
   .val-store-item-price{flex:none;font-size:11.5px;font-weight:800;color:var(--vp-gold);display:inline-flex;align-items:center;gap:4px;}
   .val-store-item-price::before{content:'';width:8px;height:8px;flex:none;background:var(--vp-gold);clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);}
 
@@ -1991,7 +2200,7 @@
   .val-preview-variant-img img{max-width:100%;object-fit:contain;border-radius:6px;display:block;}
   .val-preview-variant.tall .val-preview-variant-img img{max-height:44vh;}
   .val-preview-variant.square .val-preview-variant-img img{max-height:180px;}
-  .val-preview-variant figcaption{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--faint);text-align:center;}
+  .val-preview-variant figcaption{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);text-align:center;}
 
   /* wishlist (see renderValWishlist() in valorant.js) — uniform-width rows rather than
      content-sized pills, so a long skin name doesn't dwarf a short one; the name truncates

@@ -340,13 +340,18 @@
       const m = parsed.motivation || {};
       const pin = (typeof m.pin === 'string') ? m.pin : '';
       const pinnedCategoryId = (typeof m.pinnedCategoryId === 'string') ? m.pinnedCategoryId : '';
+      // Display order of the collections (the swipe/click-the-name cycle) — one of the ids in
+      // MOTIVATION_ORDERS in js/motivation.js; anything unknown falls back to 'added'.
+      // speakMantra = read each new mantra aloud (Web Speech API); see speakMantra() there.
+      const catOrder = (typeof m.catOrder === 'string') ? m.catOrder : 'added';
+      const speakMantra = m.speakMantra === true; // name kept local — the global speakMantra() is the reader in motivation.js
       if(Array.isArray(m.categories)){
-        state.motivation = { categories: m.categories, pin, pinnedCategoryId };
+        state.motivation = { categories: m.categories, pin, pinnedCategoryId, catOrder, speakMantra };
       } else if(Array.isArray(m.images) && m.images.length){
         // upgrade from the old flat single-slideshow shape into one "General" category
-        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin, pinnedCategoryId };
+        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin, pinnedCategoryId, catOrder, speakMantra };
       } else {
-        state.motivation = { categories: [], pin, pinnedCategoryId };
+        state.motivation = { categories: [], pin, pinnedCategoryId, catOrder, speakMantra };
       }
       if(!state.motivation.categories.some(c=>c.id===state.motivation.pinnedCategoryId)) state.motivation.pinnedCategoryId = '';
       state.motivation.categories.forEach(c=>{

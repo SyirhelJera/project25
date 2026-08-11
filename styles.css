@@ -487,15 +487,31 @@
   .play-music-url-row{display:flex;gap:6px;align-items:center;}
   .play-music-url{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;flex:1;min-width:0;box-sizing:border-box;}
   .play-music-url:focus{border-color:var(--violet);}
-  /* saved playlists — one row each, ▶ switches, the middle field renames in place */
-  .play-music-saved{display:flex;flex-direction:column;gap:5px;}
-  .play-music-saved-row{display:flex;align-items:center;gap:6px;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:4px 6px;}
+  /* saved playlists — one row each, ▶ switches, the middle field renames in place.
+     The list is capped and scrolls rather than growing: it's the only part of the settings panel
+     whose height is user-controlled, so uncapped it becomes the tallest thing in the Play card the
+     moment there are more than a few playlists. The cap is deliberately not a whole multiple of the
+     row height — cutting a row in half is what signals "there's more below" without relying on a
+     scrollbar being drawn (it isn't, on iOS, until you touch it). */
+  .play-music-saved{display:flex;flex-direction:column;gap:2px;max-height:104px;overflow-y:auto;}
+  .play-music-saved::-webkit-scrollbar{width:4px;}
+  .play-music-saved::-webkit-scrollbar-track{background:transparent;}
+  .play-music-saved::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  /* only the active playlist gets a pill — a bordered box per row reads as heavy chrome once
+     there are several. The transparent border on the inactive rows reserves the same space, so
+     switching playlists highlights a row without nudging the list. */
+  .play-music-saved-row{display:flex;align-items:center;gap:6px;border:1px solid transparent;border-radius:7px;padding:2px 5px;}
   .play-music-saved-row.active{border-color:var(--violet);background:var(--violet-pale);}
-  .play-music-saved-play{background:none;border:none;color:var(--violet-dark);font-size:11px;line-height:1;cursor:pointer;padding:2px 3px;flex:none;}
-  .play-music-saved-name{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--text);font-size:12px;font-family:'Inter',sans-serif;padding:2px 0;}
+  .play-music-saved-play{background:none;border:none;color:var(--faint);font-size:10.5px;line-height:1;cursor:pointer;padding:2px 3px;flex:none;}
+  .play-music-saved-row.active .play-music-saved-play{color:var(--violet-dark);}
+  .play-music-saved-name{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--text);font-size:11.5px;font-family:'Inter',sans-serif;padding:1px 0;text-overflow:ellipsis;}
   .play-music-saved-name:focus{border-bottom:1px solid var(--violet);}
-  .play-music-saved-del{background:none;border:none;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;padding:2px 4px;flex:none;}
-  .play-music-saved-del:hover{color:var(--danger);}
+  .play-music-saved-del{background:none;border:none;color:var(--faint);font-size:13px;line-height:1;cursor:pointer;padding:1px 3px;flex:none;opacity:.55;}
+  .play-music-saved-del:hover{color:var(--danger);opacity:1;}
+  @media (hover:hover) and (pointer:fine){
+    .play-music-saved-row:hover{background:var(--surface-alt);}
+    .play-music-saved-row.active:hover{background:var(--violet-pale);}
+  }
   .play-music-check{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--muted);cursor:pointer;}
   /* playback mode picker (in-app player vs. handing off to YouTube Music) */
   .play-music-mode-row>span{flex:none;}
@@ -568,6 +584,7 @@
     .play-music{margin-top:12px;padding-top:10px;}
     /* settings panel + a long saved-playlist list can still outgrow the screen on its own */
     .play-music-settings{max-height:38vh;overflow-y:auto;}
+    .play-music-saved{max-height:58px;}
     .play-complete-msg{font-size:16px;margin-bottom:12px;}
     .play-complete-insights{padding-top:10px;margin-bottom:12px;}
     .play-insight-list{max-height:96px;}
@@ -992,6 +1009,14 @@
   .motivation-menu-item.active{border-color:var(--violet);color:var(--violet-dark);}
   .motivation-menu-item.danger{color:var(--danger);}
   .motivation-menu-item.danger:hover{border-color:var(--danger);color:var(--danger);}
+  .motivation-menu-hint{font-size:11px;color:var(--muted);margin-top:7px;}
+  .motivation-order-chips{display:flex;flex-wrap:wrap;gap:6px;}
+  .motivation-order-chip{font-family:inherit;font-size:12px;color:var(--text);background:var(--surface-alt);
+    border:1px solid var(--border);border-radius:999px;padding:6px 12px;cursor:pointer;}
+  .motivation-order-chip:hover{border-color:var(--violet);color:var(--violet-dark);}
+  .motivation-order-chip.active{border-color:var(--violet);background:var(--violet);color:#fff;font-weight:700;}
+  .motivation-voice-select{width:100%;font-family:inherit;font-size:12.5px;color:var(--text);background:var(--surface-alt);
+    border:1px solid var(--border);border-radius:10px;padding:8px 10px;cursor:pointer;}
   .motivation-menu-close{width:100%;}
   .motivation-slide-area{touch-action:pan-y;}
   .motivation-slideshow{position:relative;width:100%;aspect-ratio:4/5;max-height:520px;border-radius:18px;overflow:hidden;background:var(--surface-alt);margin-bottom:14px;}
@@ -1019,8 +1044,13 @@
     border-radius:13px;padding:9px 13px;
     cursor:pointer;-webkit-tap-highlight-color:transparent;
   }
-  .motivation-mantra-overlay.minimized{gap:0;}
+  .motivation-mantra-overlay.minimized{gap:6px;}
   .motivation-mantra-overlay.minimized .mantra-live{display:none;}
+  /* deliberately not hidden when minimized — see the comment on the button in index.html */
+  .mantra-speak-btn{flex:none;width:26px;height:26px;border-radius:8px;cursor:pointer;font-size:12px;line-height:1;
+    background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);color:#EDEDF2;
+    display:flex;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent;}
+  .mantra-speak-btn:hover{background:rgba(255,255,255,.18);}
   .motivation-dot{width:7px;height:7px;border-radius:50%;background:rgba(255,255,255,0.55);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all .2s ease;}
   .motivation-dot.active{width:18px;border-radius:4px;background:#fff;}
   .motivation-thumbs{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:8px;margin-top:4px;scrollbar-width:none;-ms-overflow-style:none;}

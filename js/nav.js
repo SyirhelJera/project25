@@ -6,7 +6,9 @@
       document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
       el('view-' + t.dataset.tab).classList.add('active');
-      if(t.dataset.tab!=='motivation') stopMotivationSlideshow();
+      // stopMantraSpeech() too: a voice still reading a mantra from a tab you've left has nothing
+      // on screen to explain where it's coming from.
+      if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); }
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders

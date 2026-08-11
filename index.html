@@ -943,6 +943,10 @@
           <div class="motivation-mantra-overlay" id="mantraRow" style="display:none;" title="Click to minimize/expand">
             <div class="today-icon">✦</div>
             <div class="today-text mantra-live" id="mantraText"></div>
+            <!-- Stays visible when the overlay is minimized (unlike the text): hearing the mantra
+                 shouldn't require expanding it first. Hidden entirely where speechSynthesis
+                 doesn't exist — renderMantraSpeechControls() in motivation.js. -->
+            <button class="mantra-speak-btn" id="mantraSpeakBtn" title="Read this mantra aloud" aria-label="Read this mantra aloud">🔊</button>
           </div>
           <div class="motivation-glow-wrap" id="motivationGlowWrap">
             <img class="motivation-slide-img active" id="motivationLayerA" alt="">
@@ -979,6 +983,26 @@
             <button class="motivation-menu-item" id="motivationCatPinBtn">Set collection PIN</button>
             <button class="motivation-menu-item" id="motivationCatLockNowBtn" style="display:none;">Lock this collection now</button>
             <button class="motivation-menu-item danger" id="motivationDelCatBtn">Delete collection</button>
+          </div>
+
+          <!-- Order of the collections themselves (the swipe / click-the-name cycle). Chips rather
+               than menu items so picking one leaves the menu open and you can see the ✓ move; the
+               pinned collection is lifted to the front whichever of these is chosen. -->
+          <div class="motivation-menu-group">
+            <div class="motivation-menu-label">Collection order</div>
+            <div class="motivation-order-chips" id="motivationOrderChips">
+              <button class="motivation-order-chip" data-order="added">Added</button>
+              <button class="motivation-order-chip" data-order="name">A–Z</button>
+              <button class="motivation-order-chip" data-order="nameDesc">Z–A</button>
+              <button class="motivation-order-chip" data-order="images">Most photos</button>
+            </div>
+            <div class="motivation-menu-hint">📌 A pinned collection always shows first.</div>
+          </div>
+
+          <div class="motivation-menu-group" id="motivationSpeechGroup">
+            <div class="motivation-menu-label">Mantra</div>
+            <button class="motivation-menu-item" id="motivationSpeakMantraBtn" data-keep-menu title="Read each new mantra aloud when you tap the photo">🔇 Read mantra aloud: Off</button>
+            <select class="motivation-voice-select" id="mantraVoiceSelect" aria-label="Mantra voice"></select>
           </div>
 
           <div class="motivation-menu-group">

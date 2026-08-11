@@ -1,5 +1,8 @@
   /* ================= MOTIVATION ================= */
-  let motivationActiveCatIdx = 0;
+  // The active collection is tracked by id, not by position: the display order is derived
+  // (see orderedMotivationCategories) and shifts under you whenever a collection is renamed,
+  // pinned, or gains images — an index would then silently point at a different collection.
+  let motivationActiveCatId = '';
   let motivationSlideIdx = {};    // { [categoryId]: image index }, remembered per category
   let motivationTimer = null;
   // Unlock state survives reloads (localStorage, so it's per-device and never rides along in the
@@ -39,8 +42,51 @@
   const PINTEREST_SAVED_CAT_NAME = 'Saved Pins';
   let pinterestSyncing = false; // one sync at a time — renderAll and the tab-open hook can both fire
 
+  // How the collections are laid out for the swipe / click-the-name cycle. Purely a view over
+  // state.motivation.categories — the stored array is never reordered, so switching back to
+  // "Added" always returns to the order things were actually created in. Ids only: the labels
+  // live on the chips in index.html (#motivationOrderChips), like every other button in this
+  // tab's menu, so this list is just what setMotivationCatOrder() will accept.
+  const MOTIVATION_ORDERS = ['added', 'name', 'nameDesc', 'images'];
+
+  function orderedMotivationCategories(){
+    const cats = state.motivation.categories.slice();
+    const order = state.motivation.catOrder || 'added';
+    // Array#sort is stable, so every comparator below falls back to added order on a tie.
+    if(order === 'name') cats.sort((a,b)=> String(a.name).localeCompare(String(b.name), undefined, {sensitivity:'base'}));
+    else if(order === 'nameDesc') cats.sort((a,b)=> String(b.name).localeCompare(String(a.name), undefined, {sensitivity:'base'}));
+    else if(order === 'images') cats.sort((a,b)=> b.images.length - a.images.length);
+    // The pinned collection is lifted to the front whatever the sort says — "pin as default" is
+    // exactly the promise that it's the one you land on, and a sort that could bury it would
+    // make the pin meaningless.
+    const pinnedId = state.motivation.pinnedCategoryId;
+    if(pinnedId){
+      const i = cats.findIndex(c=>c.id===pinnedId);
+      if(i > 0) cats.unshift(cats.splice(i,1)[0]);
+    }
+    return cats;
+  }
+
   function activeMotivationCategory(){
-    return state.motivation.categories[motivationActiveCatIdx] || null;
+    const cats = state.motivation.categories;
+    // Falling back to the first in display order covers a stale/blank id (fresh load, or the
+    // active collection was just deleted); renderMotivation() then adopts whatever it landed on.
+    return cats.find(c=>c.id===motivationActiveCatId) || orderedMotivationCategories()[0] || null;
+  }
+
+  function setMotivationCatOrder(order){
+    if(MOTIVATION_ORDERS.indexOf(order) < 0) return;
+    state.motivation.catOrder = order;
+    save(); renderMotivation();
+  }
+
+  function renderMotivationOrderChips(){
+    const wrap = el('motivationOrderChips');
+    if(!wrap) return;
+    const active = state.motivation.catOrder || 'added';
+    wrap.querySelectorAll('.motivation-order-chip').forEach(chip=>{
+      chip.classList.toggle('active', chip.dataset.order === active);
+    });
   }
 
   // Reshuffles every category's photos once per load (called from renderAll, i.e. after the
@@ -63,12 +109,14 @@
     const locked = !!state.motivation.pin && !motivationUnlocked;
     el('motivationLock').style.display = locked ? 'block' : 'none';
     el('motivationContent').style.display = locked ? 'none' : 'block';
-    if(locked){ stopMotivationSlideshow(); return; }
+    if(locked){ stopMotivationSlideshow(); stopMantraSpeech(); return; }
 
     el('motivationPinBtn').textContent = state.motivation.pin ? 'Change PIN' : 'Set PIN';
     el('motivationLockBtn').style.display = state.motivation.pin ? '' : 'none';
+    renderMotivationOrderChips();
+    renderMantraSpeechControls();
 
-    const categories = state.motivation.categories;
+    const categories = orderedMotivationCategories();
     const hasCats = categories.length > 0;
     el('motivationEmpty').style.display = hasCats ? 'none' : 'block';
     // The head itself always shows — the ⋯ inside it is the only route to "new collection", so
@@ -86,10 +134,9 @@
       hideMotivationVideo();
       return;
     }
-    if(motivationActiveCatIdx >= categories.length) motivationActiveCatIdx = categories.length - 1;
-    if(motivationActiveCatIdx < 0) motivationActiveCatIdx = 0;
 
-    const cat = categories[motivationActiveCatIdx];
+    const cat = activeMotivationCategory();
+    motivationActiveCatId = cat.id; // adopt the fallback, so next/prev step on from what's shown
     el('motivationActiveName').textContent = cat.name;
     el('motivationMenuCatLabel').textContent = cat.name;
     el('motivationCatPinBtn').textContent = cat.pin ? 'Change collection PIN' : 'Set collection PIN';
@@ -112,6 +159,7 @@
       el('motivationCatEmpty').style.display = 'none';
       el('motivationThumbs').style.display = 'none';
       stopMotivationSlideshow();
+      stopMantraSpeech();
       hideMotivationVideo(); // a locked category must not keep playing its clip behind the lock
       return;
     }
@@ -387,21 +435,21 @@
   // (not on every render) so it doesn't yank you back after you've manually switched categories.
   function openToPinnedMotivationCategory(){
     if(!state.motivation.pinnedCategoryId) return;
-    const idx = state.motivation.categories.findIndex(c=>c.id===state.motivation.pinnedCategoryId);
-    if(idx >= 0) motivationActiveCatIdx = idx;
+    if(state.motivation.categories.some(c=>c.id===state.motivation.pinnedCategoryId)) motivationActiveCatId = state.motivation.pinnedCategoryId;
   }
 
-  function nextMotivationCategory(){
-    if(state.motivation.categories.length < 2) return;
-    motivationActiveCatIdx = (motivationActiveCatIdx + 1) % state.motivation.categories.length;
+  // Both step through the *display* order, so switching the sort also changes what "next" means.
+  function stepMotivationCategory(delta){
+    const cats = orderedMotivationCategories();
+    if(cats.length < 2) return;
+    const cur = activeMotivationCategory();
+    const i = cats.findIndex(c=>c.id===(cur && cur.id));
+    const from = i < 0 ? 0 : i;
+    motivationActiveCatId = cats[(from + delta + cats.length) % cats.length].id;
     renderMotivation(true);
   }
-  function prevMotivationCategory(){
-    const n = state.motivation.categories.length;
-    if(n < 2) return;
-    motivationActiveCatIdx = (motivationActiveCatIdx - 1 + n) % n;
-    renderMotivation(true);
-  }
+  function nextMotivationCategory(){ stepMotivationCategory(1); }
+  function prevMotivationCategory(){ stepMotivationCategory(-1); }
 
   // setTimeout rather than setInterval now that the delay varies per slide. Not a behaviour change
   // for images: nextMotivationImage() already ended by calling back in here, so the old interval
@@ -449,7 +497,7 @@
   function addMotivationCategory(){
     const cat = { id: uid(), name: 'New Category', images: [], pin: '' };
     state.motivation.categories.push(cat);
-    motivationActiveCatIdx = state.motivation.categories.length - 1;
+    motivationActiveCatId = cat.id;
     save(); renderMotivation();
     promptRenameMotivationCategory(cat.id);
   }
@@ -480,7 +528,7 @@
     if(!user) return;
     const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '' };
     state.motivation.categories.push(cat);
-    motivationActiveCatIdx = state.motivation.categories.length - 1;
+    motivationActiveCatId = cat.id;
     save(); renderMotivation();
     syncPinterestCategory(cat.id, true);
   }
@@ -703,6 +751,113 @@
     else window.alert('Incorrect PIN.');
   }
 
+  /* ---------- mantra text-to-speech ----------
+     The browser's own Web Speech API — no dependency, no network, nothing uploaded. The 🔊 on the
+     mantra overlay reads whatever mantra is currently shown; state.motivation.speakMantra makes it
+     additionally read each *new* one, which means on the tap that rerolls it. Auto-advancing the
+     slideshow deliberately doesn't reroll the mantra, so this never starts talking on its own.
+     The chosen voice is localStorage, not state: the voice list belongs to the device/browser, so
+     a name picked on the phone would mean nothing on the desktop (same reasoning as the unlocks
+     above). Everything here no-ops when speechSynthesis is missing. */
+  const motivationTTS = ('speechSynthesis' in window) ? window.speechSynthesis : null;
+  const MANTRA_VOICE_KEY = 'motivation-mantra-voice';
+  let mantraVoiceURI = '';
+  try{ mantraVoiceURI = localStorage.getItem(MANTRA_VOICE_KEY) || ''; }catch(e){}
+
+  function mantraVoices(){
+    if(!motivationTTS) return [];
+    // Chrome populates this asynchronously — an empty list here means "not yet", which is what
+    // the voiceschanged listener below re-renders for rather than an unsupported browser.
+    let list = [];
+    try{ list = motivationTTS.getVoices() || []; }catch(e){ return []; }
+    return list.slice().sort((a,b)=> String(a.lang).localeCompare(String(b.lang)) || String(a.name).localeCompare(String(b.name)));
+  }
+  // null = leave utterance.voice unset and let the browser pick its own default, which is the
+  // right behaviour both before the list has loaded and after a saved voice disappears.
+  function pickMantraVoice(){
+    return mantraVoices().find(v=>v.voiceURI === mantraVoiceURI) || null;
+  }
+
+  function stopMantraSpeech(){
+    if(!motivationTTS) return;
+    try{ motivationTTS.cancel(); }catch(e){}
+  }
+
+  function speakMantra(){
+    if(!motivationTTS || !state.mantras.length) return;
+    // Read from the element rather than state.mantras[mantraIdx]: what should be spoken is
+    // definitionally the line on screen, whoever last wrote it there.
+    const node = el('mantraText');
+    const text = node ? (node.textContent || '').trim() : '';
+    if(!text) return;
+    // cancel() first, never queue — a second tap replaces what's being read. Queueing would let
+    // tapping through a collection back up a minute of speech behind the image you're looking at.
+    stopMantraSpeech();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.92; // a mantra read at the default rate sounds hurried
+    const voice = pickMantraVoice();
+    if(voice){ u.voice = voice; u.lang = voice.lang; }
+    try{ motivationTTS.speak(u); }catch(e){}
+  }
+
+  // The tap on the slideshow both rerolls the mantra and, if enabled, reads the new one.
+  function rerollAndSpeakMantra(){
+    rerollMantra();
+    if(state.motivation.speakMantra) speakMantra();
+  }
+
+  function renderMantraSpeechControls(){
+    const supported = !!motivationTTS;
+    el('motivationSpeechGroup').style.display = supported ? '' : 'none';
+    el('mantraSpeakBtn').style.display = supported ? '' : 'none';
+    if(!supported) return;
+
+    const on = !!state.motivation.speakMantra;
+    const toggle = el('motivationSpeakMantraBtn');
+    toggle.textContent = on ? '🔊 Read mantra aloud: On' : '🔇 Read mantra aloud: Off';
+    toggle.classList.toggle('active', on);
+
+    const sel = el('mantraVoiceSelect');
+    const voices = mantraVoices();
+    // Rebuilt only when the list actually changed: this runs on every renderMotivation() (which
+    // includes every menu open), and replacing the <option>s under an open dropdown would close it.
+    const sig = voices.map(v=>v.voiceURI).join('|');
+    if(sel.dataset.sig !== sig){
+      sel.dataset.sig = sig;
+      sel.innerHTML = '';
+      const def = document.createElement('option');
+      def.value = ''; def.textContent = voices.length ? 'Browser default voice' : 'No voices available';
+      sel.appendChild(def);
+      voices.forEach(v=>{
+        const opt = document.createElement('option');
+        opt.value = v.voiceURI;
+        opt.textContent = v.name + ' (' + v.lang + ')'; // textContent — voice names are not ours to trust as markup
+        sel.appendChild(opt);
+      });
+    }
+    sel.value = voices.some(v=>v.voiceURI === mantraVoiceURI) ? mantraVoiceURI : '';
+  }
+
+  if(motivationTTS && motivationTTS.addEventListener) motivationTTS.addEventListener('voiceschanged', renderMantraSpeechControls);
+
+  el('mantraSpeakBtn').addEventListener('click', e=>{
+    // The overlay's own click minimizes it — asking to hear the mantra isn't asking to fold it,
+    // and the wrapper underneath would otherwise also advance the slide.
+    e.stopPropagation();
+    speakMantra();
+  });
+  el('motivationSpeakMantraBtn').addEventListener('click', ()=>{
+    state.motivation.speakMantra = !state.motivation.speakMantra;
+    if(state.motivation.speakMantra) speakMantra(); // switching it on reads the current one, so "On" demonstrates itself
+    else stopMantraSpeech();
+    save(); renderMotivation();
+  });
+  el('mantraVoiceSelect').addEventListener('change', e=>{
+    mantraVoiceURI = e.target.value;
+    try{ localStorage.setItem(MANTRA_VOICE_KEY, mantraVoiceURI); }catch(err){}
+    speakMantra(); // sample the voice you just picked
+  });
+
   /* ---------- options menu ---------- */
   // Everything that used to be a row of buttons above the slideshow. renderMotivation() runs on
   // open so labels ("Set" vs "Change PIN") and the Pinterest-only items are current.
@@ -714,7 +869,17 @@
   document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && el('motivationMenu').style.display === 'flex') closeMotivationMenu(); });
   // Capture phase on purpose: picking an item closes the menu *before* that item's own handler
   // runs, so the window.prompt several of them open isn't left sitting on top of an open modal.
-  el('motivationMenu').addEventListener('click', e=>{ if(e.target.closest('.motivation-menu-item')) closeMotivationMenu(); }, true);
+  // data-keep-menu exempts the in-place toggles (read-aloud, collection order) — those show their
+  // result *in* the menu, so closing it would hide the only feedback that the tap did anything.
+  el('motivationMenu').addEventListener('click', e=>{
+    const item = e.target.closest('.motivation-menu-item');
+    if(item && !item.hasAttribute('data-keep-menu')) closeMotivationMenu();
+  }, true);
+
+  el('motivationOrderChips').addEventListener('click', e=>{
+    const chip = e.target.closest('.motivation-order-chip');
+    if(chip) setMotivationCatOrder(chip.dataset.order);
+  });
 
   el('addMotivationCategoryBtn').addEventListener('click', addMotivationCategory);
   el('addPinterestCategoryBtn').addEventListener('click', addPinterestCategory);
@@ -753,11 +918,11 @@
     if(wasBlocked && isMotivationVideoSlide()){
       showMotivationSlide(false);
       startMotivationSlideshow();
-      rerollMantra();
+      rerollAndSpeakMantra();
       return;
     }
     nextMotivationImage();
-    rerollMantra();
+    rerollAndSpeakMantra();
   });
   // What normally advances a video slide: the 30s ceiling in startMotivationSlideshow() is just
   // the backstop. Bound once here rather than per slide, since the element is reused.
@@ -799,7 +964,7 @@
   // so it isn't silently cycling through images — and the images it'd be fetching — for no one
   // to see. Only resumes if the Motivation tab is still the one actually showing.
   document.addEventListener('visibilitychange', ()=>{
-    if(document.hidden){ stopMotivationSlideshow(); return; }
+    if(document.hidden){ stopMotivationSlideshow(); stopMantraSpeech(); return; }
     const view = el('view-motivation');
     // showMotivationSlide() rather than only restarting the timer: stopMotivationSlideshow()
     // paused any video, and this is what presses play again. It's idempotent for a still, and

@@ -270,6 +270,21 @@
      the user gesture the browser wants, so the new playlist starts without a second tap. */
   function setMusicHint(text){ el('playMusicHint').textContent = text; }
 
+  /* The saved list is height-capped and scrolls (see .play-music-saved), so with a long list the
+     highlighted row can sit outside the visible slice — which reads as "nothing is selected".
+     Nudge it into view rather than letting the list sit at scrollTop 0. Measured against
+     offsetParent (the position:relative .play-card) for both, since the wrapper is static. Does
+     nothing while the settings panel is display:none, hence the second call when it opens. */
+  function scrollActivePlaylistIntoView(){
+    const wrap = el('playMusicSaved');
+    const row = wrap && wrap.querySelector('.play-music-saved-row.active');
+    if(!row || wrap.scrollHeight <= wrap.clientHeight) return;
+    const top = row.offsetTop - wrap.offsetTop;
+    if(top < wrap.scrollTop || top + row.offsetHeight > wrap.scrollTop + wrap.clientHeight){
+      wrap.scrollTop = Math.max(0, top - (wrap.clientHeight - row.offsetHeight) / 2);
+    }
+  }
+
   function renderSavedPlaylists(focusRecordId){
     const wrap = el('playMusicSaved');
     if(!wrap) return;
@@ -301,6 +316,7 @@
       wrap.appendChild(row);
       if(focusRecordId && p.id === focusRecordId){ nameInput.focus(); nameInput.select(); }
     });
+    scrollActivePlaylistIntoView();
   }
 
   function defaultPlaylistName(index){ return 'Playlist ' + (index + 1); }
@@ -368,7 +384,7 @@
     const panel = el('playMusicSettings');
     const opening = panel.style.display === 'none';
     panel.style.display = opening ? '' : 'none';
-    if(opening) syncMusicSettingsInputs();
+    if(opening){ syncMusicSettingsInputs(); scrollActivePlaylistIntoView(); }
   });
 
   el('playMusicVol').addEventListener('input', e=>{

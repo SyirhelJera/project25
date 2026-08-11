@@ -265,6 +265,32 @@
     v.style.display = 'none';
   }
 
+  // iOS only lets a media element be played from script if play() was once called on it inside a
+  // user gesture — and it grants that per element, permanently, which is what makes the single
+  // reused <video> workable. Without this nothing here ever qualifies: every play() below runs
+  // from a slideshow timer, a render, or visibilitychange. On a phone that's decisive rather than
+  // theoretical, because Low Power Mode switches muted autoplay off outright, so the clip is
+  // refused and the pin silently degrades to its cover still.
+  // Deliberately bound at the document rather than to the slideshow's own tap handler: that tap
+  // advances to the *next* pin, which is usually a still, so the gesture would pass without a
+  // play() call happening at all. Any tap anywhere — including the nav button that opens the tab —
+  // primes it instead, so the first video slide is already allowed by the time it comes up.
+  let motivationVideoPrimed = false;
+  function primeMotivationVideo(){
+    if(motivationVideoPrimed && !motivationVideoBlocked) return; // re-prime while still refused
+    motivationVideoPrimed = true;
+    const v = el('motivationVideo');
+    if(!v) return;
+    v.muted = true; v.playsInline = true;
+    const p = v.play();
+    if(p && p.catch) p.catch(()=>{});
+    // On a still slide there's no src, so this plays nothing — the only thing that matters is
+    // that WebKit has now seen a gesture-initiated play() on this element. Park it back.
+    if(!v.getAttribute('src')){ try{ v.pause(); }catch(e){} }
+  }
+  document.addEventListener('click', primeMotivationVideo, true);
+  document.addEventListener('touchend', primeMotivationVideo, {capture:true, passive:true});
+
   // Individual clips that turned out to be unplayable (Pinterest 404'd it, or the browser can't
   // decode it). Session-only and keyed by URL, so one dead pin degrades to its cover still without
   // costing the rest of the collection its video — unlike motivationVideoBlocked, which is the
@@ -288,6 +314,11 @@
     // play() on a video parked at its end would fire `ended` again instantly, spinning. Rewinding
     // turns that into what it should be, an ordinary loop.
     else if(v.ended) v.currentTime = 0;
+    // Re-asserted as properties on every slide rather than trusted from the markup: WebKit reads
+    // muted/inline at the instant play() is called, and the attribute-only form doesn't reliably
+    // survive a src assigned after load. Both are preconditions for an unattended play() on iOS —
+    // without playsInline it demands fullscreen, without muted it refuses outright.
+    v.muted = true; v.playsInline = true;
     const played = v.play();
     if(played && played.catch){
       const attempted = img.videoUrl;
@@ -713,7 +744,18 @@
     if(motivationSuppressClick) return;
     // A tap is the user gesture browsers want before they'll allow autoplay, so retry video from
     // here — a collection that fell back to stills on load starts playing once you interact.
+    // (primeMotivationVideo() has already run for this same tap, from the document listener.)
+    const wasBlocked = motivationVideoBlocked;
     motivationVideoBlocked = false;
+    // When autoplay had been refused, this tap belongs to the pin you're looking at: play its clip
+    // rather than skipping past it. Advancing instead means each tap only ever re-lands on another
+    // unplayed still, so you can tap through a whole collection without one video starting.
+    if(wasBlocked && isMotivationVideoSlide()){
+      showMotivationSlide(false);
+      startMotivationSlideshow();
+      rerollMantra();
+      return;
+    }
     nextMotivationImage();
     rerollMantra();
   });

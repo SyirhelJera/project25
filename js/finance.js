@@ -12,6 +12,16 @@
     else hist.push({ date: today, value });
   }
 
+  // Writes a money figure into a .fin-stat-num and tints it only when it is non-zero, so an empty
+  // total reads as "nothing here" rather than as a red warning.
+  function setToneAmount(node, amount, ccy, tone){
+    if(!node) return;
+    node.textContent = fmtMoney(amount, ccy);
+    const on = Math.abs(amount) >= 0.005;
+    node.classList.toggle('pos', tone === 'pos' && on);
+    node.classList.toggle('neg', tone === 'neg' && on);
+  }
+
   function financeAccountLabel(type){
     return {savings:'Savings', credit:'Credit', lent:'Lent', 'custom-asset':'Custom (Asset)', 'custom-liability':'Custom (Liability)'}[type] || type;
   }
@@ -38,7 +48,11 @@
 
   /* ---- net worth trend chart: line chart over state.finance.netWorthHistory, zoomable ----
      Same hand-rolled SVG approach as the Fitness weight chart (see renderWeightChart() in
-     fitness.js) minus the BMI bands / moving average, which don't have a net-worth analogue. */
+     fitness.js) minus the BMI bands / moving average, which don't have a net-worth analogue.
+     Three things differ from a plain polyline, all for legibility rather than decoration: an area
+     wash under the line so the trend reads as a mass at a glance, a dot only on the latest point
+     (one per day turned a year of history into a dotted rope), and a scrub readout, because a
+     chart you can't query only answers "roughly which way". */
   const FINANCE_CHART_ZOOMS = [
     {key:'1m', label:'1M', months:1},
     {key:'3m', label:'3M', months:3},
@@ -48,33 +62,87 @@
   ];
   let netWorthChartZoom = '6m'; // not persisted — resets to a sensible default each page load
 
-  function renderNetWorthChart(){
+  // short form for the delta chip — "₱124k" instead of "₱124,500.00", which at this size is
+  // noise rather than information
+  function fmtMoneyShort(v, ccy){
+    const sym = ccySymbol(ccy||'USD');
+    const a = Math.abs(v), sign = v < 0 ? '-' : '';
+    const trim = n => n.toFixed(1).replace(/\.0$/,'');
+    if(a >= 1e9) return sign+sym+trim(a/1e9)+'B';
+    if(a >= 1e6) return sign+sym+trim(a/1e6)+'M';
+    if(a >= 1e4) return sign+sym+Math.round(a/1e3)+'k';
+    if(a >= 1e3) return sign+sym+trim(a/1e3)+'k';
+    return sign+sym+Math.round(a).toLocaleString();
+  }
+
+  /* Axis ticks need precision chosen from the *span* being plotted, not from the magnitude of the
+     numbers: a net worth hovering between ₱154,200 and ₱155,100 rounds to "₱154k, ₱155k, ₱155k,
+     ₱155k" — four labels, two distinct values, and a chart that looks flat by mistake. So the
+     decimal count comes from how wide the visible range is. */
+  function axisTickFormatter(minV, maxV, ccy){
+    const sym = ccySymbol(ccy||'USD');
+    const range = Math.abs(maxV - minV) || 1;
+    const mag = Math.max(Math.abs(minV), Math.abs(maxV));
+    if(mag >= 1e6){
+      const d = range < 1e5 ? 2 : range < 1e6 ? 1 : 0;
+      return v => (v<0?'-':'')+sym+Math.abs(v/1e6).toFixed(d)+'M';
+    }
+    if(mag >= 1e4){
+      const d = range < 1e3 ? 2 : range < 1e4 ? 1 : 0;
+      return v => (v<0?'-':'')+sym+Math.abs(v/1e3).toFixed(d)+'k';
+    }
+    const d = range < 10 ? 2 : range < 100 ? 1 : 0;
+    return v => (v<0?'-':'')+sym+Math.abs(v).toFixed(d);
+  }
+
+  // the range control is stable markup — rebuilding it every render (and re-binding its listeners)
+  // was pointless churn, and it fought the CSS transition on the active segment
+  function renderNetWorthZoomRow(){
     const zoomRow = el('nwChartZoomRow'); if(!zoomRow) return;
-    zoomRow.innerHTML = FINANCE_CHART_ZOOMS.map(z=>
-      '<button class="chart-zoom-btn'+(netWorthChartZoom===z.key?' active':'')+'" data-zoom="'+z.key+'">'+z.label+'</button>'
-    ).join('');
-    zoomRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{ netWorthChartZoom = btn.dataset.zoom; renderNetWorthChart(); });
+    if(!zoomRow.dataset.built){
+      zoomRow.dataset.built = '1';
+      zoomRow.innerHTML = FINANCE_CHART_ZOOMS.map(z=>
+        '<button type="button" data-zoom="'+z.key+'">'+z.label+'</button>'
+      ).join('');
+      zoomRow.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click', ()=>{ netWorthChartZoom = btn.dataset.zoom; renderNetWorthChart(); });
+      });
+    }
+    zoomRow.querySelectorAll('button').forEach(btn=>{
+      const on = btn.dataset.zoom === netWorthChartZoom;
+      btn.classList.toggle('active', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
+  }
+
+  function renderNetWorthChart(){
+    renderNetWorthZoomRow();
 
     const nwCcy = state.profile.netWorthCurrency || 'USD';
-    const currentValueEl = el('nwCurrentValue');
+    const currentValueEl = el('nwCurrentValue'); if(!currentValueEl) return;
     currentValueEl.textContent = fmtMoney(convertAmt(getNetWorthNum(), 'USD', nwCcy), nwCcy);
-    if(!currentValueEl.dataset.wired){
-      currentValueEl.dataset.wired = '1';
-      // clicking the figure cycles the net worth display currency — a quick way to check net
-      // worth in another currency without going to Settings
-      currentValueEl.addEventListener('click', ()=>{
-        const idx = CURRENCIES.indexOf(state.profile.netWorthCurrency || 'USD');
-        state.profile.netWorthCurrency = CURRENCIES[(idx+1) % CURRENCIES.length];
-        save(); renderFinance(); renderGoals();
-      });
+    // the display currency used to be cycled by clicking the figure, which nothing announced and
+    // no keyboard could reach — it's a labelled control of its own now, showing the active code
+    const ccyBtn = el('nwCurrencyBtn');
+    if(ccyBtn){
+      ccyBtn.textContent = nwCcy;
+      if(!ccyBtn.dataset.wired){
+        ccyBtn.dataset.wired = '1';
+        ccyBtn.addEventListener('click', ()=>{
+          const idx = CURRENCIES.indexOf(state.profile.netWorthCurrency || 'USD');
+          state.profile.netWorthCurrency = CURRENCIES[(idx+1) % CURRENCIES.length];
+          save(); renderFinance(); renderGoals();
+        });
+      }
     }
 
     const wrap = el('nwChartWrap');
+    const deltaEl = el('nwDelta');
     const log = (state.finance.netWorthHistory||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+    const setDelta = html => { if(deltaEl) deltaEl.innerHTML = html; };
     if(log.length < 2){
-      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">Check back after a couple of days — net worth is snapshotted once per day you open the app.</div>';
+      setDelta('<span class="fin-delta-val flat">No trend yet</span>');
+      wrap.innerHTML = '<div class="fin-chart-empty">Check back in a couple of days — net worth is snapshotted once per day you open the app.</div>';
       return;
     }
     const zoomOpt = FINANCE_CHART_ZOOMS.find(z=>z.key===netWorthChartZoom) || FINANCE_CHART_ZOOMS[2];
@@ -85,43 +153,156 @@
       points = log.filter(e=>e.date >= cutoffStr);
     }
     if(points.length < 2){
-      wrap.innerHTML = '<div class="empty" style="border:none;padding:28px 10px;">No entries in this time range — try a wider zoom.</div>';
+      setDelta('<span class="fin-delta-val flat">No trend yet</span>');
+      wrap.innerHTML = '<div class="fin-chart-empty">Nothing recorded in this range — try a wider one.</div>';
       return;
     }
-    const W = 780, H = 220, padL = 60, padR = 14, padT = 14, padB = 26;
+
     const vals = points.map(p => convertAmt(p.value, 'USD', nwCcy));
+
+    // headline change across the visible window — the arrow repeats what the colour says so the
+    // direction survives greyscale printing and colour blindness
+    const change = vals[vals.length-1] - vals[0];
+    const base = Math.abs(vals[0]);
+    const pctTxt = base > 0.005 ? ' (' + Math.abs(change/base*100).toFixed(1).replace(/\.0$/,'') + '%)' : '';
+    const dir = Math.abs(change) < 0.005 ? 'flat' : (change > 0 ? 'up' : 'down');
+    const arrow = dir === 'up' ? '↑' : dir === 'down' ? '↓' : '→';
+    const rangeTxt = zoomOpt.months == null ? 'all time'
+      : zoomOpt.months === 12 ? 'the past year'
+      : 'the past ' + zoomOpt.months + ' month' + (zoomOpt.months > 1 ? 's' : '');
+    setDelta('<span class="fin-delta-val '+dir+'">'+arrow+' '+escapeHtml(fmtMoneyShort(Math.abs(change), nwCcy))+escapeHtml(pctTxt)+'</span>'
+      + '<span>over '+escapeHtml(rangeTxt)+'</span>');
+
+    /* Everything inside an SVG scales with the viewBox, type included — a fixed font-size:10.5
+       renders at about 5px once a 780-unit chart is squeezed into a 390px phone column, which is
+       how a chart ends up with an axis nobody can read. So the type and the gutters it needs are
+       expressed in *rendered pixels* and converted into viewBox units by k, and the chart is given
+       a taller aspect on narrow screens instead of becoming a 100px sliver. */
+    const wrapW = Math.max(280, wrap.clientWidth || 780);
+    const k = 780 / wrapW;                       // viewBox units per rendered pixel
+    const W = 780;
+    const H = Math.round((wrapW < 560 ? 150 : 240) * k);
+    const fs = +(11 * k).toFixed(1);             // axis type, ~11px rendered at any width
+    const padL = Math.round(fs * 3.9 + 10 * k);  // room for the widest tick label
+    const padR = Math.round(14 * k), padT = Math.round(18 * k), padB = Math.round(fs + 16 * k);
     let minV = Math.min(...vals), maxV = Math.max(...vals);
     if(minV === maxV){ const bump = Math.abs(minV)*0.1 || 1; minV -= bump; maxV += bump; }
-    const pad = (maxV-minV)*0.12; minV -= pad; maxV += pad;
-    const t0 = new Date(points[0].date).getTime(), t1 = new Date(points[points.length-1].date).getTime();
+    const pad = (maxV-minV)*0.14; minV -= pad; maxV += pad;
+    // parseLocalDateStr, not new Date(str): the latter reads "YYYY-MM-DD" as UTC per spec, which
+    // lands a day early in negative-UTC-offset zones and mislabels the axis
+    const t0 = parseLocalDateStr(points[0].date).getTime(), t1 = parseLocalDateStr(points[points.length-1].date).getTime();
     const tSpan = Math.max(1, t1-t0);
-    const xOf = d => padL + ((new Date(d).getTime()-t0)/tSpan) * (W-padL-padR);
+    const xOf = d => padL + ((parseLocalDateStr(d).getTime()-t0)/tSpan) * (W-padL-padR);
     const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
 
-    const linePath = points.map((p,i)=> (i===0?'M':'L') + xOf(p.date).toFixed(1) + ',' + yOf(vals[i]).toFixed(1)).join(' ');
+    // one array carrying both the plot geometry and the source values, so the scrub handler can
+    // hit-test and format from the same record
+    const pts = points.map((p,i)=> ({ x:xOf(p.date), y:yOf(vals[i]), v:vals[i], date:p.date }));
+    const linePath = pts.map((p,i)=> (i===0?'M':'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+    const floor = H - padB;
+    const areaPath = linePath + ' L' + pts[pts.length-1].x.toFixed(1) + ',' + floor
+      + ' L' + pts[0].x.toFixed(1) + ',' + floor + ' Z';
 
+    // three gridlines, not five: the axis is a reference, not the subject
     let gridSvg = '';
-    const steps = 4;
+    const steps = 3;
+    const tick = axisTickFormatter(minV, maxV, nwCcy);
     for(let i=0;i<=steps;i++){
       const v = minV + (maxV-minV)*(i/steps);
       const y = yOf(v);
-      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="1"/>';
-      gridSvg += '<text x="'+(padL-8)+'" y="'+(y+3).toFixed(1)+'" font-size="10" fill="var(--muted)" text-anchor="end">'+escapeHtml(ccySymbol(nwCcy)+Math.round(v).toLocaleString())+'</text>';
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="'+k.toFixed(2)+'" opacity=".7"/>';
+      gridSvg += '<text x="'+(padL-Math.round(9*k))+'" y="'+(y+fs*0.34).toFixed(1)+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'+escapeHtml(tick(v))+'</text>';
     }
-    const labelIdxs = [0, Math.floor((points.length-1)/2), points.length-1];
+    // a narrow chart can't fit three full dates without them touching, so it shows the two ends
+    // only, and drops the year — the range control above already says which window this is
     let xLabelSvg = '';
-    labelIdxs.forEach(i=>{
-      const p = points[i];
-      xLabelSvg += '<text x="'+xOf(p.date).toFixed(1)+'" y="'+(H-6)+'" font-size="10" fill="var(--muted)" text-anchor="middle">'+fmtDate(new Date(p.date).getTime())+'</text>';
+    const narrow = wrapW < 560;
+    const axisDate = ts => narrow
+      ? new Date(ts).toLocaleDateString(undefined,{month:'short',day:'numeric'})
+      : fmtDate(ts);
+    const xLabelSpec = narrow
+      ? [[0,'start'],[points.length-1,'end']]
+      : [[0,'start'],[Math.floor((points.length-1)/2),'middle'],[points.length-1,'end']];
+    xLabelSpec.forEach(([i,anchor])=>{
+      const p = pts[i];
+      // the outer labels hug the plot edges so they can't spill outside the panel
+      const x = anchor==='start' ? padL : anchor==='end' ? W-padR : p.x;
+      xLabelSvg += '<text x="'+x.toFixed(1)+'" y="'+(H-Math.round(5*k))+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="'+anchor+'">'+escapeHtml(axisDate(parseLocalDateStr(p.date).getTime()))+'</text>';
     });
 
-    const dotsSvg = points.map((p,i)=> '<circle cx="'+xOf(p.date).toFixed(1)+'" cy="'+yOf(vals[i]).toFixed(1)+'" r="2.5" fill="var(--violet)"></circle>').join('');
-
-    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;height:auto;display:block;">'
+    const last = pts[pts.length-1];
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Net worth trend over '+escapeHtml(rangeTxt)+'">'
+      + '<defs><linearGradient id="nwAreaFill" x1="0" y1="0" x2="0" y2="1">'
+      +   '<stop offset="0%" stop-color="var(--violet)" stop-opacity=".26"/>'
+      +   '<stop offset="100%" stop-color="var(--violet)" stop-opacity="0"/>'
+      + '</linearGradient></defs>'
       + gridSvg + xLabelSvg
-      + '<path d="'+linePath+'" fill="none" stroke="var(--violet)" stroke-width="2"/>'
-      + dotsSvg
+      + '<path d="'+areaPath+'" fill="url(#nwAreaFill)" stroke="none"/>'
+      + '<path d="'+linePath+'" fill="none" stroke="var(--violet)" stroke-width="'+(2.25*k).toFixed(2)+'" stroke-linejoin="round" stroke-linecap="round"/>'
+      + '<line class="nw-guide" x1="0" y1="'+padT+'" x2="0" y2="'+floor+'" stroke="var(--violet)" stroke-width="'+k.toFixed(2)+'" opacity="0"/>'
+      + '<circle cx="'+last.x.toFixed(1)+'" cy="'+last.y.toFixed(1)+'" r="'+(4*k).toFixed(1)+'" fill="var(--violet)" stroke="var(--surface)" stroke-width="'+(2.5*k).toFixed(1)+'"/>'
+      + '<circle class="nw-hover-dot" cx="0" cy="0" r="'+(4.5*k).toFixed(1)+'" fill="var(--violet)" stroke="var(--surface)" stroke-width="'+(2.5*k).toFixed(1)+'" opacity="0"/>'
       + '</svg>';
+    wireNetWorthScrub(wrap, pts, W, H, nwCcy);
+    observeNetWorthChartWidth(wrap);
+  }
+
+  /* The sizing above measures the wrapper, and the wrapper measures 0 while the Finance view is
+     display:none — so a chart first drawn on another tab would keep desktop-scaled type after the
+     user switched to Finance on a phone. This redraws it once the real width is known, and again
+     on rotate/resize. Guarded on a meaningful change so setting innerHTML can't loop. */
+  let nwChartLastWidth = 0, nwChartObserver = null;
+  function observeNetWorthChartWidth(wrap){
+    nwChartLastWidth = wrap.clientWidth || 0;
+    if(nwChartObserver || typeof ResizeObserver === 'undefined') return;
+    nwChartObserver = new ResizeObserver(entries=>{
+      const w = Math.round(entries[0].contentRect.width);
+      if(!w || Math.abs(w - nwChartLastWidth) < 12) return;
+      nwChartLastWidth = w;
+      renderNetWorthChart();
+    });
+    nwChartObserver.observe(wrap);
+  }
+
+  /* Pointer/finger scrub over the trend line. Uses pointer events so mouse, pen and touch share
+     one path; the matching touch-action:pan-y (CSS) keeps a vertical swipe scrolling the page,
+     and nav.js opts .fin-chart out of swipe-to-change-tab so a horizontal drag reads the chart
+     instead of leaving the tab. */
+  function wireNetWorthScrub(wrap, pts, W, H, ccy){
+    const svg = wrap.querySelector('svg'); if(!svg) return;
+    const guide = svg.querySelector('.nw-guide');
+    const dot = svg.querySelector('.nw-hover-dot');
+    const tip = document.createElement('div');
+    tip.className = 'fin-tip';
+    wrap.appendChild(tip);
+
+    function show(clientX){
+      const r = svg.getBoundingClientRect();
+      if(!r.width) return;
+      const sx = ((clientX - r.left) / r.width) * W;
+      let best = pts[0], bestD = Infinity;
+      pts.forEach(p=>{ const d = Math.abs(p.x - sx); if(d < bestD){ bestD = d; best = p; } });
+      guide.setAttribute('x1', best.x); guide.setAttribute('x2', best.x);
+      guide.setAttribute('opacity', '.35');
+      dot.setAttribute('cx', best.x); dot.setAttribute('cy', best.y); dot.setAttribute('opacity', '1');
+      tip.innerHTML = '<span class="fin-tip-date">'
+        + escapeHtml(fmtDate(parseLocalDateStr(best.date).getTime()))
+        + '</span>' + escapeHtml(fmtMoney(best.v, ccy));
+      // clamp so the bubble can't hang off either edge of the panel
+      const px = (best.x / W) * r.width;
+      tip.style.left = Math.max(52, Math.min(r.width - 52, px)) + 'px';
+      tip.style.top = ((best.y / H) * r.height - 10) + 'px';
+      tip.classList.add('on');
+    }
+    function hide(){
+      guide.setAttribute('opacity', '0');
+      dot.setAttribute('opacity', '0');
+      tip.classList.remove('on');
+    }
+    svg.addEventListener('pointermove', e=> show(e.clientX));
+    svg.addEventListener('pointerdown', e=> show(e.clientX));
+    svg.addEventListener('pointerleave', hide);
+    svg.addEventListener('pointercancel', hide);
   }
 
   /* drag-to-reorder finance accounts — registered once, delegated over #financeList */
@@ -160,10 +341,12 @@
   financeListEl.addEventListener('dragend', ()=>{ draggedAccountId = null; financeListEl.querySelectorAll('.finance-account.drag-over').forEach(c=>c.classList.remove('drag-over')); });
 
   /* ---- spending breakdown: this period's outflow transactions, grouped by category ---- */
+  // `short` is what the segment shows once the column is too narrow for the strip to stay on two
+  // rows — swapped by CSS, not by JS, so it survives a resize without a re-render
   const SPEND_PERIODS = [
-    {key:'week', label:'Weekly'},
-    {key:'month', label:'Monthly'},
-    {key:'year', label:'Yearly'}
+    {key:'week', label:'Weekly', short:'Wk'},
+    {key:'month', label:'Monthly', short:'Mo'},
+    {key:'year', label:'Yearly', short:'Yr'}
   ];
   let spendPeriod = 'month'; // not persisted — resets to a sensible default each page load
   // How many periods back from the current one — 0 = the ongoing week/month/year, 1 = the one
@@ -224,34 +407,69 @@
     return totals;
   }
 
-  // updates the period toggle/nav row and the two top-of-tab totals; the actual category
-  // breakdown only lives in the on-demand modals now (see openPeriodBreakdownModal()) — the
-  // inline per-category list under Accounts was removed as redundant with those modals
+  // updates the period controls, the in/out pair and the net line; the per-category breakdown
+  // lives in the on-demand modals (see openPeriodBreakdownModal()) — the inline list under
+  // Accounts was removed as redundant with those modals
   function renderSpendBreakdown(){
+    // period segments and the ◀/▶ stepper are static markup wired once, so switching periods
+    // animates the active segment instead of replacing the whole control mid-interaction
     const zoomRow = el('spendPeriodRow');
     if(zoomRow){
-      zoomRow.innerHTML = SPEND_PERIODS.map(p=>
-        '<button class="chart-zoom-btn'+(spendPeriod===p.key?' active':'')+'" data-period="'+p.key+'">'+p.label+'</button>'
-      ).join('');
-      zoomRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
-        btn.addEventListener('click', ()=>{ spendPeriod = btn.dataset.period; spendPeriodOffset = 0; renderSpendBreakdown(); });
+      if(!zoomRow.dataset.built){
+        zoomRow.dataset.built = '1';
+        zoomRow.innerHTML = SPEND_PERIODS.map(p=>
+          '<button type="button" data-period="'+p.key+'" aria-label="'+p.label+'">'
+            + '<span class="seg-long">'+p.label+'</span><span class="seg-short">'+p.short+'</span></button>'
+        ).join('');
+        zoomRow.querySelectorAll('button').forEach(btn=>{
+          btn.addEventListener('click', ()=>{ spendPeriod = btn.dataset.period; spendPeriodOffset = 0; renderSpendBreakdown(); });
+        });
+      }
+      zoomRow.querySelectorAll('button').forEach(btn=>{
+        const on = btn.dataset.period === spendPeriod;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
       });
     }
+
     const nwCcy = state.profile.netWorthCurrency || 'USD';
-    const now = new Date();
-    const { start, end, label } = spendPeriodRange(spendPeriod, spendPeriodOffset, now);
-    const navRow = el('spendPeriodNavRow');
-    if(navRow){
-      navRow.innerHTML = '<button class="chart-zoom-btn" id="spendPeriodPrevBtn" type="button">◀</button>'
-        + '<span class="spend-period-label">'+escapeHtml(label)+'</span>'
-        + '<button class="chart-zoom-btn" id="spendPeriodNextBtn" type="button" '+(spendPeriodOffset===0?'disabled':'')+'>▶</button>';
-      el('spendPeriodPrevBtn').addEventListener('click', ()=>{ spendPeriodOffset++; renderSpendBreakdown(); });
-      el('spendPeriodNextBtn').addEventListener('click', ()=>{ if(spendPeriodOffset>0){ spendPeriodOffset--; renderSpendBreakdown(); } });
+    const { start, end, label } = spendPeriodRange(spendPeriod, spendPeriodOffset, new Date());
+
+    const prevBtn = el('spendPeriodPrevBtn'), nextBtn = el('spendPeriodNextBtn'), labelEl = el('spendPeriodLabel');
+    if(labelEl) labelEl.textContent = label;
+    if(prevBtn && !prevBtn.dataset.wired){
+      prevBtn.dataset.wired = '1';
+      prevBtn.addEventListener('click', ()=>{ spendPeriodOffset++; renderSpendBreakdown(); });
     }
+    if(nextBtn && !nextBtn.dataset.wired){
+      nextBtn.dataset.wired = '1';
+      nextBtn.addEventListener('click', ()=>{ if(spendPeriodOffset>0){ spendPeriodOffset--; renderSpendBreakdown(); } });
+    }
+    // there is no "next" past the current period, so the control says so rather than no-opping
+    if(nextBtn) nextBtn.disabled = spendPeriodOffset === 0;
+
     const earningsUsd = Object.values(categoryTotalsForPeriod('earn', start, end)).reduce((sum,usd)=>sum+usd, 0);
-    el('spendEarningsTotal').textContent = fmtMoney(convertAmt(earningsUsd,'USD',nwCcy), nwCcy);
     const spendingUsd = Object.values(categoryTotalsForPeriod('spend', start, end)).reduce((sum,usd)=>sum+usd, 0);
+    el('spendEarningsTotal').textContent = fmtMoney(convertAmt(earningsUsd,'USD',nwCcy), nwCcy);
     el('spendBreakdownTotal').textContent = fmtMoney(convertAmt(spendingUsd,'USD',nwCcy), nwCcy);
+    el('spendEarningsStat').setAttribute('aria-label', 'Money in this period: '+el('spendEarningsTotal').textContent+'. See the breakdown by category.');
+    el('spendBreakdownStat').setAttribute('aria-label', 'Money out this period: '+el('spendBreakdownTotal').textContent+'. See the breakdown by category.');
+
+    // the figure the two tiles exist to produce, which the tab never actually stated. Kept to a
+    // label and a signed number so it fits on the strip — the sentence version lives in the
+    // tooltip, since the sign and colour already say which way it went.
+    const netRow = el('spendNetRow');
+    if(netRow){
+      const netUsd = earningsUsd - spendingUsd;
+      const net = convertAmt(netUsd, 'USD', nwCcy);
+      const dir = Math.abs(net) < 0.005 ? 'flat' : (net > 0 ? 'up' : 'down');
+      const money = fmtMoney(Math.abs(net), nwCcy);
+      netRow.innerHTML = '<span>Net</span><span class="fin-net-val '+dir+'">'
+        + (dir === 'flat' ? escapeHtml(money) : (dir === 'up' ? '+' : '−') + escapeHtml(money)) + '</span>';
+      netRow.title = dir === 'flat' ? 'Broke even this period — as much came in as went out.'
+        : dir === 'up' ? 'You kept ' + money + ' of what came in this period.'
+        : money + ' more went out than came in this period.';
+    }
   }
 
   /* ---- period breakdown modal — opened by clicking "Total Earnings/Spending This Period";
@@ -270,8 +488,8 @@
     const titleEl = el('periodBreakdownTitle');
     titleEl.textContent = (kind==='spend' ? 'Spending' : 'Earnings') + ' by Category — ' + label;
     // the shared .struggle-overlay-title class is red by default (borrowed from the struggling-
-    // tasks panel) — neither spending nor earnings is a warning, so override it to blue here
-    titleEl.style.color = 'var(--blue)';
+    // tasks panel) — neither spending nor earnings is a warning, so it wears the neutral modifier
+    titleEl.classList.add('is-neutral');
     const totals = categoryTotalsForPeriod(kind, start, end);
     const entries = Object.entries(totals).sort((a,b)=>b[1]-a[1]);
     const list = el('periodBreakdownList'); list.innerHTML = '';
@@ -279,11 +497,11 @@
     const maxUsd = entries.length ? entries[0][1] : 0;
     entries.forEach(([cat, usd])=>{
       const pct = maxUsd>0 ? Math.round((usd/maxUsd)*100) : 0;
-      const row = document.createElement('div'); row.className = 'spend-cat-row'; row.style.cursor = 'pointer';
-      row.title = 'Click to see all '+cat+' transactions in this period';
-      row.innerHTML = '<div class="spend-cat-name">'+escapeHtml(cat)+'</div>'
-        + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
-        + '<div class="spend-cat-amt">'+fmtMoney(convertAmt(usd,'USD',nwCcy), nwCcy)+'</div>';
+      const row = document.createElement('button'); row.type = 'button'; row.className = 'spend-cat-row';
+      row.title = 'See all '+cat+' transactions in this period';
+      row.innerHTML = '<span class="spend-cat-name">'+escapeHtml(cat)+'</span>'
+        + '<span class="mini-track"><span class="mini-fill" style="width:'+pct+'%"></span></span>'
+        + '<span class="spend-cat-amt">'+fmtMoney(convertAmt(usd,'USD',nwCcy), nwCcy)+'</span>';
       row.addEventListener('click', ()=>{
         // close this modal first — two struggle-overlay panels stacked at the same z-index would
         // otherwise paint in DOM order, not open order, hiding the detail popup behind this one
@@ -303,7 +521,7 @@
     kind = kind || 'spend';
     const titleEl = el('spendCategoryTitle');
     titleEl.textContent = cat+' — '+periodLabel;
-    titleEl.style.color = 'var(--blue)'; // same override as the period-breakdown modal — not a warning
+    titleEl.classList.add('is-neutral'); // same as the period-breakdown modal — not a warning
     const rows = [];
     (state.finance.accounts||[]).forEach(a=>{
       (a.transactions||[]).forEach(tx=>{
@@ -319,7 +537,7 @@
     rows.sort((x,y)=> y.tx.createdAt - x.tx.createdAt);
     const listEl = el('spendCategoryList');
     if(!rows.length){
-      listEl.innerHTML = '<div style="font-size:12px;color:var(--faint);padding:6px 0;">No transactions in this period.</div>';
+      listEl.innerHTML = '<div class="fin-none">No transactions in this period.</div>';
     } else {
       listEl.innerHTML = rows.map(({tx, account})=>{
         const isPos = tx.amount >= 0;
@@ -348,11 +566,23 @@
     // is the one place that needs to refresh the chart for the change to show up immediately
     renderNetWorthChart();
 
-    const groups = [['savings','Savings Accounts'],['lent','Lent (Owed To You)'],['credit','Credit Accounts'],['custom-asset','Custom Assets'],['custom-liability','Custom Liabilities']];
+    const nwCcyAcct = state.profile.netWorthCurrency || 'USD';
+    const groups = [['savings','Savings'],['lent','Lent out'],['credit','Credit'],['custom-asset','Custom assets'],['custom-liability','Custom liabilities']];
     groups.forEach(([type,label])=>{
       const items = accounts.filter(a=>a.type===type);
       if(!items.length) return;
-      const lbl = document.createElement('div'); lbl.className='finance-group-lbl'; lbl.textContent = label; list.appendChild(lbl);
+      // the group heading carries its own subtotal so the list answers "how much is in savings?"
+      // without the user adding the cards up in their head. Converted to the net-worth display
+      // currency, since a group can mix currencies.
+      const groupUsd = items.reduce((sum,a)=>{
+        const usd = convertAmt(parseFloat(a.balance)||0, a.currency||'USD', 'USD');
+        return sum + (isLiabilityAccount(a) ? -Math.abs(usd) : usd);
+      }, 0);
+      const groupTotal = convertAmt(groupUsd, 'USD', nwCcyAcct);
+      const lbl = document.createElement('div'); lbl.className='fin-group';
+      lbl.innerHTML = '<span class="fin-group-name">'+escapeHtml(label)+'</span>'
+        + '<span class="fin-group-total">'+escapeHtml((groupTotal<0?'-':'')+fmtMoney(Math.abs(groupTotal), nwCcyAcct))+'</span>';
+      list.appendChild(lbl);
       items.forEach(a=>{
         if(a.currency===undefined) a.currency = 'USD';
         if(a.imageUrl===undefined) a.imageUrl = '';
@@ -367,17 +597,35 @@
         const card = document.createElement('div'); card.className = 'finance-account' + (a.open ? ' open' : '');
         card.dataset.accountId = a.id;
 
-        const head = document.createElement('div'); head.className = 'finance-account-head';
-        head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
-          + (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'">' : '<div class="finance-icon">'+financeIcon(a.type)+'</div>')
-          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(a.name)+'<span class="finance-ccy-badge">'+a.currency+'</span></div><div class="finance-type">'+financeAccountLabel(a.type)+'</div></div>'
-          + '<div class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(Math.abs(signedBal),a.currency)+'</div>'
-          + '<div class="fa-chevron">▶</div>';
-        head.addEventListener('click', (e)=>{
-          if(e.target.closest('.drag-handle')) return;
+        // the group heading already names the type, so the second line spends itself on something
+        // the card can't otherwise tell you: whether this account is actually being used
+        const txs = (a.transactions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
+        const meta = !txs.length ? 'No activity yet'
+          : txs.length + ' transaction' + (txs.length>1?'s':'') + ' · last ' + fmtDate(txs[0].createdAt);
+
+        // the drag handle sits *outside* the toggle button on purpose: a draggable child of a
+        // <button> is not reliably draggable across browsers, and reordering isn't the button's job
+        const headRow = document.createElement('div'); headRow.className = 'fa-head-row';
+        const handle = document.createElement('span');
+        handle.className = 'drag-handle'; handle.draggable = true;
+        handle.title = 'Drag to reorder'; handle.setAttribute('aria-hidden','true'); handle.textContent = '⠿';
+        headRow.appendChild(handle);
+        const head = document.createElement('button'); head.type = 'button'; head.className = 'finance-account-head';
+        head.setAttribute('aria-expanded', a.open ? 'true' : 'false');
+        head.innerHTML = (a.imageUrl ? '<img class="fa-thumb" src="'+a.imageUrl+'" alt="">' : '<span class="finance-icon'+(isLiabilityAccount(a)?' is-liability':'')+'" aria-hidden="true">'+financeIcon(a.type)+'</span>')
+          + '<span class="finance-info"><span class="finance-name">'+escapeHtml(a.name)+'<span class="finance-ccy-badge">'+a.currency+'</span></span><span class="finance-type">'+escapeHtml(meta)+'</span></span>'
+          + '<span class="finance-amt '+(isNeg?'negative':'positive')+'">'+(isNeg?'-':'+')+fmtMoney(Math.abs(signedBal),a.currency)+'</span>'
+          + '<span class="fa-chevron" aria-hidden="true">▶</span>';
+        // Expanding centers the card (scrollCardIntoCenter, js/core.js) — same as Habits and
+        // Checklists. renderFinanceAccounts() throws away every card node, so it's re-queried by
+        // id, and rAF lets the new layout settle before it's measured. Collapsing never scrolls.
+        head.addEventListener('click', ()=>{
           a.open = !a.open; save(); renderFinanceAccounts();
+          if(!a.open) return;
+          requestAnimationFrame(()=> scrollCardIntoCenter(financeListEl.querySelector('.finance-account[data-account-id="'+a.id+'"]')));
         });
-        card.appendChild(head);
+        headRow.appendChild(head);
+        card.appendChild(headRow);
 
         const detail = document.createElement('div'); detail.className = 'finance-account-detail';
         const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
@@ -385,10 +633,10 @@
         // account actions — name/currency&balance/icon editing and transfers live in their own
         // modals now, so the default expanded view is just transactions (see openEditAccountModal(),
         // openTransferFundsModal())
-        const actionRow = document.createElement('div'); actionRow.className='inline-fields'; actionRow.style.marginTop='12px'; actionRow.style.marginBottom='6px';
-        const editBtn = document.createElement('button'); editBtn.className='btn'; editBtn.type='button'; editBtn.textContent='✎ Edit Account';
+        const actionRow = document.createElement('div'); actionRow.className='fin-detail-actions';
+        const editBtn = document.createElement('button'); editBtn.className='btn btn-ghost btn-sm'; editBtn.type='button'; editBtn.textContent='✎ Edit account';
         editBtn.addEventListener('click', ()=> openEditAccountModal(a.id));
-        const xferBtn = document.createElement('button'); xferBtn.className='btn'; xferBtn.type='button'; xferBtn.textContent='⇄ Transfer Funds';
+        const xferBtn = document.createElement('button'); xferBtn.className='btn btn-ghost btn-sm'; xferBtn.type='button'; xferBtn.textContent='⇄ Transfer funds';
         xferBtn.addEventListener('click', ()=> openTransferFundsModal(a.id));
         actionRow.appendChild(editBtn); actionRow.appendChild(xferBtn);
         inner.appendChild(actionRow);
@@ -398,9 +646,9 @@
         const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Transactions'; inner.appendChild(tLbl);
 
         const addTx = document.createElement('div'); addTx.className='add-tx-row';
-        addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80">'
-          + '<select class="tx-category-select">'+FINANCE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select>'
-          + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)">'
+        addTx.innerHTML = '<input type="text" placeholder="Note (e.g. Salary, Groceries)" maxlength="80" aria-label="Transaction note">'
+          + '<select class="tx-category-select" aria-label="Category">'+FINANCE_CATEGORIES.map(c=>'<option value="'+c+'">'+c+'</option>').join('')+'</select>'
+          + '<input type="number" step="0.01" placeholder="Amount (+ in, - out)" aria-label="Amount — positive for money in, negative for money out">'
           + '<button class="btn btn-primary" type="button">+ Add</button>';
         const txInputs = addTx.querySelectorAll('input');
         const noteInput = txInputs[0], amtInput = txInputs[1];
@@ -416,10 +664,10 @@
         });
         inner.appendChild(addTx);
 
+        // `txs` is the same most-recent-first list the card header summarised above
         const txList = document.createElement('div'); txList.className = 'tx-list-scroll';
-        const txs = (a.transactions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
         if(!txs.length){
-          const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;'; noneRow.textContent='No transactions logged yet.';
+          const noneRow = document.createElement('div'); noneRow.className = 'fin-none'; noneRow.textContent='No transactions logged yet.';
           txList.appendChild(noneRow);
         }
         txs.forEach(tx=>{
@@ -428,7 +676,7 @@
           row.innerHTML = '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
             + '<span class="tx-note">'+escapeHtml(tx.note||'')+(tx.category ? ' <span class="chip">'+escapeHtml(tx.category)+'</span>' : '')+'</span>'
             + '<span class="tx-amt '+(isPos?'positive':'negative')+'">'+(isPos?'+':'-')+fmtMoney(Math.abs(tx.amount),a.currency)+'</span>'
-            + '<button class="del-goal" style="padding:2px 8px;font-size:11px;">✕</button>';
+            + '<button class="del-goal" type="button" aria-label="Delete this transaction">✕</button>';
           row.querySelector('.del-goal').addEventListener('click', ()=>{
             a.balance = (parseFloat(a.balance)||0) - tx.amount;
             a.transactions = (a.transactions||[]).filter(x=>x.id!==tx.id);
@@ -537,7 +785,7 @@
     const body = el('transferFundsBody'); body.innerHTML = '';
     const otherAccounts = (state.finance.accounts||[]).filter(x=>x.id!==a.id);
     if(!otherAccounts.length){
-      const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:2px 0 6px;'; noneRow.textContent='Add another account to transfer funds.';
+      const noneRow = document.createElement('div'); noneRow.className='fin-none'; noneRow.textContent='Add another account to transfer funds.';
       body.appendChild(noneRow);
       return;
     }
@@ -713,21 +961,31 @@
       const usd = convertAmt(debtRemaining(d), d.currency||'USD', 'USD');
       if(d.direction==='borrowed') youOweUsd += usd; else owedToYouUsd += usd;
     });
-    el('debtOwedToYouTotal').textContent = fmtMoney(convertAmt(owedToYouUsd,'USD',nwCcy), nwCcy);
-    el('debtYouOweTotal').textContent = fmtMoney(convertAmt(youOweUsd,'USD',nwCcy), nwCcy);
+    // a zero total is good news, not a warning — the money colour only applies once there is
+    // actually money in the figure, otherwise "nothing owed" renders in alarm red
+    setToneAmount(el('debtOwedToYouTotal'), convertAmt(owedToYouUsd,'USD',nwCcy), nwCcy, 'pos');
+    setToneAmount(el('debtYouOweTotal'), convertAmt(youOweUsd,'USD',nwCcy), nwCcy, 'neg');
 
     const today = localDateStr(new Date());
     // settled debts drop out of their direction group into one archive group at the bottom, so the
     // top of the tab only ever shows money that's actually still moving
     const groups = [
-      ['lent','Owed To You', d=> d.direction!=='borrowed' && !isDebtSettled(d)],
-      ['borrowed','You Owe', d=> d.direction==='borrowed' && !isDebtSettled(d)],
+      ['lent','Owed to you', d=> d.direction!=='borrowed' && !isDebtSettled(d)],
+      ['borrowed','You owe', d=> d.direction==='borrowed' && !isDebtSettled(d)],
       ['settled','Settled', d=> isDebtSettled(d)]
     ];
     groups.forEach(([key,label,match])=>{
       const items = debts.filter(match);
       if(!items.length) return;
-      const lbl = document.createElement('div'); lbl.className='finance-group-lbl'; lbl.textContent = label; list.appendChild(lbl);
+      // same self-totalling heading as the account groups; the settled archive counts records
+      // rather than money, since its outstanding total is zero by definition
+      const lbl = document.createElement('div'); lbl.className='fin-group';
+      const groupRight = key==='settled'
+        ? items.length + ' settled'
+        : fmtMoney(convertAmt(items.reduce((sum,d)=> sum + convertAmt(debtRemaining(d), d.currency||'USD', 'USD'), 0), 'USD', nwCcy), nwCcy);
+      lbl.innerHTML = '<span class="fin-group-name">'+escapeHtml(label)+'</span>'
+        + '<span class="fin-group-total">'+escapeHtml(groupRight)+'</span>';
+      list.appendChild(lbl);
       items.forEach(d=>{
         const principal = parseFloat(d.amount)||0;
         const paid = debtPaid(d);
@@ -740,61 +998,74 @@
         card.className = 'finance-account' + (d.open ? ' open' : '');
         card.dataset.debtId = d.id;
 
-        let sub = debtDirectionLabel(d.direction) + ' · ' + fmtMoney(paid, d.currency) + ' of ' + fmtMoney(principal, d.currency) + ' paid';
+        // the group heading already says which direction this is, so the second line carries the
+        // repayment state instead of repeating it
+        let sub = fmtMoney(paid, d.currency) + ' of ' + fmtMoney(principal, d.currency) + ' paid';
+        // overdue-ness moved to a chip beside the name (colour *and* a word), so the due date can
+        // stay visible instead of being replaced by the word "overdue"
         if(settled) sub += ' · settled';
-        else if(d.dueDate) sub += overdue ? ' · overdue' : ' · due '+fmtDate(new Date(d.dueDate).getTime());
+        else if(d.dueDate) sub += ' · due '+fmtDate(parseLocalDateStr(d.dueDate).getTime());
 
         // outstanding is shown the way the matching account type would show it: money coming back
         // to you reads as a positive balance, money you still owe as a negative one
         const amtHtml = settled
-          ? '<div class="finance-amt" style="color:var(--muted);">✓ Paid</div>'
-          : '<div class="finance-amt '+(d.direction==='borrowed'?'negative':'positive')+'">'
-              + (d.direction==='borrowed'?'-':'+') + fmtMoney(remaining, d.currency) + '</div>';
+          ? '<span class="finance-amt settled">✓ Paid</span>'
+          : '<span class="finance-amt '+(d.direction==='borrowed'?'negative':'positive')+'">'
+              + (d.direction==='borrowed'?'-':'+') + fmtMoney(remaining, d.currency) + '</span>';
 
-        const head = document.createElement('div'); head.className = 'finance-account-head';
-        head.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
-          + (d.imageUrl ? '<img class="fa-thumb" src="'+d.imageUrl+'">' : '<div class="finance-icon">'+debtIcon(d.direction)+'</div>')
-          + '<div class="finance-info"><div class="finance-name">'+escapeHtml(d.person)+'<span class="finance-ccy-badge">'+(d.currency||'USD')+'</span></div>'
-          +   '<div class="finance-type"'+(overdue?' style="color:var(--danger);"':'')+'>'+escapeHtml(sub)+'</div></div>'
+        const headRow = document.createElement('div'); headRow.className = 'fa-head-row';
+        const handle = document.createElement('span');
+        handle.className = 'drag-handle'; handle.draggable = true;
+        handle.title = 'Drag to reorder'; handle.setAttribute('aria-hidden','true'); handle.textContent = '⠿';
+        headRow.appendChild(handle);
+        const head = document.createElement('button'); head.type = 'button'; head.className = 'finance-account-head';
+        head.setAttribute('aria-expanded', d.open ? 'true' : 'false');
+        head.innerHTML = (d.imageUrl ? '<img class="fa-thumb" src="'+d.imageUrl+'" alt="">' : '<span class="finance-icon'+(d.direction==='borrowed'?' is-liability':'')+'" aria-hidden="true">'+debtIcon(d.direction)+'</span>')
+          + '<span class="finance-info"><span class="finance-name">'+escapeHtml(d.person)+'<span class="finance-ccy-badge">'+(d.currency||'USD')+'</span>'
+          +   (overdue ? '<span class="chip chip-danger">Overdue</span>' : '')+'</span>'
+          +   '<span class="finance-type">'+escapeHtml(sub)+'</span></span>'
           + amtHtml
-          + '<div class="fa-chevron">▶</div>';
-        head.addEventListener('click', e=>{
-          if(e.target.closest('.drag-handle')) return;
+          + '<span class="fa-chevron" aria-hidden="true">▶</span>';
+        head.addEventListener('click', ()=>{
           d.open = !d.open; save(); renderDebts();
+          if(!d.open) return;
+          requestAnimationFrame(()=> scrollCardIntoCenter(debtListEl.querySelector('.finance-account[data-debt-id="'+d.id+'"]')));
         });
-        card.appendChild(head);
+        headRow.appendChild(head);
+        card.appendChild(headRow);
 
         const detail = document.createElement('div'); detail.className = 'finance-account-detail';
         const inner = document.createElement('div'); inner.className = 'finance-account-detail-inner';
 
-        const actionRow = document.createElement('div'); actionRow.className='inline-fields'; actionRow.style.marginTop='12px';
-        const editBtn = document.createElement('button'); editBtn.className='btn'; editBtn.type='button'; editBtn.textContent='✎ Edit Debt';
+        const actionRow = document.createElement('div'); actionRow.className='fin-detail-actions';
+        const editBtn = document.createElement('button'); editBtn.className='btn btn-ghost btn-sm'; editBtn.type='button'; editBtn.textContent='✎ Edit debt';
         editBtn.addEventListener('click', ()=> openEditDebtModal(d.id));
         actionRow.appendChild(editBtn);
         inner.appendChild(actionRow);
 
-        const prog = document.createElement('div');
-        prog.style.cssText = 'display:flex;align-items:center;gap:10px;margin:12px 0 2px;';
-        prog.innerHTML = '<div class="mini-track" style="flex:1;"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
+        // the bar says what it measures now — a naked track plus a percentage left the reader to
+        // guess whether it meant repaid or remaining
+        const prog = document.createElement('div'); prog.className = 'fin-progress';
+        prog.innerHTML = '<span class="fin-progress-lbl">Repaid</span>'
+          + '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
           + '<span class="progress-pct">'+pct+'%</span>';
         inner.appendChild(prog);
         if(d.note){
-          const noteEl = document.createElement('div');
-          noteEl.style.cssText = 'font-size:12px;color:var(--muted);margin-top:8px;';
+          const noteEl = document.createElement('div'); noteEl.className = 'fin-note';
           noteEl.textContent = d.note;
           inner.appendChild(noteEl);
         }
 
         const pLbl = document.createElement('div'); pLbl.className='section-lbl';
-        pLbl.textContent = d.direction==='borrowed' ? 'Payments You Made' : 'Payments Received';
+        pLbl.textContent = d.direction==='borrowed' ? 'Payments you made' : 'Payments received';
         inner.appendChild(pLbl);
 
         const addPay = document.createElement('div'); addPay.className='add-tx-row';
-        addPay.innerHTML = '<input type="text" placeholder="Note (optional)" maxlength="80">'
-          + '<input type="number" step="0.01" min="0" placeholder="Amount">'
-          + '<select class="debt-pay-account" title="Optionally move the money in or out of a real account too">'+debtAccountOptions(d.accountId)+'</select>'
-          + '<button class="btn debt-fill-btn" type="button" title="Fill in everything that\'s left">Full</button>'
-          + '<button class="btn btn-primary debt-pay-btn" type="button">+ Log Payment</button>';
+        addPay.innerHTML = '<input type="text" placeholder="Note (optional)" maxlength="80" aria-label="Payment note">'
+          + '<input type="number" step="0.01" min="0" placeholder="Amount" aria-label="Payment amount">'
+          + '<select class="debt-pay-account" aria-label="Also move the money in or out of a real account" title="Optionally move the money in or out of a real account too">'+debtAccountOptions(d.accountId)+'</select>'
+          + '<button class="btn btn-ghost btn-sm debt-fill-btn" type="button" title="Fill in everything that\'s left">Full</button>'
+          + '<button class="btn btn-primary debt-pay-btn" type="button">+ Log payment</button>';
         const payNote = addPay.querySelector('input[type=text]');
         const payAmt = addPay.querySelector('input[type=number]');
         const paySel = addPay.querySelector('.debt-pay-account');
@@ -810,7 +1081,7 @@
         const payList = document.createElement('div'); payList.className = 'tx-list-scroll';
         const pays = (d.payments||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
         if(!pays.length){
-          const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;';
+          const noneRow = document.createElement('div'); noneRow.className='fin-none';
           noneRow.textContent='No payments logged yet.';
           payList.appendChild(noneRow);
         }
@@ -820,7 +1091,7 @@
           row.innerHTML = '<span class="tx-date">'+fmtDate(p.createdAt)+'</span>'
             + '<span class="tx-note">'+escapeHtml(p.note||'')+(acct ? ' <span class="chip">'+escapeHtml(acct.name)+'</span>' : '')+'</span>'
             + '<span class="tx-amt positive">'+fmtMoney(parseFloat(p.amount)||0, d.currency)+'</span>'
-            + '<button class="del-goal" style="padding:2px 8px;font-size:11px;" title="Delete this payment (also reverses the account transaction it created)">✕</button>';
+            + '<button class="del-goal" type="button" aria-label="Delete this payment" title="Delete this payment (also reverses the account transaction it created)">✕</button>';
           row.querySelector('.del-goal').addEventListener('click', ()=> deleteDebtPayment(d, p.id));
           payList.appendChild(row);
         });
@@ -954,18 +1225,23 @@
       const monthlyAmt = s.cycle==='yearly' ? (parseFloat(s.amount)||0)/12 : (parseFloat(s.amount)||0);
       totalUSD += convertAmt(monthlyAmt, s.currency||'USD', 'USD');
     });
-    el('subsMonthlyTotal').textContent = fmtMoney(totalUSD,'USD');
+    // shown in the net-worth display currency like every other total on the tab — it used to be
+    // hard-coded to USD, so a PHP subscription list summed to "$23.00" right above "P1,400.00"
+    const subsCcy = state.profile.netWorthCurrency || 'USD';
+    setToneAmount(el('subsMonthlyTotal'), convertAmt(totalUSD, 'USD', subsCcy), subsCcy, 'neg');
     subs.slice().sort((a,b)=>(parseFloat(b.amount)||0)-(parseFloat(a.amount)||0)).forEach(s=>{
       if(s.imageUrl===undefined) s.imageUrl = '';
       const card = document.createElement('div'); card.className='sub-card';
-      const nextTxt = s.nextDate ? ' · Next '+fmtDate(new Date(s.nextDate).getTime()) : '';
-      card.innerHTML = '<div class="sub-icon" style="cursor:pointer;overflow:hidden;padding:0;" title="Click to upload a custom icon">'
-          + (s.imageUrl ? '<img src="'+s.imageUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:9px;">' : '🔁')
-        + '</div>'
+      const nextTxt = s.nextDate ? ' · next '+fmtDate(parseLocalDateStr(s.nextDate).getTime()) : '';
+      // the cycle drops to a second line under the amount instead of trailing it, so the figures
+      // in the column all start at the same place and can be compared down the list
+      card.innerHTML = '<button class="sub-icon" type="button" title="Upload a custom icon" aria-label="Upload an icon for '+escapeHtml(s.name)+'">'
+          + (s.imageUrl ? '<img src="'+s.imageUrl+'" alt="" style="width:100%;height:100%;object-fit:cover;">' : '🔁')
+        + '</button>'
         + '<input type="file" accept="image/*" class="sub-icon-file" style="display:none;">'
         + '<div class="sub-info"><div class="sub-name">'+escapeHtml(s.name)+'</div><div class="sub-meta">'+(s.cycle==='yearly'?'Yearly':'Monthly')+escapeHtml(nextTxt)+'</div></div>'
-        + '<div class="sub-amt">'+fmtMoney(parseFloat(s.amount)||0, s.currency||'USD')+' / '+(s.cycle==='yearly'?'yr':'mo')+'</div>'
-        + '<button class="del-goal" style="margin-left:4px;">Delete</button>';
+        + '<div class="sub-amt">'+fmtMoney(parseFloat(s.amount)||0, s.currency||'USD')+'<small>per '+(s.cycle==='yearly'?'year':'month')+'</small></div>'
+        + '<button class="del-goal" type="button" aria-label="Delete '+escapeHtml(s.name)+'">Delete</button>';
       const iconFile = card.querySelector('.sub-icon-file');
       card.querySelector('.sub-icon').addEventListener('click', ()=> iconFile.click());
       iconFile.addEventListener('change', e=>{
@@ -1030,7 +1306,7 @@
 
       let metaHtml = '<span class="chip">'+escapeHtml(fmtMoney(saved,m.currency)+' of '+fmtMoney(target,m.currency))+'</span>';
       if(m.deadline){
-        metaHtml += '<span class="chip">'+escapeHtml('By '+fmtDate(new Date(m.deadline).getTime()))+'</span>';
+        metaHtml += '<span class="chip">'+escapeHtml('By '+fmtDate(parseLocalDateStr(m.deadline).getTime()))+'</span>';
         metaHtml += '<span class="chip'+(overdue?' chip-danger':'')+'">'+escapeHtml(met ? 'Goal met' : (overdue ? 'Past due' : daysLeft+' days left'))+'</span>';
       }
       if(!met && target>0 && daysLeft!==null && daysLeft>0){
@@ -1054,21 +1330,21 @@
       const inner = document.createElement('div'); inner.className = 'goal-detail-inner';
 
       // name
-      const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Goal Name'; inner.appendChild(nameLbl);
+      const nameLbl = document.createElement('div'); nameLbl.className='section-lbl'; nameLbl.textContent='Goal name'; inner.appendChild(nameLbl);
       const nameRow = document.createElement('div'); nameRow.className='inline-fields';
-      const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=m.name; nameInput.maxLength=60; nameInput.style.width='220px';
+      const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.value=m.name; nameInput.maxLength=60; nameInput.style.width='220px'; nameInput.setAttribute('aria-label','Goal name');
       nameInput.addEventListener('change', ()=>{ const v=nameInput.value.trim(); if(v){ m.name=v; save(); renderMoneyGoals(); } });
       nameRow.appendChild(nameInput); inner.appendChild(nameRow);
 
       // target, currency, deadline
-      const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Target, Currency & Deadline'; inner.appendChild(tLbl);
+      const tLbl = document.createElement('div'); tLbl.className='section-lbl'; tLbl.textContent='Target, currency & deadline'; inner.appendChild(tLbl);
       const tRow = document.createElement('div'); tRow.className='inline-fields';
-      const targetInput = document.createElement('input'); targetInput.type='number'; targetInput.min='0'; targetInput.step='0.01'; targetInput.value=m.target; targetInput.style.width='110px';
+      const targetInput = document.createElement('input'); targetInput.type='number'; targetInput.min='0'; targetInput.step='0.01'; targetInput.value=m.target; targetInput.style.width='110px'; targetInput.setAttribute('aria-label','Target amount');
       targetInput.addEventListener('change', ()=>{ m.target = parseFloat(targetInput.value)||0; save(); renderMoneyGoals(); });
-      const ccySel = document.createElement('select');
+      const ccySel = document.createElement('select'); ccySel.setAttribute('aria-label','Currency');
       ccySel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'" '+(m.currency===c?'selected':'')+'>'+c+'</option>').join('');
       ccySel.addEventListener('change', ()=>{ m.currency = ccySel.value; save(); renderMoneyGoals(); });
-      const deadlineInput = document.createElement('input'); deadlineInput.type='date'; deadlineInput.value=m.deadline||'';
+      const deadlineInput = document.createElement('input'); deadlineInput.type='date'; deadlineInput.value=m.deadline||''; deadlineInput.setAttribute('aria-label','Deadline');
       deadlineInput.addEventListener('change', ()=>{ m.deadline = deadlineInput.value||''; save(); renderMoneyGoals(); });
       tRow.appendChild(targetInput); tRow.appendChild(ccySel); tRow.appendChild(deadlineInput);
       inner.appendChild(tRow);
@@ -1078,15 +1354,15 @@
       const cList = document.createElement('div');
       const contribs = (m.contributions||[]).slice().sort((x,y)=>y.createdAt-x.createdAt);
       if(!contribs.length){
-        const noneRow = document.createElement('div'); noneRow.style.cssText='font-size:12px;color:var(--faint);padding:6px 0;'; noneRow.textContent='No contributions logged yet.';
+        const noneRow = document.createElement('div'); noneRow.className='fin-none'; noneRow.textContent='No contributions logged yet.';
         cList.appendChild(noneRow);
       }
       contribs.forEach(c=>{
         const row = document.createElement('div'); row.className='tx-row';
         row.innerHTML = '<span class="tx-date">'+fmtDate(c.createdAt)+'</span>'
           + '<span class="tx-note">'+escapeHtml(c.note||'')+'</span>'
-          + '<input type="number" step="0.01" class="contrib-amt-input" style="width:90px;">'
-          + '<button class="del-goal" style="padding:2px 8px;font-size:11px;">✕</button>';
+          + '<input type="number" step="0.01" class="contrib-amt-input" aria-label="Contribution amount">'
+          + '<button class="del-goal" type="button" aria-label="Delete this contribution">✕</button>';
         const amtInput = row.querySelector('.contrib-amt-input'); amtInput.value = c.amount;
         amtInput.addEventListener('change', ()=>{ c.amount = parseFloat(amtInput.value)||0; save(); renderMoneyGoals(); });
         row.querySelector('.del-goal').addEventListener('click', ()=>{
@@ -1098,9 +1374,9 @@
       inner.appendChild(cList);
 
       const addC = document.createElement('div'); addC.className='add-tx-row';
-      addC.innerHTML = '<input type="text" placeholder="Note (e.g. Freelance gig)" maxlength="80">'
-        + '<input type="number" step="0.01" placeholder="Amount made">'
-        + '<button class="btn btn-primary" type="button">+ Log Contribution</button>';
+      addC.innerHTML = '<input type="text" placeholder="Note (e.g. Freelance gig)" maxlength="80" aria-label="Contribution note">'
+        + '<input type="number" step="0.01" placeholder="Amount made" aria-label="Amount made">'
+        + '<button class="btn btn-primary" type="button">+ Log contribution</button>';
       const cInputs = addC.querySelectorAll('input');
       const cNoteInput = cInputs[0], cAmtInput = cInputs[1];
       addC.querySelector('button').addEventListener('click', ()=>{
@@ -1186,6 +1462,28 @@
       btn.textContent = 'Fetch failed — try again';
     }
     setTimeout(()=>{ btn.textContent = orig; btn.disabled = false; }, 2200);
+  });
+
+  /* Escape closes whichever finance dialog is open. Every one of them could already be dismissed
+     by clicking the backdrop or the Close button, but neither is reachable from the keyboard
+     without tabbing to it, and Escape is what a dialog is expected to answer to. Registered once,
+     topmost-first, so it closes exactly one layer per press (the category drill-down opens *from*
+     the period breakdown). */
+  const FINANCE_OVERLAY_CLOSERS = [
+    ['spendCategoryOverlay', closeSpendCategoryDetail],
+    ['periodBreakdownOverlay', closePeriodBreakdownModal],
+    ['transferFundsOverlay', closeTransferFundsModal],
+    ['editAccountOverlay', closeEditAccountModal],
+    ['editDebtOverlay', closeEditDebtModal],
+    ['addAccountOverlay', closeAddAccountModal],
+    ['addDebtOverlay', closeAddDebtModal]
+  ];
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    for(const [id, close] of FINANCE_OVERLAY_CLOSERS){
+      const node = el(id);
+      if(node && node.style.display !== 'none'){ close(); return; }
+    }
   });
 
   /* ---- finance sub-nav (Accounts / Debts / Money Goals / Wishlist / Subscriptions / Currency Converter) ---- */

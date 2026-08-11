@@ -12,6 +12,7 @@
     --success:#16A34A;
     --success-pale:#E6F7EC;
     --danger:#EF4444;
+    --danger-pale:#FEECEC;
     --gold:#F5A524;
     --blue:#3B82F6;
     --orange:#F97316;
@@ -33,6 +34,7 @@
     --success:#34D399;
     --success-pale:#123B2C;
     --danger:#F87171;
+    --danger-pale:#3A1E1E;
     --gold:#FBBF24;
     --blue:#60A5FA;
     --orange:#FB923C;
@@ -54,6 +56,7 @@
     --success:#34C759;
     --success-pale:#E3F9E5;
     --danger:#FF3B30;
+    --danger-pale:#FFE7E5;
     --gold:#FFCC00;
     --blue:#5AC8FA;
     --orange:#FF9500;
@@ -75,6 +78,7 @@
     --success:#30D158;
     --success-pale:#123822;
     --danger:#FF453A;
+    --danger-pale:#3A1512;
     --gold:#FFD60A;
     --blue:#64D2FF;
     --orange:#FF9F0A;
@@ -621,6 +625,10 @@
   .struggle-overlay-card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:24px;width:100%;max-width:520px;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.35);}
   .struggle-overlay-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
   .struggle-overlay-title{font-size:15px;font-weight:700;color:var(--danger);}
+  /* the overlay shell is shared with the struggling-tasks panel, whose title is red because that
+     panel *is* a warning. Dialogs that merely ask for input (add account, edit debt, a category
+     breakdown) opt out — a red heading on "Add Account" reads as an error. */
+  .struggle-overlay-title.is-neutral{color:var(--text);}
   .struggle-overlay-card .struggle-row{font-size:13.5px;}
 
   .ai-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:8px;padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
@@ -1224,69 +1232,277 @@
   .sort-dir-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;width:36px;height:36px;cursor:pointer;font-size:13px;flex:none;}
   .sort-dir-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
 
-  /* finance */
-  .finance-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;margin-bottom:18px;}
-  .finance-add-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;}
-  .finance-add-row select, .finance-add-row input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:11px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
+  /* ========================= FINANCE =========================
+     Built around one question — "what am I worth, and is it going up?" — so the hero panel owns
+     the only large number on the tab and everything else steps down from it by size, not by
+     colour: hero 34px → flow tiles 21px → card amounts 15px → meta 11.5px. Two weights (500/800)
+     and one accent (violet, reserved for the active control and the trend line) do the rest.
+
+     Two constraints shape the selectors below:
+     1. Several classes here are shared with other tabs — .tx-row/.add-tx-row with Jobs and
+        Wishlist, .chart-zoom-* with Fitness and Valorant, .finance-group-lbl with Checklists,
+        Valorant and Wishlist (which renders *inside* #view-finance). Every override of one of
+        those is scoped to #view-finance and, where Wishlist would still be caught, finance uses
+        its own .fin-* class instead of the shared one.
+     2. Colour is a token, never a literal, because four themes swap the palette underneath —
+        including two whose --success is too light to put text on. Money figures therefore use
+        --fin-pos/--fin-neg (contrast-checked against --surface in all four themes) rather than
+        --success/--danger, which stay for fills and borders. */
+  #view-finance{
+    --fin-r-pill:999px;
+    --fin-r-ctl:10px;
+    --fin-r-card:14px;
+    --fin-r-panel:18px;
+    /* text-safe money colours: >=4.5:1 on --surface, so they pass for small figures too, not just
+       the large hero. The raw --success/--danger are 2.2:1 on the iOS-light surface. */
+    --fin-pos:#0F7A38;
+    --fin-neg:#C0261F;
+    /* one soft shadow direction (down), two depths — used instead of giving every card a border */
+    --fin-shadow:0 1px 2px rgba(16,20,40,.05), 0 6px 16px -8px rgba(16,20,40,.16);
+    --fin-shadow-lift:0 2px 4px rgba(16,20,40,.07), 0 14px 26px -10px rgba(16,20,40,.22);
+    --fin-hairline:1px solid var(--border);
+  }
+  body[data-theme="dark"] #view-finance, body[data-theme="ios-dark"] #view-finance{
+    --fin-pos:#34D399;
+    --fin-neg:#F87171;
+    --fin-shadow:0 1px 2px rgba(0,0,0,.34), 0 6px 16px -8px rgba(0,0,0,.55);
+    --fin-shadow-lift:0 2px 4px rgba(0,0,0,.4), 0 14px 26px -10px rgba(0,0,0,.62);
+  }
+  /* every interactive thing on the tab is keyboard-reachable and shows where focus is; several of
+     these used to be <div onclick> with no focus state at all */
+  #view-finance :focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  #view-finance .fin-num{font-family:'Manrope',sans-serif;font-weight:800;font-variant-numeric:tabular-nums;}
+
+  /* ---- hero: net worth + trend ---- */
+  .fin-hero{background:var(--surface);border-radius:var(--fin-r-panel);box-shadow:var(--fin-shadow);padding:20px 20px 12px;margin-bottom:12px;}
+  .fin-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:4px;}
+  .fin-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .fin-hero-figure{display:flex;align-items:baseline;gap:9px;margin-top:6px;flex-wrap:wrap;}
+  .fin-hero-num{font-family:'Manrope',sans-serif;font-size:34px;font-weight:800;line-height:1.1;letter-spacing:-.02em;color:var(--text);font-variant-numeric:tabular-nums;}
+  /* the display currency used to be changed by clicking the figure itself, which nothing announced.
+     It is its own labelled control now — and the code doubles as a reminder of which currency the
+     figure is in. */
+  .fin-ccy-btn{background:var(--surface-alt);border:none;color:var(--muted);border-radius:var(--fin-r-pill);padding:4px 10px;font:700 10.5px/1 'Inter',sans-serif;letter-spacing:.06em;cursor:pointer;min-height:24px;transition:color .14s ease, background-color .14s ease;}
+  .fin-ccy-btn:hover{background:var(--violet-pale);color:var(--violet-dark);}
+  .fin-delta{display:inline-flex;align-items:center;gap:6px;margin-top:8px;font-size:12.5px;font-weight:600;color:var(--muted);}
+  /* the arrow repeats what the colour says, so direction survives greyscale and colour blindness */
+  .fin-delta-val{display:inline-flex;align-items:center;gap:4px;font-weight:800;font-variant-numeric:tabular-nums;border-radius:var(--fin-r-pill);padding:2px 9px;}
+  .fin-delta-val.up{color:var(--fin-pos);background:var(--success-pale);}
+  .fin-delta-val.down{color:var(--fin-neg);background:var(--danger-pale);}
+  .fin-delta-val.flat{color:var(--muted);background:var(--surface-alt);}
+  .fin-chart{margin:6px -6px 0;position:relative;}
+  .fin-chart svg{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y;}
+  .fin-chart-empty{padding:34px 12px;text-align:center;font-size:12.5px;color:var(--muted);line-height:1.6;}
+  /* readout that follows the pointer/finger along the trend line */
+  .fin-tip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);background:var(--text);color:var(--surface);border-radius:8px;padding:5px 9px;font-size:11px;font-weight:700;white-space:nowrap;opacity:0;transition:opacity .12s ease;z-index:2;font-variant-numeric:tabular-nums;}
+  .fin-tip.on{opacity:1;}
+  .fin-tip-date{display:block;font-weight:500;opacity:.72;font-size:10px;}
+
+  /* ---- flow: money in / money out for the selected period, as one slim strip ----
+     Kept to a single row so it costs the page as little height as possible: the tiles are inline
+     pills (label and figure on one baseline) rather than stacked cards, and the period-length
+     control is pushed to the far end with margin-left:auto. */
+  .fin-flow{background:var(--surface);border-radius:var(--fin-r-panel);box-shadow:var(--fin-shadow);padding:7px 12px;margin-bottom:18px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .fin-period-nav{display:flex;align-items:center;gap:2px;flex:none;}
+  .fin-period-label{font-size:12.5px;font-weight:700;color:var(--text);min-width:104px;text-align:center;}
+  .fin-step{background:none;border:none;color:var(--muted);cursor:pointer;width:28px;height:28px;border-radius:var(--fin-r-pill);font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;flex:none;transition:background-color .14s ease, color .14s ease;}
+  .fin-step:hover:not(:disabled){background:var(--surface-alt);color:var(--text);}
+  .fin-step:disabled{opacity:.3;cursor:default;}
+  .fin-tile{background:none;border:1px solid transparent;border-radius:var(--fin-r-pill);padding:5px 11px;cursor:pointer;font-family:'Inter',sans-serif;display:inline-flex;align-items:baseline;gap:7px;flex:none;transition:background-color .14s ease, border-color .14s ease;}
+  .fin-tile:hover{background:var(--surface-alt);border-color:var(--border);}
+  .fin-tile-lbl{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);white-space:nowrap;}
+  .fin-tile-num{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;line-height:1.3;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .fin-tile-in .fin-tile-num{color:var(--fin-pos);}
+  .fin-tile-out .fin-tile-num{color:var(--fin-neg);}
+  /* the figure the two tiles exist to produce — in minus out — which the tab never showed before */
+  .fin-net{display:inline-flex;align-items:baseline;gap:6px;font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-left:5px;flex:none;}
+  .fin-net-val{font-family:'Manrope',sans-serif;font-weight:800;font-size:15px;letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  /* the three figures travel together, so a narrow column drops them to their own line as a unit
+     instead of orphaning "Net" under the period stepper */
+  .fin-flow-figs{display:flex;align-items:center;gap:4px;flex-wrap:wrap;min-width:0;}
+  .fin-flow .fin-seg{margin-left:auto;}
+  .fin-net-val.up{color:var(--fin-pos);}
+  .fin-net-val.down{color:var(--fin-neg);}
+  .fin-net-val.flat{color:var(--text);}
+
+  /* ---- shared tab furniture ---- */
+  /* a group heading that carries its own subtotal, so the list answers "how much is in savings?"
+     without the user adding the cards up. Finance's own class, not .finance-group-lbl, because
+     that one is also worn by Wishlist rows rendered inside this same view. */
+  .fin-group{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:22px 2px 8px;}
+  .fin-group:first-child{margin-top:2px;}
+  .fin-group-name{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);}
+  .fin-group-total{font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
+  .fin-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:18px;}
+  .fin-summary-1{grid-template-columns:minmax(0,320px);}
+  .fin-stat{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:14px 16px;}
+  .fin-stat-lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
+  .fin-stat-num{font-family:'Manrope',sans-serif;font-size:21px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
+  .fin-stat-num.pos{color:var(--fin-pos);}
+  .fin-stat-num.neg{color:var(--fin-neg);}
+  /* one primary action per pane, right-aligned at the end of the list it appends to */
+  .fin-actions{display:flex;justify-content:flex-end;margin-top:14px;}
+  .finance-add-row{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;}
+  .finance-add-row select, .finance-add-row input{background:var(--surface);border:var(--fin-hairline);color:var(--text);border-radius:var(--fin-r-ctl);padding:11px 12px;font-size:13px;outline:none;font-family:'Inter',sans-serif;min-height:42px;}
+  .finance-add-row input::placeholder{color:var(--muted);}
   .finance-add-row input[type=text]{flex:2;min-width:140px;}
   .finance-add-row input[type=number]{flex:1;min-width:100px;}
-  .finance-add-row select:focus, .finance-add-row input:focus{border-color:var(--violet);}
-  .finance-group-lbl{font-size:11px;text-transform:uppercase;letter-spacing:0.6px;color:var(--faint);font-weight:800;margin:16px 0 8px;}
-  .finance-group-lbl:first-of-type{margin-top:4px;}
-  .finance-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
-  .finance-icon{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);}
-  .finance-info{flex:1;min-width:0;}
-  .finance-name{font-size:13.5px;font-weight:700;}
-  .finance-type{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;}
-  .finance-amt{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;flex:none;}
-  .finance-amt.positive{color:var(--success);}
-  .finance-amt.negative{color:var(--danger);}
+  .finance-add-row select:focus, .finance-add-row input:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-pale);}
+  .finance-icon{width:36px;height:36px;border-radius:var(--fin-r-ctl);flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);}
+  /* the only colour-coding on a card, and it means one thing: this account subtracts from net
+     worth. Assets stay neutral rather than every type getting its own hue. */
+  .finance-icon.is-liability{background:var(--danger-pale);}
+  /* the card header is a <button>, whose content model is phrasing only — its boxes are <span>s
+     that get their layout from here rather than from being <div>s */
+  .finance-info{flex:1;min-width:0;display:block;}
+  .finance-name{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px;flex-wrap:wrap;line-height:1.3;}
+  .finance-type{font-size:11.5px;color:var(--muted);margin-top:2px;display:block;}
+  .finance-amt{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;flex:none;font-variant-numeric:tabular-nums;text-align:right;display:block;}
+  .finance-amt.positive{color:var(--fin-pos);}
+  .finance-amt.negative{color:var(--fin-neg);}
+  .finance-amt.settled{color:var(--muted);}
   /* finance: sub-nav + expandable accounts + transfer + subscriptions + converter */
   .finance-subnav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
   .finance-subnav::-webkit-scrollbar{display:none;}
-  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;}
+  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:38px;transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
+  .finance-subnav-btn:hover{color:var(--text);border-color:var(--violet);}
   .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .finance-subnav-btn.active:hover{color:#fff;}
+  .finance-subnav-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
   /* red ring on a sub-nav button whose pane needs attention (Countdowns, when one lands within
      CD_SOON_DAYS days — see updateCountdownReminder in js/countdowns.js). Drawn as a box-shadow
      rather than border-color alone so it survives .active repainting the border violet. */
   .finance-subnav-btn.subnav-alert{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger);}
-  .finance-ccy-badge{font-size:9.5px;font-weight:800;color:var(--violet-dark);background:var(--violet-pale);border-radius:5px;padding:2px 6px;text-transform:uppercase;letter-spacing:0.3px;margin-left:6px;}
-  .chip-danger{background:rgba(239,68,68,.12);color:var(--danger);border-color:var(--danger);}
-  .fa-thumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;border:1px solid var(--border);}
-  .finance-account{background:var(--surface);border:1px solid var(--border);border-radius:13px;margin-bottom:8px;overflow:hidden;}
-  .finance-account-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;}
-  .fa-chevron{flex:none;color:var(--faint);transition:transform .2s ease;font-size:10px;}
+  .finance-ccy-badge{font-size:10px;font-weight:700;color:var(--muted);background:var(--surface-alt);border-radius:5px;padding:2px 6px;letter-spacing:.05em;flex:none;}
+  .chip-danger{background:var(--danger-pale);color:var(--fin-neg,var(--danger));border-color:var(--danger);}
+  .fa-thumb{width:36px;height:36px;border-radius:var(--fin-r-ctl);object-fit:cover;flex:none;border:var(--fin-hairline);}
+
+  /* account / debt cards — separated by a soft shadow and spacing rather than a 1px box each,
+     so the eye groups them by rhythm instead of counting outlines */
+  .finance-account{background:var(--surface);border:1px solid transparent;border-radius:var(--fin-r-card);margin-bottom:8px;overflow:hidden;box-shadow:var(--fin-shadow);transition:box-shadow .16s ease, border-color .16s ease;}
+  .finance-account:hover{box-shadow:var(--fin-shadow-lift);}
+  .finance-account.open{border-color:var(--border);}
+  /* a real <button>: the whole header row toggles the card, so it needs to be keyboard-operable
+     and announce its expanded state — it was a <div onclick> with neither */
+  /* handle + toggle button sit side by side, the button taking the rest of the row so the whole
+     card face is still one click target */
+  .fa-head-row{display:flex;align-items:center;}
+  .fa-head-row .drag-handle{padding:13px 2px 13px 12px;}
+  .finance-account-head{display:flex;align-items:center;gap:12px;padding:13px 16px 13px 6px;cursor:pointer;flex:1;min-width:0;background:none;border:none;text-align:left;font-family:'Inter',sans-serif;color:inherit;}
+  .finance-account-head:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;}
+  .fa-chevron{flex:none;color:var(--muted);transition:transform .2s ease;font-size:10px;width:14px;text-align:center;display:block;}
+  .fin-progress{display:flex;align-items:center;gap:10px;margin:14px 0 2px;}
+  .fin-progress-lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);flex:none;}
+  .fin-progress .mini-track{flex:1;}
+  .fin-note{font-size:12.5px;color:var(--muted);margin-top:10px;line-height:1.5;}
+  /* .mini-fill is a <span> inside the category button (phrasing content again), so it needs an
+     explicit box to take a height */
+  .spend-cat-row .mini-track,.spend-cat-row .mini-fill{display:block;}
   .finance-account.open .fa-chevron{transform:rotate(90deg);}
   .finance-account-detail{max-height:0;overflow:hidden;transition:max-height .25s ease;}
   .finance-account.open .finance-account-detail{max-height:1200px;}
-  .finance-account-detail-inner{padding:2px 16px 16px 16px;border-top:1px solid var(--border);}
-  .tx-list-scroll{max-height:260px;overflow-y:auto;margin-top:8px;}
-  .tx-row{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed var(--border);font-size:12.5px;}
-  .tx-row:last-child{border-bottom:none;}
-  .tx-note{flex:1;min-width:0;color:var(--muted);}
-  .tx-date{color:var(--faint);font-size:11px;flex:none;}
-  .tx-amt{font-family:'Manrope',sans-serif;font-weight:800;flex:none;}
-  .tx-amt.positive{color:var(--success);}
-  .tx-amt.negative{color:var(--danger);}
-  .add-tx-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;}
-  .add-tx-row input,.add-tx-row select{background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:7px 9px;font-size:12px;color:var(--text);outline:none;font-family:'Inter',sans-serif;}
-  .add-tx-row input[type=text]{flex:2;min-width:120px;}
-  .add-tx-row input[type=number]{width:100px;}
-  .add-tx-row select{width:150px;}
-  .spend-cat-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-radius:8px;transition:background .12s ease;}
+  .finance-account-detail-inner{padding:14px 16px 16px;border-top:var(--fin-hairline);background:var(--surface-alt);}
+  /* inputs inside an expanded card sit on --surface-alt, so they invert to --surface to stay
+     distinguishable from the panel they're on */
+  #view-finance .finance-account-detail-inner .add-tx-row input,
+  #view-finance .finance-account-detail-inner .add-tx-row select{background:var(--surface);}
+  .fin-detail-actions{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+  /* "nothing here yet" line inside a card. Was inline --faint (about 2:1 on white, unreadable);
+     --muted clears 4.5:1 in all four themes. */
+  #view-finance .fin-none{font-size:12.5px;color:var(--muted);padding:8px 0;}
+  /* the shared .del-goal is --faint (~2:1) — quiet is right for a destructive action, illegible
+     isn't, so it steps up to --muted here and only turns red on hover/focus */
+  #view-finance .del-goal{color:var(--muted);}
+  #view-finance .del-goal:hover,#view-finance .del-goal:focus-visible{color:var(--danger);}
+
+  .tx-list-scroll{max-height:260px;overflow-y:auto;margin-top:6px;}
+  #view-finance .tx-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:var(--fin-hairline);font-size:12.5px;}
+  #view-finance .tx-row:last-child{border-bottom:none;}
+  #view-finance .tx-note{flex:1;min-width:0;color:var(--text);overflow-wrap:anywhere;}
+  #view-finance .tx-date{color:var(--muted);font-size:11px;flex:none;width:82px;font-variant-numeric:tabular-nums;}
+  #view-finance .tx-amt{font-family:'Manrope',sans-serif;font-weight:800;flex:none;font-variant-numeric:tabular-nums;}
+  #view-finance .tx-amt.positive{color:var(--fin-pos);}
+  #view-finance .tx-amt.negative{color:var(--fin-neg);}
+  #view-finance .add-tx-row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center;}
+  #view-finance .add-tx-row input,#view-finance .add-tx-row select{background:var(--surface-alt);border:var(--fin-hairline);border-radius:8px;padding:8px 10px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;min-height:36px;}
+  #view-finance .add-tx-row input::placeholder{color:var(--muted);}
+  #view-finance .add-tx-row input:focus,#view-finance .add-tx-row select:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-pale);}
+  #view-finance .add-tx-row input[type=text]{flex:2;min-width:120px;}
+  /* wide enough for "Amount (+ in, - out)" — the sign convention is the one thing about this row
+     that isn't guessable, so it can't be the part that gets clipped */
+  #view-finance .add-tx-row input[type=number]{width:158px;}
+  #view-finance .add-tx-row select{width:160px;}
+  #view-finance .contrib-amt-input{width:92px;flex:none;background:var(--surface);border:var(--fin-hairline);border-radius:8px;padding:5px 8px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;font-variant-numeric:tabular-nums;}
+  #view-finance .contrib-amt-input:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-pale);}
+  /* delete affordances stay quiet until the row is hovered — one red X per transaction turns a
+     history into a wall of warnings */
+  #view-finance .tx-row .del-goal{opacity:.45;padding:3px 7px;font-size:11px;border-radius:6px;flex:none;transition:opacity .14s ease, color .14s ease;}
+  #view-finance .tx-row:hover .del-goal,#view-finance .tx-row .del-goal:focus-visible{opacity:1;}
+
+  .spend-cat-row{display:flex;align-items:center;gap:12px;padding:9px 8px;border-radius:9px;transition:background-color .12s ease;width:100%;background:none;border:none;font-family:'Inter',sans-serif;text-align:left;cursor:pointer;}
   .spend-cat-row:hover{background:var(--surface-alt);}
-  .spend-cat-name{width:150px;flex:none;font-size:12.5px;color:var(--muted);}
-  .spend-cat-amt{width:90px;flex:none;text-align:right;font-family:'Manrope',sans-serif;font-weight:700;font-size:12.5px;}
-  .sub-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:12px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
-  .sub-icon{width:34px;height:34px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);}
+  .spend-cat-name{width:150px;flex:none;font-size:12.5px;font-weight:600;color:var(--text);}
+  .spend-cat-amt{width:96px;flex:none;text-align:right;font-family:'Manrope',sans-serif;font-weight:800;font-size:12.5px;color:var(--text);font-variant-numeric:tabular-nums;}
+
+  .sub-card{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:13px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px;}
+  .sub-icon{width:36px;height:36px;border-radius:var(--fin-r-ctl);flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;background:var(--surface-alt);border:none;cursor:pointer;padding:0;overflow:hidden;}
   .sub-info{flex:1;min-width:0;}
-  .sub-name{font-size:13.5px;font-weight:700;}
-  .sub-meta{font-size:10.5px;color:var(--faint);text-transform:uppercase;letter-spacing:0.3px;}
-  .sub-amt{font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;flex:none;color:var(--text);}
-  .rates-table{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-top:8px;}
-  .rate-cell{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px 11px;}
-  .rate-cell label{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:.3px;display:block;margin-bottom:4px;}
-  .rate-cell input{width:100%;background:var(--surface-alt);border:1px solid var(--border);border-radius:7px;padding:6px 8px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;box-sizing:border-box;}
+  .sub-name{font-size:14px;font-weight:700;}
+  .sub-meta{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .sub-amt{font-family:'Manrope',sans-serif;font-size:15px;font-weight:800;flex:none;color:var(--text);font-variant-numeric:tabular-nums;text-align:right;}
+  .sub-amt small{display:block;font-size:10.5px;font-weight:600;color:var(--muted);letter-spacing:.04em;}
+
+  .rates-table{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:10px;}
+  .rate-cell{background:var(--surface);border-radius:var(--fin-r-ctl);box-shadow:var(--fin-shadow);padding:10px 12px;}
+  .rate-cell label{font-size:11px;color:var(--muted);font-weight:700;letter-spacing:.05em;display:block;margin-bottom:5px;}
+  .rate-cell input{width:100%;background:var(--surface-alt);border:var(--fin-hairline);border-radius:8px;padding:8px 9px;font-size:12.5px;color:var(--text);outline:none;font-family:'Inter',sans-serif;box-sizing:border-box;min-height:36px;font-variant-numeric:tabular-nums;}
+  .rate-cell input:focus{border-color:var(--violet);box-shadow:0 0 0 3px var(--violet-pale);}
+  /* converter: the result is the answer the pane exists for, so it gets the hero treatment */
+  /* the converter row has only four controls, so the flex:1 amount field would otherwise stretch
+     across the whole column and dwarf the two selects it belongs with */
+  #fintab-convert .finance-add-row{align-items:center;}
+  #fintab-convert .finance-add-row input[type=number]{flex:0 0 auto;width:170px;min-width:0;}
+  .fin-convert-result{background:var(--surface);border-radius:var(--fin-r-panel);box-shadow:var(--fin-shadow);padding:18px 20px;margin-bottom:6px;max-width:340px;}
+  .fin-convert-result .fin-stat-num{font-size:28px;letter-spacing:-.01em;}
+
+  /* fingers get the 44px target the pointer doesn't need — keeps the desktop layout dense
+     without making the phone layout a game of darts */
+  @media (pointer:coarse){
+    #view-finance .fin-seg button,#view-finance .fin-step,#view-finance .chart-zoom-btn,
+    #view-finance .add-tx-row input,#view-finance .add-tx-row select,#view-finance .add-tx-row .btn,
+    #view-finance .finance-subnav-btn,#view-finance .rate-cell input{min-height:44px;}
+    #view-finance .fin-step{width:44px;}
+    #view-finance .tx-row .del-goal{opacity:1;min-width:36px;min-height:36px;}
+    /* there is no hover on a finger, so the In/Out pills wear their tap affordance permanently —
+       otherwise they read as plain figures */
+    #view-finance .fin-tile{background:var(--surface-alt);border-color:var(--border);}
+  }
+  @media (prefers-reduced-motion: reduce){
+    #view-finance *{transition:none !important;}
+    .finance-account-detail{transition:none;}
+  }
+  @media (max-width:560px){
+    .fin-hero{padding:16px 16px 10px;}
+    .fin-flow{padding:6px 8px;}
+    .fin-hero-num{font-size:29px;}
+    /* the range control drops below the figure rather than squeezing it */
+    .fin-hero-top{flex-direction:column;gap:12px;}
+    /* two rows instead of one: period + length on top, the three figures beneath. Ordering rather
+       than reordered markup, so the tab order still runs period → figures → length. The pills
+       tighten just enough that In/Out/Net share one line at 360px of content. */
+    .fin-period-nav{order:1;flex:0 1 auto;}
+    .fin-period-label{min-width:90px;}
+    .fin-flow .fin-seg{order:2;}
+    .fin-flow .fin-seg button{padding:7px 10px;}
+    .fin-flow-figs{order:3;flex-basis:100%;justify-content:space-between;gap:2px;}
+    .fin-tile{padding:4px 5px;gap:4px;}
+    .fin-net{padding-left:1px;gap:4px;}
+    .fin-tile-num,.fin-net-val{font-size:13.5px;}
+    .fin-tile-lbl,.fin-net{letter-spacing:.02em;font-size:10px;}
+    .fin-summary{grid-template-columns:minmax(0,1fr);}
+    #view-finance .tx-date{width:auto;}
+    .spend-cat-name{width:auto;flex:1;}
+  }
 
   /* wishlist (see renderWishlist()/renderWishlistDetail() in wishlist.js) — card grid where the
      whole card opens the detail modal (image upload, rename, editing cost, funds history all live
@@ -1497,8 +1713,6 @@
   .weight-log-item .wl-del:hover{color:var(--danger);}
 
   .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:16px 18px;margin-bottom:18px;}
-  .nw-current-value{font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;color:var(--text);text-align:center;cursor:pointer;margin-bottom:10px;user-select:none;}
-  .nw-current-value:hover{color:var(--violet);}
   .chart-legend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-top:8px;justify-content:center;flex-wrap:wrap;}
   .chart-legend span{display:inline-flex;align-items:center;gap:5px;}
   .chart-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
@@ -1509,8 +1723,24 @@
   .chart-zoom-btn:disabled{opacity:.4;cursor:default;}
   .chart-zoom-btn:disabled:hover{border-color:var(--border);color:var(--muted);}
 
-  .spend-period-nav-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
-  .spend-period-label{font-size:12.5px;font-weight:700;color:var(--text);}
+  /* segmented control — one recessed track with a raised active segment, instead of a row of
+     separate outlined pills where the selected one is just a different colour. Used for both the
+     chart range and the flow period, which is why it is a shape rather than a one-off. */
+  .fin-seg{display:inline-flex;gap:2px;background:var(--surface-alt);border-radius:var(--fin-r-pill);padding:3px;flex:none;max-width:100%;overflow-x:auto;scrollbar-width:none;}
+  .fin-seg::-webkit-scrollbar{display:none;}
+  .fin-seg button{border:none;background:none;color:var(--muted);font:700 11.5px/1 'Inter',sans-serif;padding:7px 13px;border-radius:var(--fin-r-pill);cursor:pointer;white-space:nowrap;min-height:30px;flex:0 0 auto;transition:color .14s ease, background-color .14s ease;}
+  .fin-seg button:hover{color:var(--text);}
+  .fin-seg button.active{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(16,20,40,.12);}
+  body[data-theme="dark"] .fin-seg button.active,body[data-theme="ios-dark"] .fin-seg button.active{box-shadow:0 1px 3px rgba(0,0,0,.5);}
+  .fin-seg button:focus-visible{outline:2px solid var(--violet);outline-offset:1px;}
+  /* the flow strip's segments carry both a long and an abbreviated label; the narrow one only
+     appears once the column can't hold the strip in two rows. aria-label keeps the full word for
+     screen readers either way. */
+  .fin-seg .seg-short{display:none;}
+  @media (max-width:430px){
+    .fin-flow .fin-seg .seg-long{display:none;}
+    .fin-flow .fin-seg .seg-short{display:inline;}
+  }
 
   /* ---------- valorant ---------- */
   .val-api-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-bottom:14px;}
@@ -1815,7 +2045,6 @@
   .clock-block-edit-actions{display:flex;gap:8px;margin-bottom:14px;}
 
   @media (max-width:720px){
-    .finance-summary{grid-template-columns:repeat(3,1fr);}
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
     .fitness-results{grid-template-columns:repeat(2,1fr);}
     .val-tracker-grid{flex-direction:column;align-items:stretch;}

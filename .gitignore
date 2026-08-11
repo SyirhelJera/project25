@@ -8,3 +8,7 @@ scripts/.valorant-widget-config.json
 scripts/.valorant-widget.log
 scripts/.valorant-widget-cache/
 supabase/.temp/
+.claude/skills/ui-ux-pro-max/
+.cursor/skills/ui-ux-pro-max/
+shared/uxromax/
+.claude/skills

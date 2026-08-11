@@ -152,6 +152,9 @@
       // buttons don't fit — swiping one sideways is aimed at that strip, not at leaving the tab,
       // so it must not also switch views
       if(e.target.closest('.finance-subnav') || e.target.closest('.checklist-group-nav')) return;
+      // dragging across the net-worth chart scrubs its readout (see renderNetWorthChart in
+      // finance.js) — that horizontal drag is aimed at the chart, not at leaving the tab
+      if(e.target.closest('.fin-chart')) return;
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tracking = true;

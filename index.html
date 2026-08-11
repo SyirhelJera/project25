@@ -174,35 +174,57 @@
       <button class="finance-subnav-btn" data-fintab="convert" type="button">Currency</button>
     </div>
 
-    <!-- accounts-only overview: earnings/spending pulse + net worth trend don't make sense on
-         the Subscriptions / Money Goals / Currency sub-tabs. The earnings/spending totals are
-         first — before the chart — so they're visible the moment you land on Finance, no
-         scrolling needed. -->
+    <!-- accounts-only overview: the net-worth hero + the earnings/spending pulse don't make sense
+         on the Subscriptions / Money Goals / Currency sub-tabs.
+         Net worth leads because it's the question the tab exists to answer, and it's the only
+         large figure here — everything below steps down from it. The chart is short enough
+         (780x220 viewBox, so ~100px tall on a phone) that the flow panel still lands above the
+         fold, which is what the old "totals before the chart" ordering was protecting. -->
     <div id="financeAccountsOverview">
-      <div class="section-lbl" style="margin-top:4px;">This Period</div>
-      <div class="chart-zoom-row" id="spendPeriodRow"></div>
-      <div class="spend-period-nav-row" id="spendPeriodNavRow"></div>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:18px;">
-        <div class="stat" id="spendEarningsStat" style="max-width:220px;" title="Click to see the breakdown by category"><div class="num" id="spendEarningsTotal">$0</div><div class="lbl">Total Earnings This Period</div></div>
-        <div class="stat" id="spendBreakdownStat" style="max-width:220px;" title="Click to see the breakdown by category"><div class="num" id="spendBreakdownTotal">$0</div><div class="lbl">Total Spending This Period</div></div>
-      </div>
-
-      <div class="section-lbl">Net Worth Trend</div>
-      <div class="chart-card">
-        <div id="nwCurrentValue" class="nw-current-value" title="Click to change currency">$0</div>
-        <div id="nwChartWrap"></div>
-        <div class="chart-zoom-row" id="nwChartZoomRow"></div>
-        <div class="chart-legend">
-          <span><span class="dot" style="background:var(--violet);"></span>Net worth</span>
+      <section class="fin-hero" aria-labelledby="finHeroLabel">
+        <div class="fin-hero-top">
+          <div>
+            <div class="fin-eyebrow" id="finHeroLabel">Net worth</div>
+            <div class="fin-hero-figure">
+              <span class="fin-hero-num" id="nwCurrentValue">$0</span>
+              <button class="fin-ccy-btn" id="nwCurrencyBtn" type="button" title="Show net worth in another currency">USD</button>
+            </div>
+            <div class="fin-delta" id="nwDelta"></div>
+          </div>
+          <div class="fin-seg" id="nwChartZoomRow" role="group" aria-label="Trend range"></div>
         </div>
-      </div>
+        <div class="fin-chart" id="nwChartWrap"></div>
+      </section>
+
+      <!-- one strip, not a stack: period + in + out + net + length all sit on a single row, so the
+           account list starts ~170px higher up the page. Everything here is secondary to the net
+           worth figure above it, and it wraps to two rows only when the column gets too narrow. -->
+      <section class="fin-flow" aria-label="Cash flow">
+        <div class="fin-period-nav">
+          <button class="fin-step" id="spendPeriodPrevBtn" type="button" aria-label="Previous period">&#8249;</button>
+          <span class="fin-period-label" id="spendPeriodLabel">—</span>
+          <button class="fin-step" id="spendPeriodNextBtn" type="button" aria-label="Next period">&#8250;</button>
+        </div>
+        <div class="fin-flow-figs">
+          <button class="fin-tile fin-tile-in" id="spendEarningsStat" type="button">
+            <span class="fin-tile-lbl">&#8595; In</span>
+            <span class="fin-tile-num" id="spendEarningsTotal">$0</span>
+          </button>
+          <button class="fin-tile fin-tile-out" id="spendBreakdownStat" type="button">
+            <span class="fin-tile-lbl">&#8593; Out</span>
+            <span class="fin-tile-num" id="spendBreakdownTotal">$0</span>
+          </button>
+          <div class="fin-net" id="spendNetRow"></div>
+        </div>
+        <div class="fin-seg" id="spendPeriodRow" role="group" aria-label="Period length"></div>
+      </section>
     </div>
 
     <!-- ACCOUNTS -->
     <div class="fintab" id="fintab-accounts">
       <div id="financeList"></div>
-      <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one below</b> to start tracking your net worth.</div>
-      <div class="finance-add-row" style="justify-content:flex-end;">
+      <div class="empty" id="financeEmpty" style="display:none;">No accounts yet. <b>Add one</b> to start tracking your net worth.</div>
+      <div class="fin-actions">
         <button class="btn btn-primary" id="openAddAccountBtn" type="button">+ Add Account</button>
       </div>
     </div>
@@ -212,13 +234,19 @@
          whatever is still outstanding, and its payments behave like that account's transactions. -->
     <div class="fintab" id="fintab-debts" style="display:none;">
       <div class="view-sub" style="margin-top:-4px;">Money you lent out and money you owe. Log repayments in full or in small portions — each card tracks what's left. Outstanding amounts count toward your net worth.</div>
-      <div class="finance-summary" style="grid-template-columns:repeat(2,minmax(0,1fr));margin-bottom:16px;">
-        <div class="stat" style="cursor:default;" title="Converted to your net worth display currency"><div class="num" id="debtOwedToYouTotal">$0</div><div class="lbl">Still Owed To You</div></div>
-        <div class="stat" style="cursor:default;" title="Converted to your net worth display currency"><div class="num" id="debtYouOweTotal">$0</div><div class="lbl">You Still Owe</div></div>
+      <div class="fin-summary">
+        <div class="fin-stat" title="Converted to your net worth display currency">
+          <div class="fin-stat-lbl">Still owed to you</div>
+          <div class="fin-stat-num pos" id="debtOwedToYouTotal">$0</div>
+        </div>
+        <div class="fin-stat" title="Converted to your net worth display currency">
+          <div class="fin-stat-lbl">You still owe</div>
+          <div class="fin-stat-num neg" id="debtYouOweTotal">$0</div>
+        </div>
       </div>
       <div id="debtList"></div>
-      <div class="empty" id="debtEmpty" style="display:none;">Nothing tracked yet. <b>Add one below</b> — someone who owes you, or someone you owe.</div>
-      <div class="finance-add-row" style="justify-content:flex-end;">
+      <div class="empty" id="debtEmpty" style="display:none;">Nothing tracked yet. <b>Add one</b> — someone who owes you, or someone you owe.</div>
+      <div class="fin-actions">
         <button class="btn btn-primary" id="openAddDebtBtn" type="button">+ Add Debt</button>
       </div>
     </div>
@@ -226,8 +254,11 @@
     <!-- MONEY GOALS -->
     <div class="fintab" id="fintab-moneygoals" style="display:none;">
       <div class="view-sub" style="margin-top:-4px;">Set an amount you need to make by a date, then log contributions as you earn it. Click a goal to edit it or manage contributions.</div>
-      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
-        <div class="stat" style="cursor:default;max-width:300px;" title="Converted to your net worth display currency"><div class="num" id="mgDailyTotal">$0</div><div class="lbl">Total Needed Per Day (all goals)</div></div>
+      <div class="fin-summary fin-summary-1">
+        <div class="fin-stat" title="Converted to your net worth display currency">
+          <div class="fin-stat-lbl">Needed per day &middot; all goals</div>
+          <div class="fin-stat-num" id="mgDailyTotal">$0</div>
+        </div>
       </div>
       <div class="finance-add-row">
         <input type="text" id="mgName" placeholder="What's this for? (e.g. Rent, Trip fund)" maxlength="60">
@@ -255,8 +286,11 @@
 
     <!-- SUBSCRIPTIONS -->
     <div class="fintab" id="fintab-subs" style="display:none;">
-      <div class="finance-summary" style="grid-template-columns:1fr;margin-bottom:16px;">
-        <div class="stat" style="cursor:default;max-width:260px;"><div class="num" id="subsMonthlyTotal">$0</div><div class="lbl">Total Monthly Subscriptions</div></div>
+      <div class="fin-summary fin-summary-1">
+        <div class="fin-stat">
+          <div class="fin-stat-lbl">Monthly subscriptions</div>
+          <div class="fin-stat-num neg" id="subsMonthlyTotal">$0</div>
+        </div>
       </div>
       <div class="finance-add-row">
         <input type="text" id="subName" placeholder="Subscription name (e.g. Netflix)" maxlength="60">
@@ -273,12 +307,15 @@
     <!-- CURRENCY CONVERTER -->
     <div class="fintab" id="fintab-convert" style="display:none;">
       <div class="finance-add-row">
-        <input type="number" id="convAmount" placeholder="Amount" value="1" min="0" step="0.01">
-        <select id="convFrom"></select>
-        <span style="align-self:center;color:var(--muted);">→</span>
-        <select id="convTo"></select>
+        <input type="number" id="convAmount" placeholder="Amount" value="1" min="0" step="0.01" aria-label="Amount to convert">
+        <select id="convFrom" aria-label="Convert from"></select>
+        <span style="align-self:center;color:var(--muted);" aria-hidden="true">→</span>
+        <select id="convTo" aria-label="Convert to"></select>
       </div>
-      <div class="stat" style="cursor:default;max-width:280px;"><div class="num" id="convResult">$0</div><div class="lbl">Converted amount</div></div>
+      <div class="fin-convert-result">
+        <div class="fin-stat-lbl">Converted amount</div>
+        <div class="fin-stat-num" id="convResult">$0</div>
+      </div>
       <div class="section-lbl" style="margin-top:22px;">Exchange Rates (units per 1 USD)</div>
       <div class="view-sub" style="margin-top:-4px;margin-bottom:10px;">Edit these manually, or fetch current rates automatically.</div>
       <button class="btn btn-ghost btn-sm" id="fetchRatesBtn" type="button" style="margin-bottom:12px;">⟳ Fetch Live Rates</button>
@@ -290,7 +327,7 @@
   <div id="spendCategoryOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title" id="spendCategoryTitle"></div>
+        <div class="struggle-overlay-title is-neutral" id="spendCategoryTitle"></div>
         <button class="btn btn-ghost btn-sm" id="spendCategoryCloseBtn" type="button">Close</button>
       </div>
       <div id="spendCategoryList"></div>
@@ -301,7 +338,7 @@
   <div id="periodBreakdownOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title" id="periodBreakdownTitle"></div>
+        <div class="struggle-overlay-title is-neutral" id="periodBreakdownTitle"></div>
         <button class="btn btn-ghost btn-sm" id="periodBreakdownCloseBtn" type="button">Close</button>
       </div>
       <div id="periodBreakdownList"></div>
@@ -313,7 +350,7 @@
   <div id="addAccountOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title">Add Account</div>
+        <div class="struggle-overlay-title is-neutral">Add Account</div>
         <button class="btn btn-ghost btn-sm" id="addAccountCloseBtn" type="button">Close</button>
       </div>
       <div class="finance-add-row" style="margin-bottom:0;">
@@ -336,7 +373,7 @@
   <div id="editAccountOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title">Edit Account</div>
+        <div class="struggle-overlay-title is-neutral">Edit Account</div>
         <button class="btn btn-ghost btn-sm" id="editAccountCloseBtn" type="button">Close</button>
       </div>
       <div id="editAccountBody"></div>
@@ -347,7 +384,7 @@
   <div id="addDebtOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title">Add Debt</div>
+        <div class="struggle-overlay-title is-neutral">Add Debt</div>
         <button class="btn btn-ghost btn-sm" id="addDebtCloseBtn" type="button">Close</button>
       </div>
       <div class="finance-add-row" style="margin-bottom:0;">
@@ -373,7 +410,7 @@
   <div id="editDebtOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title" id="editDebtTitle">Edit Debt</div>
+        <div class="struggle-overlay-title is-neutral" id="editDebtTitle">Edit Debt</div>
         <button class="btn btn-ghost btn-sm" id="editDebtCloseBtn" type="button">Close</button>
       </div>
       <div id="editDebtBody"></div>
@@ -384,7 +421,7 @@
   <div id="transferFundsOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card">
       <div class="struggle-overlay-head">
-        <div class="struggle-overlay-title" id="transferFundsTitle">Transfer Funds</div>
+        <div class="struggle-overlay-title is-neutral" id="transferFundsTitle">Transfer Funds</div>
         <button class="btn btn-ghost btn-sm" id="transferFundsCloseBtn" type="button">Close</button>
       </div>
       <div id="transferFundsBody"></div>

@@ -220,8 +220,19 @@
   // rerolled by clicking the motivation slideshow image (see motivation.js's motivationGlowWrap
   // click handler) rather than a dedicated button
   function rerollMantra(){
-    if(!state.mantras.length) return;
-    mantraIdx = Math.floor(Math.random()*state.mantras.length);
+    const n = state.mantras.length;
+    if(!n) return;
+    const curText = (mantraIdx >= 0 && mantraIdx < n) ? state.mantras[mantraIdx].text : null;
+    // Never land on the line already showing: an unconstrained pick repeats it roughly once
+    // every n taps, which reads as the tap having done nothing at all. Excluded by text rather
+    // than by index, so two identically-worded mantras can't defeat it — and it also covers the
+    // case where mantraIdx is stale (-1 on first load, or past the end after a delete), since
+    // curText is then null and nothing matches. Falls back to the whole list when there's only
+    // one mantra, or every one reads the same, because then there is nothing else to show.
+    let pool = [];
+    for(let i = 0; i < n; i++){ if(state.mantras[i].text !== curText) pool.push(i); }
+    if(!pool.length) pool = state.mantras.map((_, i) => i);
+    mantraIdx = pool[Math.floor(Math.random() * pool.length)];
     renderMantra();
   }
 

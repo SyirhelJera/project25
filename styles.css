@@ -814,6 +814,11 @@
      because the closing transition starts from wherever the finger left the card. */
   #goalModalOverlay{opacity:0;transition:opacity .2s ease;}
   #goalModalOverlay.is-open{opacity:1;}
+  /* While the sheet is up the page underneath cannot scroll, so the card is the only thing a
+     swipe can move. position:fixed rather than overflow:hidden — iOS Safari ignores the latter on
+     <body> and happily scrolls the page behind a modal. goals.js pins `top` to the current scroll
+     offset so nothing shifts on the way in, and scrolls back to it on the way out. */
+  body.goal-modal-open{position:fixed;left:0;right:0;width:100%;overflow:hidden;}
   .goal-modal-card{transform:translateY(16px) scale(.985);opacity:0;transition:transform .26s cubic-bezier(.2,.75,.3,1), opacity .18s ease;will-change:transform;}
   #goalModalOverlay.is-open .goal-modal-card{transform:none;opacity:1;}
   /* while a finger is on it the card tracks 1:1 — easing between frames reads as lag */

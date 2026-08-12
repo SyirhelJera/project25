@@ -869,6 +869,27 @@
   const GOAL_MODAL_ANIM_MS = 260;
   let goalModalCloseTimer = null;
 
+  /* Scroll priority: while the sheet is open the page behind it is frozen, so every swipe belongs
+     to the card. Without this, a touch that lands on the backdrop — or one that runs past the end
+     of the card's own scroll — moves the goals tab underneath instead, which reads as the sheet
+     ignoring you. Paired with overscroll-behavior:contain on the card, which stops a scroll that
+     reaches the card's end from chaining outward. */
+  let pageScrollLockY = 0;
+  function lockPageScroll(){
+    if(document.body.classList.contains('goal-modal-open')) return;
+    pageScrollLockY = window.scrollY || document.documentElement.scrollTop || 0;
+    // the offset is what keeps the frozen page looking untouched: body goes fixed, and pulling it
+    // up by the current scroll position leaves the same content under the backdrop
+    document.body.style.top = (-pageScrollLockY) + 'px';
+    document.body.classList.add('goal-modal-open');
+  }
+  function unlockPageScroll(){
+    if(!document.body.classList.contains('goal-modal-open')) return;
+    document.body.classList.remove('goal-modal-open');
+    document.body.style.top = '';
+    window.scrollTo(0, pageScrollLockY);
+  }
+
   function openGoalModal(g){
     const overlay = el('goalModalOverlay');
     const card = el('goalModalBody');
@@ -883,6 +904,7 @@
     card.style.transform = '';
     overlay.style.opacity = '';
     overlay.classList.remove('is-dragging');
+    lockPageScroll();
     overlay.style.display = 'flex';
     // Two frames: the first commits display:flex with the card still in its pre-open state, the
     // second flips the class. In one frame the browser coalesces both and the transition is
@@ -907,7 +929,12 @@
     // from wherever the finger left the card down to its closed position
     card.style.transform = '';
     overlay.style.opacity = '';
-    if(goalModalReturnFocus && document.contains(goalModalReturnFocus)) goalModalReturnFocus.focus();
+    // released now, not after the exit animation: the restore is a synchronous scrollTo, so doing
+    // it while the backdrop is still up keeps it invisible
+    unlockPageScroll();
+    // preventScroll: the page is already back exactly where it was, and focusing a carousel card
+    // would otherwise scroll it into view and undo that
+    if(goalModalReturnFocus && document.contains(goalModalReturnFocus)) goalModalReturnFocus.focus({preventScroll:true});
     goalModalReturnFocus = null;
     clearTimeout(goalModalCloseTimer);
     goalModalCloseTimer = setTimeout(()=>{

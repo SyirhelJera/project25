@@ -45,7 +45,7 @@
     const badge = el('habitRiskBadge');
     if(undone.length){ badge.style.display = 'inline-flex'; badge.textContent = undone.length; }
     else { badge.style.display = 'none'; }
-    // habits at risk are now shown via an outline directly on their card (see renderHabits)
+    // habits at risk are now shown via a red tint directly on their card (see renderHabits)
     // instead of a separate text banner listing them out.
     const banner = el('habitReminderBanner');
     if(banner){ banner.style.display = 'none'; banner.innerHTML = ''; }
@@ -154,6 +154,12 @@
       const doneToday = !!h.completions[localDateStr(today)];
       const unresolved = habitIsUnresolved(h);
 
+      // Unresolved *and* out of restores for the month is the one state where missing today costs
+      // the streak outright, so the card gets a caution sign next to the streak — deliberately the
+      // only difference, the card wears the same red tint as any other pending habit. Shown
+      // collapsed too, since that's where the restores badge isn't rendered.
+      const critical = unresolved && restoresLeft<=0;
+
       const card = document.createElement('div'); card.className='habit-card'+(unresolved?' habit-pending':'')+(h.collapsed?' habit-collapsed':'');
       card.dataset.habitId = h.id;
       // A collapsed card stays status-only — done mark, name, streak. The restores badge, checklist
@@ -163,6 +169,7 @@
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
+        + (critical ? '<span class="habit-critical-mark" title="Not done today and no streak restores left this month — missing today breaks the streak.">⚠️</span>' : '')
         + (streak>=2 ? '<div class="habit-badge habit-streak '+streakTierClass(streak)+'">🔥 '+streak+' day streak</div>' : '')
         + (h.collapsed ? '' :
             '<div class="habit-badge habit-restores'+(restoresLeft<=0?' habit-restores-empty':'')+'" title="'+(restoresLeft<=0?'No streak restores left this month — missing a day now will break your streak.':'Streak restores let you retroactively fill in one missed day to keep a streak alive. Resets monthly.')+'">'+(restoresLeft<=0?'⚠️':'🔧')+' '+restoresLeft+'/3 restores left</div>'

@@ -456,7 +456,12 @@
   .sub-row.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;border-radius:6px;}
   .finance-account.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .habit-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
-  .habit-card.habit-pending{border-color:var(--danger);background:linear-gradient(180deg,rgba(239,68,68,0.10) 0%, var(--surface) 60px);}
+  /* pending is carried by the red fade alone — the border stays the neutral card border */
+  .habit-card.habit-pending{background:linear-gradient(180deg,rgba(239,68,68,0.10) 0%, var(--surface) 60px);}
+  /* Unresolved *and* out of streak restores — a miss here can't be undone later in the month, so
+     the card carries a caution sign. The card itself keeps the plain .habit-pending tint on
+     purpose: the sign is the difference, not a second shade of red. */
+  .habit-critical-mark{flex:none;font-size:13px;line-height:1;}
   .habit-status-mark{width:16px;height:16px;border-radius:50%;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff;}
   .habit-status-mark.done{background:var(--success);}
   .habit-restore-btn{background:var(--surface-alt);border:1px dashed #B7BCF0;color:var(--violet-dark);border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:700;cursor:pointer;flex:none;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -1036,6 +1041,7 @@
   .habit-card.habit-collapsed .habit-name{flex:1 1 90px;font-size:13px;white-space:nowrap;overflow-wrap:normal;word-break:normal;}
   .habit-card.habit-collapsed .habit-badge{font-size:9.5px;padding:2px 6px;min-width:0;}
   .habit-card.habit-collapsed .habit-collapse-btn{padding:0 4px;}
+  /* the fade has to restart against the slim card's height, or it'd run off the bottom */
   .habit-card.habit-collapsed.habit-pending{background:linear-gradient(180deg,rgba(239,68,68,0.10) 0%, var(--surface) 34px);}
   .habit-badge{font-size:10.5px;font-weight:700;border-radius:6px;padding:3px 8px;flex:none;white-space:nowrap;text-align:center;}
   .habit-streak{min-width:108px;}
@@ -1049,6 +1055,10 @@
   .habit-streak.streak-t6{color:#fff;background:linear-gradient(135deg,#F5A524,#EF4444,#818CF8);box-shadow:0 0 0 1px rgba(255,255,255,0.5) inset;}
   .habit-streak.streak-t7{color:#fff;background:linear-gradient(135deg,#0D9488,#10B981,#34D399);animation:tierGlowJade 1.8s ease-in-out infinite;}
   .habit-streak.streak-t8{color:#78350F;background:linear-gradient(135deg,#FDE68A,#FFFFFF,#FCD34D);animation:tierGlowDivinity 1.8s ease-in-out infinite;}
+  /* A streak isn't secured until today is marked, so on a pending card the tier badge sits
+     desaturated and still — one rule covers every tier, including the gradient and animated ones,
+     which is why it's a filter rather than per-tier "off" colors. */
+  .habit-card.habit-pending .habit-streak{filter:grayscale(0.85);opacity:0.6;animation:none;}
   .habit-tier-legend{margin-bottom:10px;}
   .habit-tier-legend-toggle{background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
   .habit-tier-legend-toggle:hover{color:var(--violet-dark);border-color:var(--violet);}
@@ -1058,19 +1068,20 @@
   .habit-collapse-btn:hover{color:var(--violet-dark);}
   .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:10px;}
   .day-cell{text-align:center;}
-  .day-cell .dlabel{font-size:9.5px;color:var(--faint);margin-bottom:4px;text-transform:uppercase;}
+  .day-cell .dlabel{font-size:9.5px;color:var(--muted);margin-bottom:4px;text-transform:uppercase;}
   .day-box{width:100%;aspect-ratio:1;border-radius:7px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;transition:border-color .12s ease, background .12s ease;}
   .day-box:hover{border-color:var(--violet);}
   .day-box.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .day-box.protected{border-color:var(--slate);color:var(--slate);}
   .month-lbl{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
   .month-lbl-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
-  .month-lbl-row .month-lbl-text{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;min-width:110px;text-align:center;}
+  .month-lbl-row .month-lbl-text{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;min-width:110px;text-align:center;}
   .month-nav{background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;width:22px;height:22px;line-height:1;color:var(--text);cursor:pointer;font-size:13px;display:inline-flex;align-items:center;justify-content:center;}
   .month-nav:hover:not(:disabled){border-color:var(--violet);color:var(--violet-dark);}
   .month-nav:disabled{opacity:0.35;cursor:default;}
   .month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
-  .month-cell{aspect-ratio:1;border-radius:4px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--faint);}
+  /* one step up from --faint: at 8.5px the day numbers wash out against the card otherwise */
+  .month-cell{aspect-ratio:1;border-radius:4px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--muted);}
   .month-cell.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .month-cell.protected{border-color:var(--slate);color:var(--slate);}
   .month-cell.today{box-shadow:0 0 0 2px var(--gold) inset;}

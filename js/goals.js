@@ -9,8 +9,16 @@
     if(done && !g.completedAt) g.completedAt = Date.now();
     if(!done) g.completedAt = null;
   }
+  // marks the moment the goal was flipped to "working on" — the clock timeSpentStr() runs from.
+  // Toggling on always restarts it; toggling off leaves it alone so a finished goal keeps showing
+  // how long the work itself took rather than falling back to the creation date.
+  function markWorkingOn(g, on){
+    g.workingOn = on;
+    if(on) g.workingOnAt = Date.now();
+  }
   function timeSpentStr(g){
-    const start = g.createdAt;
+    // goals never marked as worked on have no better anchor than their creation date
+    const start = g.workingOnAt || g.createdAt;
     const end = g.completedAt || Date.now();
     const ms = Math.max(0, end - start);
     const days = Math.floor(ms/(1000*3600*24));
@@ -1258,7 +1266,7 @@
     body.querySelector('.goal-modal-close').addEventListener('click', closeGoalModal);
     body.querySelector('[data-act="star"]').addEventListener('click', ()=>{ g.starred = !g.starred; touchGoal(g); save(); renderGoals(); });
     const workingBtn = body.querySelector('[data-act="working"]');
-    if(workingBtn) workingBtn.addEventListener('click', ()=>{ g.workingOn = !g.workingOn; touchGoal(g); save(); renderGoals(); });
+    if(workingBtn) workingBtn.addEventListener('click', ()=>{ markWorkingOn(g, !g.workingOn); touchGoal(g); save(); renderGoals(); });
     const checkEl = body.querySelector('[data-act="check"]');
     checkEl.addEventListener('click', ()=>{
       if(isGoalLocked(g)) return; // locked goals can't be marked done until the net worth requirement is met
@@ -1311,6 +1319,8 @@
       if(g.requiredNetWorth === undefined) g.requiredNetWorth = null;
       if(g.updatedAt === undefined) g.updatedAt = g.createdAt;
       if(g.workingOn === undefined) g.workingOn = false;
+      // old records predate the field; they keep counting from createdAt until next marked
+      if(g.workingOnAt === undefined) g.workingOnAt = null;
       g.subtasks.forEach(s=>{ if(s.requiresId === undefined) s.requiresId = null; });
       updateCompletionMeta(g);
       totalPct += goalProgress(g);
@@ -1423,7 +1433,7 @@
           return;
         }
         if(act && act.dataset.act === 'star'){ e.stopPropagation(); g.starred = !g.starred; touchGoal(g); save(); renderGoals(); return; }
-        if(act && act.dataset.act === 'working'){ e.stopPropagation(); g.workingOn = !g.workingOn; touchGoal(g); save(); renderGoals(); return; }
+        if(act && act.dataset.act === 'working'){ e.stopPropagation(); markWorkingOn(g, !g.workingOn); touchGoal(g); save(); renderGoals(); return; }
         if(act && act.dataset.act === 'check'){
           e.stopPropagation();
           if(isGoalLocked(g)) return; // locked goals can't be marked done until the net worth requirement is met
@@ -1553,7 +1563,7 @@
     const input = el('newGoalInput');
     const v = input.value.trim();
     if(!v) return;
-    const newGoal = { id:uid(), title:v, starred:false, workingOn:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null };
+    const newGoal = { id:uid(), title:v, starred:false, workingOn:false, workingOnAt:null, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null };
     state.goals.unshift(newGoal);
     openGoalExclusive(newGoal);
     // a brand-new goal is unfinished, unstarted and unlocked, so it's invisible under three of the

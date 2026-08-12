@@ -51,6 +51,9 @@ Everything lives in one JSON blob (`state`), persisted as a single row/key. Roug
 ```
 state = {
   goals: [ { id, title, subtasks:[{id,title,done,requiresId}], tier, starred, workingOn,
+             workingOnAt,                // set each time workingOn is flipped on; the "N days so
+                                         // far / to finish" line counts from here, falling back to
+                                         // createdAt for goals never marked as worked on
              targetDate, completedAt, financeTarget, financeSaved, requiredNetWorth,
              color, imageUrl, checkin, ... } ],
                                        // imageUrl is a public Supabase Storage URL (uploaded via

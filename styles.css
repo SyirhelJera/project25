@@ -2343,6 +2343,58 @@
   .val-chart-note{font-size:10.5px;line-height:1.5;color:var(--muted);margin-top:10px;}
   .val-chart-empty{text-align:center;padding:28px 16px;font-size:12.5px;line-height:1.6;color:var(--muted);}
 
+  /* ---- RR Tracker on a phone ----
+     The list itself is already one column at every width, so what breaks here is everything
+     around it: two control strips whose widest control is wider than the screen, and a card whose
+     fixed chrome (rank icon + two 40px touch targets + the delta pill) eats most of a ~340px row
+     before the Riot ID gets any of it. Rules are scoped by id where the class is shared — both
+     .val-toolbar and .val-add-row are reused by the Local Helper panel in Settings and by the
+     store wishlist, neither of which wants this layout. */
+  @media (max-width:760px){
+    /* "Custom order (drag to reorder)" is a wider option than the screen, so the select either
+       overflowed the strip or wrapped and left Refresh All alone on a right-aligned line. The two
+       buttons pair up on line one as equal halves instead, and Sort takes the full line below. */
+    #valToolbar{gap:8px;}
+    #valToolbar .val-add-toggle{order:1;flex:1 1 0;}
+    #valToolbar .val-refresh-all-btn{order:2;flex:1 1 0;margin-left:0;}
+    #valToolbar .val-sort-group{order:3;flex:1 1 100%;display:flex;min-width:0;}
+    #valToolbar .val-sort-group select{flex:1;min-width:0;}
+    /* tap targets, not pointer targets */
+    #valToolbar .btn,#valToolbar select{min-height:38px;}
+
+    /* same treatment one row down: the Riot ID owns a line, then region / platform / Add split the
+       next one evenly rather than trailing off mid-row with the cancel ✕ stranded behind them */
+    #valAddRow{gap:6px;}
+    #valAddRow input.val-riotid-input{flex:1 1 100%;max-width:none;}
+    #valAddRow select{flex:1 1 0;min-width:0;}
+    #valAddRow .btn{flex:1 1 0;}
+    #valAddRow input,#valAddRow select,#valAddRow .btn{height:38px;}
+    #valAddRow .val-icon-btn{width:38px;height:38px;}
+
+    /* The card's own chrome is the budget: at the coarse-pointer 40px the two icon buttons plus
+       the delta pill left the Riot ID under ~110px, so anything longer than a short name truncated
+       on every single row — and a truncated ID is the one thing the row exists to show. 36px is
+       still a comfortable target on a card this tall, and the recovered ~20px goes to the name. */
+    #valAccountList .val-icon-btn{width:36px;height:36px;font-size:13px;}
+    .val-account-top{gap:7px;}
+    .val-acc-actions{gap:0;}
+    /* the art now fades out again before the right edge instead of running under the ⟳/✕, which
+       on the dark themes sat two transparent muted-grey glyphs on top of an agent portrait */
+    .val-account-card > .val-agent-bg{
+      width:64%;
+      -webkit-mask-image:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 48%, rgba(0,0,0,1) 66%, rgba(0,0,0,0) 96%);
+      mask-image:linear-gradient(90deg, rgba(0,0,0,0) 0%, rgba(0,0,0,1) 48%, rgba(0,0,0,1) 66%, rgba(0,0,0,0) 96%);
+    }
+    /* the expanded card holds a chart, so it gets its side padding back down to the collapsed
+       card's — the plot is the widest thing on the tab and every px of it is data */
+    .val-account-card.expanded{padding:11px 11px 12px;}
+    .val-account-card.expanded .val-meta{font-size:10.5px;}
+
+    /* the account dropdown above the store had a 220px cap that left it stranded next to a
+       full-width label; here it takes the rest of its line */
+    .val-store-switcher-row select{max-width:none;min-width:0;}
+  }
+
   @media (max-width:560px){
     /* the zoom row needs the full width here, so it drops to its own line — but the collapse
        button must ride up next to the title rather than being stranded on a third line */

@@ -124,6 +124,23 @@
     g.open = true;
   }
 
+  /* Snaps a just-expanded goal so its head sits directly under the sheet's sticky title bar.
+     Two things this deliberately does *not* do: it never centers a tall card (a card taller than
+     the space left would have to push its own head up behind the bar to be centered — the head is
+     what you need on screen, so it stays put and the rest is scrolled to), and it never scrolls
+     past the card, so the head can't end up above the bar either way. Scrolls the sheet body,
+     #goalListBody, not the window — the page behind an open sheet is frozen (lockPageScroll).
+     renderGoals() rebuilds every card node, so the element has to be re-queried by goal id. */
+  function scrollGoalUnderBar(goalId){
+    const body = el('goalListBody');
+    const card = body && body.querySelector('.goal[data-goal-id="'+goalId+'"]');
+    if(!card) return;
+    const bar = body.querySelector('.goal-list-bar');
+    const barH = bar ? bar.getBoundingClientRect().height : 0;
+    const cardTop = card.getBoundingClientRect().top - body.getBoundingClientRect().top + body.scrollTop;
+    body.scrollTo({ top: Math.max(0, cardTop - barH - 8), behavior: wcReducedMotion ? 'auto' : 'smooth' });
+  }
+
   const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
   // Checklist items give a small trickle of exp — enough to feel rewarding day-to-day, but far
   // less than actually finishing a goal, which is the real accomplishment. This is tracked as a
@@ -1417,6 +1434,9 @@
         if(g.open) g.open = false;
         else openGoalExclusive(g);
         renderGoals();
+        // rAF so the rebuilt list has been laid out before the card is measured. Collapsing never
+        // scrolls — the row you just closed is already where you're looking.
+        if(g.open) requestAnimationFrame(()=> scrollGoalUnderBar(g.id));
       });
 
       const detail = document.createElement('div');

@@ -746,15 +746,31 @@
      in an overlay (same open/close pattern as .mosaic-overlay: click the backdrop to close). */
   /* checklist subgroup sub-nav — same visual language as .chart-zoom-btn, scrolls sideways
      rather than wrapping so a long list of subgroups can't eat vertical space */
-  .checklist-group-nav{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;}
-  .checklist-group-nav::-webkit-scrollbar{height:5px;}
-  .checklist-group-nav::-webkit-scrollbar-track{background:transparent;}
-  .checklist-group-nav::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  /* the bar itself is hidden, like every other sideways strip in the app (.goal-filters,
+     .finance-subnav, .nav) — it sat under the pills as a permanent grey rule even when there was
+     nothing to scroll to, and the pills are wide enough to be obviously draggable without it */
+  .checklist-group-nav{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    scrollbar-width:none;-ms-overflow-style:none;margin-bottom:10px;}
+  .checklist-group-nav::-webkit-scrollbar{display:none;}
   .checklist-group-btn{flex:none;display:inline-flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;}
   .checklist-group-btn:hover{border-color:var(--violet);color:var(--text);}
   .checklist-group-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
   .checklist-group-btn-count{background:var(--surface-alt);border-radius:20px;padding:0 5px;font-size:10px;line-height:15px;color:var(--faint);}
   .checklist-group-btn.active .checklist-group-btn-count{background:var(--violet);color:#fff;}
+
+  /* Subgroup name labelling each run of cards in the All view (renderChecklists()). It had no
+     rule of its own and so rendered as raw body text — 16px, --text — which made the label
+     louder than the card names (14px) it was introducing. Same eyebrow treatment as Valorant's
+     .val-group-header, which is the same feature over a different list; the count steps back out
+     of the uppercase run so it reads as a quantity rather than part of the name.
+     Scoped to the tab because .checklist-group-header is also on Valorant's headers, and those
+     style themselves through .val-group-header. */
+  #view-checklists .checklist-group-header{
+    font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;
+    color:var(--muted);margin:16px 0 7px;
+  }
+  #view-checklists .checklist-group-header:first-child{margin-top:2px;}
+  .checklist-group-count{font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted);}
 
   /* single-line teaser — the tasks themselves are only listed in the overlay it opens */
   .struggle-panel{background:var(--surface);border:1px solid var(--danger);border-radius:9px;padding:5px 10px;margin-bottom:10px;cursor:pointer;display:flex;align-items:center;gap:8px;min-width:0;}

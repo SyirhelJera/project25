@@ -782,7 +782,7 @@
       // it, the active sub-nav button already says which group you're in
       if(gkey && checklistGroupFilter === 'all'){
         const lbl = document.createElement('div'); lbl.className='finance-group-lbl checklist-group-header';
-        lbl.innerHTML = escapeHtml(gkey)+' <span style="font-weight:600;text-transform:none;letter-spacing:0;color:var(--faint);">('+groupsMap[gkey].length+')</span>';
+        lbl.innerHTML = escapeHtml(gkey)+' <span class="checklist-group-count">('+groupsMap[gkey].length+')</span>';
         list.appendChild(lbl);
       }
       groupsMap[gkey].forEach(c=>{

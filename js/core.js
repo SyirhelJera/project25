@@ -99,6 +99,18 @@
     if(!dir) return '';
     return '<span class="pf-trend-mark '+(good?'good':'bad')+'" title="'+escapeHtml(title||'')+'">'+(dir>0?'▲':'▼')+'</span>';
   }
+  /* How far back those arrows compare — Settings -> Trend Comparison. Returns the date key to
+     reach back to, or null for "the last entry", where each trend keeps its own previous-reading
+     rule (they differ: net worth compares a live figure against a daily snapshot, fitness compares
+     one logged weigh-in against the one before it). Callers take the newest reading on or before
+     the key, so "since" always names a date something was actually recorded on. */
+  function trendCutoffKey(){
+    const days = Number(state.trendWindowDays) || 0;
+    if(days <= 0) return null;
+    const d = new Date(); d.setHours(0,0,0,0);
+    d.setDate(d.getDate() - days);
+    return localDateStr(d);
+  }
 
   // Goal/finance icon images used to be stored inline as base64 in the single shared app_data
   // row (see js/persistence.js) — that whole row is transferred on every load and every save,

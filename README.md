@@ -201,6 +201,12 @@ state = {
   hideTabIcons: false,                 // Settings -> "Tab Icons": drops the per-tab logos for a
                                        // text-only nav (mobile's icon-only strip switches to
                                        // labels) — applyTabIcons(), all three in js/insights.js
+  trendWindowDays: 0,                  // Settings -> "Trend Comparison": how far back the Net
+                                       // Worth / Fitness Level ▲▼ arrows measure. 0 = against the
+                                       // previous reading (the original behaviour); N = the newest
+                                       // reading on or before N days ago, falling back to the
+                                       // oldest one held. trendCutoffKey() in core.js decides;
+                                       // read by renderGoals() and updateFitnessLevelUI()
   protectedDays: [ { id, type:'vacation'|'sick'|'event', label, startDate, endDate, createdAt } ]
                                        // global exemption list (Settings tab) — startDate/endDate
                                        // are inclusive YYYY-MM-DD strings (endDate===startDate for

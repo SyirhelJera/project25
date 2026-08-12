@@ -146,6 +146,33 @@
     el('pfLevel').textContent = 'Lv. ' + level;
     el('pfExpNum').textContent = into + ' / ' + need + ' XP';
     el('pfExpFill').style.width = Math.round((into/need)*100) + '%';
+    syncBoardStats();
+  }
+
+  /* The sidebar profile card is hidden below 760px, so level / net worth / fitness are mirrored
+     onto the Goals board for phones. Copied from that card's own elements rather than recomputed:
+     one source per figure, and no second copy of the maths to drift. Called from updateExpUI()
+     (which renderGoals runs after it has written the net worth) and from fitness.js when the
+     fitness tier changes. */
+  function syncBoardStats(){
+    const copy = (dstId, srcId, withColor) => {
+      const dst = el(dstId), src = el(srcId);
+      if(!dst || !src) return;
+      dst.textContent = src.textContent;
+      // the fitness tier says as much in its colour as in its word — carry it across
+      if(withColor) dst.style.color = src.style.color;
+    };
+    // the trend markers are already-built <span class="pf-trend-mark good|bad">▲/▼</span> (see
+    // trendMarker() in core.js), so they come across as markup — arrow, colour, tooltip and all
+    const copyHtml = (dstId, srcId) => {
+      const dst = el(dstId), src = el(srcId);
+      if(dst && src) dst.innerHTML = src.innerHTML;
+    };
+    copy('meLevel', 'pfLevel');
+    copy('meNetWorth', 'pfNetWorthCalc');
+    copy('meFitness', 'pfFitnessLevel', true);
+    copyHtml('meNetWorthTrend', 'pfNetWorthTrend');
+    copyHtml('meFitnessTrend', 'pfFitnessTrend');
   }
 
   /* "Today’s focus" — the daily suggested-subtask line — has been removed from the tab, and
@@ -1408,14 +1435,20 @@
       const nwNow = getNetWorthNum();
       const nwConverted = convertAmt(nwNow, 'USD', nwCcy);
       el('pfNetWorthCalc').textContent = ccySymbol(nwCcy)+Math.round(nwConverted).toLocaleString();
-      // Compare against the newest netWorthHistory point from an *earlier* day — save() rewrites
-      // today's point in place (snapshotNetWorth()), so the last entry is usually today's own value.
       const trendEl = el('pfNetWorthTrend');
       if(trendEl){
         const hist = state.finance.netWorthHistory || [];
-        const today = localDateStr(new Date());
+        // With a window set (Settings -> Trend Comparison), the newest snapshot on or before it.
+        // Without one, the newest from any *earlier* day — save() rewrites today's point in place
+        // (snapshotNetWorth()), so the last entry is usually today's own value.
+        const cutoff = trendCutoffKey();
+        const limit = cutoff || localDateStr(new Date());
         let prev = null;
-        for(let i=hist.length-1; i>=0; i--){ if(hist[i].date < today){ prev = hist[i]; break; } }
+        for(let i=hist.length-1; i>=0; i--){
+          if(cutoff ? hist[i].date <= limit : hist[i].date < limit){ prev = hist[i]; break; }
+        }
+        // a window reaching further back than the history still compares against something
+        if(!prev && cutoff && hist.length) prev = hist[0];
         const deltaDisp = prev ? convertAmt(nwNow - prev.value, 'USD', nwCcy) : 0;
         trendEl.innerHTML = (prev && Math.abs(deltaDisp) >= 1)
           ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp > 0,

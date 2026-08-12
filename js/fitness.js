@@ -39,10 +39,21 @@
 
     const trendEl = el('pfFitnessTrend');
     if(trendEl){
-      // two most recent log entries, chronologically — same 0.1-display-unit threshold the
-      // per-entry deltas in the weight log use, so tiny scale noise doesn't show an arrow
+      // Same 0.1-display-unit threshold the per-entry deltas in the weight log use, so tiny scale
+      // noise doesn't show an arrow. What it compares against is Settings -> Trend Comparison:
+      // with a window, the newest weigh-in on or before it (or the oldest, if none reaches back
+      // that far); without one, simply the entry before the latest.
       const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
-      const latest = log[log.length-1], prev = log[log.length-2];
+      const latest = log[log.length-1];
+      const cutoff = trendCutoffKey();
+      let prev = null;
+      if(cutoff){
+        for(let i=log.length-1; i>=0; i--){ if(log[i].date <= cutoff){ prev = log[i]; break; } }
+        if(!prev && log.length > 1) prev = log[0];
+        if(prev === latest) prev = null; // nothing newer than the window: no change to report
+      } else {
+        prev = log[log.length-2];
+      }
       const deltaDisp = (latest && prev) ? roundDisp(kgToDisplay(latest.kg - prev.kg)) : 0;
       trendEl.innerHTML = Math.abs(deltaDisp) >= 0.1
         ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp < 0,
@@ -50,6 +61,9 @@
             + ' since ' + fmtDate(parseLocalDateStr(prev.date)))
         : '';
     }
+    // after the trend, not before: the Goals board mirrors both the tier and its arrow on phones,
+    // where the profile card is hidden, and syncing first would copy last update's arrow
+    if(typeof syncBoardStats === 'function') syncBoardStats();
     updateAvatar();
   }
 

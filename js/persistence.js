@@ -316,6 +316,9 @@
     // applyTabOrder()/applyTabIcons()/applyTabVisibility()
     state.tabOrder = Array.isArray(parsed.tabOrder) ? parsed.tabOrder : [];
     state.hideTabIcons = !!parsed.hideTabIcons;
+    // how far back the Net Worth / Fitness ▲▼ arrows compare (Settings -> Trend Comparison).
+    // 0 means "against the previous reading, whenever it was", which is how they always behaved.
+    state.trendWindowDays = Number(parsed.trendWindowDays) || 0;
     // 'settings' is filtered out on the way in as well as on the way out — a saved order from a
     // build that let it through must not be able to lock the Settings tab away
     state.hiddenTabs = (Array.isArray(parsed.hiddenTabs) ? parsed.hiddenTabs : []).filter(k=>k!=='settings');

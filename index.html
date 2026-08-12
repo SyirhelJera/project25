@@ -106,6 +106,18 @@
         <button class="stat" type="button" data-filter="locked" aria-label="Open locked goals"><span class="num" id="statLocked">0</span><span class="lbl">Locked</span></button>
         <button class="stat" type="button" data-filter="all" aria-label="Open all goals"><span class="num" id="statTotal">0</span><span class="lbl">All</span></button>
       </div>
+
+      <!-- Phone only. The sidebar profile card that carries these is hidden below 760px, so the
+           three figures worth keeping surface here instead; goals.js mirrors them from that card's
+           own elements rather than recomputing, so the two can never disagree. -->
+      <div class="g-me">
+        <div class="g-me-item"><span class="g-me-lbl">Level</span>
+          <span class="g-me-figure"><b class="g-me-val is-gold" id="meLevel">Lv. 1</b></span></div>
+        <div class="g-me-item"><span class="g-me-lbl">Net worth</span>
+          <span class="g-me-figure"><b class="g-me-val" id="meNetWorth">$0</b><span class="g-me-trend" id="meNetWorthTrend"></span></span></div>
+        <div class="g-me-item"><span class="g-me-lbl">Fitness</span>
+          <span class="g-me-figure"><b class="g-me-val" id="meFitness">—</b><span class="g-me-trend" id="meFitnessTrend"></span></span></div>
+      </div>
     </section>
 
     <section class="g-hero" aria-labelledby="gHeroLabel">
@@ -1144,7 +1156,7 @@
     </div>
 
     <div class="section-lbl" style="margin-top:22px;">Navbar Tabs</div>
-    <div class="view-sub" style="margin-bottom:10px;">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar, swipe order and mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put.</div>
+    <div class="view-sub" style="margin-bottom:10px;">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put.</div>
     <div id="tabOrderList" class="tab-order-list"></div>
 
     <div class="section-lbl" style="margin-top:22px;">Tab Icons</div>
@@ -1172,6 +1184,21 @@
     <button class="btn btn-primary btn-sm" id="addProtectedDayBtn" type="button" style="margin-top:10px;">+ Add</button>
     <div id="protectedDayList" style="margin-top:12px;"></div>
     <div class="empty" id="protectedDayEmpty" style="display:none;">No protected days yet.</div>
+
+    <div class="section-lbl" style="margin-top:22px;">Trend Comparison</div>
+    <div class="view-sub" style="margin-bottom:10px;">What the ▲▼ arrows next to Net Worth and Fitness Level measure against — on the profile card and on the Goals board. "Since the last entry" compares the two most recent readings, whenever they happened; the others reach back a fixed distance and compare against the closest reading on or before that date. If nothing was recorded that far back, the oldest reading you have is used instead.</div>
+    <div class="fitness-fields">
+      <div class="fitness-field">
+        <label for="trendWindowSelect">Compare against</label>
+        <select id="trendWindowSelect">
+          <option value="0">The last entry</option>
+          <option value="7">7 days ago</option>
+          <option value="30">30 days ago</option>
+          <option value="90">90 days ago</option>
+          <option value="365">A year ago</option>
+        </select>
+      </div>
+    </div>
 
     <div class="section-lbl" style="margin-top:22px;">Countdown Mosaic Colors</div>
     <div class="view-sub" style="margin-bottom:10px;">Customize the day-dot colors on the pinned countdown's mosaic (Goals page).</div>

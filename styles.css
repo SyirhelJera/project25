@@ -347,6 +347,20 @@
   .stat .lbl{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:0;white-space:nowrap;}
   .stat.active-filter .num,.stat.active-filter .lbl{color:var(--violet-dark);}
 
+  /* Level / net worth / fitness, mirrored from the sidebar profile card — which is hidden below
+     760px, where this appears instead (see the mobile block). Three across, label over figure, so
+     it reads as one strip of context under the counters rather than three more things to tap. */
+  .g-me{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);}
+  .g-me-item{min-width:0;}
+  .g-me-lbl{display:block;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
+  .g-me-figure{display:flex;align-items:baseline;gap:4px;min-width:0;}
+  .g-me-val{font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* the level in the same gold as the progress bar above it. --g-gold-text rather than raw --gold
+     because that one is 2.1:1 on a light surface — fine for a star glyph, not for a figure you're
+     meant to read. The dark themes' gold already passes, so there it's the real token. */
+  .g-me-val.is-gold{color:var(--g-gold-text);}
+  .g-me-trend{flex:none;}
+
   /* small round icon button — modal closes, overlay dismissals */
   .g-icon-btn{width:34px;height:34px;flex:none;border:none;border-radius:999px;background:var(--surface-alt);color:var(--muted);font-size:13px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background-color .14s ease, color .14s ease;}
   .g-icon-btn:hover{background:var(--violet-pale);color:var(--violet-dark);}
@@ -1476,6 +1490,8 @@
     .notes-act-btn{padding:3px 4px;}
     .notes-pin-chip{max-width:150px;}
     #valAccountList{grid-template-columns:1fr;}
+    /* the profile card is hidden just above; these three figures are the part of it worth keeping */
+    .g-me{display:grid;}
     /* the row is already at its minimum on desktop; only the side padding tightens further here */
     .goal-head{padding:8px 10px;}
     .goal-bar{margin-left:-10px;margin-right:-10px;}
@@ -1554,6 +1570,8 @@
        the large hero. The raw --success/--danger are 2.2:1 on the iOS-light surface. */
     --fin-pos:#0F7A38;
     --fin-neg:#C0261F;
+    /* readable gold: the same family as --gold, dark enough to carry text on a light surface */
+    --g-gold-text:#B45309;
     /* one soft shadow direction (down), two depths — used instead of giving every card a border */
     --fin-shadow:0 1px 2px rgba(16,20,40,.05), 0 6px 16px -8px rgba(16,20,40,.16);
     --fin-shadow-lift:0 2px 4px rgba(16,20,40,.07), 0 14px 26px -10px rgba(16,20,40,.22);
@@ -1565,6 +1583,8 @@
   body[data-theme="dark"] .goal-scope, body[data-theme="ios-dark"] .goal-scope{
     --fin-pos:#34D399;
     --fin-neg:#F87171;
+    /* on a dark surface the theme's own gold already clears 4.5:1, so use the real thing */
+    --g-gold-text:var(--gold);
     --fin-shadow:0 1px 2px rgba(0,0,0,.34), 0 6px 16px -8px rgba(0,0,0,.55);
     --fin-shadow-lift:0 2px 4px rgba(0,0,0,.4), 0 14px 26px -10px rgba(0,0,0,.62);
   }

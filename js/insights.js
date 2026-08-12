@@ -210,6 +210,22 @@
       b.classList.toggle('active', (b.dataset.vis === 'hide') === !!state.profile.hideAvatar);
     });
 
+    // Trend Comparison — how far back the Net Worth / Fitness ▲▼ arrows measure (trendCutoffKey()
+    // in core.js). Both trends redraw through the renders below.
+    const trendWindowSelect = el('trendWindowSelect');
+    if(trendWindowSelect){
+      trendWindowSelect.value = String(Number(state.trendWindowDays) || 0);
+      if(!trendWindowSelect.dataset.wired){
+        trendWindowSelect.dataset.wired = '1';
+        trendWindowSelect.addEventListener('change', ()=>{
+          state.trendWindowDays = Number(trendWindowSelect.value) || 0;
+          save();
+          renderGoals();                                                   // net worth arrow
+          if(typeof updateFitnessLevelUI === 'function') updateFitnessLevelUI(); // fitness arrow
+        });
+      }
+    }
+
     renderMosaicColorInputs();
     const mcFields = el('mosaicColorFields');
     if(mcFields && !mcFields.dataset.wired){

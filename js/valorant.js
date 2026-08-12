@@ -1121,23 +1121,13 @@
     setInterval(pollValLocalStatus, 15000);
   }
 
-  /* The add form is a slim row under the toolbar rather than a permanent block: collapsed it
-     costs nothing, and it auto-opens exactly once on an empty list so a first run still lands
-     on it. Opening focuses the Riot ID field, so "+ Add" is one click to typing. */
-  let valAddRowOpened = false;
-  function setValAddRowOpen(open){
-    if(open) valAddRowOpened = true;
-    el('valAddRow').style.display = open ? 'flex' : 'none';
-    el('valAddToggleBtn').setAttribute('aria-expanded', String(open));
-    el('valAddToggleBtn').textContent = open ? '− Add' : '+ Add';
-    if(open) el('valNewRiotId').focus();
-    else { el('valAddErr').style.display = 'none'; el('valNewRiotId').value = ''; }
-  }
-  el('valAddToggleBtn').addEventListener('click', ()=>{
-    setValAddRowOpen(el('valAddRow').style.display === 'none');
+  /* The add form is always on screen, so Escape can't close it any more — it clears the field and
+     whatever validation error is showing instead, which is the only thing left to undo. */
+  el('valNewRiotId').addEventListener('keydown', e=>{
+    if(e.key !== 'Escape') return;
+    el('valNewRiotId').value = '';
+    el('valAddErr').style.display = 'none';
   });
-  el('valAddCancelBtn').addEventListener('click', ()=> setValAddRowOpen(false));
-  el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key === 'Escape') setValAddRowOpen(false); });
 
   function renderValorant(){
     renderValSubtabs();
@@ -1154,13 +1144,11 @@
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;
     el('valAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
-    // The toolbar always shows, because it carries "+ Add" — hiding it on an empty list would
-    // leave no way back if the add row were dismissed. Its other two controls need accounts to
-    // mean anything, and sort needs more than one.
+    // Both toolbar controls act on the list, so neither means anything without accounts (and sort
+    // needs more than one) — with both gone the strip itself would be an empty 12px gap.
     el('valSortGroup').style.display = accounts.length > 1 ? 'inline-flex' : 'none';
     el('valRefreshAllBtn').style.display = accounts.length ? '' : 'none';
-    // first run: nothing to look at, so the add row starts open instead of behind a button
-    if(!accounts.length && !valAddRowOpened) setValAddRowOpen(true);
+    el('valToolbar').style.display = accounts.length ? 'flex' : 'none';
     el('valSortMode').value = state.valorant.sortMode;
     // rescue the chart panel before the wipe below — while a card is selected it lives inside the
     // grid, and innerHTML='' would destroy the element along with its zoom-button listeners

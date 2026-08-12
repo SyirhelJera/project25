@@ -2136,11 +2136,10 @@
   .val-sort-group{display:inline-flex;align-items:center;gap:7px;}
   .val-toolbar .val-sort-lbl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;}
   .val-toolbar select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:6px 9px;font-size:12px;font-family:'Inter',sans-serif;}
-  .val-add-toggle{flex:none;}
   .val-refresh-all-btn{margin-left:auto;}
 
-  /* one slim line under the toolbar, sized to match the toolbar's own controls so the two read as
-     a single strip rather than a form that opened on top of the list */
+  /* one slim line above the toolbar, sized to match the toolbar's own controls so the two read as
+     a single strip rather than a form sitting on top of the list */
   .val-add-row{display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
   .val-add-row input,
   .val-add-row select{
@@ -2148,8 +2147,9 @@
     border-radius:8px;padding:6px 9px;font-size:12.5px;font-family:'Inter',sans-serif;height:30px;box-sizing:border-box;
   }
   /* capped rather than flex:1 — stretched across a wide screen the field read as a search bar
-     over the list instead of a compact control in the strip */
-  .val-add-row input.val-riotid-input{flex:1 1 240px;min-width:150px;max-width:320px;}
+     over the list instead of a compact control in the strip. The floor is what keeps the field,
+     both selects and Add on one line: under pressure the input gives width up rather than wrap. */
+  .val-add-row input.val-riotid-input{flex:1 1 240px;min-width:130px;max-width:320px;}
   .val-add-row select{flex:none;}
   .val-add-row .btn{flex:none;}
   .val-add-row input:hover,.val-add-row select:hover{border-color:var(--violet);}
@@ -2368,24 +2368,22 @@
      store wishlist, neither of which wants this layout. */
   @media (max-width:760px){
     /* "Custom order (drag to reorder)" is a wider option than the screen, so the select either
-       overflowed the strip or wrapped and left Refresh All alone on a right-aligned line. The two
-       buttons pair up on line one as equal halves instead, and Sort takes the full line below. */
+       overflowed the strip or wrapped and left Refresh All alone on a right-aligned line. Each of
+       the two takes a full line of its own instead, Sort first, Refresh All against the list. */
     #valToolbar{gap:8px;}
-    #valToolbar .val-add-toggle{order:1;flex:1 1 0;}
-    #valToolbar .val-refresh-all-btn{order:2;flex:1 1 0;margin-left:0;}
-    #valToolbar .val-sort-group{order:3;flex:1 1 100%;display:flex;min-width:0;}
+    #valToolbar .val-sort-group{flex:1 1 100%;display:flex;min-width:0;}
     #valToolbar .val-sort-group select{flex:1;min-width:0;}
+    #valToolbar .val-refresh-all-btn{flex:1 1 100%;margin-left:0;}
     /* tap targets, not pointer targets */
     #valToolbar .btn,#valToolbar select{min-height:38px;}
 
-    /* same treatment one row down: the Riot ID owns a line, then region / platform / Add split the
-       next one evenly rather than trailing off mid-row with the cancel ✕ stranded behind them */
+    /* same treatment one strip up: the one-line form doesn't survive a phone, so the Riot ID keeps
+       a line of its own and region / platform / Add split the next one evenly below it */
     #valAddRow{gap:6px;}
     #valAddRow input.val-riotid-input{flex:1 1 100%;max-width:none;}
     #valAddRow select{flex:1 1 0;min-width:0;}
     #valAddRow .btn{flex:1 1 0;}
     #valAddRow input,#valAddRow select,#valAddRow .btn{height:38px;}
-    #valAddRow .val-icon-btn{width:38px;height:38px;}
 
     /* The card's own chrome is the budget: at the coarse-pointer 40px the two icon buttons plus
        the delta pill left the Riot ID under ~110px, so anything longer than a short name truncated

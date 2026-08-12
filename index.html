@@ -110,14 +110,17 @@
       <!-- Phone only. The sidebar profile card that carries these is hidden below 760px, so the
            three figures worth keeping surface here instead; goals.js mirrors them from that card's
            own elements rather than recomputing, so the two can never disagree. -->
+      <!-- buttons, not text: the ▲▼ detail lives in a title tooltip, which a finger can never
+           reach — tapping one spells it out in the line underneath instead -->
       <div class="g-me">
-        <div class="g-me-item"><span class="g-me-lbl">Level</span>
-          <span class="g-me-figure"><b class="g-me-val is-gold" id="meLevel">Lv. 1</b></span></div>
-        <div class="g-me-item"><span class="g-me-lbl">Net worth</span>
-          <span class="g-me-figure"><b class="g-me-val" id="meNetWorth">$0</b><span class="g-me-trend" id="meNetWorthTrend"></span></span></div>
-        <div class="g-me-item"><span class="g-me-lbl">Fitness</span>
-          <span class="g-me-figure"><b class="g-me-val" id="meFitness">—</b><span class="g-me-trend" id="meFitnessTrend"></span></span></div>
+        <button class="g-me-item" type="button" data-me="level"><span class="g-me-lbl">Level</span>
+          <span class="g-me-figure"><b class="g-me-val is-gold" id="meLevel">Lv. 1</b></span></button>
+        <button class="g-me-item" type="button" data-me="networth"><span class="g-me-lbl">Net worth</span>
+          <span class="g-me-figure"><b class="g-me-val" id="meNetWorth">$0</b><span class="g-me-trend" id="meNetWorthTrend"></span></span></button>
+        <button class="g-me-item" type="button" data-me="fitness"><span class="g-me-lbl">Fitness</span>
+          <span class="g-me-figure"><b class="g-me-val" id="meFitness">—</b><span class="g-me-trend" id="meFitnessTrend"></span></span></button>
       </div>
+      <p class="g-me-note" id="meNote" style="display:none;" role="status"></p>
     </section>
 
     <section class="g-hero" aria-labelledby="gHeroLabel">
@@ -1186,12 +1189,14 @@
     <div class="empty" id="protectedDayEmpty" style="display:none;">No protected days yet.</div>
 
     <div class="section-lbl" style="margin-top:22px;">Trend Comparison</div>
-    <div class="view-sub" style="margin-bottom:10px;">What the ▲▼ arrows next to Net Worth and Fitness Level measure against — on the profile card and on the Goals board. "Since the last entry" compares the two most recent readings, whenever they happened; the others reach back a fixed distance and compare against the closest reading on or before that date. If nothing was recorded that far back, the oldest reading you have is used instead.</div>
+    <div class="view-sub" style="margin-bottom:10px;">What the ▲▼ arrows next to Net Worth and Fitness Level measure against — on the profile card and on the Goals board. "The last entry" compares the two most recent readings, whenever they happened. "Start of this week/month" answers how far you've moved so far this week or month; the day counts reach back a fixed distance instead. Either way it compares against the closest reading on or before that date, and if nothing was recorded that far back, the oldest reading you have is used. On a phone, tap a figure on the Goals board to read the full comparison.</div>
     <div class="fitness-fields">
       <div class="fitness-field">
         <label for="trendWindowSelect">Compare against</label>
         <select id="trendWindowSelect">
           <option value="0">The last entry</option>
+          <option value="week">Start of this week</option>
+          <option value="month">Start of this month</option>
           <option value="7">7 days ago</option>
           <option value="30">30 days ago</option>
           <option value="90">90 days ago</option>

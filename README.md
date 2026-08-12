@@ -201,12 +201,16 @@ state = {
   hideTabIcons: false,                 // Settings -> "Tab Icons": drops the per-tab logos for a
                                        // text-only nav (mobile's icon-only strip switches to
                                        // labels) — applyTabIcons(), all three in js/insights.js
-  trendWindowDays: 0,                  // Settings -> "Trend Comparison": how far back the Net
-                                       // Worth / Fitness Level ▲▼ arrows measure. 0 = against the
-                                       // previous reading (the original behaviour); N = the newest
-                                       // reading on or before N days ago, falling back to the
-                                       // oldest one held. trendCutoffKey() in core.js decides;
-                                       // read by renderGoals() and updateFitnessLevelUI()
+  trendWindow: '0',                    // Settings -> "Trend Comparison": how far back the Net
+                                       // Worth / Fitness Level ▲▼ arrows measure. '0' = against
+                                       // the previous reading (the original behaviour); 'week' /
+                                       // 'month' anchor to the start of this calendar week
+                                       // (Monday) or month; '7'|'30'|'90'|'365' are rolling day
+                                       // counts. A string, since those last two kinds mix. Each
+                                       // takes the newest reading on or before that date, falling
+                                       // back to the oldest one held. trendCutoffKey() in core.js
+                                       // decides; read by renderGoals() and updateFitnessLevelUI().
+                                       // Loads from the older `trendWindowDays` key if present
   protectedDays: [ { id, type:'vacation'|'sick'|'event', label, startDate, endDate, createdAt } ]
                                        // global exemption list (Settings tab) — startDate/endDate
                                        // are inclusive YYYY-MM-DD strings (endDate===startDate for

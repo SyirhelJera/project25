@@ -351,7 +351,11 @@
      760px, where this appears instead (see the mobile block). Three across, label over figure, so
      it reads as one strip of context under the counters rather than three more things to tap. */
   .g-me{display:none;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);}
-  .g-me-item{min-width:0;}
+  /* a real button — it opens the detail line below, and a tooltip was never reachable by touch */
+  .g-me-item{min-width:0;text-align:left;background:none;border:none;padding:4px 6px;margin:-4px -6px;border-radius:9px;font-family:'Inter',sans-serif;cursor:pointer;transition:background-color .14s ease;}
+  .g-me-item:hover{background:var(--surface-alt);}
+  .g-me-item.is-open{background:var(--violet-pale);}
+  .g-me-note{margin:9px 0 0;font-size:11.5px;line-height:1.5;color:var(--muted);}
   .g-me-lbl{display:block;font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:3px;}
   .g-me-figure{display:flex;align-items:baseline;gap:4px;min-width:0;}
   .g-me-val{font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;line-height:1.2;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}

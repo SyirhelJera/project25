@@ -214,11 +214,11 @@
     // in core.js). Both trends redraw through the renders below.
     const trendWindowSelect = el('trendWindowSelect');
     if(trendWindowSelect){
-      trendWindowSelect.value = String(Number(state.trendWindowDays) || 0);
+      trendWindowSelect.value = state.trendWindow == null ? '0' : String(state.trendWindow);
       if(!trendWindowSelect.dataset.wired){
         trendWindowSelect.dataset.wired = '1';
         trendWindowSelect.addEventListener('change', ()=>{
-          state.trendWindowDays = Number(trendWindowSelect.value) || 0;
+          state.trendWindow = trendWindowSelect.value;
           save();
           renderGoals();                                                   // net worth arrow
           if(typeof updateFitnessLevelUI === 'function') updateFitnessLevelUI(); // fitness arrow

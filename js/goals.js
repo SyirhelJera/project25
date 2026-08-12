@@ -173,7 +173,53 @@
     copy('meFitness', 'pfFitnessLevel', true);
     copyHtml('meNetWorthTrend', 'pfNetWorthTrend');
     copyHtml('meFitnessTrend', 'pfFitnessTrend');
+    if(openBoardNote) showBoardNote(openBoardNote); // keep an open note in step with the figures
   }
+
+  /* The ▲▼ detail ("Up $340 since 3 Aug") is a title tooltip, which on a phone nothing can reach —
+     hover doesn't exist. Tapping a figure spells it out in the line under the strip instead, and
+     tapping the same one again puts it away. The sentence is read back out of the marker's own
+     title so there is still only one place that composes it. */
+  let openBoardNote = null;
+  function boardNoteText(which){
+    if(which === 'level'){
+      const exp = el('pfExpNum');
+      return exp ? exp.textContent + ' toward the next level' : '';
+    }
+    const trendId = which === 'networth' ? 'meNetWorthTrend' : 'meFitnessTrend';
+    const mark = el(trendId) && el(trendId).querySelector('.pf-trend-mark');
+    if(mark && mark.title) return mark.title;
+    return which === 'networth'
+      ? 'No change to compare against yet — net worth is recorded once a day.'
+      : 'No change to compare against yet — log a weight to start the comparison.';
+  }
+  function showBoardNote(which){
+    const note = el('meNote');
+    if(!note) return;
+    openBoardNote = which;
+    note.textContent = boardNoteText(which);
+    note.style.display = 'block';
+    document.querySelectorAll('.g-me-item').forEach(b=>{
+      b.classList.toggle('is-open', b.dataset.me === which);
+      b.setAttribute('aria-expanded', b.dataset.me === which ? 'true' : 'false');
+    });
+  }
+  function hideBoardNote(){
+    openBoardNote = null;
+    const note = el('meNote');
+    if(note) note.style.display = 'none';
+    document.querySelectorAll('.g-me-item').forEach(b=>{
+      b.classList.remove('is-open');
+      b.setAttribute('aria-expanded', 'false');
+    });
+  }
+  document.querySelectorAll('.g-me-item').forEach(b=>{
+    b.setAttribute('aria-expanded', 'false');
+    b.addEventListener('click', ()=>{
+      if(openBoardNote === b.dataset.me) hideBoardNote();
+      else showBoardNote(b.dataset.me);
+    });
+  });
 
   /* "Today’s focus" — the daily suggested-subtask line — has been removed from the tab, and
      with it pickFocusTask()/renderFocus(). state.focus is still read on load (persistence.js) so

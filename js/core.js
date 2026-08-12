@@ -103,12 +103,22 @@
      reach back to, or null for "the last entry", where each trend keeps its own previous-reading
      rule (they differ: net worth compares a live figure against a daily snapshot, fitness compares
      one logged weigh-in against the one before it). Callers take the newest reading on or before
-     the key, so "since" always names a date something was actually recorded on. */
+     the key, so "since" always names a date something was actually recorded on.
+
+     'week' and 'month' are calendar anchors, not rolling windows: they answer "how far have I moved
+     *this* week/month", which is a different question from "…in the last 7/30 days" and the reason
+     both kinds are offered. Week starts Monday, matching habits.js and checklists.js. */
   function trendCutoffKey(){
-    const days = Number(state.trendWindowDays) || 0;
-    if(days <= 0) return null;
+    const w = state.trendWindow == null ? '0' : String(state.trendWindow);
+    if(w === '0') return null;
     const d = new Date(); d.setHours(0,0,0,0);
-    d.setDate(d.getDate() - days);
+    if(w === 'week'){ d.setDate(d.getDate() - ((d.getDay()+6)%7)); }
+    else if(w === 'month'){ d.setDate(1); }
+    else {
+      const days = Number(w) || 0;
+      if(days <= 0) return null;
+      d.setDate(d.getDate() - days);
+    }
     return localDateStr(d);
   }
 

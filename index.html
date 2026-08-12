@@ -82,37 +82,52 @@
   <div id="conflictBanner" class="setup-banner" style="display:none;"></div>
   <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
 
-  <!-- GOALS -->
+  <!-- GOALS
+       Ordered by what the tab is for. The goals in flight lead: they carry the imagery, they're
+       the only things here you act on directly, and today's focus line belongs with them rather
+       than floating above as its own panel. The heat map answers the follow-up question ("am I
+       actually keeping up, day by day?"), and everything under it steps down — the progress +
+       filter board, then the list itself. -->
   <div class="view" id="view-goals">
 
-    <div class="today-card">
-      <div class="today-row">
-        <div class="today-icon">🎯</div>
-        <div class="today-text" id="focusText"><b>Today's focus:</b> add a goal to get a suggestion</div>
-        <button class="reroll-btn" id="focusReroll" title="New suggestion">↻</button>
+    <section class="g-hero" aria-labelledby="gHeroLabel">
+      <div class="g-sec-head">
+        <h2 class="g-eyebrow" id="gHeroLabel">In progress</h2>
+        <span class="g-sec-note" id="workingCount"></span>
       </div>
-    </div>
 
-    <div id="workingCarouselWrap" style="display:none;">
-      <div class="working-carousel" id="workingCarousel"></div>
-    </div>
+      <div class="today-card">
+        <div class="today-row">
+          <div class="today-icon" aria-hidden="true">🎯</div>
+          <div class="today-text" id="focusText"><b>Today's focus:</b> add a goal to get a suggestion</div>
+          <button class="reroll-btn" id="focusReroll" type="button" title="New suggestion" aria-label="Suggest a different focus task">↻</button>
+        </div>
+      </div>
+
+      <div id="workingCarouselWrap" style="display:none;">
+        <div class="working-carousel" id="workingCarousel"></div>
+      </div>
+      <p class="g-hero-empty" id="workingCarouselEmpty" style="display:none;">Nothing in flight yet — open a goal below and tap <b>Work on this</b> to pin it up here.</p>
+    </section>
 
     <div id="pinnedCdSlot"></div>
 
-    <div class="mana-card">
-      <div class="mana-top"><span class="mana-label">Overall Progress</span><span class="mana-pct" id="overallPct">0%</span></div>
+    <section class="g-board" aria-labelledby="gBoardLabel">
+      <div class="g-board-top">
+        <h2 class="g-eyebrow" id="gBoardLabel">Overall progress</h2>
+        <span class="mana-pct" id="overallPct">0%</span>
+      </div>
       <div class="mana-track"><div class="mana-fill" id="manaFill" style="width:0%"></div></div>
-    </div>
-
-    <div class="stats">
-      <div class="stat" data-filter="working"><div class="num" id="statWorking">0</div><div class="lbl">Working On</div></div>
-      <div class="stat" data-filter="unfinished"><div class="num" id="statOpen">0</div><div class="lbl">Unfinished</div></div>
-      <div class="stat" data-filter="completed"><div class="num" id="statDone">0</div><div class="lbl">Completed</div></div>
-      <div class="stat" data-filter="locked"><div class="num" id="statLocked">0</div><div class="lbl">🔒 Locked</div></div>
-      <div class="stat" data-filter="all"><div class="num" id="statTotal">0</div><div class="lbl">All Goals</div></div>
-    </div>
-
-    <div id="checkinSlot"></div>
+      <div class="stats" role="group" aria-label="Filter goals">
+        <!-- visible labels are short because five of them share a 320px row; the full phrase is on
+             the button itself, so nothing is lost to a screen reader -->
+        <button class="stat" type="button" data-filter="working" aria-pressed="false" aria-label="Show goals you are working on"><span class="num" id="statWorking">0</span><span class="lbl">Working</span></button>
+        <button class="stat" type="button" data-filter="unfinished" aria-pressed="false" aria-label="Show unfinished goals"><span class="num" id="statOpen">0</span><span class="lbl">Open</span></button>
+        <button class="stat" type="button" data-filter="completed" aria-pressed="false" aria-label="Show completed goals"><span class="num" id="statDone">0</span><span class="lbl">Done</span></button>
+        <button class="stat" type="button" data-filter="locked" aria-pressed="false" aria-label="Show locked goals"><span class="num" id="statLocked">0</span><span class="lbl">Locked</span></button>
+        <button class="stat" type="button" data-filter="all" aria-pressed="false" aria-label="Show all goals"><span class="num" id="statTotal">0</span><span class="lbl">All</span></button>
+      </div>
+    </section>
 
     <div class="toolbar">
       <button class="btn btn-ghost btn-sm" id="starredFirstBtn">★ Starred first</button>
@@ -858,11 +873,21 @@
     </div>
   </div>
 
+  <!-- GOAL MODAL — the full goal (same detail body the goal list renders), opened by tapping a
+       card in the "Working on" carousel; filled by renderGoalModal() in goals.js -->
+  <div id="goalModalOverlay" class="struggle-overlay goal-scope" style="display:none;">
+    <div class="struggle-overlay-card goal-modal-card" id="goalModalBody" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle"></div>
+  </div>
+
   <!-- MOSAIC OVERLAY (expanded pinned-countdown dot grid, one dot per real day) -->
-  <div id="mosaicOverlay" class="mosaic-overlay" style="display:none;">
-    <div class="mosaic-overlay-card" id="mosaicOverlayCard">
-      <div class="mosaic-overlay-title" id="mosaicOverlayTitle"></div>
+  <div id="mosaicOverlay" class="mosaic-overlay goal-scope" style="display:none;">
+    <div class="mosaic-overlay-card" id="mosaicOverlayCard" role="dialog" aria-modal="true" aria-labelledby="mosaicOverlayTitle">
+      <div class="mosaic-overlay-head">
+        <div class="mosaic-overlay-title" id="mosaicOverlayTitle"></div>
+        <button class="g-icon-btn" id="mosaicOverlayClose" type="button" aria-label="Close">✕</button>
+      </div>
       <div class="cd-mosaic mosaic-overlay-grid" id="mosaicOverlayGrid"></div>
+      <div class="g-heat-legend" id="mosaicOverlayLegend"></div>
     </div>
   </div>
 

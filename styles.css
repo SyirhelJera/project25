@@ -1493,7 +1493,6 @@
     .notes-row-body,.notes-body-preview{padding-left:calc(var(--depth) * 14px + 24px);background-position:11px 0;background-size:calc(var(--depth) * 14px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 14px);}
     .notes-act-btn{padding:3px 4px;}
     .notes-pin-chip{max-width:150px;}
-    #valAccountList{grid-template-columns:1fr;}
     /* the profile card is hidden just above; these three figures are the part of it worth keeping */
     .g-me{display:grid;}
     /* the row is already at its minimum on desktop; only the side padding tightens further here */
@@ -2125,8 +2124,9 @@
   .val-add-row input:hover,.val-add-row select:hover{border-color:var(--violet);}
   #valAddErr{margin:-4px 0 12px;}
 
-  /* account list as a grid of compact "cube" tiles instead of one long stacked list */
-  #valAccountList{display:grid;grid-template-columns:repeat(auto-fill, minmax(236px, 1fr));gap:10px;align-items:start;}
+  /* one card per row, top to bottom, at every width — the cards stay compact (~57px collapsed), so
+     a single column reads as a ranked list rather than a tile wall you have to scan in two axes */
+  #valAccountList{display:grid;grid-template-columns:1fr;gap:10px;align-items:start;}
   .val-account-card,
   .val-chart-panel,
   .val-chart-tip{

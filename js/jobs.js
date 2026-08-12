@@ -483,7 +483,7 @@
     if(j.appliedDate) metaParts.push('Applied ' + j.appliedDate);
     const srcLabel = jobSourceLabel(j);
     if(srcLabel) metaParts.push('via ' + escapeHtml(srcLabel));
-    // one single-line row per application — the whole card is deliberately kept to ~32px tall so a
+    // one single-line row per application — the whole card is deliberately kept to ~22px tall so a
     // list of 100+ stays scannable; the full record is one click away in the detail overlay.
     // The logo slot always renders (initial-letter placeholder when there's no photo) so company
     // names stay vertically aligned down the whole list.

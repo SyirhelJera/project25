@@ -1011,6 +1011,21 @@
     .wc-card{width:228px;margin-right:10px;}
   }
 
+  /* ---- a tall sheet has to stop short of the top nav ----
+     .g-sheet rides .struggle-overlay: position:fixed;inset:0, so it is measured from the *physical*
+     top of the screen. Below 760px the sidebar is a sticky top bar that starts lower than that,
+     because its padding-top is max(14px,env(safe-area-inset-top)). Capping the card at 94vh left a
+     ~6vh gap which clears the bar in a browser tab, where that inset is 0 — but installed (manifest
+     display:standalone + viewport-fit=cover + black-translucent) the inset becomes ~47px, the bar
+     moves down by it, and the same gap is spent entirely on the status bar, so a long card buried
+     the nav. Reserving the bar's measured height instead makes the gap the real thing in both:
+     --nav-h is published by js/nav.js and already includes the inset, since it's an offsetHeight.
+     max-height:100% then measures what is actually left rather than a fraction of the screen. */
+  @media (max-width:760px){
+    .g-sheet{padding-top:calc(var(--nav-h, 104px) + 6px);}
+    .g-sheet-card{max-height:100%;}
+  }
+
   /* Nothing above animates anything load-bearing, so all of it can simply stop. The one exception
      is the blinking "today" dot — take the animation away and today needs another marker, so it
      gets a ring instead. */

@@ -43,6 +43,22 @@
     }
     window.addEventListener('scroll', onScroll, {passive:true});
     mq.addEventListener('change', onScroll);
+
+    /* The goal sheets are position:fixed;inset:0 — they start above this bar, at the physical top
+       of the screen. Publishing the bar's real height lets styles.css reserve exactly that much and
+       no more, so a tall sheet stops short of the nav instead of covering it. It has to be measured
+       rather than assumed: it shrinks on scroll (.scrolled), and its top padding grows by
+       env(safe-area-inset-top) once installed as a PWA, which is the whole reason a hardcoded 6vh
+       gap worked in a browser tab and failed in the installed app. */
+    function measureNav(){
+      document.documentElement.style.setProperty('--nav-h', (mq.matches ? sidebar.offsetHeight : 0) + 'px');
+    }
+    // ResizeObserver rather than a resize/transitionend pair: it also catches the shrink-on-scroll
+    // padding transition frame by frame, so the reserved gap never lags the bar it's reserving for.
+    if(window.ResizeObserver) new ResizeObserver(measureNav).observe(sidebar);
+    else window.addEventListener('resize', measureNav);
+    mq.addEventListener('change', measureNav);
+    measureNav();
   })();
 
   /* ---------- mobile tab switcher: hold the button, slide to a tab, release ----------

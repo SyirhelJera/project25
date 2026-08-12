@@ -140,45 +140,10 @@
     overlay.addEventListener('click', e=>{ if(e.target === overlay) closeSwitcher(); });
   })();
 
-  /* ---------- swipe left/right to switch tabs ---------- */
-  (function(){
-    const main = document.querySelector('.main');
-    if(!main) return;
-    let startX = 0, startY = 0, tracking = false;
-    main.addEventListener('touchstart', e => {
-      if(e.touches.length !== 1) return;
-      if(e.target.closest('.photo-carousel') || e.target.closest('.working-carousel') || e.target.closest('.motivation-slide-area') || e.target.closest('.motivation-thumbs')) return; // let the carousel/slideshow handle its own horizontal drag
-      // the Finance / Time sub-navs and the Checklists subgroup nav scroll horizontally when their
-      // buttons don't fit — swiping one sideways is aimed at that strip, not at leaving the tab,
-      // so it must not also switch views
-      if(e.target.closest('.finance-subnav') || e.target.closest('.checklist-group-nav')) return;
-      // dragging across the net-worth chart scrubs its readout (see renderNetWorthChart in
-      // finance.js) — that horizontal drag is aimed at the chart, not at leaving the tab
-      if(e.target.closest('.fin-chart')) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      tracking = true;
-    }, {passive:true});
-    main.addEventListener('touchend', e => {
-      if(!tracking) return;
-      tracking = false;
-      const dx = e.changedTouches[0].clientX - startX;
-      const dy = e.changedTouches[0].clientY - startY;
-      if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-      const items = visibleNavItems(); // swiping walks the navbar as shown, skipping hidden tabs
-      const curIdx = items.findIndex(t => t.classList.contains('active'));
-      if(curIdx === -1) return;
-      const nextIdx = dx < 0 ? curIdx + 1 : curIdx - 1;
-      if(nextIdx < 0 || nextIdx >= items.length) return;
-      items[nextIdx].click();
-      const newView = document.querySelector('.view.active');
-      if(newView){
-        const cls = dx < 0 ? 'swipe-in-right' : 'swipe-in-left';
-        newView.classList.remove('swipe-in-right','swipe-in-left');
-        void newView.offsetWidth;
-        newView.classList.add(cls);
-        newView.addEventListener('animationend', () => newView.classList.remove(cls), {once:true});
-      }
-    }, {passive:true});
-  })();
+  /* Swiping the view left/right to walk to the next tab used to live here. It's gone: tabs are
+     changed from the navbar or the hold-and-drag switcher (above) only. Several places in the app
+     had to opt out of it one by one — the carousels, the slideshow, the horizontally scrolling
+     sub-navs, the net-worth chart's scrub — because a horizontal drag aimed at any of those also
+     read as "leave this tab". Anything horizontal added from here on no longer has to think about
+     it. The .view.swipe-in-* entry animations went with it. */
 

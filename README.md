@@ -38,7 +38,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`persistence.js`** — the `load()`/`save()` layer (see below); also owns the setup/offline/conflict banners.
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks).
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
-- **`nav.js`** — tab switching, mobile sticky-header shrink, swipe-to-switch-tabs gesture.
+- **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
 - One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
@@ -189,8 +189,8 @@ state = {
                                        // empty means index.html's own order. Tabs missing from a
                                        // stale saved order fall in at the end — applyTabOrder()
   hiddenTabs: [ '<tab key>', … ],      // Settings -> "Navbar Tabs", the Shown/Hidden pill: tabs
-                                       // kept out of the sidebar, the mobile switcher sheet and
-                                       // the swipe order (all read visibleNavItems()). Presentation
+                                       // kept out of the sidebar and the mobile switcher sheet
+                                       // (both read visibleNavItems()). Presentation
                                        // only — the view and its data are untouched. 'settings' is
                                        // never hideable and is filtered out on load too, so a bad
                                        // saved value can't lock the settings screen away; if the

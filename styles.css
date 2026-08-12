@@ -255,10 +255,6 @@
   .main{flex:1;min-width:0;padding:30px 32px 90px;max-width:920px;}
   .view{display:none;}
   .view.active{display:block;}
-  .view.swipe-in-right{animation:swipeInFromRight .22s ease;}
-  .view.swipe-in-left{animation:swipeInFromLeft .22s ease;}
-  @keyframes swipeInFromRight{from{opacity:0;transform:translateX(28px);}to{opacity:1;transform:translateX(0);}}
-  @keyframes swipeInFromLeft{from{opacity:0;transform:translateX(-28px);}to{opacity:1;transform:translateX(0);}}
   .view-title{font-size:21px;font-weight:800;margin-bottom:4px;}
   .view-sub{font-size:13px;color:var(--muted);margin-bottom:20px;}
 
@@ -805,34 +801,46 @@
      bleed to the card's edges and the reused .goal-detail-inner keeps its own padding. The head
      is sticky because on a phone this scrolls for several screens and the close button has to
      stay reachable without scrolling back up. */
-  .goal-modal-card{max-width:560px;padding:0;max-height:92vh;overscroll-behavior:contain;}
+  /* overscroll-behavior:none, not contain: contain stops the scroll chaining out to the page, but
+     leaves the card its own rubber-band, which would fight the dismiss drag at exactly the moment
+     the two meet — the top of the content, pulling down.
+     Scrollbar hidden the same way the carousel and the tab strip hide theirs — the sheet still
+     scrolls, it just doesn't draw a track down its rounded edge. */
+  .goal-modal-card{max-width:560px;padding:0;max-height:92vh;overscroll-behavior:none;scrollbar-width:none;-ms-overflow-style:none;}
+  .goal-modal-card::-webkit-scrollbar{display:none;}
 
   /* --- open / close motion, and the swipe the sheet answers to ---
      The overlay fades, the card travels: a short rise on a desktop dialog, a full slide up from
      the bottom edge on the phone sheet. Both directions run off the same two rules, so a
      dismissed sheet leaves exactly the way it arrived — and a drag can hand off to it mid-flight,
      because the closing transition starts from wherever the finger left the card. */
-  #goalModalOverlay{opacity:0;transition:opacity .2s ease;}
-  #goalModalOverlay.is-open{opacity:1;}
+  /* The backdrop is a pseudo-element so it can fade on its own. Fading the overlay instead took
+     the card down with it — the card is a child, so it inherited the dim and read as vanishing
+     rather than sliding away. Now only the dark layer fades; the card purely travels. */
+  #goalModalOverlay{background:none;}
+  #goalModalOverlay::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease;}
+  #goalModalOverlay.is-open::before{opacity:var(--backdrop-o,1);}
+  /* keeps the card painting above that positioned backdrop */
+  .goal-modal-card{position:relative;z-index:1;}
   /* While the sheet is up the page underneath cannot scroll, so the card is the only thing a
      swipe can move. position:fixed rather than overflow:hidden — iOS Safari ignores the latter on
      <body> and happily scrolls the page behind a modal. goals.js pins `top` to the current scroll
      offset so nothing shifts on the way in, and scrolls back to it on the way out. */
   body.goal-modal-open{position:fixed;left:0;right:0;width:100%;overflow:hidden;}
-  .goal-modal-card{transform:translateY(16px) scale(.985);opacity:0;transition:transform .26s cubic-bezier(.2,.75,.3,1), opacity .18s ease;will-change:transform;}
+  /* desktop dialog: it can't slide off a centre-anchored position, so it drops a little and fades
+     — but no scale, which is the part that read as the card shrinking away */
+  .goal-modal-card{transform:translateY(18px);opacity:0;transition:transform .26s cubic-bezier(.2,.75,.3,1), opacity .16s ease;will-change:transform;}
   #goalModalOverlay.is-open .goal-modal-card{transform:none;opacity:1;}
   /* while a finger is on it the card tracks 1:1 — easing between frames reads as lag */
   #goalModalOverlay.is-dragging .goal-modal-card{transition:none;}
   /* the grab bar only means anything where the gesture exists, so it only appears there */
   .goal-sheet-grip{display:none;}
 
-  /* The banner is the sheet's drag handle, and touch-action:none is what makes it one. The card is
-     its own scroll container, so a touch starting anywhere inside it can be claimed by that
-     scroller — the browser then fires pointercancel a few pixels in, the drag ends far below the
-     dismiss threshold, and the sheet judders back into place instead of closing. Taking the banner
-     out of the scroller's reach keeps the pointer stream ours for the whole swipe. (Clicks are
-     unaffected, so the ✕ still works.) */
-  .goal-modal-banner{position:relative;width:100%;height:158px;background:var(--surface-alt);touch-action:none;}
+  /* The banner used to carry touch-action:none to keep the card's scroller from stealing the
+     pointer stream mid-swipe. The gesture runs on touch events now, which a scroll doesn't cancel,
+     so that's no longer needed — and dropping it means the banner scrolls the sheet like the rest
+     of it instead of being a dead zone. */
+  .goal-modal-banner{position:relative;width:100%;height:158px;background:var(--surface-alt);}
   .goal-modal-banner img{width:100%;height:100%;object-fit:cover;display:block;}
   /* with no image there's nothing to look at, so the banner shrinks to a colored rule that still
      leaves room for the close button */
@@ -860,8 +868,9 @@
   @media (max-width:560px){
     #goalModalOverlay{padding:0;align-items:flex-end;}
     .goal-modal-card{max-width:none;max-height:94vh;border-radius:22px 22px 0 0;}
-    /* a sheet rises and falls; it doesn't fade in place */
-    .goal-modal-card{transform:translateY(100%);opacity:1;transition:transform .26s cubic-bezier(.2,.8,.25,1);}
+    /* a sheet rises and falls at full opacity the whole way — it leaves the screen by leaving the
+       screen, never by dissolving */
+    .goal-modal-card{transform:translateY(100%);opacity:1;transition:transform .3s cubic-bezier(.2,.8,.25,1);}
     .goal-sheet-grip{display:block;position:absolute;top:9px;left:50%;transform:translateX(-50%);width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.72);box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none;}
     .goal-modal-banner{height:140px;}
     .goal-modal-head{padding:13px 14px 11px;}
@@ -889,7 +898,7 @@
     .wc-card:hover{transform:none;}
     /* the modal still moves under a finger — that's the gesture, not decoration — but it no longer
        animates itself in or out (goals.js drops its close delay to match) */
-    #goalModalOverlay,.goal-modal-card{transition:none;}
+    #goalModalOverlay::before,.goal-modal-card{transition:none;}
     .goal-modal-card{transform:none;opacity:1;}
     .g-more-summary::before{transition:none;}
     .cd-mosaic-dot.today{animation:none;outline:2px solid var(--violet);outline-offset:1px;}

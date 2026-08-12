@@ -866,7 +866,7 @@
   let openGoalModalId = null;
   let goalModalReturnFocus = null;
   // must outlast the exit transition — the overlay stays displayed until it finishes
-  const GOAL_MODAL_ANIM_MS = 260;
+  const GOAL_MODAL_ANIM_MS = 320;
   let goalModalCloseTimer = null;
 
   /* Scroll priority: while the sheet is open the page behind it is frozen, so every swipe belongs
@@ -902,7 +902,8 @@
     card.scrollTop = 0;
     renderGoalModal();
     card.style.transform = '';
-    overlay.style.opacity = '';
+    card.style.overflowY = ''; // in case a drag was still in flight when this ran
+    overlay.style.removeProperty('--backdrop-o');
     overlay.classList.remove('is-dragging');
     lockPageScroll();
     overlay.style.display = 'flex';
@@ -928,7 +929,8 @@
     // dropping the drag's inline transform lets the class rule take over — the transition runs
     // from wherever the finger left the card down to its closed position
     card.style.transform = '';
-    overlay.style.opacity = '';
+    card.style.overflowY = ''; // a drag freezes it; closing from anywhere else must not leave it frozen
+    overlay.style.removeProperty('--backdrop-o');
     // released now, not after the exit animation: the restore is a synchronous scrollTo, so doing
     // it while the backdrop is still up keeps it invisible
     unlockPageScroll();
@@ -944,19 +946,31 @@
     }, wcReducedMotion ? 0 : GOAL_MODAL_ANIM_MS);
   }
 
-  /* Swipe down to dismiss. Only armed when the card is scrolled to its top, so the same downward
-     drag scrolls the content everywhere else, and only for non-mouse pointers — a mouse has the
-     ✕, Escape and the backdrop, and would otherwise dismiss the dialog on a stray drag.
-     `overscroll-behavior:contain` on the card keeps the gesture from rubber-banding the page. */
+  /* Swipe down to dismiss — one continuous gesture with scrolling, not a separate one.
+
+     Scrolling a long sheet and then dismissing it used to take two swipes: the first scrolled the
+     content to the top, and only a second one, started at the top, could grab the sheet. That's a
+     limitation of pointer events, which the browser *cancels* the moment it decides a touch
+     belongs to a scroller — so the drag could never be picked up mid-gesture.
+
+     Touch events don't get cancelled that way: touchmove keeps firing all the way through a native
+     scroll. So the browser keeps doing the scrolling (momentum and all — nothing here fights it),
+     and this watches the finger. The instant the card is pinned at its top and the finger is still
+     travelling down, the sheet takes over from exactly that point, and the pull continues into the
+     drag without a seam.
+
+     `overscroll-behavior:none` on the card is what makes that moment clean: at the top there is no
+     rubber-band of its own to compound with the transform. */
   const SHEET_DISMISS_PX = 80;
   const SHEET_DISMISS_VEL = 0.35;  // px per ms over the last few moves — a short flick counts
   const SHEET_CANCELLED_PX = 32;   // an interrupted swipe that had clearly committed
-  const SHEET_DRAG_SLOP = 5;
+  const SHEET_DRAG_SLOP = 5;       // downward pull at the top before the sheet takes over
   const SHEET_FADE_OVER = 320;     // drag distance across which the backdrop fades out
   (function goalSheetDrag(){
     const card = el('goalModalBody');
     const overlay = el('goalModalOverlay');
-    let startY = 0, dy = 0, armed = false, dragging = false, justDragged = false;
+    let tracking = false, dragging = false, justDragged = false;
+    let lastY = 0, originY = 0, pull = 0, dy = 0;
     // the last handful of positions, so a flick is measured over the moment it happened rather
     // than averaged across the whole gesture — a fast 60px swipe that begins slowly averages out
     // to nothing, which is one way a real dismissal used to fall under the threshold
@@ -967,36 +981,58 @@
       return b.t > a.t ? (b.y - a.y) / (b.t - a.t) : 0;
     }
 
-    card.addEventListener('pointerdown', e=>{
+    card.addEventListener('touchstart', e=>{
       justDragged = false;
-      if(e.pointerType === 'mouse') return;
-      if(e.target.closest('input, select, textarea')) return; // native controls own their own touches
-      if(card.scrollTop > 0) return;
-      armed = true; dragging = false;
-      startY = e.clientY; dy = 0;
-      samples = [{y:e.clientY, t:e.timeStamp}];
-    });
-    card.addEventListener('pointermove', e=>{
-      if(!armed) return;
-      const raw = e.clientY - startY;
-      samples.push({y:e.clientY, t:e.timeStamp});
+      dragging = false; pull = 0; dy = 0;
+      // pinch/two-finger gestures aren't ours
+      if(e.touches.length !== 1){ tracking = false; return; }
+      // nor is a drag inside a field — that's the caret and text selection, and nothing here
+      // preventDefaults, so the two would both answer the same finger
+      if(e.target.closest('input, select, textarea')){ tracking = false; return; }
+      tracking = true;
+      lastY = e.touches[0].clientY;
+      samples = [{y:lastY, t:e.timeStamp}];
+    }, {passive:true});
+
+    card.addEventListener('touchmove', e=>{
+      if(!tracking) return;
+      if(e.touches.length !== 1){ tracking = false; return; }
+      const y = e.touches[0].clientY;
+      const step = y - lastY;
+      lastY = y;
+      samples.push({y, t:e.timeStamp});
       if(samples.length > 5) samples.shift();
+
       if(!dragging){
-        if(raw < -2){ armed = false; return; } // they're reaching upward, i.e. scrolling
-        if(raw < SHEET_DRAG_SLOP) return;
-        dragging = true;
-        overlay.classList.add('is-dragging');
-        try{ card.setPointerCapture(e.pointerId); }catch(_){}
+        // The handoff. Only counts while the content has nothing left to scroll, and resets the
+        // moment the finger goes back up, so an ordinary scroll never trips it.
+        if(card.scrollTop <= 0 && step > 0){
+          pull += step;
+          if(pull > SHEET_DRAG_SLOP){
+            dragging = true;
+            originY = y - pull;  // carry the pull already made, so the sheet doesn't jump
+            overlay.classList.add('is-dragging');
+            // the browser is mid-gesture on this scroller; freezing it stops the two from both
+            // answering the same finger once the sheet starts moving
+            card.style.overflowY = 'hidden';
+          }
+        } else if(step < 0){
+          pull = 0;
+        }
+        if(!dragging) return;
       }
-      dy = Math.max(0, raw);
+
+      dy = Math.max(0, y - originY);
       card.style.transform = 'translateY(' + dy + 'px)';
-      overlay.style.opacity = String(Math.max(0, 1 - dy / SHEET_FADE_OVER));
-    });
+      overlay.style.setProperty('--backdrop-o', String(Math.max(0, 1 - dy / SHEET_FADE_OVER)));
+    }, {passive:true});
+
     const endDrag = (e, cancelled) => {
-      if(!armed) return;
+      if(!tracking) return;
       const wasDragging = dragging;
-      armed = false; dragging = false;
+      tracking = false; dragging = false; pull = 0;
       overlay.classList.remove('is-dragging');
+      card.style.overflowY = '';
       if(!wasDragging) return;
       justDragged = true;
       // A cancelled gesture never gets to finish, so it can't be judged by where it stopped — if
@@ -1009,12 +1045,12 @@
       // under the threshold: clearing the inline transform springs it back, since removing
       // .is-dragging has already restored the transition
       card.style.transform = '';
-      overlay.style.opacity = '';
+      overlay.style.removeProperty('--backdrop-o');
     };
-    card.addEventListener('pointerup', e=> endDrag(e, false));
-    card.addEventListener('pointercancel', e=> endDrag(e, true));
+    card.addEventListener('touchend', e=> endDrag(e, false), {passive:true});
+    card.addEventListener('touchcancel', e=> endDrag(e, true), {passive:true});
     // a drag that happens to end over a button would otherwise fire it; the flag is cleared on the
-    // next pointerdown, so a genuine tap is never swallowed
+    // next touchstart, so a genuine tap is never swallowed
     card.addEventListener('click', e=>{
       if(!justDragged) return;
       justDragged = false;

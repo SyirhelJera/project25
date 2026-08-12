@@ -265,9 +265,8 @@
   }
 
   /* Pointer/finger scrub over the trend line. Uses pointer events so mouse, pen and touch share
-     one path; the matching touch-action:pan-y (CSS) keeps a vertical swipe scrolling the page,
-     and nav.js opts .fin-chart out of swipe-to-change-tab so a horizontal drag reads the chart
-     instead of leaving the tab. */
+     one path; the matching touch-action:pan-y (CSS) keeps a vertical swipe scrolling the page
+     while a horizontal drag reads the chart. */
   function wireNetWorthScrub(wrap, pts, W, H, ccy){
     const svg = wrap.querySelector('svg'); if(!svg) return;
     const guide = svg.querySelector('.nw-guide');
@@ -1506,7 +1505,6 @@
   // the pointer happens to release over, switching tabs unintentionally mid-drag. Applied to every
   // .finance-subnav strip (so the Time tab's Countdowns/Clock toggle gets the same guard) and to
   // the Checklists subgroup nav, which scrolls the same way.
-  // (The matching touch fix — not letting the same drag swipe to the next view — is in nav.js.)
   document.querySelectorAll('.finance-subnav, .checklist-group-nav').forEach(nav=>{
     let dragging = false, dragged = false, startX = 0, startScroll = 0;
     nav.addEventListener('pointerdown', e=>{

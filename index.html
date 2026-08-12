@@ -82,35 +82,12 @@
   <div id="conflictBanner" class="setup-banner" style="display:none;"></div>
   <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
 
-  <!-- GOALS
-       Ordered by what the tab is for. The goals in flight lead: they carry the imagery, they're
-       the only things here you act on directly, and today's focus line belongs with them rather
-       than floating above as its own panel. The heat map answers the follow-up question ("am I
-       actually keeping up, day by day?"), and everything under it steps down — the progress +
-       filter board, then the list itself. -->
+  <!-- GOALS — a dashboard, not a workspace.
+       Three things: where it all stands (the progress board, which is also the way into the list),
+       what's in flight (the carousel), and whether the days are being kept up (the heat map). The
+       list itself isn't here — it's a sheet the board's counters open, so this stays something you
+       read at a glance instead of scrolling past to reach the list. -->
   <div class="view" id="view-goals">
-
-    <section class="g-hero" aria-labelledby="gHeroLabel">
-      <div class="g-sec-head">
-        <h2 class="g-eyebrow" id="gHeroLabel">In progress</h2>
-        <span class="g-sec-note" id="workingCount"></span>
-      </div>
-
-      <div class="today-card">
-        <div class="today-row">
-          <div class="today-icon" aria-hidden="true">🎯</div>
-          <div class="today-text" id="focusText"><b>Today's focus:</b> add a goal to get a suggestion</div>
-          <button class="reroll-btn" id="focusReroll" type="button" title="New suggestion" aria-label="Suggest a different focus task">↻</button>
-        </div>
-      </div>
-
-      <div id="workingCarouselWrap" style="display:none;">
-        <div class="working-carousel" id="workingCarousel"></div>
-      </div>
-      <p class="g-hero-empty" id="workingCarouselEmpty" style="display:none;">Nothing in flight yet — open a goal below and tap <b>Work on this</b> to pin it up here.</p>
-    </section>
-
-    <div id="pinnedCdSlot"></div>
 
     <section class="g-board" aria-labelledby="gBoardLabel">
       <div class="g-board-top">
@@ -118,37 +95,32 @@
         <span class="mana-pct" id="overallPct">0%</span>
       </div>
       <div class="mana-track"><div class="mana-fill" id="manaFill" style="width:0%"></div></div>
-      <div class="stats" role="group" aria-label="Filter goals">
+      <!-- each counter opens the goal-list sheet filtered to it: they're the way into the list, not
+           toggles over a list already on screen -->
+      <div class="stats" role="group" aria-label="Open the goal list">
         <!-- visible labels are short because five of them share a 320px row; the full phrase is on
              the button itself, so nothing is lost to a screen reader -->
-        <button class="stat" type="button" data-filter="working" aria-pressed="false" aria-label="Show goals you are working on"><span class="num" id="statWorking">0</span><span class="lbl">Working</span></button>
-        <button class="stat" type="button" data-filter="unfinished" aria-pressed="false" aria-label="Show unfinished goals"><span class="num" id="statOpen">0</span><span class="lbl">Open</span></button>
-        <button class="stat" type="button" data-filter="completed" aria-pressed="false" aria-label="Show completed goals"><span class="num" id="statDone">0</span><span class="lbl">Done</span></button>
-        <button class="stat" type="button" data-filter="locked" aria-pressed="false" aria-label="Show locked goals"><span class="num" id="statLocked">0</span><span class="lbl">Locked</span></button>
-        <button class="stat" type="button" data-filter="all" aria-pressed="false" aria-label="Show all goals"><span class="num" id="statTotal">0</span><span class="lbl">All</span></button>
+        <button class="stat" type="button" data-filter="working" aria-label="Open the goals you are working on"><span class="num" id="statWorking">0</span><span class="lbl">Working</span></button>
+        <button class="stat" type="button" data-filter="unfinished" aria-label="Open unfinished goals"><span class="num" id="statOpen">0</span><span class="lbl">Open</span></button>
+        <button class="stat" type="button" data-filter="completed" aria-label="Open completed goals"><span class="num" id="statDone">0</span><span class="lbl">Done</span></button>
+        <button class="stat" type="button" data-filter="locked" aria-label="Open locked goals"><span class="num" id="statLocked">0</span><span class="lbl">Locked</span></button>
+        <button class="stat" type="button" data-filter="all" aria-label="Open all goals"><span class="num" id="statTotal">0</span><span class="lbl">All</span></button>
       </div>
     </section>
 
-    <div class="toolbar">
-      <button class="btn btn-ghost btn-sm" id="starredFirstBtn">★ Starred first</button>
-      <select class="sort-select" id="goalSortSelect">
-        <option value="none">Default order</option>
-        <option value="tier">Sort: Tier</option>
-        <option value="progress">Sort: % Completed</option>
-        <option value="created">Sort: Time Created</option>
-        <option value="updated">Sort: Last Updated</option>
-      </select>
-      <button class="sort-dir-btn" id="goalSortDirBtn" title="Toggle ascending/descending">↓</button>
-      <div class="spacer"></div>
-    </div>
+    <section class="g-hero" aria-labelledby="gHeroLabel">
+      <div class="g-sec-head">
+        <h2 class="g-eyebrow" id="gHeroLabel">In progress</h2>
+        <span class="g-sec-note" id="workingCount"></span>
+      </div>
 
-    <div class="add-row">
-      <input id="newGoalInput" type="text" placeholder="Add a new goal..." maxlength="120">
-      <button class="btn btn-primary" id="addGoalBtn">+ Add Goal</button>
-    </div>
+      <div id="workingCarouselWrap" style="display:none;">
+        <div class="working-carousel" id="workingCarousel"></div>
+      </div>
+      <p class="g-hero-empty" id="workingCarouselEmpty" style="display:none;">Nothing in flight yet — open a goal from the counters above and tap <b>Work on this</b> to pin it up here.</p>
+    </section>
 
-    <div id="goalList"></div>
-    <div class="empty" id="emptyState" style="display:none;">No goals yet. <b>Add your first goal above</b> to get started.</div>
+    <div id="pinnedCdSlot"></div>
   </div>
 
   <!-- HABITS -->
@@ -875,8 +847,53 @@
 
   <!-- GOAL MODAL — the full goal (same detail body the goal list renders), opened by tapping a
        card in the "Working on" carousel; filled by renderGoalModal() in goals.js -->
-  <div id="goalModalOverlay" class="struggle-overlay goal-scope" style="display:none;">
-    <div class="struggle-overlay-card goal-modal-card" id="goalModalBody" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle"></div>
+  <div id="goalModalOverlay" class="struggle-overlay goal-scope g-sheet" style="display:none;">
+    <div class="struggle-overlay-card g-sheet-card goal-modal-card" id="goalModalBody" role="dialog" aria-modal="true" aria-labelledby="goalModalTitle"></div>
+  </div>
+
+  <!-- GOAL LIST — the full list with its filters, sorting and the add field. It lives in a sheet
+       rather than under the dashboard: the tab is a summary you read, this is the thing you work
+       in, and stacking the two meant scrolling past the whole summary to reach any goal. Opened by
+       the counters on the board; the head below is static markup, the list is built by
+       renderGoals() in goals.js. -->
+  <div id="goalListOverlay" class="struggle-overlay goal-scope g-sheet" style="display:none;">
+    <div class="struggle-overlay-card g-sheet-card goal-list-card" id="goalListBody" role="dialog" aria-modal="true" aria-labelledby="goalListTitle">
+      <div class="goal-list-bar">
+        <span class="goal-sheet-grip" aria-hidden="true"></span>
+        <h2 class="goal-list-title" id="goalListTitle">Goals</h2>
+        <button class="g-icon-btn" id="goalListCloseBtn" type="button" aria-label="Close">✕</button>
+      </div>
+
+      <div class="goal-list-head">
+        <div class="goal-filters" id="goalFilters" role="group" aria-label="Filter goals">
+          <button class="goal-filter-btn" type="button" data-filter="working">Working <span class="goal-filter-count" id="flWorking">0</span></button>
+          <button class="goal-filter-btn" type="button" data-filter="unfinished">Unfinished <span class="goal-filter-count" id="flOpen">0</span></button>
+          <button class="goal-filter-btn" type="button" data-filter="completed">Completed <span class="goal-filter-count" id="flDone">0</span></button>
+          <button class="goal-filter-btn" type="button" data-filter="locked">Locked <span class="goal-filter-count" id="flLocked">0</span></button>
+          <button class="goal-filter-btn" type="button" data-filter="all">All <span class="goal-filter-count" id="flTotal">0</span></button>
+        </div>
+
+        <div class="add-row">
+          <input id="newGoalInput" type="text" placeholder="Add a new goal..." maxlength="120" aria-label="New goal">
+          <button class="btn btn-primary" id="addGoalBtn" type="button">+ Add Goal</button>
+        </div>
+
+        <div class="toolbar">
+          <button class="btn btn-ghost btn-sm" id="starredFirstBtn" type="button">★ Starred first</button>
+          <select class="sort-select" id="goalSortSelect" aria-label="Sort goals">
+            <option value="none">Default order</option>
+            <option value="tier">Sort: Tier</option>
+            <option value="progress">Sort: % Completed</option>
+            <option value="created">Sort: Time Created</option>
+            <option value="updated">Sort: Last Updated</option>
+          </select>
+          <button class="sort-dir-btn" id="goalSortDirBtn" type="button" title="Toggle ascending/descending" aria-label="Toggle ascending or descending">↓</button>
+        </div>
+      </div>
+
+      <div id="goalList"></div>
+      <div class="empty" id="emptyState" style="display:none;">No goals yet. <b>Add your first goal above</b> to get started.</div>
+    </div>
   </div>
 
   <!-- MOSAIC OVERLAY (expanded pinned-countdown dot grid, one dot per real day) -->

@@ -100,7 +100,7 @@
   body[data-theme="dark"] .habit-streak.streak-t5,body[data-theme="ios-dark"] .habit-streak.streak-t5{background:#3B1A1A;color:#F87171;}
   body[data-theme^="ios"]{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Inter',sans-serif;}
   body[data-theme^="ios"] h1,body[data-theme^="ios"] h2,body[data-theme^="ios"] h3{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Manrope',sans-serif;}
-  body[data-theme^="ios"] .today-card,body[data-theme^="ios"] .profile-card,body[data-theme^="ios"] .avatar-ring{border-radius:20px;}
+  body[data-theme^="ios"] .profile-card,body[data-theme^="ios"] .avatar-ring{border-radius:20px;}
   body[data-theme^="ios"] .btn{border-radius:12px;}
   body[data-theme^="ios"] .nav-item,body[data-theme^="ios"] .nav-item.active{border-radius:12px;}
 
@@ -281,25 +281,58 @@
   .g-hero-empty{margin:0;background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:14px 16px;font-size:12.5px;line-height:1.55;color:var(--muted);}
   .g-hero-empty b{color:var(--text);}
 
-  /* today's focus — the app's one dark panel, kept as-is in character but re-radiused onto the
-     shared scale and given a real 36px tap target for the reroll */
-  .today-card{background:#0c0c0e;border:none;border-radius:var(--fin-r-panel,15px);padding:13px 15px;margin-bottom:12px;display:flex;flex-direction:column;gap:7px;}
-  .today-row{display:flex;align-items:center;gap:11px;}
+  /* The "Today's focus" panel that used to sit here is gone, and with it .today-card/.today-row/
+     .today-sub/.reroll-btn. .today-icon and .today-text stay: the motivation tab's mantra overlay
+     wears them too. */
   .today-icon{width:30px;height:30px;flex:none;border-radius:9px;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;font-size:14px;}
   .today-text{flex:1;min-width:0;font-size:13.5px;line-height:1.45;color:#D8D8DE;}
   .today-text b{color:#fff;font-weight:700;}
-  .today-sub{font-size:11px;color:#8A8A93;margin-top:1px;}
-  .reroll-btn{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);color:#B4B4BC;border-radius:10px;width:36px;height:36px;flex:none;cursor:pointer;font-size:14px;line-height:1;transition:color .14s ease, border-color .14s ease;}
-  .reroll-btn:hover{color:#fff;border-color:rgba(255,255,255,.34);}
-  .reroll-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
 
   /* board: overall progress and the list filters in one panel. They were two stacked cards, which
      on a phone pushed the goal list a full screen down and left the filters with no context. */
   .g-board{background:var(--surface);border-radius:var(--fin-r-panel);box-shadow:var(--fin-shadow);padding:14px 16px 12px;margin-bottom:14px;}
   .g-board-top{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:8px;}
   .mana-pct{font-family:'Manrope',sans-serif;font-size:20px;line-height:1;color:var(--violet-dark);font-weight:800;font-variant-numeric:tabular-nums;}
-  .mana-track{position:relative;height:8px;border-radius:999px;background:var(--surface-alt);overflow:hidden;}
-  .mana-fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--violet),#A5B4FC);transition:width .45s ease;}
+  /* No overflow:hidden on the track: the fill is its own rounded pill, so its glow spills past the
+     track instead of being sheared off square by it. */
+  .mana-track{position:relative;height:8px;border-radius:999px;background:var(--surface-alt);}
+  /* Gold, with a pulse that travels the bar left to right. This is the tab's one summary figure and
+     the only thing here that stays in motion — gold because it's the reward colour the app already
+     spends on stars, XP and the Mythical tier, rather than a fourth violet element. The per-goal
+     bars stay violet so this one still reads as the total.
+
+     The travelling highlight is a pseudo-element rather than a background layer, because it has to
+     carry two things at once: its position and its strength. It enters faint at the left and
+     builds to full as it crosses, and the band itself is asymmetric — a long soft ramp with the
+     bright edge toward its right — so the pulse is weaker on the left and stronger on the right
+     twice over, in where it is and in how it's shaped. Linear timing, then a hold at the far end:
+     that pause is what makes it a pulse crossing the bar rather than a conveyor belt.
+
+     overflow:hidden clips the band to the pill; the fill's own drop-shadow is applied after that,
+     so the glow still spills past the track (which deliberately doesn't clip). */
+  .mana-fill{
+    position:relative;overflow:hidden;
+    height:100%;border-radius:999px;transition:width .45s ease;
+    background:linear-gradient(90deg,var(--gold),#FBD38D);
+    filter:drop-shadow(0 0 4px var(--gold));
+  }
+  .mana-fill::after{
+    content:'';position:absolute;top:0;bottom:0;left:0;width:46%;
+    background:linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,.14) 45%,
+      rgba(255,255,255,.8) 78%,
+      rgba(255,255,255,0) 100%);
+    transform:translateX(-110%);
+    animation:manaSweep 2.6s linear infinite;
+    will-change:transform;
+  }
+  /* 240% clears the right edge: the band is 46% of the bar, so it needs ~217% of its own width */
+  @keyframes manaSweep{
+    0%{transform:translateX(-110%);opacity:.12;}
+    58%{transform:translateX(240%);opacity:1;}
+    100%{transform:translateX(240%);opacity:1;}
+  }
 
   /* filter chips: five across even on a 320px phone, so the row never wraps or scrolls. Number
      over label, no borders — the active one is the only tinted cell, which is what makes the
@@ -337,12 +370,33 @@
   /* ---- goal cards ----
      One outline per card became none: the card is separated from the page by shadow, and the only
      line left is the 4px spine carrying the goal's own colour (set inline by goals.js). */
-  .goal{position:relative;background:var(--surface);border:none;border-left:4px solid var(--border);border-radius:var(--fin-r-card,14px);margin-bottom:9px;overflow:hidden;box-shadow:var(--fin-shadow);transition:box-shadow .16s ease;}
+  .goal{position:relative;background:var(--surface);border:none;border-left:3px solid var(--border);border-radius:11px;margin-bottom:6px;overflow:hidden;box-shadow:var(--fin-shadow);transition:box-shadow .16s ease;}
   .goal:hover{box-shadow:var(--fin-shadow-lift);}
-  .goal.done{border-left-color:var(--success);background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 64px);}
-  .goal-head{display:flex;flex-direction:column;gap:9px;padding:13px 15px;cursor:pointer;}
-  .goal-head-top{display:flex;align-items:center;gap:10px;}
-  .goal-thumb{width:34px;height:34px;border-radius:9px;object-fit:cover;flex:none;background:var(--surface-alt);}
+  .goal.done{border-left-color:var(--success);background:linear-gradient(180deg,var(--success-pale) 0%, var(--surface) 44px);}
+  .goal-head{display:flex;flex-direction:column;gap:8px;padding:8px 11px;cursor:pointer;}
+  .goal-head-top{display:flex;align-items:center;gap:8px;min-width:0;}
+  .goal-thumb{width:26px;height:26px;border-radius:7px;object-fit:cover;flex:none;background:var(--surface-alt);}
+
+  /* Collapsed, a card is one line: everything below the top row is built but hidden until the card
+     is opened, so a dozen goals fit a phone screen instead of four. */
+  .goal:not(.open) .goal-meta,
+  .goal:not(.open) .goal-foot-row{display:none;}
+  .goal:not(.open) .goal-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .goal.open .goal-head{padding-bottom:10px;}
+  /* the rank, as its bare letter — "S" carries as well as "S Tier" at a glance and costs a third
+     of the width */
+  .goal-tier{flex:none;font-size:10px;padding:1px 6px;}
+  /* one status mark, not three chips: what you'd act on, in a single glyph */
+  .goal-mark{flex:none;font-size:11px;line-height:1;}
+  .goal-mark.is-locked{font-size:10px;}
+  .goal-mark.is-risk{color:var(--danger);font-size:9px;}
+  .goal-mark.is-working{color:var(--violet-dark);font-size:9px;}
+  /* progress as a hairline along the bottom edge — bled out through the head's padding so it runs
+     the full width of the card, and costing no row of its own */
+  /* no top margin: the head's flex gap already provides the space above it */
+  .goal-bar{height:3px;background:var(--surface-alt);margin:0 -11px -8px;flex:none;}
+  .goal.open .goal-bar{margin-bottom:-10px;}
+  .goal-bar .mini-fill{border-radius:0;}
   /* action buttons sit on a 34px round target — the old 20px hit areas were a coin-flip on a phone */
   .star-btn{background:none;border:none;cursor:pointer;color:var(--faint);font-size:16px;line-height:1;flex:none;width:34px;height:34px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;transition:background-color .14s ease, color .14s ease;}
   .star-btn:hover{background:var(--surface-alt);color:var(--gold);}
@@ -351,25 +405,28 @@
   .working-btn:hover{border-color:var(--violet);color:var(--violet-dark);}
   .working-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
   .working-chip{background:var(--violet-pale) !important;color:var(--violet-dark) !important;border-color:transparent !important;font-weight:700;}
-  .goal-check{position:relative;flex:none;width:26px;height:26px;border-radius:50%;border:2px solid var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-size:13px;transition:background-color .15s ease, border-color .15s ease;}
-  /* a 26px circle is a coin-flip for a thumb, but drawing it bigger would unbalance the row — so
-     the hit area grows instead: down the full row height, and sideways only into the 10px gap */
-  .goal-check::after{content:'';position:absolute;inset:-7px -4px;border-radius:50%;}
+  .goal-check{position:relative;flex:none;width:21px;height:21px;border-radius:50%;border:2px solid var(--faint);display:flex;align-items:center;justify-content:center;cursor:pointer;color:transparent;font-size:11px;transition:background-color .15s ease, border-color .15s ease;}
+  /* drawn small so the row stays slim, but the finger gets the whole row height and the gaps
+     either side of it */
+  .goal-check::after{content:'';position:absolute;inset:-9px -4px;border-radius:50%;}
   .goal-check:hover{border-color:var(--success);}
   .goal-check.checked{background:linear-gradient(135deg,var(--success),#2E8F5D);border-color:var(--success);color:#fff;}
   .goal-title-wrap{flex:1;min-width:0;}
-  .goal-title{font-size:15px;font-weight:700;line-height:1.35;color:var(--text);overflow-wrap:anywhere;}
+  .goal-title{font-size:13.5px;font-weight:700;line-height:1.35;color:var(--text);overflow-wrap:anywhere;}
   .goal.done .goal-title{color:var(--muted);text-decoration:line-through;text-decoration-color:#B9DEC7;}
   .goal-meta{font-size:11px;color:var(--faint);display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
   .chip{background:var(--surface-alt);border:1px solid var(--border);border-radius:5px;padding:1px 6px;font-size:10px;color:var(--muted);}
   /* borderless chips on this tab only — .chip is worn by half the app, and a card that carries
      four of them reads as four little boxes when each keeps its own outline */
   #view-goals .chip, .goal-scope .chip{border-color:transparent;border-radius:6px;padding:2px 7px;font-size:10.5px;font-weight:600;}
-  .goal-foot-row{display:flex;align-items:center;gap:10px;}
+  /* the progress track that used to live here is the card's bottom edge now, so this row is just
+     the edit actions, right-aligned */
+  .goal-foot-row{display:flex;align-items:center;justify-content:flex-end;gap:10px;}
   .mini-track{flex:1;min-width:40px;height:6px;border-radius:999px;background:var(--surface-alt);border:1px solid var(--border);overflow:hidden;}
   .mini-fill{height:100%;background:linear-gradient(90deg,var(--violet),#A5B4FC);border-radius:999px;transition:width .4s ease;}
   #view-goals .mini-track, .goal-scope .mini-track{border:none;height:7px;}
-  .progress-pct{font-size:11px;color:var(--muted);font-weight:800;flex:none;min-width:32px;text-align:right;font-variant-numeric:tabular-nums;}
+  .progress-pct{font-size:11px;color:var(--muted);font-weight:800;flex:none;min-width:30px;text-align:right;font-variant-numeric:tabular-nums;}
+  .goal.done .progress-pct{color:var(--success);}
   .goal-actions{display:flex;align-items:center;gap:2px;flex:none;}
   .chevron{flex:none;color:var(--faint);transition:transform .2s ease;font-size:10px;}
   .goal.open .chevron{transform:rotate(90deg);}
@@ -416,7 +473,7 @@
 
   /* "Working on" goals that haven't been touched today. The tint alone used to carry this; it now
      comes with a "Nothing logged today" chip, so it survives greyscale and colour blindness. */
-  .goal.needs-attention{background:linear-gradient(180deg,var(--danger-pale) 0%, var(--surface) 72px);}
+  .goal.needs-attention{background:linear-gradient(180deg,var(--danger-pale) 0%, var(--surface) 44px);}
   .attention-chip{background:var(--danger-pale) !important;color:var(--danger) !important;font-weight:700;}
   .lock-badge{flex:none;font-size:10.5px;font-weight:800;color:var(--muted);background:var(--surface-alt);border:1px solid var(--border);border-radius:6px;padding:2px 7px;display:inline-flex;align-items:center;gap:3px;}
   #view-goals .lock-badge, .goal-scope .lock-badge{border-color:transparent;font-weight:700;}
@@ -796,45 +853,67 @@
   .g-heat-empty-msg{font-size:12.5px;line-height:1.55;color:var(--muted);margin:8px 0 0;}
   .g-heat-empty-msg b{color:var(--text);}
 
-  /* ---- Goal modal (opened from a carousel card) ----
-     Rides the shared .struggle-overlay backdrop; only the card is restyled, so the banner can
-     bleed to the card's edges and the reused .goal-detail-inner keeps its own padding. The head
-     is sticky because on a phone this scrolls for several screens and the close button has to
-     stay reachable without scrolling back up. */
-  /* overscroll-behavior:none, not contain: contain stops the scroll chaining out to the page, but
+  /* ==================== SHEETS ====================
+     Two of them — the goal detail (from a carousel card) and the goal list (from the board's
+     counters) — sharing one set of rules so they can't drift into two different dialogs. Both ride
+     the .struggle-overlay backdrop and restyle only the card.
+
+     overscroll-behavior:none, not contain: contain stops the scroll chaining out to the page, but
      leaves the card its own rubber-band, which would fight the dismiss drag at exactly the moment
      the two meet — the top of the content, pulling down.
-     Scrollbar hidden the same way the carousel and the tab strip hide theirs — the sheet still
-     scrolls, it just doesn't draw a track down its rounded edge. */
-  .goal-modal-card{max-width:560px;padding:0;max-height:92vh;overscroll-behavior:none;scrollbar-width:none;-ms-overflow-style:none;}
-  .goal-modal-card::-webkit-scrollbar{display:none;}
+     Scrollbar hidden the way the carousel and the tab strip hide theirs — it still scrolls, it
+     just doesn't draw a track down its rounded edge. */
+  .g-sheet-card{max-width:560px;padding:0;max-height:92vh;overscroll-behavior:none;scrollbar-width:none;-ms-overflow-style:none;}
+  .g-sheet-card::-webkit-scrollbar{display:none;}
 
-  /* --- open / close motion, and the swipe the sheet answers to ---
-     The overlay fades, the card travels: a short rise on a desktop dialog, a full slide up from
-     the bottom edge on the phone sheet. Both directions run off the same two rules, so a
-     dismissed sheet leaves exactly the way it arrived — and a drag can hand off to it mid-flight,
-     because the closing transition starts from wherever the finger left the card. */
-  /* The backdrop is a pseudo-element so it can fade on its own. Fading the overlay instead took
-     the card down with it — the card is a child, so it inherited the dim and read as vanishing
-     rather than sliding away. Now only the dark layer fades; the card purely travels. */
-  #goalModalOverlay{background:none;}
-  #goalModalOverlay::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease;}
-  #goalModalOverlay.is-open::before{opacity:var(--backdrop-o,1);}
+  /* --- open / close motion, and the swipe they answer to ---
+     The backdrop fades, the card travels: a short rise on a desktop dialog, a full slide up from
+     the bottom edge on the phone sheet. Both directions run off the same two rules, so a dismissed
+     sheet leaves exactly the way it arrived — and a drag hands off to it mid-flight, because the
+     closing transition starts from wherever the finger left the card.
+     The backdrop is a pseudo-element so it can fade on its own: fading the overlay instead took the
+     card down with it — the card is a child, so it inherited the dim and read as vanishing rather
+     than sliding away. */
+  .g-sheet{background:none;}
+  .g-sheet::before{content:'';position:absolute;inset:0;background:rgba(0,0,0,.55);opacity:0;transition:opacity .22s ease;}
+  .g-sheet.is-open::before{opacity:var(--backdrop-o,1);}
   /* keeps the card painting above that positioned backdrop */
-  .goal-modal-card{position:relative;z-index:1;}
-  /* While the sheet is up the page underneath cannot scroll, so the card is the only thing a
-     swipe can move. position:fixed rather than overflow:hidden — iOS Safari ignores the latter on
-     <body> and happily scrolls the page behind a modal. goals.js pins `top` to the current scroll
-     offset so nothing shifts on the way in, and scrolls back to it on the way out. */
+  .g-sheet-card{position:relative;z-index:1;}
+  /* While a sheet is up the page underneath cannot scroll, so the card is the only thing a swipe
+     can move. position:fixed rather than overflow:hidden — iOS Safari ignores the latter on <body>
+     and happily scrolls the page behind a modal. goals.js pins `top` to the current scroll offset
+     so nothing shifts on the way in, and scrolls back to it on the way out. */
   body.goal-modal-open{position:fixed;left:0;right:0;width:100%;overflow:hidden;}
   /* desktop dialog: it can't slide off a centre-anchored position, so it drops a little and fades
      — but no scale, which is the part that read as the card shrinking away */
-  .goal-modal-card{transform:translateY(18px);opacity:0;transition:transform .26s cubic-bezier(.2,.75,.3,1), opacity .16s ease;will-change:transform;}
-  #goalModalOverlay.is-open .goal-modal-card{transform:none;opacity:1;}
+  .g-sheet-card{transform:translateY(18px);opacity:0;transition:transform .26s cubic-bezier(.2,.75,.3,1), opacity .16s ease;will-change:transform;}
+  .g-sheet.is-open .g-sheet-card{transform:none;opacity:1;}
   /* while a finger is on it the card tracks 1:1 — easing between frames reads as lag */
-  #goalModalOverlay.is-dragging .goal-modal-card{transition:none;}
+  .g-sheet.is-dragging .g-sheet-card{transition:none;}
   /* the grab bar only means anything where the gesture exists, so it only appears there */
   .goal-sheet-grip{display:none;}
+
+  /* ---- the goal list sheet ----
+     Only the title bar is sticky. The filters, the add field and the sort row scroll away with the
+     content: on a phone they'd otherwise hold ~190px of a 94vh sheet permanently, and they're all
+     things you touch once on the way in. */
+  .goal-list-card{padding:0 14px 18px;}
+  /* bled out into the card's side padding, or content would scroll up through the 14px gutters
+     either side of the sticky bar */
+  .goal-list-bar{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;background:var(--surface);margin:0 -14px;padding:14px 14px 10px;}
+  .goal-list-title{flex:1;min-width:0;font-family:'Manrope',sans-serif;font-size:17px;font-weight:800;color:var(--text);margin:0;}
+  .goal-list-head{padding-bottom:4px;}
+  /* one scrolling row rather than a wrapping block: five filters plus their counts don't fit a
+     phone's width, and wrapping them would push the first goal off the screen */
+  .goal-filters{display:flex;gap:6px;overflow-x:auto;padding-bottom:6px;margin-bottom:10px;scrollbar-width:none;-ms-overflow-style:none;}
+  .goal-filters::-webkit-scrollbar{display:none;}
+  .goal-filter-btn{flex:none;display:inline-flex;align-items:center;gap:6px;min-height:34px;background:var(--surface-alt);border:none;border-radius:999px;padding:0 12px;font-family:'Inter',sans-serif;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;white-space:nowrap;transition:background-color .14s ease, color .14s ease;}
+  .goal-filter-btn:hover{color:var(--text);}
+  .goal-filter-btn.active{background:var(--violet);color:#fff;}
+  .goal-filter-count{font-family:'Manrope',sans-serif;font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;opacity:.75;}
+  .goal-list-card .toolbar{margin-bottom:12px;}
+  .goal-list-card .add-row{margin-bottom:10px;}
+  .goal-list-card .empty{padding:34px 18px;}
 
   /* The banner used to carry touch-action:none to keep the card's scroller from stealing the
      pointer stream mid-swipe. The gesture runs on touch events now, which a scroll doesn't cancel,
@@ -866,12 +945,15 @@
      is, and only as tall as it needs to be. A centred 20px-inset dialog wasted a sixth of the
      screen on backdrop and put the close button at the top of a reach the thumb can't make. */
   @media (max-width:560px){
-    #goalModalOverlay{padding:0;align-items:flex-end;}
-    .goal-modal-card{max-width:none;max-height:94vh;border-radius:22px 22px 0 0;}
+    .g-sheet{padding:0;align-items:flex-end;}
+    .g-sheet-card{max-width:none;max-height:94vh;border-radius:22px 22px 0 0;}
     /* a sheet rises and falls at full opacity the whole way — it leaves the screen by leaving the
        screen, never by dissolving */
-    .goal-modal-card{transform:translateY(100%);opacity:1;transition:transform .3s cubic-bezier(.2,.8,.25,1);}
-    .goal-sheet-grip{display:block;position:absolute;top:9px;left:50%;transform:translateX(-50%);width:38px;height:4px;border-radius:999px;background:rgba(255,255,255,.72);box-shadow:0 1px 3px rgba(0,0,0,.35);z-index:3;pointer-events:none;}
+    .g-sheet-card{transform:translateY(100%);opacity:1;transition:transform .3s cubic-bezier(.2,.8,.25,1);}
+    .goal-sheet-grip{display:block;position:absolute;top:8px;left:50%;transform:translateX(-50%);width:38px;height:4px;border-radius:999px;background:var(--faint);z-index:3;pointer-events:none;}
+    /* over a photo it needs to be light and lifted off the image instead */
+    .goal-modal-banner .goal-sheet-grip{background:rgba(255,255,255,.72);box-shadow:0 1px 3px rgba(0,0,0,.35);}
+    .goal-list-bar{padding-top:20px;}
     .goal-modal-banner{height:140px;}
     .goal-modal-head{padding:13px 14px 11px;}
     .goal-modal-title{font-size:16px;}
@@ -896,15 +978,17 @@
   @media (prefers-reduced-motion: reduce){
     .wc-card,.wc-bar-fill,.mana-fill,.mini-fill,.goal,.goal-detail,.stat,.g-icon-btn{transition:none;}
     .wc-card:hover{transform:none;}
-    /* the modal still moves under a finger — that's the gesture, not decoration — but it no longer
-       animates itself in or out (goals.js drops its close delay to match) */
-    #goalModalOverlay::before,.goal-modal-card{transition:none;}
-    .goal-modal-card{transform:none;opacity:1;}
+    /* the sheets still move under a finger — that's the gesture, not decoration — but they no
+       longer animate themselves in or out (goals.js drops its close delay to match) */
+    .g-sheet::before,.g-sheet-card{transition:none;}
+    .g-sheet-card{transform:none;opacity:1;}
     .g-more-summary::before{transition:none;}
     .cd-mosaic-dot.today{animation:none;outline:2px solid var(--violet);outline-offset:1px;}
     .cd-mosaic-dot.perfect-rainbow,.cd-mosaic-dot.perfect-golden,
     .cd-mosaic-dot.today.perfect-rainbow,.cd-mosaic-dot.today.perfect-golden{animation:none;}
     .tier-chip.tier-Splus,.tier-chip.tier-Mythical{animation:none;}
+    /* the bar keeps its gold and its glow; the travelling highlight goes away entirely */
+    .mana-fill::after{animation:none;opacity:0;}
   }
 
   .photo-carousel{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-top:10px;}
@@ -1392,8 +1476,9 @@
     .notes-act-btn{padding:3px 4px;}
     .notes-pin-chip{max-width:150px;}
     #valAccountList{grid-template-columns:1fr;}
-    .goal-head{padding:12px 14px;gap:7px;}
-    .goal-title{font-size:14px;}
+    /* the row is already at its minimum on desktop; only the side padding tightens further here */
+    .goal-head{padding:8px 10px;}
+    .goal-bar{margin-left:-10px;margin-right:-10px;}
     .working-btn{padding:0 10px;font-size:10px;}
     .goal-foot-row{flex-wrap:wrap;}
     .add-row{flex-wrap:wrap;}

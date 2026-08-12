@@ -8,7 +8,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 
 | Tab | Purpose |
 |---|---|
-| **Goals** | Freeform goal list with subtasks, tiers (F/B/A/S/S+/Mythical), star/"working on" flags, target dates, per-goal color/image, AI-suggested subtasks, and a "locked until net worth X" mechanic. Drives the XP/level system. |
+| **Goals** | A dashboard — the goals you're working on as a carousel, a day-by-day completion heat map against the pinned countdown, and overall progress with five counters. Each counter opens the goal list in a sheet (filters, sorting, add field), and a carousel card opens that one goal in its own sheet. Goals carry subtasks, tiers (F/B/A/S/S+/Mythical), star/"working on" flags, target dates, per-goal color/image, AI-suggested subtasks, and a "locked until net worth X" mechanic. Drives the XP/level system. |
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
 | **Finance** | Six sub-tabs. *Accounts*: multi-currency accounts (savings/credit/lent/custom) with transfers between them, a net-worth-over-time trend chart, and a this-period earnings/spending-by-category breakdown. *Debts*: money you lent out and money you owe, one card per person (same look as an account card), repaid in full or in any number of small portions, with an optional link to a real account so the cash movement is logged there too. *Money Goals*: save $X by date, with logged contributions. *Wishlist*: things you want to buy — name, cost, and an optional picture per item, shown as a card grid, each with its own saved-so-far progress. *Subscriptions*: recurring costs with a monthly rollup. *Currency*: a converter with live or manual exchange rates. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
@@ -174,7 +174,9 @@ state = {
                                        // those can be buttons instead of terminal commands — see
                                        // "Setup" below.
   profile: { name, age, netWorth, netWorthCurrency, hideAvatar },
-  focus: { date, pick },              // today's "focus task" suggestion
+  focus: { date, pick },              // vestigial: the "today's focus" panel it fed was removed
+                                       // from the Goals tab. Still loaded so old saves stay valid;
+                                       // nothing writes it any more.
   playSession: { checklistId, itemId, startedAt, durationSec, log, skippedIds } | null,
   sessionMusic: { url, enabled, volume, shuffle,
                   playlists: [ { id, name, url } ] },

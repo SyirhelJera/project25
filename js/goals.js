@@ -148,49 +148,9 @@
     el('pfExpFill').style.width = Math.round((into/need)*100) + '%';
   }
 
-  function pickFocusTask(force){
-    const today = localDateStr(new Date());
-    if(!force && state.focus && state.focus.date === today) return;
-    const openGoals = state.goals.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
-    const starredOpen = openGoals.filter(g=>g.starred);
-    // prefer starred goals; if none are starred, fall back to the whole open-goal pool
-    const pool = starredOpen.length ? starredOpen : openGoals;
-
-    let pick = null;
-    if(pool.length){
-      let candidates = [];
-      pool.forEach(g=>{
-        g.subtasks.forEach(s=>{
-          if(s.done) return;
-          if(s.requiresId){
-            const req = g.subtasks.find(x=>x.id===s.requiresId);
-            if(req && !req.done) return; // prerequisite not met yet — don't recommend this one
-          }
-          candidates.push({label:s.title, goalTitle:g.title, hasPrereq: !!s.requiresId});
-        });
-      });
-      if(candidates.length){
-        // subtasks with no prerequisite at all are always favored over ones that merely have
-        // their prerequisite already satisfied
-        const noPrereq = candidates.filter(c=>!c.hasPrereq);
-        const pickPool = noPrereq.length ? noPrereq : candidates;
-        pick = pickPool[Math.floor(Math.random()*pickPool.length)];
-      } else {
-        const g = pool[Math.floor(Math.random()*pool.length)];
-        pick = { label:'No subtask available', goalTitle: g.title };
-      }
-    }
-    state.focus = { date: today, pick };
-    save();
-  }
-
-  function renderFocus(){
-    const f = state.focus && state.focus.pick;
-    el('focusText').innerHTML = f
-      ? '<b>Today\u2019s focus:</b> ' + escapeHtml(f.label) + (f.goalTitle ? ' <span style="color:var(--muted);">(' + escapeHtml(f.goalTitle) + ')</span>' : '')
-      : '<b>Today\u2019s focus:</b> add a goal to get a suggestion';
-  }
-  el('focusReroll').addEventListener('click', ()=>{ pickFocusTask(true); renderFocus(); });
+  /* "Today’s focus" — the daily suggested-subtask line — has been removed from the tab, and
+     with it pickFocusTask()/renderFocus(). state.focus is still read on load (persistence.js) so
+     old saved data keeps loading cleanly; nothing writes it any more. */
 
   // a "Working on" goal that hasn't been touched (touchGoal) today — same "falling behind"
   // signal as habitsAtRisk() in habits.js, but keyed off updatedAt instead of a streak. Exposed
@@ -859,24 +819,26 @@
     return inner;
   }
 
-  /* ---------- goal modal — tapping a "Working on" carousel card opens the whole goal here.
-     The body is buildGoalDetailInner(), i.e. exactly what the goal list shows when a goal is
-     expanded, so every edit behaves the same in both places. Closed by the backdrop, the ✕, or
-     Escape (same pattern as the wishlist detail modal). ---------- */
-  let openGoalModalId = null;
-  let goalModalReturnFocus = null;
-  // must outlast the exit transition — the overlay stays displayed until it finishes
-  const GOAL_MODAL_ANIM_MS = 320;
-  let goalModalCloseTimer = null;
+  /* ==================== SHEETS ====================
+     Two on this tab — the goal detail (opened from a carousel card) and the goal list (opened from
+     the board's counters). createSheet() owns everything that makes one a sheet: the enter/exit
+     transition, freezing the page behind it, backdrop/Escape dismissal, the focus trap and the
+     swipe-down gesture. Callers only supply what goes inside and when to open it. */
 
-  /* Scroll priority: while the sheet is open the page behind it is frozen, so every swipe belongs
-     to the card. Without this, a touch that lands on the backdrop — or one that runs past the end
-     of the card's own scroll — moves the goals tab underneath instead, which reads as the sheet
-     ignoring you. Paired with overscroll-behavior:contain on the card, which stops a scroll that
-     reaches the card's end from chaining outward. */
-  let pageScrollLockY = 0;
+  const SHEET_ANIM_MS = 320;       // must outlast the exit transition — see .g-sheet-card in styles
+  const SHEET_DISMISS_PX = 80;
+  const SHEET_DISMISS_VEL = 0.35;  // px per ms over the last few moves — a short flick counts
+  const SHEET_CANCELLED_PX = 32;   // an interrupted swipe that had clearly committed
+  const SHEET_DRAG_SLOP = 5;       // downward pull at the top before the sheet takes over
+  const SHEET_FADE_OVER = 320;     // drag distance across which the backdrop fades out
+
+  /* Scroll priority: while a sheet is open the page behind it is frozen, so every swipe belongs to
+     the card. Without this, a touch that lands on the backdrop — or one that runs past the end of
+     the card's own scroll — moves the goals tab underneath instead, which reads as the sheet
+     ignoring you. Counted, because two sheets share it. */
+  let pageScrollLockY = 0, pageScrollLocks = 0;
   function lockPageScroll(){
-    if(document.body.classList.contains('goal-modal-open')) return;
+    if(pageScrollLocks++ > 0) return;
     pageScrollLockY = window.scrollY || document.documentElement.scrollTop || 0;
     // the offset is what keeps the frozen page looking untouched: body goes fixed, and pulling it
     // up by the current scroll position leaves the same content under the backdrop
@@ -884,91 +846,90 @@
     document.body.classList.add('goal-modal-open');
   }
   function unlockPageScroll(){
-    if(!document.body.classList.contains('goal-modal-open')) return;
+    if(pageScrollLocks === 0 || --pageScrollLocks > 0) return;
     document.body.classList.remove('goal-modal-open');
     document.body.style.top = '';
     window.scrollTo(0, pageScrollLockY);
   }
 
-  function openGoalModal(g){
-    const overlay = el('goalModalOverlay');
-    const card = el('goalModalBody');
-    clearTimeout(goalModalCloseTimer); // reopening mid-close must not get torn down by the old timer
-    openGoalModalId = g.id;
-    wcModalOpen = true; // the strip keeps auto-scrolling behind the backdrop otherwise
-    goalModalReturnFocus = document.activeElement;
-    // before the render, which preserves whatever scroll position it finds: reopening within the
-    // exit animation skips the timer that would otherwise have reset it
-    card.scrollTop = 0;
-    renderGoalModal();
-    card.style.transform = '';
-    card.style.overflowY = ''; // in case a drag was still in flight when this ran
-    overlay.style.removeProperty('--backdrop-o');
-    overlay.classList.remove('is-dragging');
-    lockPageScroll();
-    overlay.style.display = 'flex';
-    // Two frames: the first commits display:flex with the card still in its pre-open state, the
-    // second flips the class. In one frame the browser coalesces both and the transition is
-    // skipped entirely, so the sheet would just appear.
-    requestAnimationFrame(()=> requestAnimationFrame(()=> overlay.classList.add('is-open')));
-    // only on open — renderGoalModal() also runs on every later rerender, and moving focus there
-    // would yank it out of whatever field the user is typing in. preventScroll because the card is
-    // still off-screen at this point on a phone.
-    const closeBtn = card.querySelector('.goal-modal-close');
-    if(closeBtn) closeBtn.focus({preventScroll:true});
-  }
-  function closeGoalModal(){
-    const overlay = el('goalModalOverlay');
-    const card = el('goalModalBody');
-    if(overlay.style.display !== 'flex') return;
-    // cleared first: renderGoals() can fire during the exit, and it must not rebuild a modal that
-    // is on its way out
-    openGoalModalId = null;
-    wcModalOpen = false;
-    overlay.classList.remove('is-open', 'is-dragging');
-    // dropping the drag's inline transform lets the class rule take over — the transition runs
-    // from wherever the finger left the card down to its closed position
-    card.style.transform = '';
-    card.style.overflowY = ''; // a drag freezes it; closing from anywhere else must not leave it frozen
-    overlay.style.removeProperty('--backdrop-o');
-    // released now, not after the exit animation: the restore is a synchronous scrollTo, so doing
-    // it while the backdrop is still up keeps it invisible
-    unlockPageScroll();
-    // preventScroll: the page is already back exactly where it was, and focusing a carousel card
-    // would otherwise scroll it into view and undo that
-    if(goalModalReturnFocus && document.contains(goalModalReturnFocus)) goalModalReturnFocus.focus({preventScroll:true});
-    goalModalReturnFocus = null;
-    clearTimeout(goalModalCloseTimer);
-    goalModalCloseTimer = setTimeout(()=>{
-      overlay.style.display = 'none';
-      card.innerHTML = '';
-      card.scrollTop = 0;
-    }, wcReducedMotion ? 0 : GOAL_MODAL_ANIM_MS);
-  }
+  function createSheet(overlayId, cardId, opts){
+    opts = opts || {};
+    const overlay = el(overlayId);
+    const card = el(cardId);
+    let shown = false, hideTimer = null, returnFocus = null;
 
-  /* Swipe down to dismiss — one continuous gesture with scrolling, not a separate one.
+    function open(focusSelector){
+      clearTimeout(hideTimer); // reopening mid-close must not get torn down by the old timer
+      if(!shown){ returnFocus = document.activeElement; lockPageScroll(); }
+      shown = true;
+      card.style.transform = '';
+      card.style.overflowY = ''; // in case a drag was still in flight when this ran
+      overlay.style.removeProperty('--backdrop-o');
+      overlay.classList.remove('is-dragging');
+      overlay.style.display = 'flex';
+      // Two frames: the first commits display:flex with the card still in its pre-open state, the
+      // second flips the class. In one frame the browser coalesces both and the transition is
+      // skipped entirely, so the sheet would just appear.
+      requestAnimationFrame(()=> requestAnimationFrame(()=> overlay.classList.add('is-open')));
+      // preventScroll because the card is still off-screen at this point on a phone
+      const target = focusSelector ? card.querySelector(focusSelector) : null;
+      if(target) target.focus({preventScroll:true});
+    }
 
-     Scrolling a long sheet and then dismissing it used to take two swipes: the first scrolled the
-     content to the top, and only a second one, started at the top, could grab the sheet. That's a
-     limitation of pointer events, which the browser *cancels* the moment it decides a touch
-     belongs to a scroller — so the drag could never be picked up mid-gesture.
+    function close(){
+      if(!shown) return;
+      shown = false;
+      // first, so a renderGoals() triggered anywhere below doesn't rebuild a sheet on its way out
+      if(opts.onClose) opts.onClose();
+      overlay.classList.remove('is-open', 'is-dragging');
+      // dropping the drag's inline transform lets the class rule take over — the transition runs
+      // from wherever the finger left the card down to its closed position
+      card.style.transform = '';
+      card.style.overflowY = ''; // a drag freezes it; closing any other way must not leave it frozen
+      overlay.style.removeProperty('--backdrop-o');
+      // released now, not after the exit animation: the restore is a synchronous scrollTo, so doing
+      // it while the backdrop is still up keeps it invisible
+      unlockPageScroll();
+      // preventScroll: the page is already back exactly where it was, and focusing a carousel card
+      // would otherwise scroll it into view and undo that
+      if(returnFocus && document.contains(returnFocus)) returnFocus.focus({preventScroll:true});
+      returnFocus = null;
+      clearTimeout(hideTimer);
+      hideTimer = setTimeout(()=>{
+        overlay.style.display = 'none';
+        card.scrollTop = 0;
+        if(opts.onHidden) opts.onHidden();
+      }, wcReducedMotion ? 0 : SHEET_ANIM_MS);
+    }
 
-     Touch events don't get cancelled that way: touchmove keeps firing all the way through a native
-     scroll. So the browser keeps doing the scrolling (momentum and all — nothing here fights it),
-     and this watches the finger. The instant the card is pinned at its top and the finger is still
-     travelling down, the sheet takes over from exactly that point, and the pull continues into the
-     drag without a seam.
+    overlay.addEventListener('click', e=>{ if(e.target === overlay) close(); });
+    document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && shown) close(); });
+    // aria-modal only describes the intent; without this, Tab walks straight out of the dialog and
+    // into the page behind it
+    overlay.addEventListener('keydown', e=>{
+      if(e.key !== 'Tab') return;
+      const focusables = card.querySelectorAll('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
+      if(!focusables.length) return;
+      const first = focusables[0], last = focusables[focusables.length-1];
+      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    });
 
-     `overscroll-behavior:none` on the card is what makes that moment clean: at the top there is no
-     rubber-band of its own to compound with the transform. */
-  const SHEET_DISMISS_PX = 80;
-  const SHEET_DISMISS_VEL = 0.35;  // px per ms over the last few moves — a short flick counts
-  const SHEET_CANCELLED_PX = 32;   // an interrupted swipe that had clearly committed
-  const SHEET_DRAG_SLOP = 5;       // downward pull at the top before the sheet takes over
-  const SHEET_FADE_OVER = 320;     // drag distance across which the backdrop fades out
-  (function goalSheetDrag(){
-    const card = el('goalModalBody');
-    const overlay = el('goalModalOverlay');
+    /* Swipe down to dismiss — one continuous gesture with scrolling, not a separate one.
+
+       Scrolling a long sheet and then dismissing it used to take two swipes: the first scrolled the
+       content to the top, and only a second one, started at the top, could grab the sheet. That's a
+       limitation of pointer events, which the browser *cancels* the moment it decides a touch
+       belongs to a scroller — so the drag could never be picked up mid-gesture.
+
+       Touch events don't get cancelled that way: touchmove keeps firing all the way through a
+       native scroll. So the browser keeps doing the scrolling (momentum and all — nothing here
+       fights it), and this watches the finger. The instant the card is pinned at its top and the
+       finger is still travelling down, the sheet takes over from exactly that point, and the pull
+       continues into the drag without a seam.
+
+       `overscroll-behavior:none` on the card is what makes that moment clean: at the top there is
+       no rubber-band of its own to compound with the transform. */
     let tracking = false, dragging = false, justDragged = false;
     let lastY = 0, originY = 0, pull = 0, dy = 0;
     // the last handful of positions, so a flick is measured over the moment it happened rather
@@ -987,8 +948,9 @@
       // pinch/two-finger gestures aren't ours
       if(e.touches.length !== 1){ tracking = false; return; }
       // nor is a drag inside a field — that's the caret and text selection, and nothing here
-      // preventDefaults, so the two would both answer the same finger
-      if(e.target.closest('input, select, textarea')){ tracking = false; return; }
+      // preventDefaults, so the two would both answer the same finger. Same for a sideways-
+      // scrolling strip: a thumb swiping the filter row drifts down enough to trip the handoff.
+      if(e.target.closest('input, select, textarea, .goal-filters')){ tracking = false; return; }
       tracking = true;
       lastY = e.touches[0].clientY;
       samples = [{y:lastY, t:e.timeStamp}];
@@ -1041,7 +1003,7 @@
       const dismiss = dy > SHEET_DISMISS_PX
         || recentVelocity() > SHEET_DISMISS_VEL
         || (cancelled && dy > SHEET_CANCELLED_PX);
-      if(dismiss){ closeGoalModal(); return; }
+      if(dismiss){ close(); return; }
       // under the threshold: clearing the inline transform springs it back, since removing
       // .is-dragging has already restored the transition
       card.style.transform = '';
@@ -1057,19 +1019,69 @@
       e.stopPropagation();
       e.preventDefault();
     }, true);
-  })();
-  el('goalModalOverlay').addEventListener('click', e=>{ if(e.target === el('goalModalOverlay')) closeGoalModal(); });
-  document.addEventListener('keydown', e=>{ if(e.key === 'Escape' && openGoalModalId) closeGoalModal(); });
-  // aria-modal only describes the intent; without this, Tab walks straight out of the dialog and
-  // into the page behind it
-  el('goalModalOverlay').addEventListener('keydown', e=>{
-    if(e.key !== 'Tab') return;
-    const focusables = el('goalModalBody').querySelectorAll('a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])');
-    if(!focusables.length) return;
-    const first = focusables[0], last = focusables[focusables.length-1];
-    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
-    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+
+    return { open, close, card, isOpen: ()=> shown };
+  }
+
+  /* ---------- goal detail sheet — tapping a "Working on" carousel card opens the whole goal here.
+     The body is buildGoalDetailInner(), i.e. exactly what the list shows when a goal is expanded,
+     so every edit behaves the same in both places. ---------- */
+  let openGoalModalId = null;
+  const goalSheet = createSheet('goalModalOverlay', 'goalModalBody', {
+    onClose: ()=>{
+      openGoalModalId = null;
+      wcModalOpen = false;
+    },
+    onHidden: ()=>{ el('goalModalBody').innerHTML = ''; }
   });
+  function openGoalModal(g){
+    openGoalModalId = g.id;
+    wcModalOpen = true; // the strip keeps auto-scrolling behind the backdrop otherwise
+    // before the render, which preserves whatever scroll position it finds: reopening within the
+    // exit animation skips the teardown that would otherwise have reset it
+    goalSheet.card.scrollTop = 0;
+    renderGoalModal();
+    // focus only on open — renderGoalModal() also runs on every later rerender, and moving focus
+    // there would yank it out of whatever field the user is typing in
+    goalSheet.open('.goal-modal-close');
+  }
+  function closeGoalModal(){ goalSheet.close(); }
+
+  /* ---------- goal list sheet — the list, its filters, sorting and the add field. Opened by the
+     counters on the board. The list DOM is only built while this is open (see renderGoals), so the
+     dashboard doesn't pay to render a list nobody is looking at. ---------- */
+  let goalListOpen = false;
+  const goalListSheet = createSheet('goalListOverlay', 'goalListBody', {
+    onClose: ()=>{ goalListOpen = false; }
+  });
+  function openGoalList(filter){
+    if(filter) goalFilter = filter;
+    goalListOpen = true;
+    renderGoals();                        // builds the list now that something will look at it
+    goalListSheet.open('#goalListCloseBtn');
+  }
+  el('goalListCloseBtn').addEventListener('click', ()=> goalListSheet.close());
+  el('goalFilters').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-filter]');
+    if(!btn) return;
+    goalFilter = btn.dataset.filter;
+    renderGoals();
+    el('goalListBody').scrollTop = 0;     // a new filter is a new list; start it at the top
+  });
+
+  // filter pill labels double as the sheet's title, so the two can't disagree
+  const GOAL_FILTER_TITLES = { working:'Working on', unfinished:'Unfinished', completed:'Completed', locked:'Locked', all:'All goals' };
+  function renderGoalListChrome(counts){
+    el('goalListTitle').textContent = GOAL_FILTER_TITLES[goalFilter] || 'Goals';
+    el('flWorking').textContent = counts.working;
+    el('flOpen').textContent = counts.unfinished;
+    el('flDone').textContent = counts.completed;
+    el('flLocked').textContent = counts.locked;
+    el('flTotal').textContent = counts.all;
+    el('goalFilters').querySelectorAll('[data-filter]').forEach(b=>{
+      b.classList.toggle('active', b.dataset.filter === goalFilter);
+    });
+  }
 
   function renderGoalModal(){
     const body = el('goalModalBody');
@@ -1188,8 +1200,6 @@
   }
 
   function renderGoals(){
-    pickFocusTask(false);
-    renderFocus();
     renderMantra();
     renderPinnedCountdown();
     updateGoalReminder();
@@ -1199,21 +1209,9 @@
     const empty = el('emptyState');
 
     let totalPct = 0, completedCount = 0;
-    state.goals.forEach(g => { updateCompletionMeta(g); totalPct += goalProgress(g); if(goalProgress(g)===100) completedCount++; });
-
-    const visible = visibleGoals();
-    if(state.goals.length === 0){
-      empty.style.display = 'block';
-      empty.innerHTML = 'No goals yet. <b>Add your first goal above</b> to get started.';
-    } else if(visible.length === 0 && goalFilter === 'working'){
-      empty.style.display = 'block';
-      empty.innerHTML = 'Nothing marked as <b>working on</b> yet. Open a goal below and tap <b>▶ Work on this</b>, or check <b>All Goals</b>.';
-    } else {
-      empty.style.display = 'none';
-    }
-    list.innerHTML = '';
-
-    visible.forEach(g => {
+    state.goals.forEach(g => {
+      // field defaults for goals saved before each was added — this used to run over the visible
+      // list only, which no longer runs at all while the list sheet is closed
       if(g.financeTarget === undefined) g.financeTarget = null;
       if(g.financeSaved === undefined) g.financeSaved = 0;
       if(g.targetDate === undefined) g.targetDate = '';
@@ -1224,6 +1222,31 @@
       if(g.updatedAt === undefined) g.updatedAt = g.createdAt;
       if(g.workingOn === undefined) g.workingOn = false;
       g.subtasks.forEach(s=>{ if(s.requiresId === undefined) s.requiresId = null; });
+      updateCompletionMeta(g);
+      totalPct += goalProgress(g);
+      if(goalProgress(g)===100) completedCount++;
+    });
+
+    // the list lives in a sheet now; while it's shut there is nothing to build. Everything below
+    // this block — the counters, the carousel, the heat map, exp — still runs every time.
+    const visible = goalListOpen ? visibleGoals() : [];
+    if(goalListOpen){
+      if(state.goals.length === 0){
+        empty.style.display = 'block';
+        empty.innerHTML = 'No goals yet. <b>Add your first goal above</b> to get started.';
+      } else if(visible.length === 0 && goalFilter === 'working'){
+        empty.style.display = 'block';
+        empty.innerHTML = 'Nothing marked as <b>working on</b> yet. Open any goal and tap <b>▶ Work on this</b>, or switch to <b>All</b>.';
+      } else if(visible.length === 0){
+        empty.style.display = 'block';
+        empty.innerHTML = 'Nothing here under this filter.';
+      } else {
+        empty.style.display = 'none';
+      }
+    }
+    list.innerHTML = '';
+
+    visible.forEach(g => {
       const pct = goalProgress(g);
       const locked = isGoalLocked(g);
 
@@ -1232,13 +1255,19 @@
       card.dataset.goalId = g.id;
       if(g.color) card.style.borderLeftColor = g.color;
 
-      // A collapsed card used to carry up to eight chips — tier, working, lock, subtasks, time
-      // spent, due, check-in and updated — which is the same as carrying none, because nothing
-      // stood out. What's left is state you'd act on; the dates moved into the detail's timeline
-      // line, where they're read once rather than scanned past on every card.
-      let metaHtml = '';
+      /* A collapsed row is for scanning, so it holds only what you scan by: done state, picture,
+         title, rank, one status mark and the percentage — one line, ~45px, so a dozen goals fit a
+         phone screen at once. Everything else (the rest of the chips, the edit buttons) is in the
+         card but CSS-hidden until it's expanded; the progress bar became a 3px full-bleed rule
+         along the bottom edge, which costs no row of its own. */
       const t = tierInfo(g.tier);
-      if(t.value) metaHtml += '<span class="tier-chip '+t.cls+'">'+escapeHtml(t.label)+'</span>';
+      // exactly one, in order of what would make you act: blocked, then slipping, then in flight
+      let markHtml = '';
+      if(locked) markHtml = '<span class="goal-mark is-locked" title="Locked" aria-label="Locked">🔒</span>';
+      else if(goalNeedsAttention(g)) markHtml = '<span class="goal-mark is-risk" title="Nothing logged today" aria-label="Nothing logged today">●</span>';
+      else if(g.workingOn && pct<100) markHtml = '<span class="goal-mark is-working" title="Working on" aria-label="Working on">▶</span>';
+
+      let metaHtml = '';
       if(g.workingOn && pct<100 && !locked) metaHtml += '<span class="chip working-chip">▶ Working on</span>';
       if(goalNeedsAttention(g)) metaHtml += '<span class="chip attention-chip">Nothing logged today</span>';
       if(locked) metaHtml += '<span class="lock-badge">🔒 Needs $'+Number(g.requiredNetWorth).toLocaleString()+' net worth</span>';
@@ -1257,18 +1286,23 @@
         +   '<div class="goal-check ' + (pct===100?'checked':'') + '" data-act="check" role="checkbox" tabindex="0" aria-checked="'+(pct===100?'true':'false')+'" aria-label="'+(locked?'Locked until the net worth requirement is met':'Mark goal complete')+'" title="'+(locked?'Locked until net worth requirement is met':'Mark complete')+'">' + (locked ? '🔒' : (pct===100?'✓':'')) + '</div>'
         +   (g.imageUrl ? '<img class="goal-thumb" src="'+g.imageUrl+'" alt="">' : '')
         +   '<div class="goal-title-wrap"><div class="goal-title">' + escapeHtml(g.title) + '</div></div>'
+        // "Mythical" down to M, so the one long tier can't eat the title's width; its gold makes it
+        // unmistakable anyway, and the full label is on the expanded card
+        +   (t.value ? '<span class="tier-chip goal-tier '+t.cls+'" title="'+escapeHtml(t.label)+'">'+escapeHtml(t.value === 'Mythical' ? 'M' : t.value)+'</span>' : '')
+        +   markHtml
+        +   '<span class="progress-pct">'+pct+'%</span>'
         +   '<div class="chevron" aria-hidden="true">▶</div>'
         + '</div>'
         + (metaHtml ? '<div class="goal-meta">' + metaHtml + '</div>' : '')
         + '<div class="goal-foot-row">'
-        +   '<div class="mini-track"><div class="mini-fill" style="width:'+pct+'%"></div></div>'
-        +   '<span class="progress-pct">'+pct+'%</span>'
         +   '<div class="goal-actions">'
         +     '<button class="rename-btn" type="button" data-act="rename" title="Rename" aria-label="Rename goal">✎</button>'
         +     '<button class="star-btn ' + (g.starred?'active':'') + '" type="button" data-act="star" title="Star" aria-label="Star goal" aria-pressed="'+(g.starred?'true':'false')+'">' + (g.starred?'★':'☆') + '</button>'
         +     (pct<100 && !locked ? '<button class="working-btn ' + (g.workingOn?'active':'') + '" type="button" data-act="working" title="Mark as actively working on this" aria-pressed="'+(g.workingOn?'true':'false')+'">' + (g.workingOn?'▶ Working on':'Work on this') + '</button>' : '')
         +   '</div>'
-        + '</div>';
+        + '</div>'
+        // full-bleed under the row: progress without a row of its own
+        + '<div class="goal-bar"><div class="mini-fill" style="width:'+pct+'%"></div></div>';
       head.addEventListener('keydown', e=>{
         if(e.key !== 'Enter' && e.key !== ' ') return;
         // real <button>s answer these keys themselves; this covers only the head's own surface
@@ -1357,14 +1391,17 @@
     const overall = total ? Math.round(totalPct/total) : 0;
     const lockedCount = state.goals.filter(g=>goalProgress(g)<100 && isGoalLocked(g)).length;
     const workingCount = state.goals.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g)).length;
+    // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met
+    const counts = { all: total, completed: completedCount, locked: lockedCount, working: workingCount,
+                     unfinished: total - completedCount - lockedCount };
     el('overallPct').textContent = overall+'%';
     el('manaFill').style.width = overall+'%';
-    el('statTotal').textContent = total;
-    el('statDone').textContent = completedCount;
-    // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met
-    el('statOpen').textContent = total-completedCount-lockedCount;
-    el('statLocked').textContent = lockedCount;
-    el('statWorking').textContent = workingCount;
+    el('statTotal').textContent = counts.all;
+    el('statDone').textContent = counts.completed;
+    el('statOpen').textContent = counts.unfinished;
+    el('statLocked').textContent = counts.locked;
+    el('statWorking').textContent = counts.working;
+    renderGoalListChrome(counts); // the sheet's own filter row carries the same five numbers
     el('pfGoalsCompleted').textContent = completedCount;
     {
       const nwCcy = state.profile.netWorthCurrency || 'USD';
@@ -1390,24 +1427,15 @@
     updateExpUI();
     updateAvatar();
 
-    // "All" now highlights like any other filter — it is one, and leaving it unlit made the row
-    // look like nothing was selected
-    document.querySelectorAll('#view-goals .stat').forEach(s=>{
-      const on = s.dataset.filter === goalFilter;
-      s.classList.toggle('active-filter', on);
-      s.setAttribute('aria-pressed', on ? 'true' : 'false');
-    });
-
-    // the modal shows the same goal as the list, so any rerender has to reach it too
+    // the detail sheet shows the same goal as the list, so any rerender has to reach it too
     if(openGoalModalId) renderGoalModal();
   }
 
-  document.querySelectorAll('.stat').forEach(s=>{
-    s.addEventListener('click', ()=>{
-      const f = s.dataset.filter;
-      goalFilter = (goalFilter === f && f !== 'all') ? 'all' : f;
-      renderGoals();
-    });
+  // The board's counters are the way into the list. They used to toggle a filter over a list
+  // already on the page; now each one opens the sheet at its own filter, which is why they no
+  // longer carry a pressed state — the active filter is shown inside the sheet, on its pill row.
+  document.querySelectorAll('#view-goals .stat').forEach(s=>{
+    s.addEventListener('click', ()=> openGoalList(s.dataset.filter));
   });
   el('starredFirstBtn').addEventListener('click', ()=>{
     starredFirst = !starredFirst;
@@ -1429,7 +1457,11 @@
     const newGoal = { id:uid(), title:v, starred:false, workingOn:false, manualDone:false, subtasks:[], open:true, createdAt:Date.now(), updatedAt:Date.now(), completedAt:null, targetDate:'', financeTarget:null, financeSaved:0, checkin:null, color:'', imageUrl:'', tier:'', requiredNetWorth:null };
     state.goals.unshift(newGoal);
     openGoalExclusive(newGoal);
+    // a brand-new goal is unfinished, unstarted and unlocked, so it's invisible under three of the
+    // five filters — adding one from there would look like nothing happened
+    if(goalFilter !== 'all' && goalFilter !== 'unfinished') goalFilter = 'all';
     input.value=''; save(); renderGoals(); input.focus();
+    el('goalListBody').scrollTop = 0;  // the new goal goes on top; show it
   }
   el('addGoalBtn').addEventListener('click', addGoal);
   el('newGoalInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addGoal(); });

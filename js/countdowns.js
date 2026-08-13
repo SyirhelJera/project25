@@ -42,8 +42,10 @@
   // bottom-to-top liquid fill rather than a flat intensity color, see mosaicDotsHtml() in
   // goals.js. Each dot also gets a `perfect` flag (true only when that dot's day(s) hit 100%)
   // used to render a distinct color/style instead of the fill — see the Settings → Countdown
-  // Mosaic Colors "Highlight on/off" toggle. Pass Infinity as maxDots to get one real, unbucketed
-  // dot per day (used by the expanded mosaic overlay).
+  // Mosaic Colors "Highlight on/off" toggle. `protecteds[i]` carries the protected-day entry (or
+  // null) covering that dot, so the heat map can ring vacation/sick/event days instead of showing
+  // them as unfinished. Pass Infinity as maxDots to get one real, unbucketed dot per day (used by
+  // the expanded mosaic overlay).
   function mosaicDots(c, maxDots){
     maxDots = maxDots || CD_MOSAIC_MAX_DOTS;
     const start = new Date(c.createdAt); start.setHours(0,0,0,0);
@@ -74,7 +76,14 @@
     // a bucket only reads as perfect if every day inside it was 100% (a partial bucket's average
     // fraction can never reach 1 unless every component day did)
     const perfects = fracs.map(f => f !== null && f >= 1);
-    return { total, filled, todayIdx, pcts, perfects };
+    // the protected-day entry (or null) covering each dot — for a bucketed dot, the first one found
+    // across the days it spans. Unlike `perfects` this is computed for future dots too: an already
+    // logged upcoming vacation should be previewed on the mosaic, not hidden until it arrives.
+    const protecteds = dateKeys.map(keys => {
+      for(const k of keys){ const p = protectedDayFor(k); if(p) return p; }
+      return null;
+    });
+    return { total, filled, todayIdx, pcts, perfects, protecteds };
   }
   function renderCountdowns(){
     const list = el('cdList'); list.innerHTML='';

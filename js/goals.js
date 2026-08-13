@@ -297,17 +297,23 @@
   // builds the dot <div>s for a {total,filled,todayIdx,pcts,perfects} mosaicDots() result —
   // shared by the compact pinned-countdown mosaic and the expanded overlay (which just passes an
   // uncapped maxDots so `total` is the real day count instead of the CD_MOSAIC_MAX_DOTS-bucketed one)
-  function mosaicDotsHtml({ total, filled, todayIdx, pcts, perfects }){
+  function mosaicDotsHtml({ total, filled, todayIdx, pcts, perfects, protecteds }){
     // user-editable in Settings → Countdown Mosaic Colors → "Highlight off" disables this entirely
     const mc = state.mosaicColors || {};
     const highlightOn = mc.perfectGlow !== false;
     const style = mc.perfectStyle || 'color';
     const emoji = mc.perfectEmoji || '⭐';
+    // escapeHtml() deliberately leaves double quotes alone, and a protected day's note is free
+    // user text — so anything headed for an attribute needs the quotes escaped as well
+    const attrText = s => escapeHtml(s).replace(/"/g,'&quot;');
     let dots = '';
     for(let i=0;i<total;i++){
       let cls = 'cd-mosaic-dot';
       const isToday = i===todayIdx, isPast = i<filled;
       let attrs = '';
+      // a dot can be both perfect and protected, so the tooltip is collected and emitted once —
+      // two title= attributes on one element would be invalid
+      const titles = [];
       if(isToday) cls += ' today';
       if(isToday || isPast){
         // liquid bottom-to-top fill instead of a flat intensity color, driven by a CSS custom
@@ -317,8 +323,16 @@
       }
       if(highlightOn && perfects && perfects[i] && (isToday || isPast)){
         cls += ' perfect perfect-'+style;
-        attrs += ' title="Perfect day!"' + (style === 'emoji' ? ' data-emoji="'+escapeHtml(emoji)+'"' : '');
+        titles.push('Perfect day!');
+        if(style === 'emoji') attrs += ' data-emoji="'+attrText(emoji)+'"';
       }
+      // not gated on isToday||isPast, unlike the perfect highlight: a vacation still ahead of you
+      // is worth seeing on the map
+      if(protecteds && protecteds[i]){
+        cls += ' pd-protected';
+        titles.push('Protected day — ' + protectedDayLabel(protecteds[i]));
+      }
+      if(titles.length) attrs += ' title="'+attrText(titles.join(' · '))+'"';
       dots += '<div class="'+cls+'"'+attrs+'></div>';
     }
     return dots;
@@ -328,7 +342,11 @@
   // when the user recolors the mosaic in Settings.
   function mosaicLegendHtml(){
     const dot = p => '<div class="cd-mosaic-dot has-fill" style="--fill-pct:'+p+'%"></div>';
-    return '<span>Less</span>' + dot(6) + dot(35) + dot(70) + dot(100) + '<span>More</span>';
+    let html = '<span>Less</span>' + dot(6) + dot(35) + dot(70) + dot(100) + '<span>More</span>';
+    // only worth the space once there's actually a ringed dot on the map to explain
+    if(state.protectedDays && state.protectedDays.length)
+      html += '<div class="cd-mosaic-dot pd-protected"></div><span>Protected</span>';
+    return html;
   }
 
   // expanded mosaic overlay — one real, unbucketed dot per day. Opened from the heat map grid;

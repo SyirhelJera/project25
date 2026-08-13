@@ -240,6 +240,24 @@
         applyMosaicColors(); save(); renderMosaicColorInputs();
       });
     }
+
+    // protected-day marker color (Settings → Protected Days). Only a CSS custom property changes,
+    // so no re-render is needed — the habit cells and heat-map dots recolor in place.
+    const pdColorInput = el('pdColorInput');
+    if(pdColorInput){
+      pdColorInput.value = state.protectedDayColor || computedVarHex('--violet');
+      if(!pdColorInput.dataset.wired){
+        pdColorInput.dataset.wired = '1';
+        pdColorInput.addEventListener('input', ()=>{
+          state.protectedDayColor = pdColorInput.value; applyProtectedDayColor(); debouncedSave();
+        });
+        el('pdColorResetBtn').addEventListener('click', ()=>{
+          state.protectedDayColor = ''; applyProtectedDayColor(); save();
+          pdColorInput.value = computedVarHex('--violet');
+        });
+      }
+    }
+
     const perfectGlowToggle = el('perfectGlowToggle');
     if(perfectGlowToggle && !perfectGlowToggle.dataset.wired){
       perfectGlowToggle.dataset.wired = '1';

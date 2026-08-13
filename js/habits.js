@@ -242,10 +242,13 @@
         weekDates.forEach((d,i)=>{
           const ds = localDateStr(d);
           const checked = !!h.completions[ds];
-          const isProtected = !checked && isDateProtected(ds);
-          const cls = checked ? 'checked' : (isProtected ? 'protected' : '');
+          const pd = checked ? null : protectedDayFor(ds);
+          const cls = checked ? 'checked' : (pd ? 'protected' : '');
           const cell = document.createElement('div'); cell.className='day-cell';
-          cell.innerHTML = '<div class="dlabel">'+DAY_LABELS[i]+'</div><div class="day-box '+cls+'" title="'+(isProtected?'Protected day':'')+'">'+(checked?'✓':(isProtected?'•':''))+'</div>';
+          cell.innerHTML = '<div class="dlabel">'+DAY_LABELS[i]+'</div><div class="day-box '+cls+'">'+(checked?'✓':(pd?'•':''))+'</div>';
+          // set, not interpolated — the protected day's note is free user text and escapeHtml()
+          // leaves double quotes alone
+          if(pd) cell.querySelector('.day-box').title = 'Protected day — ' + protectedDayLabel(pd);
           cell.querySelector('.day-box').addEventListener('click', ()=>{
             if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;
             save(); renderHabits();
@@ -280,10 +283,10 @@
           const ds = localDateStr(d);
           const checked = !!h.completions[ds];
           const isToday = ds === localDateStr(today);
-          const isProtected = !checked && isDateProtected(ds);
+          const pd = checked ? null : protectedDayFor(ds);
           const cell = document.createElement('div');
-          cell.className = 'month-cell' + (checked?' checked':(isProtected?' protected':'')) + (isToday?' today':'');
-          if(isProtected) cell.title = 'Protected day';
+          cell.className = 'month-cell' + (checked?' checked':(pd?' protected':'')) + (isToday?' today':'');
+          if(pd) cell.title = 'Protected day — ' + protectedDayLabel(pd);
           cell.textContent = day;
           cell.addEventListener('click', ()=>{
             if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;

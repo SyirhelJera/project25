@@ -13,6 +13,17 @@
   }
   function isDateProtected(dateStr){ return dateRangeOverlapsProtected(dateStr, dateStr); }
 
+  // The protected-day entry covering `dateStr`, or null. isDateProtected() stays the fast boolean
+  // path used by the streak walks; this is for UI that needs to name the reason (the habit
+  // calendars' tooltips, the goals heat map). Same plain string comparison — see above.
+  function protectedDayFor(dateStr){
+    return state.protectedDays.find(p => dateStr >= p.startDate && dateStr <= p.endDate) || null;
+  }
+  // "Vacation · Cancun trip" — plain text for a tooltip, never HTML
+  function protectedDayLabel(p){
+    return (PROTECTED_TYPE_LABELS[p.type] || 'Event') + (p.label ? ' · ' + p.label : '');
+  }
+
   function renderProtectedDays(){
     const listEl = el('protectedDayList'), emptyEl = el('protectedDayEmpty');
     listEl.innerHTML = '';
@@ -34,7 +45,8 @@
       card.querySelector('.del-goal').addEventListener('click', ()=>{
         if(!window.confirm('Delete this protected day entry?')) return;
         state.protectedDays = state.protectedDays.filter(x=>x.id!==p.id);
-        save(); renderProtectedDays(); renderHabits(); renderChecklists();
+        // renderGoals() too — protected days are marked on the pinned countdown's heat map
+        save(); renderProtectedDays(); renderHabits(); renderChecklists(); renderGoals();
       });
       listEl.appendChild(card);
     });
@@ -47,6 +59,6 @@
     if(endDate < startDate) endDate = startDate;
     state.protectedDays.push({ id:uid(), type: el('pdType').value, label: el('pdLabel').value.trim(), startDate, endDate, createdAt: Date.now() });
     el('pdStart').value=''; el('pdEnd').value=''; el('pdLabel').value='';
-    save(); renderProtectedDays(); renderHabits(); renderChecklists();
+    save(); renderProtectedDays(); renderHabits(); renderChecklists(); renderGoals();
   }
   el('addProtectedDayBtn').addEventListener('click', addProtectedDay);

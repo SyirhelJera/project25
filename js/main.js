@@ -14,6 +14,7 @@
       o.classList.toggle('selected', o.dataset.theme === (state.theme || 'light'));
     });
     applyMosaicColors();
+    applyProtectedDayColor();
   }
 
   // pushes the user's custom mosaic dot colors (if any) into CSS custom properties on <body>;
@@ -27,6 +28,14 @@
       if(mc[k]) document.body.style.setProperty(cssVar, mc[k]);
       else document.body.style.removeProperty(cssVar);
     });
+  }
+
+  // same idea for the protected-day marker color (Settings → Protected Days), but it's a single
+  // app-wide property rather than a mosaic-only one: the habit week/month calendars and the goals
+  // heat-map dots both read var(--protected-day, var(--violet)), so leaving it unset tracks the theme.
+  function applyProtectedDayColor(){
+    if(state.protectedDayColor) document.body.style.setProperty('--protected-day', state.protectedDayColor);
+    else document.body.style.removeProperty('--protected-day');
   }
   el('themePicker').addEventListener('click', (e)=>{
     const opt = e.target.closest('.theme-option');

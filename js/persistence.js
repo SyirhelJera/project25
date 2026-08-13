@@ -351,6 +351,7 @@
       if(p.label === undefined) p.label = '';
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
+    state.protectedDayColor = parsed.protectedDayColor || '';
     // NOTE: state.notes is deliberately NOT hydrated here — like Jobs, the Notes outliner has its
     // own dedicated storage resource. It's the app's other unbounded-growth key (free-text bodies,
     // and every keystroke debounce-saves), so keeping it in this blob would re-upload the whole

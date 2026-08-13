@@ -885,7 +885,9 @@
      could reach, so it now carries a button role, a tab stop and a focus ring */
   .g-heat-grid{width:100%;border-radius:8px;}
   .g-heat-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px;padding-top:9px;border-top:1px solid var(--border);}
-  .g-heat-legend{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
+  /* wraps because the optional "Protected" swatch adds two more children — on a 360px phone the
+     foot's space-between with .g-heat-hint leaves the legend too little room for one line */
+  .g-heat-legend{display:flex;flex-wrap:wrap;align-items:center;gap:5px;font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);}
   .g-heat-legend .cd-mosaic-dot{width:9px;height:9px;flex:none;}
   .g-heat-hint{font-size:10.5px;color:var(--muted);white-space:nowrap;}
   .g-heat.is-empty{color:var(--muted);}
@@ -1103,7 +1105,10 @@
   .day-box{width:100%;aspect-ratio:1;border-radius:7px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:11px;color:transparent;transition:border-color .12s ease, background .12s ease;}
   .day-box:hover{border-color:var(--violet);}
   .day-box.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
-  .day-box.protected{border-color:var(--slate);color:var(--slate);}
+  /* protected days (vacation/sick/event — Settings) are ringed rather than filled, so they stay
+     distinct from a completed day's solid fill even though both default to violet. The color is
+     user-configurable; unset, var(--protected-day) falls through to the theme's violet. */
+  .day-box.protected{border-color:var(--protected-day, var(--violet));color:var(--protected-day, var(--violet));}
   .month-lbl{font-size:10.5px;color:var(--faint);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;margin-bottom:6px;}
   .month-lbl-row{display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;}
   .month-lbl-row .month-lbl-text{font-size:10.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:0.4px;min-width:110px;text-align:center;}
@@ -1114,7 +1119,7 @@
   /* one step up from --faint: at 8.5px the day numbers wash out against the card otherwise */
   .month-cell{aspect-ratio:1;border-radius:4px;background:var(--surface-alt);border:1px solid var(--border);cursor:pointer;font-size:8.5px;display:flex;align-items:center;justify-content:center;color:var(--muted);}
   .month-cell.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
-  .month-cell.protected{border-color:var(--slate);color:var(--slate);}
+  .month-cell.protected{border-color:var(--protected-day, var(--violet));color:var(--protected-day, var(--violet));}
   .month-cell.today{box-shadow:0 0 0 2px var(--gold) inset;}
 
   /* countdowns */
@@ -1181,6 +1186,13 @@
     container-type:inline-size;
   }
   .cd-mosaic-dot.perfect-emoji::after{content:attr(data-emoji);font-size:85cqw;line-height:1;}
+
+  /* protected days (vacation/sick/event — Settings) ring the dot instead of replacing its fill, so
+     a day that was both protected and perfect still reads as both. `border` rather than the other
+     two ring channels: `outline` is already claimed by .perfect-outline, and a box-shadow would be
+     wiped out by .today's blink keyframes, which animate that property. The global
+     box-sizing:border-box means the ring costs no layout, so no dot shifts. */
+  .cd-mosaic-dot.pd-protected{border:1.5px solid var(--protected-day, var(--violet));}
 
   .emoji-swatch{width:28px;height:28px;border-radius:8px;cursor:pointer;border:2px solid transparent;background:var(--surface-alt);display:flex;align-items:center;justify-content:center;font-size:15px;}
   .emoji-swatch.selected{border-color:var(--violet);}

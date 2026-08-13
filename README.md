@@ -18,7 +18,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, starring/favoriting (starred applications pin to the top of the default order, plus a "★ Starred only" toolbar toggle that narrows whatever the chips/search already selected), per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
 | **Time** | Two panes behind a toggle. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
-| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks), and backup restore. |
+| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks, and rings those days on the habit calendars and the Goals heat map in a configurable color), and backup restore. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance. The Net Worth and Fitness Level rows each carry a ▲/▼ trend marker (`trendMarker()` in `js/core.js`) — net worth against the newest `netWorthHistory` point from an earlier day, fitness against the previous `weightLog` entry. Arrow direction and color are independent: rising net worth is a green ▲, but rising weight is a red ▲ and losing weight a green ▼.
 
@@ -36,7 +36,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 
 - **`core.js`** — global `state` shape, currency constants, tiny DOM/date helper functions.
 - **`persistence.js`** — the `load()`/`save()` layer (see below); also owns the setup/offline/conflict banners.
-- **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks).
+- **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
 - One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
@@ -223,6 +223,11 @@ state = {
                                        // global exemption list (Settings tab) — startDate/endDate
                                        // are inclusive YYYY-MM-DD strings (endDate===startDate for
                                        // a single day); see protecteddays.js
+  protectedDayColor: ''                  // color protected days are ringed in, on the habit
+                                       // calendars AND the goals heat map — hence top-level rather
+                                       // than part of mosaicColors. '' = the theme's violet;
+                                       // applyProtectedDayColor() (main.js) pushes it to the
+                                       // --protected-day custom property on <body>
 }
 ```
 

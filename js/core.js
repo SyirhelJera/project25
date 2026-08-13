@@ -57,6 +57,9 @@
     // vacation/sick/event date ranges (Settings tab) — excuses habit streaks and checklist
     // miss-streaks for any day they cover; see js/protecteddays.js
     protectedDays: [],
+    // the color protected days are ringed in — on the habit week/month calendars AND on the goals
+    // heat map, so it's a top-level key rather than part of mosaicColors. Empty = the theme's violet.
+    protectedDayColor: '',
     // hierarchical outliner notes (Notes tab, js/notes.js) — a FLAT list: nesting is expressed
     // by parentId (null = top level) and sibling order is this array's own order, so a move is a
     // splice plus one field write, and a whole subtree follows its parent for free (the children

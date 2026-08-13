@@ -2466,7 +2466,10 @@
   /* The item-preview modal (.val-preview-card) lives outside this card in the DOM but shows the
      same artwork, so it takes the same variable overrides — skin/buddy renders are near-white
      PNGs with transparent backgrounds and would be all but invisible on a light-theme surface. */
+  /* .val-live-card joins them for the same reason: agent portraits and rank icons are light PNGs
+     on transparent backgrounds, and a lobby reads as an in-game overlay, not as a document. */
   .val-tracker-card,
+  .val-live-card,
   .val-preview-card{
     --surface:#1B212C;
     --surface-alt:#242C3A;
@@ -2539,6 +2542,188 @@
   .val-owned-skins-toolbar .sort-select{margin-left:auto;}
   .val-owned-skins-filter-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;}
   .val-owned-skins-filter-label{font-size:10.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;flex:none;margin-right:2px;}
+
+  /* ---- LIVE MATCH -----------------------------------------------------------------
+     The lobby you're in right now (renderValLive() in valorant.js). Reads as an in-game
+     overlay rather than a document: dark panel, one dense row per player, rank color carried
+     on --tier exactly like the account cards above so nothing paints a tier color onto text. */
+  .val-live-card{
+    background:linear-gradient(180deg,#161B26 0%,#0F131C 100%);
+    border:1px solid #262D3B;border-radius:14px;padding:14px 14px 16px;
+  }
+  .val-live-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .val-live-status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:600;}
+  .val-live-status code{background:var(--surface-alt);border-radius:4px;padding:1px 5px;font-size:11px;}
+  .val-live-head-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
+  .val-live-head-right select{
+    background:var(--surface);border:1px solid var(--border);color:var(--text);
+    border-radius:8px;padding:5px 8px;font-size:12px;font-family:'Inter',sans-serif;max-width:180px;
+  }
+  .val-live-auto{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--muted);font-weight:600;cursor:pointer;}
+  .val-live-dim{color:var(--faint);}
+  .val-live-empty{
+    color:var(--muted);font-size:12.5px;line-height:1.55;text-align:center;
+    padding:26px 16px;border:1px dashed var(--border);border-radius:10px;
+  }
+  .val-live-progress{font-size:11.5px;color:var(--faint);font-weight:600;margin:0 0 10px;}
+
+  /* summary strip — the lobby read as one player, using the same icon + name + RR-bar grammar
+     as an account card so "Diamond 1 · 43 RR" means the same thing in both places */
+  .val-live-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .val-live-stat{
+    --tier:#8B92A8;
+    flex:1 1 180px;min-width:0;background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:9px 11px;
+  }
+  .val-live-stat-lbl{font-size:10px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+  .val-live-stat-main{display:flex;align-items:center;gap:7px;min-width:0;}
+  .val-live-stat-main b{font-size:14px;font-weight:800;color:var(--tier);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-live-stat-icon{width:22px;height:22px;flex:none;object-fit:contain;}
+  .val-live-stat-bar{height:3px;border-radius:2px;background:var(--surface-alt);overflow:hidden;margin:7px 0 5px;}
+  .val-live-stat-fill{height:100%;background:var(--tier);border-radius:2px;}
+  .val-live-stat-sub{font-size:10.5px;color:var(--muted);font-weight:600;}
+  .val-live-crown{color:var(--vp-gold);font-size:13px;flex:none;}
+
+  /* the placement badge hangs off the left edge of each row, so a flat leaderboard needs room
+     for it — team columns sit far enough apart already */
+  .val-live-teams{display:flex;gap:14px;align-items:flex-start;}
+  .val-live-team{flex:1 1 0;min-width:0;}
+  .val-live-team.flat{flex:1 1 100%;padding-left:11px;}
+  .val-live-team-hdr{
+    display:flex;align-items:baseline;gap:8px;margin-bottom:7px;padding:0 2px;
+    font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+  }
+  .val-live-team.ally .val-live-team-hdr{color:#6FD3A8;}
+  .val-live-team.enemy .val-live-team-hdr{color:#FF7A85;}
+  .val-live-team-sub{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:var(--faint);}
+
+  /* one row per player. The peak column drops first under pressure — it's the least
+     time-critical thing here — and the whole grid goes two-line on phones. */
+  .val-live-player{
+    --tier:#8B92A8;
+    position:relative;display:grid;align-items:center;gap:10px;
+    grid-template-columns:34px minmax(0,1.5fr) minmax(0,1.1fr) minmax(0,1.3fr) minmax(0,.85fr);
+    background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--tier);
+    border-radius:9px;padding:6px 10px;margin-bottom:6px;cursor:default;
+  }
+  .val-live-player.is-self{background:var(--surface-alt);border-color:var(--tier);}
+  .val-live-player.val-live-top{border-color:var(--vp-gold);box-shadow:inset 0 0 0 1px rgba(236,225,184,.22);}
+  .val-live-player .val-live-crown{position:absolute;top:-6px;left:-6px;font-size:12px;}
+  .val-live-agent{width:34px;height:34px;border-radius:7px;object-fit:cover;background:var(--surface-alt);flex:none;}
+  .val-live-agent-empty{
+    display:flex;align-items:center;justify-content:center;color:var(--faint);font-size:13px;
+    border:1px dashed var(--border);box-sizing:border-box;
+  }
+  .val-live-ident{display:flex;align-items:center;gap:6px;min-width:0;flex-wrap:wrap;}
+  .val-live-ident b{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .val-live-tag{font-size:10.5px;color:var(--faint);font-weight:600;}
+  .val-live-level{font-size:10px;color:var(--faint);font-weight:600;}
+  .val-live-stack{
+    font-size:9.5px;font-weight:800;letter-spacing:.3px;padding:1px 5px;border-radius:5px;
+    background:rgba(99,102,241,.22);color:#A5B4FC;border:1px solid rgba(99,102,241,.4);
+  }
+  /* an inferred stack is a guess from shared match history, so it never looks as certain as a
+     party id Riot actually confirmed */
+  .val-live-stack.inferred{background:transparent;color:var(--faint);border-style:dashed;border-color:var(--border);}
+
+  .val-live-rank{display:flex;align-items:center;gap:6px;min-width:0;}
+  .val-live-rank-icon{width:20px;height:20px;flex:none;object-fit:contain;}
+  .val-live-rank-txt{display:flex;flex-direction:column;min-width:0;line-height:1.25;}
+  .val-live-rank-txt b{font-size:11.5px;font-weight:700;color:var(--tier);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-live-rr{font-size:10px;color:var(--faint);font-weight:600;white-space:nowrap;}
+  .val-live-peak{font-size:10.5px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-live-dagger{color:var(--faint);margin-left:2px;}
+  .val-live-elo{font-size:12.5px;font-weight:800;color:var(--tier);}
+
+  /* ---- finished match: the result tile leads, and the comfort column becomes the scoreboard */
+  .val-live-result .val-live-stat-main b{color:var(--text);font-size:16px;}
+  .val-live-result.win{border-color:rgba(47,190,122,.5);}
+  .val-live-result.win .val-live-stat-main b{color:#5FD8A0;}
+  .val-live-result.loss{border-color:rgba(255,70,85,.45);}
+  .val-live-result.loss .val-live-stat-main b{color:#FF7A85;}
+  .val-live-kda{font-size:12px;font-weight:600;color:var(--muted);white-space:nowrap;}
+  .val-live-kda b{font-weight:800;color:var(--text);}
+  .val-live-kd{font-size:9.5px;font-weight:700;white-space:nowrap;}
+  .val-live-kd.up{color:#5FD8A0;}
+  .val-live-kd.down{color:var(--faint);}
+  /* placement sits where the crown does, top-left of the row, so a leaderboard reads down the edge */
+  .val-live-place{
+    position:absolute;top:50%;left:-9px;transform:translateY(-50%);
+    min-width:26px;text-align:center;font-size:9.5px;font-weight:800;letter-spacing:.2px;
+    padding:2px 4px;border-radius:5px;background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
+  }
+  .val-live-place.podium{background:var(--vp-gold);border-color:var(--vp-gold);color:#14161F;}
+
+  /* only rows that actually have something behind them advertise themselves as clickable */
+  .val-live-player.expandable{cursor:pointer;}
+  .val-live-player.expandable:hover{border-color:var(--tier);}
+  .val-live-detail{display:none;grid-column:1 / -1;border-top:1px solid var(--border);margin-top:4px;padding-top:8px;}
+  .val-live-player.expanded .val-live-detail{display:block;}
+  .val-live-detail-agents{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+  .val-live-detail-agent{
+    display:flex;align-items:center;gap:6px;padding:4px 8px 4px 4px;border-radius:8px;
+    background:var(--surface-alt);border:1px solid var(--border);
+  }
+  .val-live-detail-agent.current{border-color:var(--tier);}
+  .val-live-detail-agent img{width:24px;height:24px;border-radius:5px;object-fit:cover;flex:none;}
+  .val-live-detail-agent-txt{display:flex;flex-direction:column;line-height:1.25;}
+  .val-live-detail-agent-txt b{font-size:11px;font-weight:700;}
+  .val-live-detail-agent-txt span{font-size:9.5px;color:var(--faint);font-weight:600;}
+  .val-live-detail-meta{font-size:10.5px;color:var(--muted);font-weight:600;}
+
+  .val-live-comfort-cell{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;}
+  /* every chip carries a glyph as well as a color — same "never color alone" rule as .val-delta */
+  .val-live-comfort{
+    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;
+    padding:2px 6px;border-radius:5px;letter-spacing:.2px;white-space:nowrap;
+    background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
+  }
+  .val-live-comfort.main{background:rgba(47,190,122,.16);border-color:rgba(47,190,122,.45);color:#5FD8A0;}
+  .val-live-comfort.comfort{background:rgba(75,158,240,.16);border-color:rgba(75,158,240,.45);color:#7FBDF7;}
+  .val-live-comfort.situational{background:transparent;}
+  .val-live-comfort.off-agent{background:rgba(240,149,75,.16);border-color:rgba(240,149,75,.45);color:#F4B072;}
+  .val-live-comfort.unknown{background:transparent;color:var(--faint);border-style:dashed;}
+  .val-live-wr{font-size:11px;font-weight:700;color:var(--text);white-space:nowrap;}
+  .val-live-delta{display:inline-flex;align-items:center;gap:2px;font-size:9.5px;font-weight:800;white-space:nowrap;}
+  .val-live-delta.up{color:#5FD8A0;}
+  .val-live-delta.down{color:#FF7A85;}
+
+  /* skeletons, not spinners: the roster is readable the whole time and the slow columns fill in
+     where they'll finally sit, so nothing on screen jumps */
+  .val-live-skel{
+    display:inline-block;height:12px;border-radius:4px;max-width:100%;
+    background:linear-gradient(90deg,var(--surface-alt) 25%,#2F384A 50%,var(--surface-alt) 75%);
+    background-size:200% 100%;animation:valLiveShimmer 1.2s linear infinite;
+  }
+  @keyframes valLiveShimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+  @media (prefers-reduced-motion:reduce){
+    .val-live-skel{animation:none;}
+  }
+
+  .val-live-settings{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+  .val-live-settings .fitness-field{flex:1 1 200px;min-width:160px;}
+  .val-live-check{display:flex;align-items:flex-start;gap:7px;font-size:12.5px;color:var(--text);margin-bottom:7px;cursor:pointer;line-height:1.5;}
+  .val-live-check input{margin-top:3px;flex:none;}
+  .val-live-check .val-peak-note{display:inline;margin:0;}
+
+  /* Two team columns side by side stop being readable well before the phone breakpoint — the
+     name and rank cells start truncating first. Stack them, ally team on top. */
+  @media (max-width:900px){
+    .val-live-teams{flex-direction:column;gap:16px;}
+  }
+  @media (max-width:760px){
+    /* peak is the least time-critical column in a live lobby, so it's the first to go */
+    .val-live-player{grid-template-columns:32px minmax(0,1.4fr) minmax(0,1fr) minmax(0,1.2fr);}
+    .val-live-peak{display:none;}
+  }
+  @media (max-width:430px){
+    /* two lines per player: identity + rank on top, agent spanning both, stats underneath */
+    .val-live-player{grid-template-columns:32px minmax(0,1fr) minmax(0,auto);row-gap:5px;}
+    .val-live-agent{grid-row:span 2;}
+    .val-live-comfort-cell{grid-column:2 / -1;}
+    .val-live-head-right{width:100%;margin-left:0;}
+    .val-live-head-right select{max-width:none;flex:1;}
+  }
 
   /* item cards mimic Valorant's own Daily Offers tiles: big art on top, a solid name+price bar
      pinned to the bottom, and a thin rarity-colored edge (Select/Deluxe/Premium/Exclusive/Ultra —

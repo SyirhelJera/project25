@@ -4,6 +4,7 @@ scripts/.valorant-session.json
 scripts/.valorant-local-token.json
 scripts/.valorant-notify-config.json
 scripts/.valorant-latest-store.json
+scripts/.valorant-match-cache.json
 scripts/.valorant-widget-config.json
 scripts/.valorant-widget.log
 scripts/.valorant-widget-cache/

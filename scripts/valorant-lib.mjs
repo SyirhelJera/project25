@@ -11,8 +11,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const SESSION_FILE = path.join(__dirname, '.valorant-session.json');
-const RIOT_USER_AGENT = 'RiotClient/60 rso-auth (Windows;10;;Professional, x64)';
-const VALORANT_API_BASE = 'https://valorant-api.com/v1';
+// exported for valorant-live.mjs, which builds its own (memoized) auth ladder for the live-match
+// panel — see the comment above its ensureLiveAuth(). The two ladders below stay as they are.
+export const RIOT_USER_AGENT = 'RiotClient/60 rso-auth (Windows;10;;Professional, x64)';
+export const VALORANT_API_BASE = 'https://valorant-api.com/v1';
 const NOTIFY_CONFIG_FILE = path.join(__dirname, '.valorant-notify-config.json');
 const STORE_SNAPSHOT_FILE = path.join(__dirname, '.valorant-latest-store.json');
 

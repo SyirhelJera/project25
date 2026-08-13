@@ -237,6 +237,18 @@
     // which of the two shops the store view shows — 'skins' (daily VP offers) or 'accessories'
     // (weekly Kingdom Credit offers); they used to be stacked in one column, which got crowded
     if(state.valorant.storeMode!=='accessories') state.valorant.storeMode = 'skins';
+    // Live Match panel — PREFERENCES ONLY. The lobby itself is deliberately ephemeral: it's held
+    // in scripts/valorant-local-server.mjs's memory and is never written to Supabase. It describes
+    // a game state that's wrong within minutes and it's full of other people's puuids, so there is
+    // no RPC and nothing to restore. Don't add a write path for it (see README.md, "Live Match").
+    if(!state.valorant.live || typeof state.valorant.live !== 'object') state.valorant.live = {};
+    if(state.valorant.live.enabled===undefined) state.valorant.live.enabled = true;
+    // '' means "follow the store account switcher / the only saved session"
+    if(state.valorant.live.label===undefined) state.valorant.live.label = '';
+    if(state.valorant.live.regionOverride===undefined) state.valorant.live.regionOverride = '';
+    if(!(state.valorant.live.historyDepth >= 5 && state.valorant.live.historyDepth <= 20)) state.valorant.live.historyDepth = 10;
+    if(state.valorant.live.showEnemyStats===undefined) state.valorant.live.showEnemyStats = true;
+    if(state.valorant.live.showIncognito===undefined) state.valorant.live.showIncognito = false;
     // gun/skin names the user wants a heads-up about when they rotate into the daily store —
     // one list per tracked account label, so a skin wishlisted on one account doesn't tick for
     // another; matched against that same label's dailyStores items in valWishlistMatchesForItem()

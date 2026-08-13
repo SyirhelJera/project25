@@ -43,7 +43,17 @@
         const map = {};
         (json && Array.isArray(json.data) ? json.data : []).forEach(a=>{
           if(!a.displayName) return;
-          map[a.displayName.toLowerCase()] = { name: a.displayName, icon: a.displayIcon, background: a.fullPortrait || a.background };
+          const entry = {
+            name: a.displayName,
+            icon: a.displayIcon,
+            portrait: a.displayIconSmall || a.displayIcon,
+            role: (a.role && a.role.displayName) || '',
+            background: a.fullPortrait || a.background,
+          };
+          map[a.displayName.toLowerCase()] = entry;
+          // Riot's live-match endpoints identify agents by CharacterID (a uuid), not by name, so
+          // the same entries are keyed both ways off this one fetch — see valAgentByUuid().
+          if(a.uuid) map[a.uuid.toLowerCase()] = entry;
         });
         valAgentCache = map;
         renderValorant();
@@ -53,6 +63,33 @@
     return valAgentPromise;
   }
   ensureValAgentIcons();
+  function valAgentByUuid(uuid){
+    return (uuid && valAgentCache) ? (valAgentCache[String(uuid).toLowerCase()] || null) : null;
+  }
+
+  // Map reference data (mapUrl -> {name, splash, icon}), for the Live Match panel's header. The
+  // MapID the live-match endpoints return IS the mapUrl string, so it keys directly. Same
+  // lazy-once-per-session shape as the tier/agent caches above.
+  let valMapCache = null;
+  let valMapPromise = null;
+  function ensureValMapDb(){
+    if(valMapCache) return Promise.resolve(valMapCache);
+    if(valMapPromise) return valMapPromise;
+    valMapPromise = fetch(VALORANT_API_BASE+'/maps')
+      .then(r=>r.json())
+      .then(json=>{
+        const map = {};
+        (json && Array.isArray(json.data) ? json.data : []).forEach(m=>{
+          if(!m.mapUrl) return;
+          map[m.mapUrl.toLowerCase()] = { name: m.displayName || '', splash: m.splash || '', icon: m.listViewIcon || '' };
+        });
+        valMapCache = map;
+        renderValLive();
+        return map;
+      })
+      .catch(()=>{ valMapCache = {}; return valMapCache; });
+    return valMapPromise;
+  }
 
   // Weapon skin database (uuid/name/icon), used to power the wishlist's search-as-you-type
   // picker so users pick a real skin (with its actual thumbnail) instead of typing a name from
@@ -266,21 +303,29 @@
     state.valorant.accounts.forEach(acc=> fetchValorantAccount(acc.id));
   });
 
-  /* ---- RR Tracker / Shop Tracker sub-tabs: the Valorant view got crowded once the store +
-     wishlist card was added alongside rank tracking, so the two are now split into switchable
-     panels instead of one long scroll. ---- */
+  /* ---- Live Match / Shop Tracker / RR Tracker sub-tabs: the Valorant view got crowded once the
+     store + wishlist card was added alongside rank tracking, so they're split into switchable
+     panels instead of one long scroll. Live Match reads first because it's the only one that's
+     time-sensitive — the others are just as useful five minutes from now. ---- */
+  const VAL_SUBTABS = ['live','shop','rr'];
   function renderValSubtabs(){
-    const active = state.valorant.activeSubtab === 'shop' ? 'shop' : 'rr';
-    el('valSubtabBtnRR').classList.toggle('active', active === 'rr');
-    el('valSubtabBtnShop').classList.toggle('active', active === 'shop');
-    el('valSubtabRR').style.display = active === 'rr' ? 'block' : 'none';
-    el('valSubtabShop').style.display = active === 'shop' ? 'block' : 'none';
+    const active = VAL_SUBTABS.includes(state.valorant.activeSubtab) ? state.valorant.activeSubtab : 'shop';
+    VAL_SUBTABS.forEach(key=>{
+      const id = key === 'rr' ? 'RR' : (key.charAt(0).toUpperCase() + key.slice(1));
+      el('valSubtabBtn'+id).classList.toggle('active', active === key);
+      el('valSubtab'+id).style.display = active === key ? 'block' : 'none';
+    });
   }
   el('valSubtabToggle').addEventListener('click', e=>{
     const btn = e.target.closest('[data-subtab]');
     if(!btn) return;
     state.valorant.activeSubtab = btn.dataset.subtab;
-    save(); renderValSubtabs();
+    save();
+    renderValSubtabs();
+    // the live poll loop only runs while its own panel is the one on screen; renderValLive()
+    // ends by re-evaluating that (this is deliberately not called from renderValSubtabs(),
+    // which runs once during load before the Live Match block below has initialized)
+    renderValLive();
   });
   renderValSubtabs();
 
@@ -957,6 +1002,8 @@
       valLocalStatus.accounts = [];
     }
     renderValLocalPanel();
+    // the helper appearing/disappearing is what starts or stops the live poll loop
+    renderValLive();
   }
 
   function renderValLocalPanel(){
@@ -1121,6 +1168,595 @@
     setInterval(pollValLocalStatus, 15000);
   }
 
+  /* ================= LIVE MATCH =================
+     The lobby you're in right now: who's on your team, who you're against, their ranks, who
+     queued together, and — in competitive — whether they're on an agent they actually play.
+
+     Read from scripts/valorant-local-server.mjs's POST /live on this machine. NOTHING here is
+     persisted: state.valorant.live holds preferences only, and the lobby itself lives in that
+     server's memory (see README.md, "Live Match"). Don't add a save() of the roster — it would
+     re-upload the whole shared blob every few seconds to store data that's wrong by then.
+
+     All display strings and art come from the valorant-api.com caches above, keyed by the bare
+     uuids the server sends. That's deliberate: escapeHtml() doesn't escape double quotes, and
+     these Riot IDs are attacker-controlled text typed by strangers, so no server-supplied string
+     is ever interpolated into an attribute — tooltips go through data-tile-title and
+     applyValTileTitles(), and rows are addressed by an index we generate. ---- */
+
+  let valLiveState = {
+    status: 'idle',   // idle | offline | searching | in-match | error | stopped
+    data: null, err: '', code: '',
+    timer: null, epoch: 0, backoff: 0, inFlight: false,
+  };
+  const VAL_LIVE_BACKOFF = [8000, 15000, 30000, 60000];
+
+  const VAL_COMFORT_META = {
+    main:        { glyph:'★', label:'Main',        cls:'main' },
+    comfort:     { glyph:'●', label:'Comfort',     cls:'comfort' },
+    situational: { glyph:'○', label:'Situational', cls:'situational' },
+    'off-agent': { glyph:'▲', label:'Off-agent',   cls:'off-agent' },
+    unknown:     { glyph:'?', label:'Unknown',     cls:'unknown' },
+  };
+
+  function valLiveUnavailable(){ return usingClaudeStorage || !supabaseConfigured; }
+
+  // Which saved session to watch. '' means auto — the server works out which account is actually
+  // in a game (see getLiveMatchAuto() in valorant-live.mjs) rather than asking you to remember
+  // which one you logged into, which is the whole point of the panel. Deliberately does NOT
+  // follow the Shop Tracker's account switcher: that one picks which store you're *browsing*,
+  // which has nothing to do with which account is playing right now.
+  function valLiveLabel(){
+    const accounts = valLocalStatus.accounts || [];
+    const pref = state.valorant.live.label;
+    return (pref && accounts.includes(pref)) ? pref : '';
+  }
+
+  function valTierInfo(tier){
+    return (valTierIconCache && tier != null) ? (valTierIconCache[tier] || null) : null;
+  }
+  function valTierLabel(tier){
+    if(tier == null) return 'Unknown';
+    if(!tier) return 'Unranked';
+    const info = valTierInfo(tier);
+    return (info && info.name) ? info.name : ('Tier ' + tier);
+  }
+
+  /* ---- polling ----------------------------------------------------------------
+     setTimeout rather than setInterval because the right cadence depends on what's on screen:
+     hunting for a match is cheap and slow, agent select changes every few seconds, and a settled
+     live roster needs almost nothing (the server memoizes it against the match id, so a poll
+     costs one small presence request to Riot). */
+  function valLiveInterval(){
+    if(valLiveState.err) return VAL_LIVE_BACKOFF[Math.min(valLiveState.backoff, VAL_LIVE_BACKOFF.length-1)];
+    const d = valLiveState.data;
+    if(!d || d.phase === 'none') return 8000;
+    if(d.phase === 'pregame') return 4000;
+    // a finished match is just being kept on screen — the only reason to keep asking is to
+    // notice the next game, except while Riot still hasn't published the scoreboard
+    if(d.phase === 'ended') return (d.final && d.final.state === 'pending') ? 5000 : 10000;
+    const s = d.stages || {};
+    const loading = s.ranks === 'loading' || s.stats === 'loading' || s.parties === 'loading';
+    return loading ? 3000 : 15000;
+  }
+
+  function stopValLivePolling(){
+    if(valLiveState.timer){ clearTimeout(valLiveState.timer); valLiveState.timer = null; }
+    valLiveState.epoch++;   // any reply still in flight is from a previous state; discard it
+  }
+
+  // The single choke point. Everything that could change whether polling should be running calls
+  // this rather than starting/stopping timers itself.
+  function syncValLivePolling(){
+    const shouldRun = !valLiveUnavailable()
+      && state.valorant.live.enabled
+      && state.valorant.activeSubtab === 'live'
+      && !document.hidden
+      && valLocalStatus.connected
+      && !!state.valorant.localServerToken
+      && valLiveState.status !== 'stopped';
+    if(shouldRun){
+      if(!valLiveState.timer && !valLiveState.inFlight) valLiveTick();
+    } else if(valLiveState.timer){
+      stopValLivePolling();
+    }
+  }
+
+  async function valLiveTick(){
+    if(valLiveState.inFlight) return;
+    const epoch = valLiveState.epoch;
+    valLiveState.inFlight = true;
+    if(valLiveState.timer){ clearTimeout(valLiveState.timer); valLiveState.timer = null; }
+    try{
+      const res = await fetch(valLocalUrl()+'/live', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          token: state.valorant.localServerToken,
+          label: valLiveLabel() || undefined,
+          region: state.valorant.live.regionOverride || undefined,
+          depth: state.valorant.live.historyDepth,
+          enemyStats: state.valorant.live.showEnemyStats,
+        })
+      });
+      const json = await res.json().catch(()=>null);
+      if(epoch !== valLiveState.epoch) return;   // state changed under us; this reply is stale
+
+      if(res.status === 401){
+        valLiveState.status = 'stopped';
+        valLiveState.err = 'The local helper rejected the token. Paste the one it printed into Settings → Valorant Local Helper.';
+        valLiveState.code = 'bad_token';
+      } else if(!json){
+        throw new Error('The local helper sent something unreadable.');
+      } else if(json.ok === false){
+        valLiveState.code = json.code || '';
+        valLiveState.err = json.error || 'The local helper could not read the lobby.';
+        // a dead session or a missing account won't fix itself — retrying every few seconds
+        // would just be pointless Riot traffic
+        valLiveState.status = (json.code === 'session_expired' || json.code === 'no_session') ? 'stopped' : 'error';
+        if(valLiveState.status === 'error') valLiveState.backoff++;
+      } else {
+        valLiveState.data = json;
+        valLiveState.err = ''; valLiveState.code = ''; valLiveState.backoff = 0;
+        valLiveState.status = json.phase === 'none' ? 'searching' : 'in-match';
+        if(json.map && json.map.id) ensureValMapDb();
+      }
+    }catch(e){
+      if(epoch !== valLiveState.epoch) return;
+      valLiveState.status = 'error';
+      valLiveState.err = (e && e.message) || 'Could not reach the local helper.';
+      valLiveState.backoff++;
+    }finally{
+      valLiveState.inFlight = false;
+    }
+    if(epoch !== valLiveState.epoch) return;
+    // schedule BEFORE repainting: renderValLive() ends in syncValLivePolling(), which starts a
+    // tick whenever it sees no timer and nothing in flight — repainting first would therefore
+    // fire the next request immediately and spin. Painting second also lets that same sync call
+    // cancel the timer if the panel stopped being visible while this request was out.
+    if(valLiveState.status !== 'stopped') valLiveState.timer = setTimeout(valLiveTick, valLiveInterval());
+    renderValLive();
+  }
+
+  // Polling is pointless while the browser tab is in the background, and a loop hitting Riot from
+  // a page nobody is looking at is exactly what this feature shouldn't do.
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden) stopValLivePolling(); else syncValLivePolling();
+  });
+
+  /* ---- render ---------------------------------------------------------------- */
+
+  function valOrdinal(n){
+    const s = ['th','st','nd','rd'], v = n % 100;
+    return n + (s[(v-20)%10] || s[v] || s[0]);
+  }
+
+  function valLiveEloOf(p){
+    const tier = p.tier || p.peakTier || 0;
+    return tier * 1000 + Math.min(Math.max(p.rr || 0, 0), 999);
+  }
+
+  // Skeleton rather than a spinner: the roster paints in well under a second and the slow parts
+  // fill in beside it, so the panel is readable the whole time instead of blank then complete.
+  function valLiveSkel(w){ return '<span class="val-live-skel" style="width:'+w+'px;" aria-hidden="true"></span>'; }
+
+  function valLiveRankCellHtml(p, stagesRanks){
+    if(p.tier == null){
+      if(stagesRanks === 'loading') return '<span class="val-live-rank">'+valLiveSkel(74)+'</span>';
+      return '<span class="val-live-rank val-live-dim">—</span>';
+    }
+    const name = valTierLabel(p.tier);
+    const info = valTierInfo(p.tier);
+    const icon = (info && info.small) ? '<img class="val-live-rank-icon" src="'+info.small+'" alt="">' : '';
+    return '<span class="val-live-rank">'+icon
+      + '<span class="val-live-rank-txt"><b>'+escapeHtml(name)+'</b>'
+      + (p.tier ? '<span class="val-live-rr">'+(p.rr||0)+' RR</span>' : '')
+      + '</span></span>';
+  }
+
+  // Once a match is over the scoreboard replaces the comfort/elo column: what they *did* is
+  // strictly more interesting than what they were likely to do, and it's the same slot so
+  // nothing shifts when the result lands.
+  function valLiveScoreCellHtml(row, final){
+    if(!row){
+      if(final && final.state === 'pending') return '<span class="val-live-comfort-cell">'+valLiveSkel(70)+'</span>';
+      return '<span class="val-live-comfort-cell val-live-dim">—</span>';
+    }
+    const kd = row.deaths ? (row.kills / row.deaths) : row.kills;
+    return '<span class="val-live-comfort-cell">'
+      + '<span class="val-live-kda"><b>'+row.kills+'</b>/<b>'+row.deaths+'</b>/<b>'+row.assists+'</b></span>'
+      + '<span class="val-live-kd '+(kd>=1?'up':'down')+'">'+kd.toFixed(2)+' K/D</span>'
+      + '</span>';
+  }
+
+  function valLiveComfortCellHtml(p, stagesStats){
+    if(!p.agentStats){
+      if(stagesStats === 'loading') return '<span class="val-live-comfort-cell">'+valLiveSkel(96)+'</span>';
+      return '<span class="val-live-comfort-cell val-live-dim">—</span>';
+    }
+    const s = p.agentStats;
+    const meta = VAL_COMFORT_META[(p.comfort && p.comfort.label) || 'unknown'] || VAL_COMFORT_META.unknown;
+    // colour is never the only signal — every chip carries its own glyph too
+    let html = '<span class="val-live-comfort '+meta.cls+'"><span aria-hidden="true">'+meta.glyph+'</span>'+meta.label+'</span>';
+    if(s.error){
+      html += '<span class="val-live-wr val-live-dim">—</span>';
+    } else if(!s.gamesOnAgent){
+      html += '<span class="val-live-wr val-live-dim">0 of '+s.totalGames+'</span>';
+    } else {
+      const losses = s.gamesOnAgent - s.winsOnAgent;
+      // a 1-0 rendered as "100%" is a lie the eye believes, so the percentage only appears once
+      // there are enough games behind it to mean something
+      let txt = s.winsOnAgent+'-'+losses;
+      if(s.gamesOnAgent >= 3) txt += ' · ' + Math.round(s.winsOnAgent / s.gamesOnAgent * 100) + '%';
+      html += '<span class="val-live-wr">'+txt+'</span>';
+      // "62% on Jett" only means something next to "48% overall"
+      if(s.totalGames >= 6 && s.gamesOnAgent >= 3){
+        const agentPct = Math.round(s.winsOnAgent / s.gamesOnAgent * 100);
+        const overallPct = Math.round(s.overallWins / s.totalGames * 100);
+        const delta = agentPct - overallPct;
+        if(delta !== 0){
+          html += '<span class="val-live-delta '+(delta>0?'up':'down')+'">'
+            + '<span aria-hidden="true">'+(delta>0?'▲':'▼')+'</span>'+Math.abs(delta)+'%</span>';
+        }
+      }
+    }
+    return '<span class="val-live-comfort-cell">'+html+'</span>';
+  }
+
+  function valLivePlayerRowHtml(p, idx, snap){
+    const agent = valAgentByUuid(p.agentUuid);
+    const stages = snap.stages || {};
+    const tierColor = valTierColor(valTierLabel(p.tier));
+
+    const agentHtml = p.agentUuid && agent
+      ? '<img class="val-live-agent" src="'+(agent.portrait || agent.icon)+'" alt="">'
+      : '<span class="val-live-agent val-live-agent-empty" aria-hidden="true">'+(p.agentLocked ? '' : '…')+'</span>';
+
+    // incognito is a deliberate choice by that player; the rank and agent are shown either way,
+    // and revealing the name is opt-in under Settings
+    const showName = !p.incognito || state.valorant.live.showIncognito;
+    const who = showName && p.name
+      ? '<b>'+escapeHtml(p.name)+'</b><span class="val-live-tag">#'+escapeHtml(p.tag||'')+'</span>'
+      : (p.incognito ? '<b class="val-live-dim">Incognito</b>' : '<b class="val-live-dim">'+(agent ? escapeHtml(agent.name) : 'Unknown')+'</b>');
+
+    const partyHtml = p.party
+      ? '<span class="val-live-stack'+(p.party.inferred?' inferred':'')+'" data-tile-title="'
+        + escapeHtml(p.party.inferred
+            ? 'Likely a '+p.party.size+'-stack — these players keep showing up in each other’s recent matches'
+            : 'Queued together — party of '+p.party.size)
+        + '">'+(p.party.inferred?'~':'')+escapeHtml(p.party.group)+p.party.size+'</span>'
+      : '';
+
+    const levelHtml = p.level ? '<span class="val-live-level">Lv '+p.level+'</span>' : '';
+    const peakHtml = p.peakTier
+      ? '<span class="val-live-peak">Peak '+escapeHtml(valTierLabel(p.peakTier))+(p.peakLegacy?'<span class="val-live-dagger" aria-hidden="true">†</span>':'')+'</span>'
+      : '<span class="val-live-peak val-live-dim">—</span>';
+
+    const ended = snap.phase === 'ended';
+    const final = ended ? snap.final : null;
+    const scoreRow = (final && final.rows) ? final.rows.find(r=> r.puuid === p.puuid) : null;
+
+    let lastCell;
+    if(ended) lastCell = valLiveScoreCellHtml(scoreRow, final);
+    else if(snap.mode.teamBased) lastCell = valLiveComfortCellHtml(p, stages.stats);
+    else lastCell = '<span class="val-live-comfort-cell"><span class="val-live-elo">'+(p.tier ? (p.tier*100 + Math.min(p.rr||0, 99)).toLocaleString() : '—')+'</span></span>';
+
+    // the crown marks the highest *rank* in a live lobby; once the game is over the thing worth
+    // marking is who actually finished on top, which is not usually the same player
+    const isTop = !snap.mode.teamBased && (ended
+      ? !!(scoreRow && scoreRow.place === 1)
+      : !!(snap.lobby.highest && snap.lobby.highest.puuid === p.puuid));
+    const placeHtml = (ended && scoreRow && scoreRow.place)
+      ? '<span class="val-live-place'+(scoreRow.place<=3?' podium':'')+'">'+valOrdinal(scoreRow.place)+'</span>' : '';
+    const detail = valLiveDetailHtml(p);
+
+    return '<div class="val-live-player'+(p.isSelf?' is-self':'')+(isTop?' val-live-top':'')+(detail?' expandable':'')+'"'
+      + ' style="--tier:'+tierColor+';" data-live-idx="'+idx+'">'
+      + (isTop ? '<span class="val-live-crown" data-tile-title="'+escapeHtml(ended?'Finished top of the lobby':'Highest rank in this lobby')+'" aria-hidden="true">♛</span>' : '')
+      + placeHtml
+      + agentHtml
+      + '<span class="val-live-ident">'+who+partyHtml+levelHtml+'</span>'
+      + valLiveRankCellHtml(p, stages.ranks)
+      + lastCell
+      + peakHtml
+      + detail
+      + '</div>';
+  }
+
+  // The row-expand. The single most actionable thing about an off-agent player is what they
+  // normally play, so their top agents in the same window sit one click away — along with the
+  // season record the rank alone doesn't tell you. Returns '' when there'd be nothing to show,
+  // which is also what makes the row expandable or not.
+  function valLiveDetailHtml(p){
+    const bits = [];
+    const s = p.agentStats;
+    if(s && !s.error && s.topAgents && s.topAgents.length){
+      bits.push('<div class="val-live-detail-agents">'
+        + s.topAgents.map(a=>{
+            const info = valAgentByUuid(a.agentUuid);
+            const wr = a.games >= 3 ? Math.round(a.wins / a.games * 100) + '%' : (a.wins + '-' + (a.games - a.wins));
+            return '<span class="val-live-detail-agent'+(a.agentUuid === p.agentUuid ? ' current' : '')+'"'
+              + ' data-tile-title="'+escapeHtml((info ? info.name : 'Unknown agent') + ' — ' + a.wins + ' of ' + a.games + ' won')+'">'
+              + (info ? '<img src="'+(info.portrait || info.icon)+'" alt="">' : '')
+              + '<span class="val-live-detail-agent-txt"><b>'+escapeHtml(info ? info.name : '?')+'</b>'
+              + '<span>'+a.games+'g · '+wr+'</span></span></span>';
+          }).join('')
+        + '</div>');
+    }
+    const meta = [];
+    if(p.seasonGames) meta.push('This act: '+p.seasonWins+'W of '+p.seasonGames+' games');
+    if(p.leaderboardRank) meta.push('Leaderboard #'+p.leaderboardRank);
+    if(s && s.partial) meta.push('Partial sample — not every recent match could be read');
+    if(p.rankError === 'forbidden') meta.push('Riot wouldn’t share this player’s rank');
+    if(meta.length) bits.push('<div class="val-live-detail-meta">'+escapeHtml(meta.join(' · '))+'</div>');
+    return bits.length ? '<div class="val-live-detail">'+bits.join('')+'</div>' : '';
+  }
+
+  function valLiveTierTileHtml(title, floorTier, rr, sub){
+    const info = valTierInfo(floorTier);
+    const icon = (info && info.small) ? '<img class="val-live-stat-icon" src="'+info.small+'" alt="">' : '';
+    const pct = Math.max(0, Math.min(100, rr));
+    const color = valTierColor(valTierLabel(floorTier));
+    return '<div class="val-live-stat" style="--tier:'+color+';">'
+      + '<div class="val-live-stat-lbl">'+escapeHtml(title)+'</div>'
+      + '<div class="val-live-stat-main">'+icon+'<b>'+escapeHtml(valTierLabel(floorTier))+'</b><span class="val-live-rr">'+rr+' RR</span></div>'
+      + '<div class="val-live-stat-bar"><div class="val-live-stat-fill" style="width:'+pct+'%;"></div></div>'
+      + '<div class="val-live-stat-sub">'+escapeHtml(sub)+'</div>'
+      + '</div>';
+  }
+
+  function valLiveTeamHtml(snap, players, cls, title, teamAgg, finalTeam){
+    const stacks = (snap.lobby.stacks||[]).filter(s=> players.some(p=> s.puuids.includes(p.puuid)));
+    let sub = '';
+    // rounds won leads the header once the game is over — the average rank mattered going in
+    if(finalTeam) sub += finalTeam.roundsWon + (finalTeam.won ? ' · won' : '');
+    if(teamAgg) sub += (sub?' · ':'') + valTierLabel(teamAgg.avgTierFloor) + ' avg';
+    if(stacks.length){
+      const bits = stacks.map(s=> (s.inferred?'likely ':'') + s.size + '-stack');
+      const solo = players.length - stacks.reduce((n,s)=> n + s.size, 0);
+      sub += (sub?' · ':'') + bits.join(' + ') + (solo>0 ? ' + '+solo+' solo' : '');
+    }
+    return '<div class="val-live-team '+cls+'">'
+      + '<div class="val-live-team-hdr"><span>'+escapeHtml(title)+'</span>'
+      + (sub ? '<span class="val-live-team-sub">'+escapeHtml(sub)+'</span>' : '')
+      + '</div>'
+      + players.map(p=> valLivePlayerRowHtml(p, snap.players.indexOf(p), snap)).join('')
+      + '</div>';
+  }
+
+  // Every path that repaints the panel also re-decides whether the poll loop should be running —
+  // the panel becoming visible (or the helper coming back) is exactly when it should start, and
+  // there's no other place that reliably sees all of those transitions.
+  function renderValLive(){
+    renderValLiveBody();
+    syncValLivePolling();
+  }
+
+  function renderValLiveBody(){
+    const wrap = el('valLiveBody'); if(!wrap) return;
+    const unavailable = valLiveUnavailable();
+    el('valLiveUnavailable').style.display = unavailable ? 'block' : 'none';
+    el('valLiveCard').style.display = unavailable ? 'none' : 'block';
+    if(unavailable) return;
+
+    el('valLiveAutoToggle').checked = !!state.valorant.live.enabled;
+
+    // account picker only earns its space once there's more than one session to choose between,
+    // and even then Auto is the default — pinning one is for when you want to watch a specific
+    // account rather than whichever you happen to be playing
+    const accounts = valLocalStatus.accounts || [];
+    const sel = el('valLiveAccountSelect');
+    sel.style.display = accounts.length > 1 ? '' : 'none';
+    if(accounts.length > 1){
+      sel.innerHTML = '<option value="">Auto — whichever is playing</option>'
+        + accounts.map(a=> '<option value="'+escapeHtml(a)+'">'+escapeHtml(a)+'</option>').join('');
+      sel.value = valLiveLabel();
+    }
+
+    const snap = valLiveState.data;
+    const statusEl = el('valLiveStatusTxt');
+    const errEl = el('valLiveErr');
+    errEl.style.display = valLiveState.err ? 'block' : 'none';
+    if(valLiveState.err) errEl.textContent = valLiveState.err;
+
+    if(!valLocalStatus.connected){
+      statusEl.innerHTML = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine';
+      wrap.innerHTML = '<div class="val-live-empty">The live match panel reads your lobby from the local helper on this machine. Start it, then come back — see README.md.</div>';
+      return;
+    }
+    if(!state.valorant.localServerToken){
+      statusEl.innerHTML = '<span class="val-local-dot off"></span> No local helper token saved';
+      wrap.innerHTML = '<div class="val-live-empty">Paste the token the local helper printed into <b>Settings → Valorant Local Helper</b> to let this page read your lobby.</div>';
+      return;
+    }
+
+    const dot = (snap && (snap.phase === 'pregame' || snap.phase === 'coregame')) ? 'on'
+      : (valLiveState.status === 'error' || valLiveState.status === 'stopped' ? 'off' : 'on');
+    let statusTxt;
+    if(valLiveState.status === 'stopped') statusTxt = 'Live tracking paused';
+    else if(!state.valorant.live.enabled) statusTxt = 'Auto-refresh off';
+    else if(snap && snap.phase === 'pregame') statusTxt = 'Agent Select';
+    else if(snap && snap.phase === 'coregame') statusTxt = 'In Game';
+    else if(snap && snap.phase === 'ended') statusTxt = 'Last match' + (snap.endedAt ? ' · ended '+valTimeAgo(snap.endedAt) : '');
+    else if(snap && snap.auto && snap.auto.accounts.length > 1) statusTxt = 'Watching '+snap.auto.accounts.length+' accounts for a match…';
+    else statusTxt = 'Watching for a match…';
+    // when auto-detect picked the account, say which one — otherwise a lobby full of strangers
+    // gives you no way to tell whether it found the right login
+    const shownLabel = snap && snap.phase !== 'none' && snap.label ? snap.label : '';
+    statusEl.innerHTML = '<span class="val-local-dot '+dot+'"></span> '+escapeHtml(statusTxt)
+      + (shownLabel ? ' <span class="val-live-dim">· '+escapeHtml(shownLabel)+'</span>' : '')
+      + (snap && snap.session && snap.session.region ? ' <span class="val-live-dim">· '+escapeHtml(String(snap.session.region).toUpperCase())+'</span>' : '');
+
+    if(!snap || snap.phase === 'none'){
+      wrap.innerHTML = '<div class="val-live-empty">'
+        + (valLiveState.status === 'stopped'
+            ? 'Fix the problem above, then hit ⟳ to start watching again.'
+            : 'Not in a match. Start one and this fills in on its own — agent select included.')
+        + '</div>';
+      applyValTileTitles(wrap);
+      return;
+    }
+
+    ensureValMapDb();
+    const mapInfo = (valMapCache && snap.map && snap.map.id) ? valMapCache[String(snap.map.id).toLowerCase()] : null;
+    const mapName = (mapInfo && mapInfo.name) || (String(snap.map.id||'').split('/').pop() || 'Unknown map');
+
+    const stages = snap.stages || {};
+    const lobby = snap.lobby || {};
+    const ended = snap.phase === 'ended';
+    const final = ended && snap.final && snap.final.state === 'done' ? snap.final : null;
+    let html = '';
+
+    // ---- summary strip
+    html += '<div class="val-live-summary">';
+    // the result leads once there is one — it's the thing you came back to the screen for
+    if(ended){
+      let main, sub, cls = '';
+      if(final && snap.mode.teamBased){
+        const scores = Object.keys(final.teams).map(k=> final.teams[k].roundsWon || 0).sort((a,b)=> b-a);
+        main = final.myTeamWon == null ? 'Match over' : (final.myTeamWon ? 'Victory' : 'Defeat');
+        cls = final.myTeamWon == null ? '' : (final.myTeamWon ? ' win' : ' loss');
+        sub = scores.length >= 2 ? scores[0]+'–'+scores[1] : 'Final score unavailable';
+      } else if(final && final.place){
+        main = valOrdinal(final.place)+' of '+final.rows.length;
+        cls = final.place === 1 ? ' win' : '';
+        sub = 'Final placing';
+      } else if(snap.final && snap.final.state === 'pending'){
+        main = 'Match over'; sub = 'Waiting for Riot to publish the scoreboard…';
+      } else {
+        main = 'Match over'; sub = (snap.final && snap.final.note) || 'Scoreboard unavailable';
+      }
+      html += '<div class="val-live-stat val-live-result'+cls+'">'
+        + '<div class="val-live-stat-lbl">Result</div>'
+        + '<div class="val-live-stat-main"><b>'+escapeHtml(main)+'</b></div>'
+        + '<div class="val-live-stat-sub">'+escapeHtml(sub)+'</div>'
+        + '</div>';
+    }
+    if(lobby.rankedCount){
+      const sub = lobby.rankedCount + ' of ' + snap.players.length + ' ranked'
+        + (lobby.peakDerivedCount ? ' · ' + lobby.peakDerivedCount + ' from peak' : '');
+      html += valLiveTierTileHtml('Lobby average', lobby.avgTierFloor, lobby.avgTierRr, sub);
+      if(lobby.highest){
+        const hi = snap.players.find(p=> p.puuid === lobby.highest.puuid);
+        const hiName = hi && (!hi.incognito || state.valorant.live.showIncognito) && hi.name ? hi.name : 'Incognito';
+        html += '<div class="val-live-stat" style="--tier:'+valTierColor(valTierLabel(lobby.highest.tier))+';">'
+          + '<div class="val-live-stat-lbl">Highest rank</div>'
+          + '<div class="val-live-stat-main"><span class="val-live-crown" aria-hidden="true">♛</span><b>'+escapeHtml(valTierLabel(lobby.highest.tier))+'</b><span class="val-live-rr">'+lobby.highest.rr+' RR</span></div>'
+          + '<div class="val-live-stat-sub">'+escapeHtml(hiName)+(lobby.highest.fromPeak?' (peak)':'')+'</div>'
+          + '</div>';
+      }
+    } else if(stages.ranks === 'loading'){
+      html += '<div class="val-live-stat">'+valLiveSkel(150)+'</div>';
+    }
+    const phaseTxt = snap.phase === 'pregame' ? 'Agent Select' : (ended ? 'Finished '+valTimeAgo(snap.endedAt) : 'In Game');
+    html += '<div class="val-live-stat">'
+      + '<div class="val-live-stat-lbl">Match</div>'
+      + '<div class="val-live-stat-main"><b>'+escapeHtml(snap.mode.label)+'</b></div>'
+      + '<div class="val-live-stat-sub">'+escapeHtml(mapName + ' · ' + phaseTxt)+'</div>'
+      + '</div>';
+    html += '</div>';
+
+    if(ended){
+      html += '<div class="val-live-progress">Showing the match you just played — this stays until your next game starts.</div>';
+    }
+
+    if(stages.stats === 'loading' && stages.statsTotal){
+      html += '<div class="val-live-progress">Reading recent matches — '+stages.statsDone+' of '+stages.statsTotal+' players done…</div>';
+    } else if(stages.statsNote){
+      html += '<div class="val-live-progress">'+escapeHtml(stages.statsNote)+'</div>';
+    }
+
+    // ---- roster. Sorting waits until the ranks land, otherwise rows jump under the pointer
+    // halfway through a load.
+    const sortable = stages.ranks !== 'loading' || !!final;
+    // once there's a scoreboard it decides the order — that's what a standing is. Before that,
+    // rank is the only thing worth ordering by.
+    const finalBy = new Map((final ? final.rows : []).map(r=> [r.puuid, r]));
+    const byRank = final
+      ? (a,b)=>{
+          const ra = finalBy.get(a.puuid), rb = finalBy.get(b.puuid);
+          if(!snap.mode.teamBased) return (ra ? ra.place : 99) - (rb ? rb.place : 99);
+          return (rb ? rb.score : -1) - (ra ? ra.score : -1);
+        }
+      : (a,b)=> valLiveEloOf(b) - valLiveEloOf(a);
+
+    if(!snap.mode.teamBased){
+      // deathmatch and friends: one leaderboard, highest rank first — the whole question here is
+      // "who in this lobby is going to be a problem"
+      const rows = sortable ? snap.players.slice().sort(byRank) : snap.players.slice();
+      html += '<div class="val-live-teams">' + valLiveTeamHtml(snap, rows, 'flat', snap.mode.label + ' lobby', null) + '</div>';
+    } else {
+      const allies = snap.players.filter(p=> p.teamId === snap.me.teamId);
+      const enemies = snap.players.filter(p=> p.teamId !== snap.me.teamId);
+      if(sortable){ allies.sort(byRank); enemies.sort(byRank); }
+      const ft = final ? final.teams : null;
+      html += '<div class="val-live-teams">';
+      html += valLiveTeamHtml(snap, allies, 'ally', 'Your team', lobby.teams && lobby.teams[snap.me.teamId], ft && ft[snap.me.teamId]);
+      if(enemies.length){
+        const enemyTeamId = enemies[0].teamId;
+        html += valLiveTeamHtml(snap, enemies, 'enemy', 'Enemies', lobby.teams && lobby.teams[enemyTeamId], ft && ft[enemyTeamId]);
+      } else if(snap.phase === 'pregame'){
+        html += '<div class="val-live-team enemy"><div class="val-live-team-hdr"><span>Enemies</span></div>'
+          + '<div class="val-live-empty">Riot doesn’t reveal the enemy team during agent select — they appear the moment the match starts.</div></div>';
+      }
+      html += '</div>';
+    }
+
+    wrap.innerHTML = html;
+    applyValTileTitles(wrap);
+  }
+
+  /* ---- listeners: delegated to #valSubtabLive, which renderValLive() never replaces ---- */
+  el('valSubtabLive').addEventListener('click', e=>{
+    const row = e.target.closest('.val-live-player.expandable');
+    if(row && el('valLiveBody').contains(row)) row.classList.toggle('expanded');
+  });
+
+  el('valLiveRefreshBtn').addEventListener('click', ()=>{
+    valLiveState.status = 'idle'; valLiveState.err = ''; valLiveState.code = ''; valLiveState.backoff = 0;
+    stopValLivePolling();
+    renderValLive();
+    syncValLivePolling();
+  });
+
+  el('valLiveAutoToggle').addEventListener('change', ()=>{
+    state.valorant.live.enabled = el('valLiveAutoToggle').checked;
+    save();
+    if(state.valorant.live.enabled){ valLiveState.status = 'idle'; valLiveState.err = ''; valLiveState.backoff = 0; }
+    stopValLivePolling();
+    renderValLive();
+    syncValLivePolling();
+  });
+
+  el('valLiveAccountSelect').addEventListener('change', ()=>{
+    state.valorant.live.label = el('valLiveAccountSelect').value;
+    save();
+    valLiveState.data = null; valLiveState.status = 'idle'; valLiveState.err = ''; valLiveState.backoff = 0;
+    stopValLivePolling();
+    renderValLive();
+    syncValLivePolling();
+  });
+
+  /* ---- Settings controls ---- */
+  el('valLiveRegionSelect').addEventListener('change', ()=>{
+    state.valorant.live.regionOverride = el('valLiveRegionSelect').value;
+    save();
+    valLiveState.data = null; valLiveState.status = 'idle'; valLiveState.err = ''; valLiveState.backoff = 0;
+    stopValLivePolling(); syncValLivePolling();
+  });
+  el('valLiveDepthSelect').addEventListener('change', ()=>{
+    state.valorant.live.historyDepth = parseInt(el('valLiveDepthSelect').value, 10) || 10;
+    save();
+  });
+  el('valLiveEnemyStats').addEventListener('change', ()=>{
+    state.valorant.live.showEnemyStats = el('valLiveEnemyStats').checked;
+    save();
+  });
+  el('valLiveShowIncognito').addEventListener('change', ()=>{
+    state.valorant.live.showIncognito = el('valLiveShowIncognito').checked;
+    save();
+    renderValLive();
+  });
+
   /* The add form is always on screen, so Escape can't close it any more — it clears the field and
      whatever validation error is showing instead, which is the only thing left to undo. */
   el('valNewRiotId').addEventListener('keydown', e=>{
@@ -1135,6 +1771,13 @@
     renderValorantStore();
     renderValOwnedSkins();
     renderValLocalPanel();
+    renderValLive();
+    // Live Match settings live over in the Settings view, so they're synced here rather than in
+    // renderValLive() (which only owns the panel on the Valorant tab)
+    el('valLiveRegionSelect').value = state.valorant.live.regionOverride || '';
+    el('valLiveDepthSelect').value = String(state.valorant.live.historyDepth || 10);
+    el('valLiveEnemyStats').checked = !!state.valorant.live.showEnemyStats;
+    el('valLiveShowIncognito').checked = !!state.valorant.live.showIncognito;
     el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const keyStateEl = el('valApiKeyState');
     if(keyStateEl){

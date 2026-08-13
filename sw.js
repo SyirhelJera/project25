@@ -74,8 +74,13 @@ self.addEventListener('fetch', (event) => {
   // unlike the fonts/supabase-js bundle below, it must never be served from cache).
   // The YouTube IFrame API (session music, js/music.js) is a versioned loader that pulls the real
   // widget code itself — caching it would pin a stale player, and it's useless offline anyway.
+  // Loopback is scripts/valorant-local-server.mjs (Valorant Local Helper / Live Match). Its
+  // GET /status heartbeat is cross-origin, so without this it fell through to cacheFirst below
+  // and the connection dot could keep reporting "connected" against a server that had been
+  // stopped. Nothing it serves is cacheable — it's all live machine state.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
-    'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com'];
+    'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
+    '127.0.0.1', 'localhost'];
   if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;
 
   if (req.mode === 'navigate' || url.origin === self.location.origin) {

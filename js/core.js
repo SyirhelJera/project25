@@ -8,7 +8,10 @@
   let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '', catOrder: 'added', speakMantra: false }, checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], debts: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
-    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', storeMode:'skins', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{} },
+    // valorant.live holds PREFERENCES ONLY — the live lobby itself is never stored anywhere,
+    // see applyLoadedState() in persistence.js and README.md's "Live Match" section.
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', storeMode:'skins', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{},
+      live:{ enabled:true, label:'', regionOverride:'', historyDepth:10, showEnemyStats:true, showIncognito:false } },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,

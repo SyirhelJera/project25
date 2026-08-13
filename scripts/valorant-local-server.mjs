@@ -26,6 +26,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins } from './valorant-lib.mjs';
 import { loginAccount } from './valorant-login.mjs';
+import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_FILE = path.join(__dirname, '.valorant-local-token.json');
@@ -156,6 +157,52 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /live — the current lobby for one account: who's in it, their ranks, who queued
+  // together, and (competitive only) whether they're on an agent they actually play. Unlike
+  // /check and /check-inventory this writes NOTHING: no Supabase row, no snapshot file. A live
+  // lobby is stale within minutes and is full of other people's puuids, so it lives in
+  // valorant-live.mjs's memory and is thrown away — see README.md, "Live Match".
+  //
+  // POST rather than GET for the token (same as every other route here), and because the service
+  // worker skips non-GET outright, so a cached lobby can never be served back to the page.
+  //
+  // This is a poll endpoint: the Valorant tab hits it every few seconds while the panel is open.
+  // Almost every one of those calls costs exactly one small request to Riot — getLiveMatch()
+  // memoizes the whole roster against the match id, because a live match's players can't change.
+  if (req.method === 'POST' && url.pathname === '/live') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const sessions = loadSessions();
+    const label = (body.label || '').trim();
+    const opts = {
+      region: body.region, depth: body.depth,
+      enemyStats: body.enemyStats, refresh: !!body.refresh,
+    };
+    if (label && !(sessions[label] && sessions[label].ssid)) {
+      sendJson(res, 200, { ok: false, code: 'no_session', error: `No saved session for "${label}".` }, origin);
+      return;
+    }
+    try {
+      // no label = "whichever account is actually playing" — the panel's default, since the
+      // whole point is that you don't tell it anything. See getLiveMatchAuto() for why that
+      // costs the same one request per poll as naming an account outright.
+      const snapshot = label
+        ? await getLiveMatch(label, sessions[label].ssid, opts)
+        : await getLiveMatchAuto(sessions, opts);
+      sendJson(res, 200, snapshot, origin);
+    } catch (err) {
+      // codes the browser acts on: session_expired/no_session stop the poll loop, everything
+      // else backs off and retries
+      sendJson(res, 200, {
+        ok: false,
+        code: err && err.code ? err.code : 'riot_unreachable',
+        error: (err && err.message) || String(err),
+        shard: err && err.shard, tried: err && err.tried,
+      }, origin);
+    }
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/login') {
     const body = await readJsonBody(req);
     if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
@@ -208,5 +255,20 @@ server.listen(PORT, '127.0.0.1', () => {
   console.log(`\nToken — paste this into the Valorant tab's "Local Helper" section once:\n`);
   console.log(`  ${TOKEN}\n`);
   console.log('Leave this running while you use the Valorant tab\'s Check/Add Account buttons.');
+  console.log('The Live Match panel polls this server too — it stays idle until that tab is open.');
   console.log('Ctrl+C to stop.');
 });
+
+// valorant-live.mjs's match cache is write-behind (a stats sweep resolves dozens of matches in a
+// burst, and rewriting the file per match would cost more than the fetches). Ctrl+C must not
+// throw away whatever hasn't been flushed yet.
+let shuttingDown = false;
+function shutdown(){
+  if (shuttingDown) return;
+  shuttingDown = true;
+  flushMatchCache();
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
+process.on('exit', () => { try { flushMatchCache(); } catch { /* nothing left to do */ } });

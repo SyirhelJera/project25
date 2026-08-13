@@ -9,6 +9,9 @@
       // stopMantraSpeech() too: a voice still reading a mantra from a tab you've left has nothing
       // on screen to explain where it's coming from.
       if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); }
+      // same idea for the Live Match poll loop: a timer hitting Riot every few seconds from a tab
+      // you've navigated away from has nothing on screen to justify the traffic.
+      if(t.dataset.tab!=='valorant') stopValLivePolling();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders

@@ -590,9 +590,10 @@
   <!-- VALORANT -->
   <div class="view" id="view-valorant">
     <div class="view-title">Valorant</div>
-    <div class="view-sub">Track competitive rank and RR history, and the daily store, across one or more Riot accounts.</div>
+    <div class="view-sub">Track the lobby you're in right now, competitive rank and RR history, and the daily store, across one or more Riot accounts.</div>
 
     <div class="unit-toggle" id="valSubtabToggle">
+      <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
       <button data-subtab="shop" id="valSubtabBtnShop">Shop Tracker</button>
       <button data-subtab="rr" id="valSubtabBtnRR">RR Tracker</button>
     </div>
@@ -739,6 +740,27 @@
 
       <div class="val-local-panel" id="valLocalPanel" style="display:none;">
         <div class="val-local-status" id="valLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+      </div>
+    </div>
+
+    <!-- LIVE MATCH — the lobby you're in right now. Everything inside #valLiveBody is rebuilt
+         wholesale by renderValLive(); the header strip and the panel itself are never replaced,
+         so all the delegated listeners hang off #valSubtabLive. Nothing here is persisted:
+         the roster comes from scripts/valorant-local-server.mjs's POST /live, in memory only. -->
+    <div class="val-subtab-panel" id="valSubtabLive" style="display:none;">
+      <div class="view-sub" id="valLiveUnavailable" style="display:none;">The live match panel needs the Supabase-hosted deployment plus the local helper running on this machine (see README.md) and isn't available in this mode.</div>
+
+      <div class="val-live-card" id="valLiveCard">
+        <div class="val-live-head">
+          <div class="val-live-status" id="valLiveStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+          <div class="val-live-head-right">
+            <select id="valLiveAccountSelect" aria-label="Account to watch" style="display:none;"></select>
+            <label class="val-live-auto"><input type="checkbox" id="valLiveAutoToggle" checked> Auto</label>
+            <button class="btn btn-sm" id="valLiveRefreshBtn" title="Refresh now" aria-label="Refresh now">⟳</button>
+          </div>
+        </div>
+        <div class="val-err" id="valLiveErr" style="display:none;"></div>
+        <div id="valLiveBody"></div>
       </div>
     </div>
   </div>
@@ -1290,6 +1312,37 @@
       </div>
       <div class="val-peak-note">Log into <code>playvalorant.com</code> in your own browser first, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy the <code>ssid</code> value here.</div>
       <div class="val-err" id="valSettingsLocalErr" style="display:none;"></div>
+
+      <div class="section-lbl" style="margin-top:18px;">Live Match</div>
+      <div class="view-sub" style="margin-bottom:10px;">Settings for the Valorant tab's Live Match panel. Nothing it shows is ever saved — the lobby is read from the local helper while you're in a game and thrown away afterwards.</div>
+      <div class="val-live-settings">
+        <div class="fitness-field">
+          <label for="valLiveRegionSelect">Region</label>
+          <!-- Riot's geo endpoint returns a *shard*; the live-match hosts need a region too, and
+               the NA shard also serves LATAM and BR. Auto probes for it and remembers the answer;
+               this is here for the case where the probe can't tell. -->
+          <select id="valLiveRegionSelect">
+            <option value="">Auto (detect)</option>
+            <option value="na">NA</option>
+            <option value="latam">LATAM</option>
+            <option value="br">BR</option>
+            <option value="eu">EU</option>
+            <option value="ap">APAC</option>
+            <option value="kr">KR</option>
+          </select>
+        </div>
+        <div class="fitness-field">
+          <label for="valLiveDepthSelect">Win-rate window</label>
+          <select id="valLiveDepthSelect">
+            <option value="8">Last 8 comp matches</option>
+            <option value="10">Last 10 comp matches</option>
+            <option value="15">Last 15 comp matches</option>
+            <option value="20">Last 20 comp matches</option>
+          </select>
+        </div>
+      </div>
+      <label class="val-live-check"><input type="checkbox" id="valLiveEnemyStats" checked> Look up agent win rates for the enemy team too <span class="val-peak-note">(off = half the match lookups, but you only see comfort picks for your own team)</span></label>
+      <label class="val-live-check"><input type="checkbox" id="valLiveShowIncognito"> Show Riot IDs of players using incognito <span class="val-peak-note">(off = they show as "Incognito"; rank and agent are shown either way)</span></label>
     </div>
 
     <div class="section-lbl" style="margin-top:22px;">Backups</div>

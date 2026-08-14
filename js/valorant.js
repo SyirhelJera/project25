@@ -322,6 +322,9 @@
     state.valorant.activeSubtab = btn.dataset.subtab;
     save();
     renderValSubtabs();
+    // asking for the Live Match panel is asking to look at it, so let it re-centre on the way in
+    // (centreValLiveCard() is otherwise once-per-lobby — see the comment on valLiveCentredFor)
+    if(state.valorant.activeSubtab === 'live') valLiveCentredFor = '';
     // the live poll loop only runs while its own panel is the one on screen; renderValLive()
     // ends by re-evaluating that (this is deliberately not called from renderValSubtabs(),
     // which runs once during load before the Live Match block below has initialized)
@@ -1200,6 +1203,30 @@
 
   function valLiveUnavailable(){ return usingClaudeStorage || !supabaseConfigured; }
 
+  /* ---- bring the panel into view when a lobby appears --------------------------
+     The Live Match card sits below the sub-tab strip on a long page, so on most screens a match
+     starting happens off-screen. This centres it — but only when there is something new to look
+     at, which is the whole trick: the panel repolls every 3-15 seconds, and re-centring on each
+     of those would drag the page out from under you while you were reading the enemy team.
+     Keyed by phase *and* match id, so it fires once per lobby and once more when the barrier
+     drops — a match keeps one id from agent select to the final round, so the id alone wouldn't
+     notice the enemy half of the roster arriving, which is the second moment worth looking at.
+     Reset on the way into the sub-tab as well, since clicking Live *is* a request to look at it. */
+  let valLiveCentredFor = '';
+  function centreValLiveCard(){
+    const snap = valLiveState.data;
+    const live = snap && (snap.phase === 'pregame' || snap.phase === 'coregame');
+    const id = live ? (snap.phase + ':' + (snap.matchId || '')) : '';
+    if(!id || id === valLiveCentredFor) return;
+    // offsetParent is null while any ancestor is display:none, which covers both "another tab is
+    // open" and "another Valorant sub-tab is open" in one check
+    const panel = el('valSubtabLive');
+    if(document.hidden || !panel || panel.offsetParent === null) return;
+    valLiveCentredFor = id;
+    // after the paint that added the roster, so the card is measured at its final height
+    requestAnimationFrame(()=> scrollCardIntoCenter(el('valLiveCard')));
+  }
+
   // Which saved session to watch. '' means auto — the server works out which account is actually
   // in a game (see getLiveMatchAuto() in valorant-live.mjs) rather than asking you to remember
   // which one you logged into, which is the whole point of the panel. Deliberately does NOT
@@ -1347,9 +1374,19 @@
     const name = valTierLabel(p.tier);
     const info = valTierInfo(p.tier);
     const icon = (info && info.small) ? '<img class="val-live-rank-icon" src="'+info.small+'" alt="">' : '';
-    return '<span class="val-live-rank">'+icon
+    // 'badge' means this tier came off the roster Riot hands out with the match — the badge drawn
+    // under the player's name in game. It's the right rank but carries no RR, so the RR slot says
+    // where it came from rather than printing a "0 RR" that isn't true. See badgeOf() server-side.
+    const fromBadge = p.rankSource === 'badge';
+    const rrHtml = !p.tier ? ''
+      : (fromBadge
+          ? '<span class="val-live-rr val-live-dim">in-game badge</span>'
+          : '<span class="val-live-rr">'+(p.rr||0)+' RR</span>');
+    return '<span class="val-live-rank'+(fromBadge?' val-live-rank-badge':'')+'"'
+      + (fromBadge ? ' data-tile-title="'+escapeHtml('Rank badge from the match itself — Riot hasn’t returned this player’s exact RR yet')+'"' : '')
+      + '>'+icon
       + '<span class="val-live-rank-txt"><b>'+escapeHtml(name)+'</b>'
-      + (p.tier ? '<span class="val-live-rr">'+(p.rr||0)+' RR</span>' : '')
+      + rrHtml
       + '</span></span>';
   }
 
@@ -1487,8 +1524,40 @@
     if(p.leaderboardRank) meta.push('Leaderboard #'+p.leaderboardRank);
     if(s && s.partial) meta.push('Partial sample — not every recent match could be read');
     if(p.rankError === 'forbidden') meta.push('Riot wouldn’t share this player’s rank');
+    else if(p.rankError === 'ratelimited') meta.push('Riot rate-limited this rank lookup — retrying');
+    else if(p.rankError === 'timeout') meta.push('Rank lookup timed out — retrying');
+    if(p.party) meta.push(p.party.inferred
+      ? 'Likely queued with '+(p.party.size-1)+' other'+(p.party.size===2?'':'s')+' (party '+p.party.group+')'
+      : 'Queued as a party of '+p.party.size+' (party '+p.party.group+')');
     if(meta.length) bits.push('<div class="val-live-detail-meta">'+escapeHtml(meta.join(' · '))+'</div>');
     return bits.length ? '<div class="val-live-detail">'+bits.join('')+'</div>' : '';
+  }
+
+  // "Who queued with who" is the one thing on this panel that isn't self-explanatory: the answer
+  // is the A2/B3 chip next to a name, and a chip nobody can decode may as well not be there. So
+  // the roster is followed by a line that says what the chips mean — or, when there aren't any,
+  // why not, since "no stacks" and "couldn't tell" look identical otherwise.
+  function valLivePartyLegendHtml(snap){
+    const stacks = snap.lobby && snap.lobby.stacks ? snap.lobby.stacks : [];
+    const stages = snap.stages || {};
+    const bits = [];
+
+    if(stacks.length){
+      const confirmed = stacks.filter(s=> !s.inferred).length;
+      const likely = stacks.length - confirmed;
+      if(confirmed) bits.push('<span class="val-live-stack">A2</span> queued together — confirmed by Riot');
+      if(likely) bits.push('<span class="val-live-stack inferred">~A2</span> likely a stack — these players keep turning up in each other’s recent competitive matches');
+      bits.push('the letter is the party, the number its size; solo players get no chip');
+    } else if(stages.stats === 'loading' || stages.parties === 'loading'){
+      bits.push('Working out who queued together…');
+    } else if(snap.mode.id !== 'competitive'){
+      // the signal is built out of competitive match histories, so outside competitive there is
+      // nothing to build it from — say that rather than implying everyone solo-queued
+      bits.push('Stacks are only detected in competitive — Riot only shares party ids for your own party.');
+    } else {
+      bits.push('No stacks detected. Riot only confirms your own party, so the rest is inferred from how often these players appear in each other’s recent competitive matches.');
+    }
+    return '<div class="val-live-legend">'+bits.join(' · ')+'</div>';
   }
 
   function valLiveTierTileHtml(title, floorTier, rr, sub){
@@ -1529,6 +1598,7 @@
   function renderValLive(){
     renderValLiveBody();
     syncValLivePolling();
+    centreValLiveCard();
   }
 
   function renderValLiveBody(){
@@ -1659,6 +1729,14 @@
       html += '<div class="val-live-progress">Showing the match you just played — this stays until your next game starts.</div>';
     }
 
+    // a rank lookup Riot squeezed out is retried on later polls rather than left as a dash — say
+    // so, otherwise a row showing the in-game badge looks like the panel gave up on it
+    if(stages.ranksRetrying && stages.ranksPending){
+      html += '<div class="val-live-progress">Riot didn’t answer '+stages.ranksPending
+        + (stages.ranksPending === 1 ? ' rank lookup' : ' rank lookups')
+        + ' — retrying. Ranks shown meanwhile come from the in-game badge (no RR).</div>';
+    }
+
     if(stages.stats === 'loading' && stages.statsTotal){
       html += '<div class="val-live-progress">Reading recent matches — '+stages.statsDone+' of '+stages.statsTotal+' players done…</div>';
     } else if(stages.statsNote){
@@ -1700,6 +1778,8 @@
       }
       html += '</div>';
     }
+
+    html += valLivePartyLegendHtml(snap);
 
     wrap.innerHTML = html;
     applyValTileTitles(wrap);

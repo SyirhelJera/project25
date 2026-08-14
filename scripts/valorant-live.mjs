@@ -29,7 +29,8 @@ const MATCH_CACHE_FILE = path.join(__dirname, '.valorant-match-cache.json');
 
 const AUTH_TTL_MS = 45 * 60 * 1000;   // Riot access tokens last ~1h; refresh a little early
 const REF_TTL_MS = 6 * 60 * 60 * 1000; // client version + act list only change on patch day
-const SNAPSHOT_KEEP = 3;               // how many recent matchIds to keep memoized
+const SNAPSHOT_KEEP = 4;               // recent lobbies kept memoized — a match occupies two
+                                       // slots, pregame and coregame (see the snapshot store)
 
 const TIMEOUT = {
   auth: 8000, probe: 5000, presence: 6000, match: 8000,
@@ -41,6 +42,15 @@ const DEFAULT_DEPTH = 10;        // comp matches per player for the comfort/win-
 const MAX_NEW_DETAILS = 40;      // uncached match-details fetches per lobby; cache hits are free
 const ENOUGH_RESOLVED = 8;       // stop early once everyone has at least this many matches
 const SHARED_FOR_STACK = 3;      // shared recent matches that imply a premade (inferred fallback)
+const SAME_TEAM_FOR_STACK = 2;   // ...and the sharper version: shared AND on the same side
+
+// An MMR lookup that failed for a reason that could go away — a 429 while the previous lobby's
+// stats sweep was still running, a timeout, a blip — is retried on later polls instead of leaving
+// that player showing a dash for the whole match. 'forbidden' is not in here: Riot refusing to
+// share a rank is an answer, and asking again every few seconds wouldn't change it.
+const RANK_RETRYABLE = new Set(['timeout', 'ratelimited', 'unavailable']);
+const RANK_RETRY_MAX = 5;
+const RANK_RETRY_WAIT_MS = 7000;
 
 /* ------------------------------------------------------------------ errors */
 
@@ -426,6 +436,24 @@ function identityOf(p){
   };
 }
 
+// The rank badge Riot ships *inside the match itself* — the same one drawn under a player's name
+// on the loading screen and the in-game scoreboard. It's tier-only (no RR) and it belongs to
+// whichever act earned it, so it isn't a substitute for /mmr/v1. What it is, is unrefusable: it
+// arrives with the roster, for every player including the enemy team, at no extra request and
+// with nothing to rate-limit. So it's used as the floor under everyone's rank — the panel shows
+// it immediately, and the real number overwrites it the moment MMR resolves. Before this, an
+// enemy MMR lookup that got squeezed out (see rememberSnapshot()) left that player showing a dash
+// for the entire game, because the ranks stage only ever ran once.
+function badgeOf(p){
+  const b = p?.SeasonalBadgeInfo || {};
+  const rank = b.Rank || 0;
+  if (!rank) return { badgeTier: 0, badgeLeaderboard: 0 };
+  return {
+    badgeTier: normalizeTier(rank, refCache.actStart[b.SeasonID]) || 0,
+    badgeLeaderboard: b.LeaderboardRank || 0,
+  };
+}
+
 async function fetchCoreGameRoster(auth, ssid, matchId){
   const res = await riotFetch(auth, ssid, `${auth.glzBase}/core-game/v1/matches/${matchId}`, {}, TIMEOUT.match);
   if (!res.ok) return null;
@@ -438,6 +466,7 @@ async function fetchCoreGameRoster(auth, ssid, matchId){
       agentUuid: (p.CharacterID || '').toLowerCase(),
       agentLocked: true,
       ...identityOf(p),
+      ...badgeOf(p),
     }));
   return { players, mapId: m.MapID || '', mode: resolveMode(m) };
 }
@@ -455,6 +484,7 @@ async function fetchPregameRoster(auth, ssid, matchId){
     agentUuid: (p.CharacterID || '').toLowerCase(),
     agentLocked: String(p.CharacterSelectionState || '').toLowerCase() === 'locked',
     ...identityOf(p),
+    ...badgeOf(p),
   }));
   return { players, mapId: m.MapID || '', mode: resolveMode(m), enemyTeamSize: m.EnemyTeamSize || 0 };
 }
@@ -475,12 +505,23 @@ async function fetchNames(auth, ssid, puuids){
 /* ------------------------------------------------------------------ MMR */
 
 async function fetchMmr(auth, ssid, puuid){
-  const res = await riotFetch(auth, ssid, `${auth.pdBase}/mmr/v1/players/${puuid}`, {}, TIMEOUT.mmr);
+  const url = `${auth.pdBase}/mmr/v1/players/${puuid}`;
+  let res = await riotFetch(auth, ssid, url, {}, TIMEOUT.mmr);
+  // ten of these go out at once the instant a match starts, which is also when the last lobby's
+  // match-details sweep is still winding down — a 429 here is a "come back in a second", not an
+  // answer about this player
+  if (res.status === 429) {
+    const wait = Math.min(5000, (Number(res.headers?.get('retry-after')) || 2) * 1000);
+    await sleep(wait);
+    res = await riotFetch(auth, ssid, url, {}, TIMEOUT.mmr);
+  }
   if (!res.ok) {
+    // deliberately returns ONLY the error: the caller Object.assign()s this onto the player, and
+    // overwriting tier with null here would wipe the badge rank that's already on screen
     return {
-      tier: null, rr: null, peakTier: null, peakSeason: '', peakLegacy: false,
-      seasonWins: 0, seasonGames: 0, leaderboardRank: 0,
-      rankError: res.failed ? 'timeout' : (res.status === 403 || res.status === 404 ? 'forbidden' : 'unavailable'),
+      rankError: res.failed ? 'timeout'
+        : (res.status === 429 ? 'ratelimited'
+        : (res.status === 403 || res.status === 404 ? 'forbidden' : 'unavailable')),
     };
   }
   const { currentActId, actStart } = refCache;
@@ -503,6 +544,7 @@ async function fetchMmr(auth, ssid, puuid){
     seasonGames: cur?.NumberOfGames || 0,
     leaderboardRank: cur?.LeaderboardRank || 0,
     rankError: '',
+    rankSource: 'mmr',
   };
 }
 
@@ -515,6 +557,16 @@ async function fetchParty(auth, ssid, puuid){
   const res = await riotFetch(auth, ssid, `${auth.glzBase}/parties/v1/players/${puuid}`, {}, TIMEOUT.party);
   if (!res.ok) return null;
   return res.json?.CurrentPartyID || null;
+}
+
+// Your own party, in full. The call above only ever yields an *id*, and an id on its own groups
+// nobody — a bucket of one isn't a stack. This is what turns it into "these three queued
+// together", and it's the one piece of party data Riot never withholds, because it's yours. So
+// however coy Riot is about the rest of the lobby, your own premade is never a guess.
+async function fetchPartyMembers(auth, ssid, partyId){
+  const res = await riotFetch(auth, ssid, `${auth.glzBase}/parties/v1/parties/${partyId}`, {}, TIMEOUT.party);
+  if (!res.ok) return null;
+  return (res.json?.Members || []).map(m => m && m.Subject).filter(Boolean);
 }
 
 // Buckets players by whatever party signal is available and labels the groups A, B, C… per team,
@@ -569,6 +621,15 @@ function groupParties(players, { inferredPairs } = {}){
   }
   for (const p of players) if (p.party && !p.party.group) p.party = null;   // solo
   return stacks;
+}
+
+// Re-runs the grouping as better evidence arrives (histories land, then same-team co-occurrence).
+// Clearing the previous *inferred* assignments first is not optional: groupParties() buckets on
+// p.party.id, and a synthetic `inferred:0` id left over from the last pass would be re-read as if
+// it were one of Riot's, quietly merging two passes' groups into one oversized stack.
+function rebuildStacks(snap, inferredPairs){
+  for (const p of snap.players) if (p.party && p.party.inferred) p.party = null;
+  snap.lobby.stacks = groupParties(snap.players, { inferredPairs });
 }
 
 /* ------------------------------------------------------------------ agent stats */
@@ -770,8 +831,10 @@ function computeLobby(players, mode){
 
 /* ------------------------------------------------------------------ snapshot store */
 
-// One snapshot per matchId, mutated in place as the background stages land. Keeping the last few
-// means the pregame -> coregame handover can carry resolved ranks across instead of refetching.
+// One snapshot per `phase:matchId`, mutated in place as the background stages land. Keeping the
+// last few means the pregame -> coregame handover can carry resolved ranks across instead of
+// refetching them — and keying on the phase is what makes that handover happen at all, since a
+// match keeps one id from agent select to the final round while its roster doubles in size.
 const snapshots = new Map();
 
 // The most recent lobby that had a real roster, kept deliberately after the match ends so the
@@ -783,29 +846,47 @@ let lastLobby = null;
 
 function isLivePhase(phase){ return phase === 'pregame' || phase === 'coregame'; }
 
-function rememberSnapshot(matchId, snap){
-  snapshots.set(matchId, snap);
+// `key` is `phase:matchId` — see the comment where it's built in getLiveMatch().
+function rememberSnapshot(key, snap){
+  // The moment the barrier drops, the agent-select sweep is grinding through match-details to
+  // answer a question that has already been answered. Leaving it running isn't just wasted
+  // traffic: those bodies are multi-megabyte and Riot rate-limits per account, so it lands
+  // squarely on top of the new snapshot's ten MMR lookups — which is precisely why the enemy
+  // team used to sit on dashes, the enemy five being the only ranks pregame hadn't resolved.
+  for (const [id, old] of snapshots) if (id !== key) old.aborted = true;
+  snapshots.set(key, snap);
   while (snapshots.size > SNAPSHOT_KEEP) snapshots.delete(snapshots.keys().next().value);
   if (lastLobby && lastLobby !== snap) lastLobby._finalCancelled = true;   // stop a stale retry loop
   lastLobby = snap;
 }
-export function getLiveSnapshot(matchId){ return snapshots.get(matchId) || null; }
+
+// By match id rather than by key, because a caller holding a match id doesn't know (or care)
+// which phase it's in — and the id survives the pregame -> coregame handover. Map iteration is
+// insertion-ordered, so the last match is the newest, i.e. the live game rather than the agent
+// select it grew out of.
+export function getLiveSnapshot(matchId){
+  let found = null;
+  for (const snap of snapshots.values()) if (snap.matchId === matchId) found = snap;
+  return found;
+}
 export function getLastLobby(){ return lastLobby; }
 
 // Carries already-resolved per-player data (ranks, parties, agent stats) from any recent snapshot
-// into a new one, keyed by puuid. Agent select and the live game are two different matchIds with
-// the same ten people in them, so without this the barrier dropping would cost a full second
-// round of MMR lookups for no new information.
+// into a new one, keyed by puuid. Agent select and the live game are two snapshots holding five
+// of the same people, so without this the barrier dropping would cost a second round of MMR
+// lookups for your own team, for no new information.
 function carryOver(players){
   for (const snap of snapshots.values()) {
     for (const old of snap.players) {
       const p = players.find(q => q.puuid === old.puuid);
       if (!p) continue;
-      if (p.tier == null && old.tier != null) {
+      // only a *resolved* rank is worth carrying: a badge tier is already on the new roster, and
+      // an old snapshot's failed lookup must not be inherited as though it had been answered
+      if (p.rankSource !== 'mmr' && old.rankSource === 'mmr') {
         Object.assign(p, {
           tier: old.tier, rr: old.rr, peakTier: old.peakTier, peakSeason: old.peakSeason,
           peakLegacy: old.peakLegacy, seasonWins: old.seasonWins, seasonGames: old.seasonGames,
-          leaderboardRank: old.leaderboardRank, rankError: old.rankError,
+          leaderboardRank: old.leaderboardRank, rankError: old.rankError, rankSource: 'mmr',
         });
       }
       if (!p.name && old.name) { p.name = old.name; p.tag = old.tag; }
@@ -821,54 +902,112 @@ function carryOver(players){
 
 /* ------------------------------------------------------------------ background stages */
 
-// Ranks + parties. Runs once per matchId; the roster is immutable in coregame, so there is
-// nothing to re-poll afterwards.
-async function runRanksStage(snap, auth, ssid){
-  const pending = snap.players.filter(p => p.tier == null);
-  if (pending.length) {
+// The MMR pass. Unlike the roster this is *not* a once-per-match job: a lookup can fail for
+// reasons that have nothing to do with the player (see RANK_RETRYABLE), and the enemy team is
+// systematically the most exposed to that, because their five lookups are the ones fired at the
+// exact moment the barrier drops. Re-entrant and idempotent, so kickRankRetry() can call it again
+// on a later poll; players already resolved from MMR are skipped.
+async function resolveRanks(snap, auth, ssid){
+  if (snap._ranksRunning || snap.aborted) return;
+  const pending = snap.players.filter(p => p.rankSource !== 'mmr');
+  if (!pending.length) { snap.stages.ranks = 'done'; return; }
+
+  snap._ranksRunning = true;
+  snap.stages.ranksAttempts = (snap.stages.ranksAttempts || 0) + 1;
+  try {
     await pool(pending, LIMIT.mmr, async (p) => {
       if (snap.aborted) return;
+      p.rankError = '';
       try { Object.assign(p, await fetchMmr(auth, ssid, p.puuid)); }
       catch (err) { p.rankError = err.code === 'session_expired' ? 'forbidden' : 'unavailable'; }
     });
+  } finally {
+    snap._ranksRunning = false;
+    snap._ranksNextAt = Date.now() + RANK_RETRY_WAIT_MS;
   }
-  const failed = snap.players.filter(p => p.rankError).length;
-  snap.stages.ranks = failed === 0 ? 'done' : (failed === snap.players.length ? 'failed' : 'partial');
+
+  const unresolved = snap.players.filter(p => p.rankSource !== 'mmr');
+  snap.stages.ranksPending = unresolved.length;
+  snap.stages.ranksRetrying = unresolved.some(p => RANK_RETRYABLE.has(p.rankError))
+    && snap.stages.ranksAttempts < RANK_RETRY_MAX;
+  snap.stages.ranks = !unresolved.length ? 'done'
+    : (snap.stages.ranksRetrying ? 'loading'
+    : (unresolved.length === snap.players.length ? 'failed' : 'partial'));
+  snap.lobby = { ...computeLobby(snap.players, snap.mode), stacks: snap.lobby.stacks || [] };
+}
+
+// Cheap, and fired from the memoized poll path rather than the build path: a poll that would
+// otherwise cost one presence request picks up the ranks that a rate limit swallowed a few
+// seconds earlier.
+function kickRankRetry(snap, auth, ssid){
+  if (!snap.stages || !snap.stages.ranksRetrying || snap._ranksRunning || snap.aborted) return;
+  if (snap.stages.ranksAttempts >= RANK_RETRY_MAX) return;
+  if (Date.now() < (snap._ranksNextAt || 0)) return;
+  resolveRanks(snap, auth, ssid).catch(() => { snap.stages.ranks = 'partial'; });
+}
+
+// Ranks + parties, once per matchId. The party half genuinely is once-only — Riot either shares a
+// player's party id or it doesn't, and that answer doesn't change mid-match.
+async function runRanksStage(snap, auth, ssid){
+  await resolveRanks(snap, auth, ssid);
 
   const needParty = snap.players.filter(p => !p.party);
-  let partyOk = 0;
+  let partyOk = 0, partyOthers = 0;
   await pool(needParty, LIMIT.party, async (p) => {
     if (snap.aborted) return;
     try {
       const id = await fetchParty(auth, ssid, p.puuid);
-      if (id) { p.party = { id, group: '', size: 0, inferred: false }; partyOk++; }
+      if (id) { p.party = { id, group: '', size: 0, inferred: false }; partyOk++; if (!p.isSelf) partyOthers++; }
     } catch { /* unknown, not solo */ }
   });
-  snap.stages.parties = partyOk ? 'done' : 'unavailable';
-  const stacks = groupParties(snap.players);
-  snap.lobby = { ...computeLobby(snap.players, snap.mode), stacks };
+  // ...and expand your own id into its members, which is the only group here Riot will spell out
+  const mine = snap.players.find(p => p.isSelf);
+  if (!snap.aborted && mine && mine.party && mine.party.id) {
+    try {
+      const members = await fetchPartyMembers(auth, ssid, mine.party.id);
+      for (const p of (members ? snap.players : [])) {
+        if (p.isSelf || !members.includes(p.puuid)) continue;
+        p.party = { id: mine.party.id, group: '', size: 0, inferred: false };
+        partyOthers++;
+      }
+    } catch { /* your own party is a bonus, not a requirement */ }
+  }
+
+  // Riot answers the per-player call for you and, in practice, for nobody else. So "we got a
+  // reply" is not the same claim as "we can see who queued with whom": report the second one, so
+  // the panel can say the stacks are inferred instead of implying Riot confirmed them.
+  snap.stages.parties = partyOthers ? 'done' : (partyOk ? 'self-only' : 'unavailable');
+  snap.lobby = { ...computeLobby(snap.players, snap.mode), stacks: [] };
+  rebuildStacks(snap, null);
 }
 
 // Agent stats. Competitive only — deathmatch doesn't have comfort picks, and a DM lobby is 14
 // people, so skipping it there is both what the panel needs and what keeps it fast.
 async function runStatsStage(snap, auth, ssid, opts){
   const depth = opts.depth;
+  // Two different target lists on purpose. A match history is a list of matchIds — one small
+  // response per player — and it is the only free evidence there is for who queued with whom, so
+  // it's read for the WHOLE lobby regardless of the enemy-stats setting. That setting is about
+  // the expensive half (multi-megabyte match-details), and turning it off shouldn't also cost you
+  // the enemy team's stacks, which is the question you can't answer by looking at the screen.
+  const historyTargets = snap.players;
   const targets = opts.enemyStats
     ? snap.players
     : snap.players.filter(p => p.teamId === snap.me.teamId);
+  const wantsStats = new Set(targets.map(p => p.puuid));
 
   snap.stages.statsTotal = targets.length;
   snap.stages.stats = 'loading';
 
   // 1. histories (cheap, matchIds only) — these alone also tell us who has been queueing together
-  await pool(targets, LIMIT.history, async (p) => {
+  await pool(historyTargets, LIMIT.history, async (p) => {
     if (snap.aborted) return;
     if (p._history) return;
     const ids = await fetchHistory(auth, ssid, p.puuid, depth);
     p._history = ids;
     // no history at all (lookup refused, or a genuinely fresh account) settles this player now —
     // there is nothing to fetch details for, and "unknown" is the honest answer
-    if (!ids || !ids.length) {
+    if ((!ids || !ids.length) && wantsStats.has(p.puuid)) {
       p.agentStats = emptyStats(depth, ids ? '' : 'Could not read this player\'s match history.');
       p.comfort = classifyComfort(p.agentStats, p.agentUuid);
       snap.stages.statsDone++;
@@ -876,7 +1015,7 @@ async function runStatsStage(snap, auth, ssid, opts){
   });
   if (snap.aborted) { snap.stages.stats = 'partial'; return; }
 
-  inferStacksFromHistories(snap);
+  inferStacks(snap, null);
 
   // 2. one pass over the *union* of everyone's match ids. A single match-details response carries
   //    all ten of its own participants, so a premade's overlapping histories collapse into
@@ -900,6 +1039,7 @@ async function runStatsStage(snap, auth, ssid, opts){
 
   let newFetches = 0;
   let rateLimited = false;
+  const coPlay = new Map();
   const enough = () => withHistory.every(p => (resolved.get(p.puuid) || []).length >= Math.min(ENOUGH_RESOLVED, depth));
 
   await pool(wanted, LIMIT.details, async (matchId) => {
@@ -916,6 +1056,7 @@ async function runStatsStage(snap, auth, ssid, opts){
       summary = r.summary;
     } catch { return; }
     if (!summary) return;
+    noteCoPlay(coPlay, snap.players, summary);
     // attribute only to players whose OWN history contains this match, so each player's window
     // stays exactly their own last N rather than absorbing a team-mate's older games
     for (const [puuid, set] of sets) {
@@ -924,6 +1065,10 @@ async function runStatsStage(snap, auth, ssid, opts){
       if (row) resolved.get(puuid).push(row);
     }
   });
+
+  // the details just fetched carry each past match's *teams*, which is a far sharper premade
+  // signal than raw overlap — so the grouping is redone now that it's available
+  inferStacks(snap, coPlay);
 
   for (const p of withHistory) {
     const rows = resolved.get(p.puuid) || [];
@@ -967,32 +1112,60 @@ function buildAgentStats(rows, agentUuid, depth){
   };
 }
 
-// Free premade signal: two players whose recent competitive histories overlap heavily have been
-// queueing together. Costs nothing extra — the histories were already fetched for agent stats —
-// and is only ever used for players Riot didn't give a party id for. Flagged inferred:true so the
-// UI can say "likely" rather than stating it as fact.
-function inferStacksFromHistories(snap){
+const coKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+// Tallies, for every pair of *this* lobby's players, how many of the past matches we already
+// fetched they were both in — and how many of those they were in on the same side. Free: these
+// summaries were fetched for the win-rate sweep, and each one carries all ten of its own
+// participants, so the enemy team's pairings fall out of matches nobody in this lobby "owns".
+function noteCoPlay(co, players, summary){
+  const present = players.filter(p => summary.players[p.puuid]);
+  for (let i = 0; i < present.length; i++) {
+    for (let j = i + 1; j < present.length; j++) {
+      const a = present[i], b = present[j];
+      const cur = co.get(coKey(a.puuid, b.puuid)) || { together: 0, sameTeam: 0 };
+      cur.together++;
+      if (summary.players[a.puuid].teamId === summary.players[b.puuid].teamId) cur.sameTeam++;
+      co.set(coKey(a.puuid, b.puuid), cur);
+    }
+  }
+}
+
+// Free premade signal, for the players Riot won't hand out a party id for — which, in practice,
+// is everyone but you. Two rules, either of which is enough:
+//
+//   - they were on the SAME TEAM together in 2+ of their recent competitive matches. Meeting the
+//     same stranger twice in ten games is unusual; being *drafted onto their team* twice is not
+//     something matchmaking does by accident. This is the good rule, and it only exists once the
+//     match-details sweep has run (a history alone is a list of ids, with no sides in it).
+//   - failing that, heavy raw overlap — 3+ shared matches, sides unknown. This is the rule that
+//     covers a lobby where details got rate-limited or the sweep was cut short.
+//
+// Everything here is flagged inferred:true so the UI says "likely" rather than stating it as fact.
+function inferStacks(snap, coPlay){
   const withHistory = snap.players.filter(p => Array.isArray(p._history) && p._history.length);
   if (withHistory.length < 2) return;
   const pairs = [];
   for (let i = 0; i < withHistory.length; i++) {
+    const setA = new Set(withHistory[i]._history);
     for (let j = i + 1; j < withHistory.length; j++) {
       const a = withHistory[i], b = withHistory[j];
       if (a.teamId !== b.teamId) continue;   // a party is always on one team
-      const setB = new Set(b._history);
-      const shared = a._history.filter(id => setB.has(id)).length;
-      if (shared >= SHARED_FOR_STACK) pairs.push([a.puuid, b.puuid]);
+      const shared = b._history.filter(id => setA.has(id)).length;
+      const co = coPlay ? coPlay.get(coKey(a.puuid, b.puuid)) : null;
+      if ((co && co.sameTeam >= SAME_TEAM_FOR_STACK) || shared >= SHARED_FOR_STACK) {
+        pairs.push([a.puuid, b.puuid]);
+      }
     }
   }
-  if (!pairs.length) return;
-  snap.lobby.stacks = groupParties(snap.players, { inferredPairs: pairs });
+  rebuildStacks(snap, pairs.length ? pairs : null);
 }
 
 /* ------------------------------------------------------------------ orchestrator */
 
 function publicSnapshot(snap){
   // everything else is already wire-shaped; this just drops the internal scratch fields
-  const { aborted, _finalRunning, _finalCancelled, ...wire } = snap;
+  const { aborted, _finalRunning, _finalCancelled, _ranksRunning, _ranksNextAt, ...wire } = snap;
   return { ...wire, players: snap.players.map(({ _history, ...p }) => p) };
 }
 
@@ -1028,11 +1201,24 @@ export async function getLiveMatch(label, ssid, opts = {}){
     return { ok: true, label, fetchedAt: Date.now(), session, phase: 'none', matchId: null, players: [] };
   }
 
-  const existing = snapshots.get(presence.matchId);
+  // Keyed by phase AND match id, because a match keeps the same id from agent select through to
+  // the live game — the roster behind it does not. Pregame exposes your team and nobody else
+  // (Riot doesn't reveal the enemy before the barrier drops), so a cache keyed on the id alone
+  // answers every poll for the rest of the match with the five-player agent-select roster: the
+  // enemy team never appears, the phase never leaves 'Agent Select', and the match ends with a
+  // half-empty scoreboard. Treating the phase as part of the question makes the barrier dropping
+  // a cache miss, which is exactly what it is — and carryOver() then lifts the ally ranks and
+  // stats already resolved in pregame straight into the new snapshot, so the upgrade costs only
+  // the five lookups that are genuinely new.
+  const snapKey = `${presence.phase}:${presence.matchId}`;
+  const existing = snapshots.get(snapKey);
   if (existing && !opts.refresh) {
     existing.fetchedAt = Date.now();
-    // pregame is the one thing that legitimately changes under a stable matchId: agents lock in
-    // over ~90 seconds. Re-read just the agent columns; ranks and stats stay memoized.
+    // free ride on a poll that was going to cost one presence request anyway: pick up any rank
+    // that a rate limit or a timeout swallowed a few seconds ago
+    kickRankRetry(existing, auth, ssid);
+    // pregame is the one thing that legitimately changes *within* a phase: agents lock in over
+    // ~90 seconds. Re-read just the agent columns; ranks and stats stay memoized.
     if (presence.phase === 'pregame') {
       const fresh = await fetchPregameRoster(auth, ssid, presence.matchId);
       if (fresh) {
@@ -1064,10 +1250,21 @@ export async function getLiveMatch(label, ssid, opts = {}){
     agentUuid: p.agentUuid, agentLocked: p.agentLocked,
     tier: null, rr: null, peakTier: null, peakSeason: '', peakLegacy: false,
     seasonWins: 0, seasonGames: 0, leaderboardRank: 0, rankError: '',
+    badgeTier: p.badgeTier || 0, rankSource: '',
     agentStats: null, comfort: null,
     _history: null,
   }));
   carryOver(players);
+  // Paint the in-match rank badge for anyone MMR hasn't answered for yet — see badgeOf(). This is
+  // what puts a rank on the enemy team in the first second of a game rather than a row of dashes,
+  // and what's left standing if the MMR lookup never succeeds at all.
+  for (const p of players) {
+    if (p.rankSource === 'mmr' || !p.badgeTier) continue;
+    p.tier = p.badgeTier;
+    p.rr = 0;
+    p.rankSource = 'badge';
+    if (!p.leaderboardRank) p.leaderboardRank = roster.players.find(q => q.puuid === p.puuid)?.badgeLeaderboard || 0;
+  }
 
   const names = await fetchNames(auth, ssid, players.map(p => p.puuid));
   for (const p of players) {
@@ -1086,7 +1283,10 @@ export async function getLiveMatch(label, ssid, opts = {}){
     matchId: presence.matchId,
     stages: {
       roster: 'done',
-      ranks: players.every(p => p.tier != null) ? 'done' : 'loading',
+      // a badge tier is a placeholder, not an answer — 'done' means every player has a real MMR
+      // reading, or the panel would stop waiting for the RR that's still on its way
+      ranks: players.every(p => p.rankSource === 'mmr') ? 'done' : 'loading',
+      ranksAttempts: 0, ranksPending: 0, ranksRetrying: false,
       parties: 'loading',
       stats: statsApplies ? 'loading' : 'skipped',
       statsDone: 0, statsTotal: 0, statsNote: '',
@@ -1098,7 +1298,7 @@ export async function getLiveMatch(label, ssid, opts = {}){
     lobby: { ...computeLobby(players, roster.mode), stacks: [] },
     aborted: false,
   };
-  rememberSnapshot(presence.matchId, snap);
+  rememberSnapshot(snapKey, snap);
 
   // Return the roster now; ranks and stats land over the next few polls. The panel paints a
   // usable lobby in well under a second rather than blocking on a minute of match lookups.
@@ -1290,7 +1490,10 @@ async function main(){
     const side = snap.mode.teamBased ? (p.teamId === snap.me.teamId ? 'ALLY ' : 'ENEMY') : (r && r.place ? `#${String(r.place).padEnd(4)}` : '     ');
     const who = p.incognito ? '(incognito)' : `${p.name}#${p.tag}`;
     const stack = p.party ? ` [${p.party.inferred ? '~' : ''}${p.party.group}${p.party.size}]` : '';
-    const rank = `${tierName(p.tier)}${p.rr != null ? ` ${p.rr}RR` : ''}`;
+    // "(badge)" rather than "0RR": that tier came off the match's own rank badge, which has no RR
+    const rank = p.rankSource === 'badge'
+      ? `${tierName(p.tier)} (badge)`
+      : `${tierName(p.tier)}${p.rr != null ? ` ${p.rr}RR` : ''}`;
     let tail = '';
     if (r) {
       tail = ` · ${r.kills}/${r.deaths}/${r.assists}${snap.mode.teamBased ? ` (${r.score} acs)` : ''}`;

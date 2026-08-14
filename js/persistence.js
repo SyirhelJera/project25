@@ -268,6 +268,72 @@
         if(w.skinUuid===undefined) w.skinUuid = '';
       });
     });
+    // which game the Games tab is showing (Valorant | TFT). Persisted, unlike the Time and Finance
+    // sub-navs, which reset to their first pane on entry — those are two views of one concern,
+    // this is two different games. See showGameSubTab() in js/tft.js.
+    state.games = parsed.games || {};
+    if(state.games.active !== 'tft') state.games.active = 'valorant';
+
+    /* Teamfight Tactics — manual entry only (no Riot API; the HenrikDev key is Valorant-only).
+       One flat log where every record is a rank checkpoint that may also carry a placement, so the
+       chart, the LP-per-game average and the placement stats all fall out of one array. LP deltas
+       are DERIVED from consecutive entries and never stored, so an edited record can't leave a
+       stale delta behind. Records with an unknown tier key aren't dropped here — tftSortedEntries()
+       filters them, which also covers anything hand-edited after load. */
+    state.tft = parsed.tft || { entries: [], target: null };
+    if(!Array.isArray(state.tft.entries)) state.tft.entries = [];
+    state.tft.entries.forEach(e=>{
+      if(!e.id) e.id = uid();
+      if(!e.date) e.date = localDateStr(new Date());
+      // createdAt is what orders several games played on the same day — without it the chart and
+      // the LP deltas can disagree about which game came first
+      if(typeof e.createdAt !== 'number') e.createdAt = parseLocalDateStr(e.date).getTime();
+      if(typeof e.division !== 'number') e.division = 4;
+      if(typeof e.lp !== 'number') e.lp = 0;
+      // null = a plain rank check (starting rank, decay, soft reset) rather than a game played
+      if(e.placement === undefined) e.placement = null;
+      // '' = typed in by hand, 'metatft' = pulled by tftSync(). srcKey is that source's own id for
+      // the record (MetaTFT's rating-change timestamp) and is what makes re-syncing idempotent —
+      // anything already carrying a known srcKey is skipped rather than re-added. Hand-typed rows
+      // have no srcKey, so a sync can never overwrite or duplicate one.
+      if(e.src === undefined) e.src = '';
+      if(e.srcKey === undefined) e.srcKey = '';
+    });
+    if(!state.tft.target || typeof state.tft.target !== 'object') state.tft.target = {};
+    // '' tier means no target set. For Master/Grandmaster/Challenger, `lp` is the current ladder
+    // CUTOFF LP — the app can't know it, so it asks. startValue is the rank power at the moment the
+    // target was last changed, so the progress bar measures the climb actually signed up for
+    // instead of everything since Iron IV.
+    if(typeof state.tft.target.tier !== 'string') state.tft.target.tier = '';
+    if(typeof state.tft.target.division !== 'number') state.tft.target.division = 4;
+    if(typeof state.tft.target.lp !== 'number') state.tft.target.lp = 0;
+    if(typeof state.tft.target.date !== 'string') state.tft.target.date = '';
+    if(state.tft.target.startValue === undefined) state.tft.target.startValue = null;
+    if(state.tft.target.setAt === undefined) state.tft.target.setAt = null;
+    /* The set/season the climb is racing. Rank resets when a set ends, so that date — not an
+       arbitrary one — is the deadline the pace line measures against. `set` is detected from synced
+       records (tft_set_name); `endDate` is typed by hand because Riot announces it in patch notes
+       and no API publishes it. Migrates the old per-target `date` field, which held the same idea
+       before it was hoisted out of the target. */
+    if(!state.tft.season || typeof state.tft.season !== 'object') state.tft.season = {};
+    if(typeof state.tft.season.set !== 'string') state.tft.season.set = '';
+    if(typeof state.tft.season.endDate !== 'string') state.tft.season.endDate = '';
+    if(!state.tft.season.endDate && state.tft.target.date) state.tft.season.endDate = state.tft.target.date;
+
+    /* MetaTFT auto-sync settings. Their public API sends permissive CORS (it reflects the Origin
+       header), so unlike the Valorant tooling this needs no local helper and no Edge Function —
+       the browser calls it directly. `cutoffs` caches the last promotion_thresholds read so an
+       apex target can show the live Grandmaster/Challenger LP cutoff instead of asking for it.
+       Note the region here is the *platform* code (sg2, na1, euw1 …), not the routing region
+       MetaTFT shows in its own profile URLs — /player/sea/… is indexed under sg2. */
+    if(!state.tft.sync || typeof state.tft.sync !== 'object') state.tft.sync = {};
+    if(typeof state.tft.sync.region !== 'string' || !state.tft.sync.region) state.tft.sync.region = 'sg2';
+    if(typeof state.tft.sync.riotId !== 'string') state.tft.sync.riotId = '';
+    if(state.tft.sync.auto === undefined) state.tft.sync.auto = true;
+    if(state.tft.sync.lastSyncedAt === undefined) state.tft.sync.lastSyncedAt = null;
+    if(typeof state.tft.sync.lastError !== 'string') state.tft.sync.lastError = '';
+    if(state.tft.sync.cutoffs === undefined) state.tft.sync.cutoffs = null;
+
     state.clock = parsed.clock || { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] };
     if(!state.clock.fasting) state.clock.fasting = { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' };
     if(state.clock.fasting.enabled===undefined) state.clock.fasting.enabled = false;
@@ -339,6 +405,12 @@
     // 'settings' is filtered out on the way in as well as on the way out — a saved order from a
     // build that let it through must not be able to lock the Settings tab away
     state.hiddenTabs = (Array.isArray(parsed.hiddenTabs) ? parsed.hiddenTabs : []).filter(k=>k!=='settings');
+    /* The Valorant tab became Games (Valorant + TFT). Rewrite the old key in both lists rather than
+       leaning on applyTabOrder()'s "unknown keys fall to the end" rule: without this a saved order
+       would silently demote Games to the bottom of the sidebar, and someone who had *hidden* the
+       Valorant tab would find it back. Dedupe in case a save already carries both keys. */
+    state.tabOrder = state.tabOrder.map(k=> k==='valorant' ? 'games' : k).filter((k,i,a)=>a.indexOf(k)===i);
+    state.hiddenTabs = state.hiddenTabs.map(k=> k==='valorant' ? 'games' : k).filter((k,i,a)=>a.indexOf(k)===i);
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
     ['filled','today','empty','perfect'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
     if(state.mosaicColors.perfectGlow === undefined) state.mosaicColors.perfectGlow = true;

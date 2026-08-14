@@ -11,7 +11,7 @@
       if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); }
       // same idea for the Live Match poll loop: a timer hitting Riot every few seconds from a tab
       // you've navigated away from has nothing on screen to justify the traffic.
-      if(t.dataset.tab!=='valorant') stopValLivePolling();
+      if(t.dataset.tab!=='games') stopValLivePolling();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders
@@ -26,7 +26,9 @@
       if(t.dataset.tab==='notes') renderNotes();
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
-      if(t.dataset.tab==='valorant') renderValorant();
+      // Games holds both Valorant and TFT. Unlike Time above it does NOT reset to the first pane —
+      // showGameSubTab() reads the persisted choice and renders whichever game it reveals.
+      if(t.dataset.tab==='games') showGameSubTab(state.games.active);
       // Jobs always opens on Prospect with a clean search — that's the pile that only moves if you
       // act on it (and what the nav badge counts). Mirrors Goals resetting to 'working' above.
       if(t.dataset.tab==='jobs'){ resetJobsView(); renderJobs(); }

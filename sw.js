@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v7';
+const SHELL_CACHE = 'p25-shell-v8';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -38,6 +38,7 @@ const SHELL_ASSETS = [
   './js/fitness.js',
   './js/valorant.js',
   './js/clock.js',
+  './js/tft.js',
   './js/main.js',
   './favicon.ico',
   './icons/icon-180.png',
@@ -78,7 +79,12 @@ self.addEventListener('fetch', (event) => {
   // GET /status heartbeat is cross-origin, so without this it fell through to cacheFirst below
   // and the connection dot could keep reporting "connected" against a server that had been
   // stopped. Nothing it serves is cacheable — it's all live machine state.
+  // api.metatft.com is the TFT rank/LP sync (js/tft.js). Same reasoning as the Valorant APIs: it's
+  // live rank data that changes every game, so it must never come back from cache. Note this is
+  // only the API host — raw.communitydragon.org (the TFT rank crests) is deliberately NOT listed,
+  // since those are immutable art and are worth caching for offline.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
+    'api.metatft.com',
     'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
     '127.0.0.1', 'localhost'];
   if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;

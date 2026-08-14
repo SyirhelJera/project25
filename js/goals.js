@@ -100,8 +100,9 @@
       return sortMode !== 'none' ? sortGoalsBy(arr, sortMode, sortDir) : arr.sort((a,b)=> (b.completedAt||0) - (a.completedAt||0));
     }
     if(goalFilter === 'unfinished'){
-      // locked goals are excluded from the Unfinished list — they aren't actionable yet
-      const unfinished = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g));
+      // locked goals are excluded from the Unfinished list — they aren't actionable yet — and so are
+      // "working on" goals: those have their own filter/carousel, so Unfinished is what's left untouched
+      const unfinished = arr.filter(g=>goalProgress(g)<100 && !isGoalLocked(g) && !g.workingOn);
       if(sortMode !== 'none') return sortGoalsBy(unfinished, sortMode, sortDir);
       if(starredFirst) unfinished.sort((a,b)=> (b.starred?1:0) - (a.starred?1:0));
       return unfinished;
@@ -1512,9 +1513,10 @@
     const overall = total ? Math.round(totalPct/total) : 0;
     const lockedCount = state.goals.filter(g=>goalProgress(g)<100 && isGoalLocked(g)).length;
     const workingCount = state.goals.filter(g=>g.workingOn && goalProgress(g)<100 && !isGoalLocked(g)).length;
-    // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met
+    // "Unfinished" excludes locked goals — they aren't actionable until their net worth requirement is met —
+    // and "working on" goals, which are counted under Working instead (the three sets are disjoint)
     const counts = { all: total, completed: completedCount, locked: lockedCount, working: workingCount,
-                     unfinished: total - completedCount - lockedCount };
+                     unfinished: total - completedCount - lockedCount - workingCount };
     el('overallPct').textContent = overall+'%';
     el('manaFill').style.width = overall+'%';
     el('statTotal').textContent = counts.all;

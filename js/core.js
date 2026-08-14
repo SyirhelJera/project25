@@ -12,6 +12,22 @@
     // see applyLoadedState() in persistence.js and README.md's "Live Match" section.
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, ownedSkinsCollapsed:false, selectedStoreLabel:'', storeMode:'skins', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlistCollapsed:false, wishlist:{},
       live:{ enabled:true, label:'', regionOverride:'', historyDepth:10, showEnemyStats:true, showIncognito:false } },
+    // which game the Games tab is showing. Defined HERE and not only in applyLoadedState(), because
+    // syncValLivePolling() reads it and can fire before a load finishes (the visibilitychange
+    // listener in valorant.js) — it must never be undefined. See showGameSubTab() in js/tft.js.
+    games: { active: 'valorant' },
+    // Teamfight Tactics — manual entry only. There is no API path: the HenrikDev key above is
+    // Valorant-only, and Riot's official TFT API needs a personal key that expires every 24h.
+    // One flat log of games; the current rank is DERIVED from the newest record, never stored, so
+    // the two can't drift apart. See js/tft.js for the rank-power scalar.
+    tft: { entries: [], target: { tier:'', division:4, lp:0, date:'', startValue:null, setAt:null },
+      // The climb's real deadline is the set ending, not an arbitrary date — rank resets with it.
+      // `set` is detected from synced data; `endDate` has to be typed, because Riot only announces
+      // it in patch notes and no API exposes it (checked MetaTFT and the set tables).
+      season: { set:'', endDate:'' },
+      // MetaTFT auto-sync (js/tft.js). Their public API sends permissive CORS, so the browser calls
+      // it directly — no local helper and no Edge Function, unlike the Valorant tooling.
+      sync: { region:'sg2', riotId:'', auto:true, lastSyncedAt:null, lastError:'', cutoffs:null } },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,

@@ -12,7 +12,8 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Habits** | Daily habit tracker with week/month grid views, streaks, a "streak restore" mechanic (3/month), optional linking to a checklist (completing the checklist auto-checks the habit), and protected-day exemptions (Settings) so a vacation/sick/event day doesn't break a streak. |
 | **Finance** | Six sub-tabs. *Accounts*: multi-currency accounts (savings/credit/lent/custom) with transfers between them, a net-worth-over-time trend chart, and a this-period earnings/spending-by-category breakdown. *Debts*: money you lent out and money you owe, one card per person (same look as an account card), repaid in full or in any number of small portions, with an optional link to a real account so the cash movement is logged there too. *Money Goals*: save $X by date, with logged contributions. *Wishlist*: things you want to buy — name, cost, and an optional picture per item, shown as a card grid, each with its own saved-so-far progress. *Subscriptions*: recurring costs with a monthly rollup. *Currency*: a converter with live or manual exchange rates. Feeds into net worth. |
 | **Fitness** | Weight log with a trend chart (BMI-zone shaded bands, moving average, zoomable), BMI/BMR/TDEE calculator (Mifflin-St Jeor), and a calorie target derived from a target weight + pace. |
-| **Valorant** | Three sub-tabs. *Live Match*: the lobby you're in right now — your team and the enemy team with each player's rank, peak, level and who queued together as a party; in competitive, whether each player is on a comfort pick and their win rate on that agent; in deathmatch, the lobby's average rank and its highest-ranked player. When the game ends it holds the **final standing** (deathmatch placements, or competitive Victory/Defeat with the round score) plus everyone's K/D/A until your next match starts. Read live from the local helper and never stored, see "Live Match". *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers and its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles) — one at a time, via a Skins/Accessories toggle next to the account switcher (`state.valorant.storeMode`, persisted) — a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
+| **Games** | Two games behind one tab, picked by a sub-nav strip; the choice persists (`state.games.active`). **Valorant** — three sub-tabs of its own, see the row below. **TFT** — a manual Teamfight Tactics rank tracker: log where each game left your rank (tier, division, LP, and optionally the 1st–8th placement) and set a target rank with an optional deadline. Shows LP remaining to the target, an estimate of how many more games that takes at your recent LP-per-game average, whether your current pace gets you there **before the set ends** (rank resets with it, so that's the real deadline — the set is auto-detected, its end date is entered once), an LP history chart with tier-boundary gridlines, and placement stats (average placement, top-4 rate, 1st rate) scoped to the chart's zoom range. Auto-synced from a MetaTFT profile (Riot ID + region, refreshed when you open the panel), with manual entry kept as the fallback. Placements assume standard ranked (queue 1100), not Double Up. See "TFT rank sync" below. |
+| ↳ *Valorant* | Three sub-tabs. *Live Match*: the lobby you're in right now — your team and the enemy team with each player's rank, peak, level and who queued together as a party; in competitive, whether each player is on a comfort pick and their win rate on that agent; in deathmatch, the lobby's average rank and its highest-ranked player. When the game ends it holds the **final standing** (deathmatch placements, or competitive Victory/Defeat with the round score) plus everyone's K/D/A until your next match starts. Read live from the local helper and never stored, see "Live Match". *RR Tracker*: competitive rank/RR history for one or more Riot accounts via the HenrikDev API, with a rank-adjusted RR history chart, tier icons, and last-played-agent art (via valorant-api.com). *Shop Tracker*: each account's daily VP skin offers and its weekly Kingdom Credit accessory shop (sprays/gun buddies/player cards/titles) — one at a time, via a Skins/Accessories toggle next to the account switcher (`state.valorant.storeMode`, persisted) — a per-account skin wishlist that highlights matches (and can push a phone notification), and an owned-skins browser — all fed by local-only scripts, see "Setup". Any tile opens a preview modal with the art at full size; player cards show their horizontal, vertical, and square crops together. |
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer (optionally with background music from a YouTube Music / YouTube playlist — see "Session music"), and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Notes** | A Workflowy-style outliner — every note is one row and can hold sub-notes, nested as deep as you like, with collapsible branches, a one-line title plus an optional longer body, keyboard-first editing (Enter for a new note, Tab/Shift+Tab to nest and un-nest, Shift+Enter for the body, Backspace on an empty row to remove it), **checkboxes** (turn any note into a task with ☑; parents show a done/total chip for their task children), **#tags** typed inline in a title and surfaced as a clickable filter bar, **markdown** note bodies (headings, bold/italic/strikethrough, inline + fenced code, links, lists, quotes, rules — rendered when you're not editing, raw textarea when you are), search that keeps a match's ancestor path visible, pinned notes in a strip at the top, and drag-to-reorder/reparent a whole subtree by grabbing the row itself — no handle (◀▶▲▼ buttons stand in on touch, where HTML5 drag events don't fire). A note you never typed anything into isn't kept: it's discarded as soon as focus leaves it, so an abandoned row never becomes a permanent blank line. A blank note that has picked up a body or children counts as content and stays. |
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, starring/favoriting (starred applications pin to the top of the default order, plus a "★ Starred only" toolbar toggle that narrows whatever the chips/search already selected), per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
@@ -28,9 +29,12 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 
 ```
 core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
-countdowns.js → insights.js → backups.js → mantras.js → checklists.js → notes.js →
-finance.js → fitness.js → valorant.js → main.js
+countdowns.js → insights.js → backups.js → mantras.js → motivation.js → music.js →
+checklists.js → notes.js → finance.js → wishlist.js → jobs.js → fitness.js →
+valorant.js → clock.js → tft.js → main.js
 ```
+
+`tft.js` sits after `valorant.js` on purpose: it owns `showGameSubTab()`, which calls `renderValorant()` and `syncValLivePolling()`. The same list is precached by hand in `sw.js` — a name missing there installs fine and then boots offline with that tab's render function undefined, so the two must be edited together (and `SHELL_CACHE` bumped).
 
 All modules share one global `state` object (defined in `core.js`) and a handful of small globals (`el()`, `uid()`, `escapeHtml()`, date helpers). There's no bundler, no npm dependencies, and no per-module scoping — everything is written as top-level script blocks that close over the same `state`.
 
@@ -39,7 +43,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
 Rendering is done by tearing down and rebuilding `innerHTML` for the relevant section on every state change (no virtual DOM, no diffing) — `save()` is called after essentially every mutation, and most mutations are followed by a call to that tab's own `render*()`.
@@ -181,6 +185,59 @@ state = {
                                        // scripts/valorant-local-server.mjs (also local-only) so
                                        // those can be buttons instead of terminal commands — see
                                        // "Setup" below.
+  games: { active },                   // 'valorant' | 'tft' — which game the Games tab is showing.
+                                       // Persisted, unlike the Time/Finance sub-navs: those are two
+                                       // views of one concern, these are two different games. Also
+                                       // gates the Live Match poll (syncValLivePolling() runs only
+                                       // when Games is on Valorant AND its Live sub-tab is open).
+                                       // Defaulted in core.js as well as applyLoadedState(), because
+                                       // syncValLivePolling() can fire before a load finishes.
+  tft: { entries: [ {id,date,createdAt,tier,division,lp,placement,src,srcKey} ],
+         target: { tier, division, lp, date, startValue, setAt },
+         season: { set, endDate },
+         sync: { region, riotId, auto, lastSyncedAt, lastError, cutoffs } },
+                                       // season.set is detected from synced records (tft_set_name);
+                                       // season.endDate is typed by hand, because Riot announces it
+                                       // in patch notes and nothing exposes it (MetaTFT and the set
+                                       // tables were both checked). It's the deadline the pace line
+                                       // races, since rank RESETS when a set ends — LP not earned
+                                       // by then has to be earned again. tftMergeSynced() clears
+                                       // endDate when it sees the set name change, so a rollover
+                                       // can't leave a stale date quietly skewing the pace.
+                                       // target.date is the pre-hoist version of the same idea,
+                                       // kept only so applyLoadedState() can migrate it across.
+                                       // src:'' is hand-typed, 'metatft' came from tftSync().
+                                       // srcKey is MetaTFT's own rating-change timestamp and is
+                                       // what makes re-syncing idempotent — a known srcKey is
+                                       // skipped rather than re-added. Hand-typed rows carry no
+                                       // srcKey, so a sync can never duplicate or overwrite one.
+                                       // sync.region is the PLATFORM code (sg2, na1, euw1...), not
+                                       // the routing region MetaTFT shows in its own profile URLs:
+                                       // a /player/sea/... profile is indexed under sg2.
+                                       // Manual Teamfight Tactics log — no API path exists (the
+                                       // HenrikDev key above is Valorant-only; Riot's official TFT
+                                       // API needs a personal key that expires every 24h).
+                                       // Every record is a rank checkpoint that MAY carry a
+                                       // placement: placement:null is a plain rank check (starting
+                                       // rank, decay, soft reset) — it still plots and still moves
+                                       // LP, but it isn't a game played, so it's excluded from the
+                                       // placement stats and the LP-per-game average. LP deltas are
+                                       // DERIVED from consecutive entries, never stored, so editing
+                                       // a record can't leave a stale delta behind. createdAt is the
+                                       // tiebreak ordering several games on the same day — see
+                                       // tftSortedEntries() in js/tft.js, the only place ordering
+                                       // happens. Capped at 500 entries: this rides in the shared
+                                       // row, which is re-uploaded in full on every save from any tab.
+                                       // Rank power = tierIndex*100 + LP, the same trick as the RR
+                                       // chart's valOf(). Master, Grandmaster and Challenger share
+                                       // ONE step (28): in TFT they're one LP pool and GM/Challenger
+                                       // are ladder cutoffs, not LP thresholds — separate steps would
+                                       // rank "Master 400 LP" above "Challenger 0 LP". The cost is
+                                       // that a GM/Challenger target needs the current cutoff LP
+                                       // typed into target.lp; the UI says so rather than guessing.
+                                       // target.startValue anchors the progress bar at where the
+                                       // climb started, so a Diamond target set from Platinum doesn't
+                                       // show 85% before a single game.
   profile: { name, age, netWorth, netWorthCurrency, hideAvatar },
   focus: { date, pick },              // vestigial: the "today's focus" panel it fed was removed
                                        // from the Goals tab. Still loaded so old saves stay valid;
@@ -330,11 +387,39 @@ The player element stays in the layout at 1px/transparent behind the Play card (
 
   Two things you give up, both stated in the ⚙ panel rather than hidden: the strip's ⏭ and volume are disabled (they can't reach another tab, let alone another app), and the music **outlives the session** — `stopSessionMusic()` owns the embed, but a YouTube Music tab is not ours to close. External mode also never opens anything on its own: starting or resuming a session just arms the ↗ button, since throwing the screen over to YouTube the instant you press Play on a checklist would be worse than one extra tap (and a resumed session has no user gesture to open a window with anyway).
 
+### TFT rank sync
+
+The TFT tracker fills itself from a **MetaTFT** profile. Unlike every other live-data feature in this app it needs no key, no local helper and no Edge Function: MetaTFT's `public/` endpoints answer with a permissive CORS header (they reflect the request `Origin`), so `js/tft.js` fetches them straight from the page.
+
+Set it up by entering your **Riot ID** (`Name#TAG`) and **region** in the row at the top of the TFT panel, then pressing ↻ Sync now. With "Auto-sync on open" ticked it also refreshes whenever you open the panel, rate-limited to once every 5 minutes — it's on entry rather than on a timer, because the data only changes when you play and a background poll would keep hitting someone else's API from a tab left open.
+
+**Region is the platform code** (`sg2`, `na1`, `euw1`, …), not the routing region MetaTFT shows in its own URLs. A profile that lives at `/player/sea/Name-TAG` is indexed under `sg2`; asking for `sea` returns "Summoner Not found", which looks like a wrong Riot ID rather than a wrong region.
+
+Two endpoints do the work, and they carry complementary halves of a record:
+
+| Endpoint | Gives |
+|---|---|
+| `public/profile/lookup_by_riotid/{region}/{name}/{tag}` | Current rank, and the last 40 matches with **placements but no LP** |
+| `public/profile/rating_changes/{region}/{name}/{tag}?queue=1100` | One point per ranked game — **LP but no placement** |
+| `public/promotion_thresholds/latest` | Live Grandmaster/Challenger LP cutoffs per region |
+
+`tftMergeSynced()` pairs them on time: a rating point lands about a minute after the game that produced it (measured median 1.3 min across a full match page), which recovers the one-record-per-game shape the rest of the tab is built on. Pairing is deliberately conservative — nearest rating point at or after the match, within 45 minutes, and a point already claimed by one match is never reassigned. A missing rating point therefore costs one placement rather than shifting every later placement onto the wrong game. Rating points that pair with nothing still import (they're older than the 40-match window), so the LP chart is complete even where the placement stats aren't.
+
+Three things worth knowing:
+
+- **Their `rating_numeric` is the same scale as `tftValue()`.** `GOLD I 4 LP` is 1504 in both; `MASTER I 0 LP` is 2800 in both; `CHALLENGER I 864 LP` is 3664, i.e. Challenger sharing Master's base — independent confirmation that Master/GM/Challenger are one LP pool. The code still parses `rating_text` rather than reading the number, because the number alone can't tell those three tiers apart.
+- **Only the current set is imported.** LP resets between sets, so mixing them would draw a several-hundred-LP cliff that never happened as a real loss.
+- **It's an undocumented API.** It can change shape or start requiring a key with no notice, which is why manual entry stays: a failed sync writes a message and changes nothing else. Don't remove the add form.
+
+`sw.js` lists `api.metatft.com` in `LIVE_DATA_HOSTS` so rank data always hits the network — without that, its cache-first branch would serve a stale rank forever. `raw.communitydragon.org` (the rank crests) is deliberately *not* listed: that art is immutable and worth having offline.
+
 ### External APIs used
 
 | API | Used for | Auth |
 |---|---|---|
 | HenrikDev Valorant API (`api.henrikdev.xyz`) | Rank/RR/match history lookups | Free key, user-supplied, stored in `state.valorant.apiKey` |
+| MetaTFT (`api.metatft.com`) | TFT rank/LP history + placements | No key. Public endpoints, permissive CORS — called straight from the browser |
+| Community Dragon (`raw.communitydragon.org`) | TFT rank crest art | No key. Immutable, so cached offline by `sw.js` |
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, accessory-shop item names & art (sprays/buddies/player cards/titles), weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
 | Pinterest RSS (`pinterest.com/<user>/feed.rss` + each `/<user>/<board>.rss`, via the `pinterest-feed` function) | The daily 25 random pins in a Motivation "Pinterest collection" | None (public profile + board feeds) |

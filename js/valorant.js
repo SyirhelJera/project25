@@ -396,7 +396,7 @@
       warn.title = 'Session expired — couldn\'t check today\'s store for: '+stale.join(', ');
     }
     // glow the nav shield too — the badge is tiny and shrinks into the icon in the collapsed nav
-    const navItem = document.querySelector('.nav-item[data-tab="valorant"]');
+    const navItem = document.querySelector('.nav-item[data-tab="games"]');
     if(navItem) navItem.classList.toggle('wish-glow', hits>0);
   }
 
@@ -1276,6 +1276,9 @@
   function syncValLivePolling(){
     const shouldRun = !valLiveUnavailable()
       && state.valorant.live.enabled
+      // the Games tab can be showing TFT instead — the Live panel is just as hidden then as it is
+      // when you leave the tab entirely, and this is the clause that covers switching between games
+      && state.games.active === 'valorant'
       && state.valorant.activeSubtab === 'live'
       && !document.hidden
       && valLocalStatus.connected

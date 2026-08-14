@@ -192,7 +192,9 @@
   .nav-item[data-tab="habits"] svg{color:var(--gold);}
   .nav-item[data-tab="finance"] svg{color:var(--success);}
   .nav-item[data-tab="fitness"] svg{color:var(--orange);}
-  .nav-item[data-tab="valorant"] svg{color:var(--danger);}
+  /* Games holds Valorant and TFT. Stays red: the wish-glow below and both nav badges are
+     --danger/--gold, so recolouring the icon alone would pulse a red glow on an off-colour icon. */
+  .nav-item[data-tab="games"] svg{color:var(--danger);}
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
   .nav-item[data-tab="wishlist"] svg{color:var(--pink);}
@@ -200,16 +202,16 @@
   .nav-item[data-tab="motivation"] svg{color:var(--orange);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
-  /* pulsing glow on the Valorant shield whenever a wishlisted skin is in a tracked account's
+  /* pulsing glow on the Games icon whenever a wishlisted Valorant skin is in a tracked account's
      daily store — same signal as the #valWishlistBadge count, but readable at a glance in the
      collapsed nav, where the badge shrinks into the icon's corner. */
-  .nav-item[data-tab="valorant"].wish-glow svg{animation:valWishGlow 1.8s ease-in-out infinite;}
+  .nav-item[data-tab="games"].wish-glow svg{animation:valWishGlow 1.8s ease-in-out infinite;}
   @keyframes valWishGlow{
     0%,100%{filter:drop-shadow(0 0 1px var(--danger));}
     50%{filter:drop-shadow(0 0 6px var(--danger)) drop-shadow(0 0 12px var(--danger));}
   }
   @media (prefers-reduced-motion: reduce){
-    .nav-item[data-tab="valorant"].wish-glow svg{animation:none;filter:drop-shadow(0 0 5px var(--danger));}
+    .nav-item[data-tab="games"].wish-glow svg{animation:none;filter:drop-shadow(0 0 5px var(--danger));}
   }
   /* separate yellow tick: the store couldn't be fetched at all (saved Riot session expired), so
      "no wishlist hits" would be a lie — an absent count and a failed check look identical without it */
@@ -2138,13 +2140,17 @@
      is the theme-corrected *text* shade derived from it: the raw tier colors are tuned for Riot's
      dark UI, and gold/radiant on a white surface land near 2:1. Nothing paints a raw tier color
      onto text. The plain var() line before each color-mix() is the fallback for engines without it. */
-  #view-valorant{--val-err-ink:#C2262B;}
-  body[data-theme="dark"] #view-valorant,
-  body[data-theme="ios-dark"] #view-valorant{--val-err-ink:var(--danger);}
+     Scoped to #view-games, not #view-valorant: the Valorant panels moved inside the Games tab
+     (#gametab-valorant) when TFT joined them. #view-games is a strict superset of the old element,
+     so every rule below still covers everything it used to — and the TFT panel, which reuses
+     .val-err and the .val-chart-* rules, picks them up too. */
+  #view-games{--val-err-ink:#C2262B;}
+  body[data-theme="dark"] #view-games,
+  body[data-theme="ios-dark"] #view-games{--val-err-ink:var(--danger);}
 
-  /* Nothing in this tab may remove a focus ring without replacing it — several controls here are
-     the only way to reach a panel by keyboard. */
-  #view-valorant :is(button,input,select,summary,[tabindex]):focus-visible,
+  /* Nothing in this tab may remove a focus ring without replacing it — several controls in both
+     games are the only way to reach a panel by keyboard. */
+  #view-games :is(button,input,select,summary,[tabindex]):focus-visible,
   .val-preview-card :is(button,input):focus-visible{
     outline:2px solid var(--violet);
     outline-offset:2px;
@@ -2451,8 +2457,8 @@
 
   @media (prefers-reduced-motion: reduce){
     /* the refresh spinner is the only feedback that a fetch is in flight, so it survives */
-    #view-valorant *{transition:none !important;}
-    #view-valorant *:not(.spinning){animation:none !important;}
+    #view-games *{transition:none !important;}
+    #view-games *:not(.spinning){animation:none !important;}
   }
 
   /* "Local Helper" panel (see valLocal* functions in valorant.js) — lets the Check Store Now /
@@ -2850,6 +2856,96 @@
   .val-wishlist-suggest-item img{width:28px;height:28px;object-fit:contain;flex:none;border-radius:5px;background:var(--surface-alt);}
   .val-wishlist-suggest-noimg{width:28px;height:28px;flex:none;border-radius:5px;background:var(--surface-alt);}
 
+  /* ---------- games: teamfight tactics ----------
+     Manual-entry TFT tracker (js/tft.js), the second game under the Games tab. Everything
+     chart-shaped reuses the .val-chart-* rules above, and the log rows reuse .weight-log-* from
+     Fitness — this block is only the pieces neither of them has an equivalent of: the two-up
+     rank/target header, the estimate boxes and the placement pill. --tier is set per card in
+     renderTftCurrentCard(), the same convention the Valorant account cards use.
+
+     Note the .val-chart-* rules now serve two charts. If TFT ever needs to diverge, add a
+     .tft-chart modifier rather than editing them, or the RR chart silently changes with it. */
+  .tft-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;margin-bottom:4px;}
+  .tft-rank-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-card,14px);padding:16px 18px;box-shadow:var(--fin-shadow);min-width:0;}
+  /* same theme-corrected ink treatment as .val-tier-name: raw tier colors are tuned for Riot's
+     dark UI and gold lands near 2:1 on a white surface, so text never paints one directly */
+  .tft-rank-name{
+    font-family:'Manrope',sans-serif;font-size:20px;font-weight:800;line-height:1.2;
+    color:var(--tier,var(--text));
+    color:color-mix(in srgb, var(--tier,var(--text)) 78%, var(--text));
+  }
+  body[data-theme="dark"] .tft-rank-name,
+  body[data-theme="ios-dark"] .tft-rank-name{color:var(--tier,var(--text));}
+  /* rank crest + name/LP side by side. The crests are ~2KB SVGs pulled per tier name from
+     Community Dragon (tftTierIcon() in js/tft.js) — no fetch layer, the URL is derived from the
+     ladder table. object-fit:contain because the source viewBoxes aren't all square. */
+  .tft-rank-head{display:flex;align-items:center;gap:12px;margin-top:2px;}
+  .tft-rank-headtext{min-width:0;}
+  .tft-crest{width:46px;height:46px;flex:none;object-fit:contain;display:block;}
+  .tft-crest.sm{width:28px;height:28px;}
+  .tft-target-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .tft-target-crest{display:flex;align-items:center;gap:7px;min-width:0;}
+  .tft-target-crest-lbl{
+    font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;white-space:nowrap;
+    color:var(--tier,var(--text));
+    color:color-mix(in srgb, var(--tier,var(--text)) 78%, var(--text));
+  }
+  body[data-theme="dark"] .tft-target-crest-lbl,
+  body[data-theme="ios-dark"] .tft-target-crest-lbl{color:var(--tier,var(--text));}
+  .tft-rank-lp{font-size:13px;color:var(--muted);font-weight:700;margin-top:3px;}
+  .tft-rank-sub{font-size:11.5px;color:var(--faint,var(--muted));margin-top:7px;line-height:1.5;}
+  .tft-delta{font-size:11.5px;font-weight:800;}
+  .tft-delta.up{color:#0F7A38;}
+  .tft-delta.down{color:#C2262B;}
+  body[data-theme="dark"] .tft-delta.up, body[data-theme="ios-dark"] .tft-delta.up{color:var(--success);}
+  body[data-theme="dark"] .tft-delta.down, body[data-theme="ios-dark"] .tft-delta.down{color:var(--danger);}
+  .tft-note{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:7px;}
+  /* caption under the season-end date: which set it belongs to, and a countdown so a date that has
+     quietly passed is visible instead of silently skewing the pace line */
+  .tft-season-note{font-size:11px;color:var(--faint,var(--muted));line-height:1.5;margin-top:6px;}
+  .tft-season-note.warn{color:var(--gold);font-weight:600;}
+  .tft-est-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+  .tft-est{flex:1 1 190px;background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--fin-r-ctl,9px);padding:8px 10px;font-size:11.5px;line-height:1.45;color:var(--muted);}
+  .tft-est.on-track{border-color:var(--success);color:var(--text);}
+  .tft-est.behind{border-color:var(--gold);color:var(--text);}
+  .tft-target-fields{margin-bottom:2px;}
+  .tft-target-fields .fitness-field{margin-bottom:0;}
+  /* placement pill on a log row. 1st and top-4 are the two lines that matter in TFT — 4th is
+     break-even, where you neither gain nor lose — so only those get color; 5th-8th stay neutral
+     rather than being marked as failures. Dashed = a rank check, not a game played. */
+  .tft-place{display:inline-flex;align-items:center;justify-content:center;min-width:26px;height:20px;border-radius:6px;background:var(--surface-alt);border:1px solid var(--border);font-size:11px;font-weight:800;color:var(--muted);flex:none;}
+  .tft-place.top4{border-color:var(--success);color:var(--success);}
+  .tft-place.win{background:var(--gold);border-color:var(--gold);color:#5A3B00;}
+  .tft-place.check{border-style:dashed;}
+  /* The log rows reuse Fitness's .weight-log-* rules, but .wl-delta's colors are inverted there on
+     purpose — losing weight is the good direction, so .down is green. Gaining LP is the good
+     direction here, so flip them back rather than lying about the class names in the markup
+     (.up still means the number went up, it just stops being painted as a loss). */
+  #tftLogList .wl-delta.up{color:var(--success);background:var(--success-pale);}
+  #tftLogList .wl-delta.down{color:var(--danger);background:#FEECEC;}
+  body[data-theme="dark"] #tftLogList .wl-delta.down,
+  body[data-theme="ios-dark"] #tftLogList .wl-delta.down{background:#3A1E1E;}
+  /* MetaTFT sync row (tftSync() in js/tft.js) */
+  .tft-sync-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;}
+  .tft-sync-row select,
+  .tft-sync-id{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
+  .tft-sync-id{flex:1 1 220px;min-width:0;}
+  .tft-sync-auto{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);white-space:nowrap;}
+  .tft-sync-status{font-size:11.5px;line-height:1.5;color:var(--muted);margin-bottom:16px;}
+  .tft-sync-status.ok{color:var(--success);}
+  /* uses the tab's theme-corrected error ink (#view-games), not raw --danger */
+  .tft-sync-status.err{color:var(--val-err-ink,var(--danger));}
+  /* a log row that came from the sync rather than the add form — dimmed, because the useful signal
+     is spotting the hand-typed ones among a few hundred imported games, not the other way round */
+  .tft-src{font-size:9.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:var(--faint);flex:none;opacity:.75;}
+  .tft-add-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+  .tft-add-row select{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
+  .tft-add-row .mini-input{flex:0 1 120px;}
+  /* the strip carries six tiles here rather than the RR chart's three, so it wraps into two rows
+     of three instead of being squeezed onto one — the mobile .val-chart-stat{flex:1 1 0} override
+     would otherwise force all six across a phone screen */
+  #tftStatsStrip .val-chart-stat{flex:1 1 110px;}
+
   /* ================= CLOCK ================= */
   /* The dial itself is always dark (hardcoded, not theme vars) — it's meant to read as a
      physical dark-faced clock widget regardless of which app theme is active; everything below
@@ -2907,6 +3003,11 @@
        (see the .job-filter-chip handler in js/jobs.js) */
     .job-filter-row{grid-template-columns:repeat(5,1fr);}
     .job-filter-chip[data-status="all"]{display:none;}
+    /* current rank and target side by side leave neither readable at this width */
+    .tft-top{grid-template-columns:1fr;}
+    .tft-add-row .mini-input,
+    .tft-add-row select{flex:1 1 calc(50% - 4px);}
+    #tftStatsStrip .val-chart-stat{flex:1 1 calc(33.333% - 5px);}
   }
 
   @media (max-width:420px){

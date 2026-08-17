@@ -65,7 +65,7 @@
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg><span class="nav-label">Finance</span></div>
     <div class="nav-item" data-tab="jobs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2M2 13h20"/></svg><span class="nav-label">Jobs</span><span class="nav-badge" id="jobProspectBadge" style="display:none;" title="Applications still sitting in Prospect"></span></div>
     <div class="nav-item" data-tab="fitness"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="9" width="3" height="6" rx="1"/><rect x="19" y="9" width="3" height="6" rx="1"/><rect x="6" y="7" width="2.2" height="10" rx="1"/><rect x="15.8" y="7" width="2.2" height="10" rx="1"/><line x1="8.2" y1="12" x2="15.8" y2="12"/></svg><span class="nav-label">Fitness</span><span class="nav-badge" id="fitnessLogBadge" style="display:none;">!</span></div>
-    <div class="nav-item" data-tab="games"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="4"/><path d="M6.5 10.5v3M5 12h3M15.5 11h.01M18 13.5h.01"/></svg><span class="nav-label">Games</span><span class="nav-badge" id="valWishlistBadge" style="display:none;" title="A wishlisted skin is in today's store"></span><span class="nav-badge nav-badge-warn" id="valStoreStaleBadge" style="display:none;" title="Couldn't check the store — expired session">⚠</span></div>
+    <div class="nav-item" data-tab="games"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="6"/><path d="M6.5 12h3M8 10.5v3"/><circle cx="15.5" cy="11" r="1.1" fill="currentColor" stroke="none"/><circle cx="18" cy="13.5" r="1.1" fill="currentColor" stroke="none"/></svg><span class="nav-label">Games</span><span class="nav-badge" id="valWishlistBadge" style="display:none;" title="A wishlisted skin is in today's store"></span><span class="nav-badge nav-badge-warn" id="valStoreStaleBadge" style="display:none;" title="Couldn't check the store — expired session">⚠</span></div>
     <div class="nav-item" data-tab="checklists"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg><span class="nav-label">Checklists</span></div>
     <div class="nav-item" data-tab="time"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg><span class="nav-label">Time</span><span class="nav-badge" id="cdSoonBadge" style="display:none;" title="A countdown lands in the next few days"></span></div>
     <div class="nav-item" data-tab="mantras"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4M12 18v4M4.9 4.9l2.8 2.8M16.3 16.3l2.8 2.8M2 12h4M18 12h4M4.9 19.1l2.8-2.8M16.3 7.7l2.8-2.8"/></svg><span class="nav-label">Mantras</span></div>
@@ -796,21 +796,36 @@
            undocumented third-party API and a failed sync must never cost you a way to record a game. -->
       <div class="tft-sync-row">
         <select id="tftSyncRegion" aria-label="Region"></select>
-        <input type="text" id="tftSyncRiotId" class="tft-sync-id" placeholder="Riot ID, e.g. Name#TAG" maxlength="60" aria-label="Riot ID">
+        <input type="text" id="tftSyncRiotId" class="tft-sync-id" placeholder="Name#TAG" maxlength="60" aria-label="Riot ID">
         <button class="btn btn-primary" id="tftSyncBtn" type="button">↻ Sync now</button>
+      </div>
+      <!-- status and the auto-sync toggle share a line: one says when it last ran, the other
+           whether it runs on its own, so they read as a pair -->
+      <div class="tft-sync-foot">
+        <div class="tft-sync-status" id="tftSyncStatus"></div>
         <label class="tft-sync-auto"><input type="checkbox" id="tftSyncAuto"> Auto-sync on open</label>
       </div>
-      <div class="tft-sync-status" id="tftSyncStatus"></div>
 
-      <div class="tft-top">
-        <div class="tft-rank-card" id="tftCurrentCard"></div>
+      <!-- One card, both ranks facing each other: where you are, where you're going, and the gap
+           stated once underneath. The editor is a closed disclosure — setting a target is a rare
+           action, and four form controls sitting open pushed the actual numbers down the page.
+           Same reasoning as the Valorant tab's collapsed setup forms. -->
+      <div class="tft-rank-card tft-summary">
+        <div class="tft-duo">
+          <div class="tft-duo-side" id="tftCurrentCard"></div>
+          <div class="tft-duo-arrow" aria-hidden="true">→</div>
+          <div class="tft-duo-side is-target" id="tftTargetSide"></div>
+        </div>
+        <div class="tft-summary-meta" id="tftSummaryMeta"></div>
+        <div class="finance-bar" id="tftTargetBar" style="display:none;"><div class="finance-fill" id="tftTargetFill" style="width:0%"></div></div>
+        <div class="tft-note" id="tftTargetNote"></div>
+        <div class="tft-est-row">
+          <div class="tft-est" id="tftGamesNeeded" style="display:none;"></div>
+          <div class="tft-est" id="tftPaceNote" style="display:none;"></div>
+        </div>
 
-        <div class="tft-rank-card">
-          <div class="tft-target-head">
-            <div class="section-lbl" style="margin-top:0;margin-bottom:0;">Target rank</div>
-            <!-- crest + resolved rank name, filled by renderTftTarget(); empty when no target -->
-            <div class="tft-target-crest" id="tftTargetCrest"></div>
-          </div>
+        <details class="tft-target-edit">
+          <summary>Edit target &amp; season</summary>
           <div class="fitness-fields tft-target-fields">
             <div class="fitness-field"><label for="tftTargetTier">Tier</label><select id="tftTargetTier"></select></div>
             <div class="fitness-field" id="tftTargetDivField"><label for="tftTargetDiv">Division</label><select id="tftTargetDiv"></select></div>
@@ -820,35 +835,8 @@
           </div>
           <div class="tft-season-note" id="tftSeasonNote"></div>
           <div class="val-peak-note" id="tftTargetCutoffNote" style="display:none;">Grandmaster and Challenger are ladder cutoffs, not LP totals — put the current cutoff LP from the leaderboard in the LP field to get a real estimate.</div>
-          <div class="finance-bar" id="tftTargetBar" style="display:none;"><div class="finance-fill" id="tftTargetFill" style="width:0%"></div></div>
-          <div class="tft-note" id="tftTargetNote"></div>
-          <div class="tft-est-row">
-            <div class="tft-est" id="tftGamesNeeded" style="display:none;"></div>
-            <div class="tft-est" id="tftPaceNote" style="display:none;"></div>
-          </div>
-        </div>
+        </details>
       </div>
-
-      <div class="section-lbl">Log a game</div>
-      <div class="add-row tft-add-row">
-        <select id="tftAddTier" aria-label="Tier"></select>
-        <select id="tftAddDiv" aria-label="Division"></select>
-        <input type="number" id="tftAddLp" class="mini-input" min="0" step="1" placeholder="LP" aria-label="LP">
-        <select id="tftAddPlacement" aria-label="Placement">
-          <option value="">Rank check (no game)</option>
-          <option value="1">1st</option>
-          <option value="2">2nd</option>
-          <option value="3">3rd</option>
-          <option value="4">4th</option>
-          <option value="5">5th</option>
-          <option value="6">6th</option>
-          <option value="7">7th</option>
-          <option value="8">8th</option>
-        </select>
-        <input type="date" id="tftAddDate" class="mini-input" aria-label="Date">
-        <button class="btn btn-primary" id="tftAddBtn" type="button">+ Log</button>
-      </div>
-      <div class="val-err" id="tftAddErr" style="display:none;" role="alert"></div>
 
       <div class="section-lbl">LP history</div>
       <div class="chart-zoom-row" id="tftChartZoomRow" style="display:none;"></div>
@@ -858,9 +846,50 @@
         <div class="val-chart-note">Rank-adjusted: tier, division and LP are combined into one scale, so a promotion always moves the line up instead of looking like a drop back to 0 LP. Master, Grandmaster and Challenger share one LP pool — above Master, position on the ladder is LP and nothing else.</div>
       </div>
 
+      <!-- sits between the chart and the log it appends to, so the button is next to its own result -->
+      <div class="tft-log-cta">
+        <button class="btn btn-primary" id="tftOpenLogBtn" type="button">+ Log a game</button>
+        <span class="tft-log-hint">Sync fills these in automatically — log by hand for anything it misses, or to correct a row.</span>
+      </div>
+
       <div class="section-lbl">Placement log</div>
       <div class="weight-log-list" id="tftLogList"></div>
       <div class="empty" id="tftLogEmpty" style="display:none;">Nothing logged yet — log your current rank above to start the chart.</div>
+    </div>
+
+    <!-- Log-a-game modal. Deliberately a sibling of the two .gametab panes rather than inside one:
+         showGameSubTab() toggles display on .gametab elements, and this must not be caught by that.
+         Sitting inside #view-games still gets it the tab's focus-ring and reduced-motion rules. -->
+    <div id="tftLogOverlay" class="struggle-overlay" style="display:none;">
+      <div class="struggle-overlay-card tft-log-card" role="dialog" aria-modal="true" aria-labelledby="tftLogTitle">
+        <div class="struggle-overlay-head">
+          <div class="struggle-overlay-title is-neutral" id="tftLogTitle">Log a game</div>
+          <button class="btn btn-ghost btn-sm" id="tftLogCloseBtn" type="button">Close</button>
+        </div>
+        <div class="fitness-fields">
+          <div class="fitness-field"><label for="tftAddTier">Tier</label><select id="tftAddTier"></select></div>
+          <div class="fitness-field" id="tftAddDivField"><label for="tftAddDiv">Division</label><select id="tftAddDiv"></select></div>
+          <div class="fitness-field"><label for="tftAddLp">LP after the game</label><input type="number" id="tftAddLp" min="0" step="1" placeholder="e.g. 42"></div>
+          <div class="fitness-field"><label for="tftAddPlacement">Placement</label>
+            <select id="tftAddPlacement">
+              <option value="">Rank check (no game)</option>
+              <option value="1">1st</option>
+              <option value="2">2nd</option>
+              <option value="3">3rd</option>
+              <option value="4">4th</option>
+              <option value="5">5th</option>
+              <option value="6">6th</option>
+              <option value="7">7th</option>
+              <option value="8">8th</option>
+            </select>
+          </div>
+          <div class="fitness-field"><label for="tftAddDate">Date</label><input type="date" id="tftAddDate"></div>
+        </div>
+        <div class="val-err" id="tftAddErr" style="display:none;" role="alert"></div>
+        <div class="tft-log-actions">
+          <button class="btn btn-primary" id="tftAddBtn" type="button">+ Log game</button>
+        </div>
+      </div>
     </div>
 
   </div>

@@ -192,9 +192,11 @@
   .nav-item[data-tab="habits"] svg{color:var(--gold);}
   .nav-item[data-tab="finance"] svg{color:var(--success);}
   .nav-item[data-tab="fitness"] svg{color:var(--orange);}
-  /* Games holds Valorant and TFT. Stays red: the wish-glow below and both nav badges are
-     --danger/--gold, so recolouring the icon alone would pulse a red glow on an off-colour icon. */
-  .nav-item[data-tab="games"] svg{color:var(--danger);}
+  /* Games holds Valorant and TFT. The wish-glow below stays --danger against this violet on
+     purpose — it's an alert state, and the whole app already puts red badges on differently
+     coloured icons (goals is blue, habits gold), so a contrasting alert reads as the signal it is
+     rather than as a mismatch. */
+  .nav-item[data-tab="games"] svg{color:var(--pink);}
   .nav-item[data-tab="checklists"] svg{color:var(--teal);}
   .nav-item[data-tab="countdowns"] svg{color:var(--pink);}
   .nav-item[data-tab="wishlist"] svg{color:var(--pink);}
@@ -2865,35 +2867,47 @@
 
      Note the .val-chart-* rules now serve two charts. If TFT ever needs to diverge, add a
      .tft-chart modifier rather than editing them, or the RR chart silently changes with it. */
-  .tft-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:12px;margin-bottom:4px;}
-  .tft-rank-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-card,14px);padding:16px 18px;box-shadow:var(--fin-shadow);min-width:0;}
+  .tft-rank-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-card,14px);padding:14px 16px;box-shadow:var(--fin-shadow);min-width:0;}
+  .tft-summary{margin-bottom:4px;}
+  /* Current and target facing each other across an arrow. Stays a 3-column grid all the way down
+     to phone widths — both halves are three short lines, and stacking them would break the
+     "here → there" reading that is the whole point of putting them in one card. */
+  .tft-duo{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);align-items:center;gap:10px;}
+  .tft-duo-side{min-width:0;}
+  .tft-duo-side.is-target{text-align:right;}
+  .tft-duo-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.7px;font-weight:800;color:var(--faint,var(--muted));margin-bottom:5px;}
+  .tft-duo-body{display:flex;align-items:center;gap:9px;min-width:0;}
+  /* mirrored so both crests sit against the card's outer edges and the two text blocks face in */
+  .tft-duo-side.is-target .tft-duo-body{flex-direction:row-reverse;}
+  .tft-duo-text{min-width:0;}
+  .tft-duo-arrow{font-size:15px;color:var(--faint,var(--muted));flex:none;line-height:1;}
+  .tft-crest.md{width:38px;height:38px;}
+  .tft-crest-blank{display:block;border-radius:50%;background:var(--surface-alt);}
+  .tft-summary-meta{font-size:10.5px;color:var(--faint,var(--muted));line-height:1.5;margin-top:10px;}
+  /* setting a target is a rare action, so the editor is closed by default rather than four form
+     controls pushing the numbers down the page */
+  .tft-target-edit{margin-top:12px;border-top:1px solid var(--border);padding-top:9px;}
+  .tft-target-edit > summary{cursor:pointer;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);list-style:none;}
+  .tft-target-edit > summary::-webkit-details-marker{display:none;}
+  .tft-target-edit > summary::before{content:'▸';display:inline-block;width:12px;color:var(--faint,var(--muted));}
+  .tft-target-edit[open] > summary::before{content:'▾';}
+  .tft-target-edit > summary:hover{color:var(--violet-dark);}
+  .tft-target-edit .fitness-fields{margin-top:10px;}
   /* same theme-corrected ink treatment as .val-tier-name: raw tier colors are tuned for Riot's
      dark UI and gold lands near 2:1 on a white surface, so text never paints one directly */
   .tft-rank-name{
-    font-family:'Manrope',sans-serif;font-size:20px;font-weight:800;line-height:1.2;
+    font-family:'Manrope',sans-serif;font-size:17px;font-weight:800;line-height:1.2;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     color:var(--tier,var(--text));
     color:color-mix(in srgb, var(--tier,var(--text)) 78%, var(--text));
   }
   body[data-theme="dark"] .tft-rank-name,
   body[data-theme="ios-dark"] .tft-rank-name{color:var(--tier,var(--text));}
-  /* rank crest + name/LP side by side. The crests are ~2KB SVGs pulled per tier name from
-     Community Dragon (tftTierIcon() in js/tft.js) — no fetch layer, the URL is derived from the
-     ladder table. object-fit:contain because the source viewBoxes aren't all square. */
-  .tft-rank-head{display:flex;align-items:center;gap:12px;margin-top:2px;}
-  .tft-rank-headtext{min-width:0;}
-  .tft-crest{width:46px;height:46px;flex:none;object-fit:contain;display:block;}
-  .tft-crest.sm{width:28px;height:28px;}
-  .tft-target-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
-  .tft-target-crest{display:flex;align-items:center;gap:7px;min-width:0;}
-  .tft-target-crest-lbl{
-    font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;white-space:nowrap;
-    color:var(--tier,var(--text));
-    color:color-mix(in srgb, var(--tier,var(--text)) 78%, var(--text));
-  }
-  body[data-theme="dark"] .tft-target-crest-lbl,
-  body[data-theme="ios-dark"] .tft-target-crest-lbl{color:var(--tier,var(--text));}
-  .tft-rank-lp{font-size:13px;color:var(--muted);font-weight:700;margin-top:3px;}
-  .tft-rank-sub{font-size:11.5px;color:var(--faint,var(--muted));margin-top:7px;line-height:1.5;}
+  /* Rank crests are ~2KB SVGs pulled per tier name from Community Dragon (tftTierIcon() in
+     js/tft.js) — no fetch layer, the URL is derived from the ladder table. object-fit:contain
+     because the source viewBoxes aren't all square. */
+  .tft-crest{width:38px;height:38px;flex:none;object-fit:contain;display:block;}
+  .tft-rank-lp{font-size:12px;color:var(--muted);font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .tft-delta{font-size:11.5px;font-weight:800;}
   .tft-delta.up{color:#0F7A38;}
   .tft-delta.down{color:#C2262B;}
@@ -2926,21 +2940,40 @@
   body[data-theme="dark"] #tftLogList .wl-delta.down,
   body[data-theme="ios-dark"] #tftLogList .wl-delta.down{background:#3A1E1E;}
   /* MetaTFT sync row (tftSync() in js/tft.js) */
+  /* peak-rank marker on the LP chart (renderTftChart()). Same surface-coloured halo as
+     .val-chart-tierlbl so both stay legible where they cross the data line. */
+  .tft-peak-star{font-size:13px;fill:var(--gold);
+    paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;}
+  .tft-peak-lbl{font-family:'Inter',sans-serif;font-size:9.5px;font-weight:700;letter-spacing:.3px;fill:var(--gold);
+    paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;}
+  /* the LP gap under the star — kept at every width, unlike .tft-peak-lbl */
+  .tft-peak-gap{font-family:'Inter',sans-serif;font-size:10px;font-weight:800;letter-spacing:.2px;fill:var(--gold);
+    paint-order:stroke;stroke:var(--surface);stroke-width:3px;stroke-linejoin:round;}
+  .tft-peak-gap.at-peak{fill:var(--success);}
+
   .tft-sync-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;}
   .tft-sync-row select,
   .tft-sync-id{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
   .tft-sync-id{flex:1 1 220px;min-width:0;}
-  .tft-sync-auto{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);white-space:nowrap;}
-  .tft-sync-status{font-size:11.5px;line-height:1.5;color:var(--muted);margin-bottom:16px;}
+  .tft-sync-auto{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);white-space:nowrap;flex:none;}
+  /* the status line and the auto-sync toggle sit on one row — one says when it last ran, the other
+     whether it runs unprompted. The status takes the slack so a long error message wraps inside its
+     own column instead of pushing the toggle onto another line. */
+  .tft-sync-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .tft-sync-status{font-size:11.5px;line-height:1.5;color:var(--muted);flex:1 1 140px;min-width:0;}
   .tft-sync-status.ok{color:var(--success);}
   /* uses the tab's theme-corrected error ink (#view-games), not raw --danger */
   .tft-sync-status.err{color:var(--val-err-ink,var(--danger));}
   /* a log row that came from the sync rather than the add form — dimmed, because the useful signal
      is spotting the hand-typed ones among a few hundred imported games, not the other way round */
   .tft-src{font-size:9.5px;font-weight:800;letter-spacing:.3px;text-transform:uppercase;color:var(--faint);flex:none;opacity:.75;}
-  .tft-add-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
-  .tft-add-row select{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
-  .tft-add-row .mini-input{flex:0 1 120px;}
+  /* the log-a-game entry point. Sync does the logging now, so this is a button rather than the
+     permanent six-control row it used to be — that row read as the primary way in when it isn't. */
+  .tft-log-cta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 4px;}
+  .tft-log-hint{font-size:11.5px;color:var(--muted);line-height:1.5;flex:1 1 240px;min-width:0;}
+  .tft-log-card .fitness-fields{margin-bottom:2px;}
+  .tft-log-card .fitness-field{margin-bottom:0;}
+  .tft-log-actions{display:flex;justify-content:flex-end;margin-top:16px;}
   /* the strip carries six tiles here rather than the RR chart's three, so it wraps into two rows
      of three instead of being squeezed onto one — the mobile .val-chart-stat{flex:1 1 0} override
      would otherwise force all six across a phone screen */
@@ -3003,10 +3036,24 @@
        (see the .job-filter-chip handler in js/jobs.js) */
     .job-filter-row{grid-template-columns:repeat(5,1fr);}
     .job-filter-chip[data-status="all"]{display:none;}
-    /* current rank and target side by side leave neither readable at this width */
-    .tft-top{grid-template-columns:1fr;}
-    .tft-add-row .mini-input,
-    .tft-add-row select{flex:1 1 calc(50% - 4px);}
+    /* the duo stays side by side here on purpose — it's the comparison that makes the card worth
+       having. Everything just tightens: smaller crests, smaller type, less gap. */
+    .tft-rank-card{padding:12px 13px;}
+    .tft-duo{gap:6px;}
+    .tft-duo-body{gap:7px;}
+    .tft-crest,.tft-crest.md{width:30px;height:30px;}
+    .tft-rank-name{font-size:14.5px;}
+    .tft-rank-lp{font-size:11px;}
+    .tft-duo-arrow{font-size:12px;}
+    .tft-duo-lbl{font-size:8.5px;letter-spacing:.5px;margin-bottom:3px;}
+    .tft-est{flex:1 1 100%;}
+    /* region + Riot ID + Sync stay on one row; only the auto-sync toggle drops below, forced there
+       by a 100% basis rather than by letting the row wrap wherever it happens to run out */
+    .tft-sync-row{gap:6px;}
+    .tft-sync-row select{flex:0 1 98px;min-width:0;}
+    .tft-sync-id{flex:1 1 80px;min-width:0;}
+    #tftSyncBtn{flex:0 0 auto;padding:8px 11px;}
+    .tft-log-cta{gap:8px;}
     #tftStatsStrip .val-chart-stat{flex:1 1 calc(33.333% - 5px);}
   }
 

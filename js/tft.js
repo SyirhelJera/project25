@@ -449,20 +449,35 @@
   // the division picker is meaningless above Master — hide it rather than leaving a control that
   // silently does nothing
   function tftSyncDivVisibility(){
-    el('tftAddDiv').style.display = tftIsApex(el('tftAddTier').value) ? 'none' : '';
-    const tgtApex = tftIsApex(el('tftTargetTier').value);
-    el('tftTargetDivField').style.display = tgtApex ? 'none' : '';
+    // hide the whole field, label included — hiding only the select would strand a "Division"
+    // label above nothing
+    el('tftAddDivField').style.display = tftIsApex(el('tftAddTier').value) ? 'none' : '';
+    el('tftTargetDivField').style.display = tftIsApex(el('tftTargetTier').value) ? 'none' : '';
   }
 
-  /* ---------- current rank card ---------- */
+  /* ---------- the two halves of the summary card ----------
+     One side each, facing across an arrow. Both are deliberately three short lines — label, rank,
+     one number — because the card's job is the comparison, and anything longer on either side
+     stops the pair reading as a single "here → there" statement. */
+  function tftDuoSide(label, tierKey, nameHtml, subHtml){
+    return '<div class="tft-duo-lbl">'+label+'</div>'
+      + '<div class="tft-duo-body">'
+      +   (tierKey ? tftCrestHtml(tierKey, 'md') : '<span class="tft-crest md tft-crest-blank"></span>')
+      +   '<div class="tft-duo-text">'
+      +     '<div class="tft-rank-name">'+nameHtml+'</div>'
+      +     '<div class="tft-rank-lp">'+subHtml+'</div>'
+      +   '</div>'
+      + '</div>';
+  }
+
   function renderTftCurrentCard(){
-    const card = el('tftCurrentCard');
+    const side = el('tftCurrentCard');
+    const meta = el('tftSummaryMeta');
     const cur = tftCurrentEntry();
     if(!cur){
-      card.style.removeProperty('--tier');
-      card.innerHTML = '<div class="section-lbl" style="margin-top:0;">Current rank</div>'
-        + '<div class="tft-rank-name">Not logged yet</div>'
-        + '<div class="tft-rank-sub">Log your rank below to start the chart. Pick "Rank check (no game)" for that first entry — it sets where you stand without counting as a game played.</div>';
+      side.style.removeProperty('--tier');
+      side.innerHTML = tftDuoSide('Current', '', 'Not logged', 'No games yet');
+      meta.textContent = 'Sync your MetaTFT profile above, or log a game to start the chart.';
       return;
     }
     const sorted = tftSortedEntries();
@@ -471,22 +486,18 @@
     const played = sorted.filter(e=> e.placement != null).length;
     let deltaHtml = '';
     if(delta != null && delta !== 0){
-      const cls = delta > 0 ? 'up' : 'down';
-      deltaHtml = ' <span class="tft-delta '+cls+'">'+(delta>0?'▲ +':'▼ ')+delta+' LP</span>';
+      deltaHtml = ' <span class="tft-delta '+(delta>0?'up':'down')+'">'+(delta>0?'▲+':'▼')+delta+'</span>';
     }
-    card.style.setProperty('--tier', tftTierColor(cur.tier));
-    card.innerHTML = '<div class="section-lbl" style="margin-top:0;">Current rank</div>'
-      + '<div class="tft-rank-head">'
-      +   tftCrestHtml(cur.tier)
-      +   '<div class="tft-rank-headtext">'
-      +     '<div class="tft-rank-name">'+escapeHtml(tftRankLabel(cur.tier, cur.division))+'</div>'
-      +     '<div class="tft-rank-lp">'+cur.lp+' LP'+deltaHtml+'</div>'
-      +   '</div>'
-      + '</div>'
-      + '<div class="tft-rank-sub">'+played+' game'+(played===1?'':'s')+' logged'
-      + (sorted.length > played ? ' · '+(sorted.length-played)+' rank check'+((sorted.length-played)===1?'':'s') : '')
-      + ' · last updated '+escapeHtml(fmtDate(parseLocalDateStr(cur.date).getTime()))+'</div>';
-    tftGuardCrests(card);
+    side.style.setProperty('--tier', tftTierColor(cur.tier));
+    side.innerHTML = tftDuoSide('Current', cur.tier,
+      escapeHtml(tftRankLabel(cur.tier, cur.division)),
+      cur.lp + ' LP' + deltaHtml);
+    tftGuardCrests(side);
+
+    // the long-form detail lives on one faint line across the card, not inside either half
+    meta.textContent = played + ' game' + (played===1?'':'s') + ' logged'
+      + (sorted.length > played ? ' · ' + (sorted.length-played) + ' rank check' + ((sorted.length-played)===1?'':'s') : '')
+      + ' · updated ' + fmtDate(parseLocalDateStr(cur.date).getTime());
   }
 
   /* ---------- target: LP remaining, games needed, pace ---------- */
@@ -532,17 +543,22 @@
       cutNote.textContent = 'Grandmaster and Challenger are ladder cutoffs, not LP totals — put the current cutoff LP from the leaderboard in the LP field to get a real estimate.';
     }
 
-    // crest + the rank the four fields currently add up to, so the target reads as a rank rather
-    // than as four separate inputs
-    const crestEl = el('tftTargetCrest');
-    if(t.tier){
-      crestEl.style.setProperty('--tier', tftTierColor(t.tier));
-      crestEl.innerHTML = tftCrestHtml(t.tier, 'sm')
-        + '<span class="tft-target-crest-lbl">'+escapeHtml(tftRankLabel(t.tier, t.division))+'</span>';
-      tftGuardCrests(crestEl);
+    /* The target half of the summary card. Its sub-line is the LP still to go rather than the
+       target's own LP — the target rank is already named right above it, so repeating its LP would
+       spend the card's most valuable line on something the reader can already see. */
+    const side = el('tftTargetSide');
+    const curNow = tftCurrentEntry();
+    const tVal = tftTargetValue();
+    if(!t.tier){
+      side.style.removeProperty('--tier');
+      side.innerHTML = tftDuoSide('Target', '', 'None set', 'Edit below');
     } else {
-      crestEl.style.removeProperty('--tier');
-      crestEl.innerHTML = '';
+      const gap = (curNow && tVal != null) ? Math.max(0, tVal - tftEntryValue(curNow)) : null;
+      side.style.setProperty('--tier', tftTierColor(t.tier));
+      side.innerHTML = tftDuoSide('Target', t.tier,
+        escapeHtml(tftRankLabel(t.tier, t.division)),
+        gap == null ? '—' : (gap === 0 ? '<span class="tft-delta up">reached</span>' : gap + ' LP to go'));
+      tftGuardCrests(side);
     }
 
     const bar = el('tftTargetBar'), note = el('tftTargetNote');
@@ -551,12 +567,12 @@
 
     if(targetVal == null){
       bar.style.display = 'none';
-      note.textContent = 'No target set — pick a tier above and the climb gets measured against it.';
+      note.textContent = 'Set a target under "Edit target & season" to measure the climb against it.';
       return;
     }
     if(curVal == null){
       bar.style.display = 'none';
-      note.textContent = 'Log your current rank below and this fills in.';
+      note.textContent = 'Log a game or sync, and the progress bar fills in.';
       return;
     }
 
@@ -571,14 +587,15 @@
     bar.style.display = 'block';
     el('tftTargetFill').style.width = pct + '%';
 
+    // the ranks and the LP gap are already stated in the duo above, so this line only adds what
+    // isn't up there: how far through the climb the bar is, and from where it's measured
     if(remaining === 0){
-      note.textContent = 'Target reached — ' + tftRankLabel(t.tier, t.division) + ' hit on '
-        + fmtDate(parseLocalDateStr(cur.date).getTime()) + '.';
+      note.textContent = 'Target reached — hit on ' + fmtDate(parseLocalDateStr(cur.date).getTime()) + '.';
       return;
     }
-    note.textContent = tftEntryLabel(cur) + ' → ' + tftRankLabel(t.tier, t.division)
-      + (tftIsApex(t.tier) && t.lp ? (' · ' + t.lp + ' LP') : '')
-      + ' — ' + remaining + ' LP to go (' + pct + '%)';
+    // measured from `anchor`, which is where the target was set — not necessarily the oldest entry
+    note.textContent = pct + '% of the climb from ' + tftLabelForValue(anchor)
+      + (tftIsApex(t.tier) && t.lp ? ' · target uses a ' + t.lp + ' LP cutoff' : '');
 
     /* Games needed. Deltas between consecutive entries where the NEWER one is a game played — a
        decay correction or a soft reset isn't a game, so it's excluded from the numerator and the
@@ -771,9 +788,24 @@
     const H = Math.round(Math.max(190, Math.min(300, W * 0.26)));
     const padL = 12, padR = 14, padT = 26, padB = 26;
     const vals = hist.map(tftEntryValue);
-    const rawSpan = Math.max(60, Math.max(...vals) - Math.min(...vals));
-    let minV = Math.max(0, Math.min(...vals) - rawSpan*0.14);
-    let maxV = Math.max(...vals) + rawSpan*0.14;
+
+    /* Peak is measured across the WHOLE log, never the zoomed slice — a peak that moved when you
+       changed zoom wouldn't be a peak. Derived from the entries rather than read off MetaTFT's
+       ranked.peak_rating_numeric so it stays consistent with what's actually plotted (and so it
+       still works for a hand-typed log with no sync). Ties go to the earliest entry: the peak was
+       first reached then, and later visits back to the same value aren't new peaks. */
+    const allVals = full.map(tftEntryValue);
+    const peakVal = Math.max(...allVals);
+    const peakEntry = full[allVals.indexOf(peakVal)];
+
+    /* Fold the peak into the y-domain so the line is always on screen. A reference line that
+       silently vanishes whenever you're well below it is worse than none — that's exactly when it
+       has something to say. The cost is that a big peak-to-current gap compresses the recent
+       detail, which is the honest picture of that gap. */
+    const domain = vals.concat([peakVal]);
+    const rawSpan = Math.max(60, Math.max(...domain) - Math.min(...domain));
+    let minV = Math.max(0, Math.min(...domain) - rawSpan*0.14);
+    let maxV = Math.max(...domain) + rawSpan*0.14;
     if(minV >= maxV){ minV = 0; maxV = 400; }
     const xOf = i => padL + (hist.length===1 ? 0 : (i/(hist.length-1)) * (W-padL-padR));
     const yOf = v => padT + (1-(v-minV)/(maxV-minV)) * (H-padT-padB);
@@ -834,6 +866,45 @@
     dotsSvg += '<circle cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="7" fill="'+hexToRgba(endColor,0.22)+'"/>'
       + '<circle cx="'+lastX.toFixed(1)+'" cy="'+lastY.toFixed(1)+'" r="3.8" fill="'+endColor+'" stroke="var(--surface)" stroke-width="1.5"/>';
 
+    /* Peak line + star. Gold and dashed so it can't be mistaken for a tier boundary (those are
+       dashed in their own tier's colour) or for the data line itself. The star sits in the right
+       margin at the line's height, so it tracks upward on its own the moment a new peak lands —
+       nothing has to be stored or updated for that, since peakVal is recomputed every render. */
+    const peakY = yOf(peakVal);
+    const peakLineEnd = W - padR - 13;
+    const atPeakNow = peakVal === vals[vals.length-1];
+    let peakSvg = '<line x1="'+padL+'" y1="'+peakY.toFixed(1)+'" x2="'+peakLineEnd+'" y2="'+peakY.toFixed(1)+'"'
+      + ' stroke="var(--gold)" stroke-width="1.5" stroke-dasharray="5 3" opacity="0.85"/>'
+      + '<text class="tft-peak-star" x="'+(W-padR-4)+'" y="'+peakY.toFixed(1)+'" text-anchor="middle" dominant-baseline="central">★</text>';
+    // the label is the first thing to go at phone widths, where it would collide with the line
+    if(!narrow){
+      peakSvg += '<text class="tft-peak-lbl" x="'+(peakLineEnd-5)+'" y="'+(peakY-7).toFixed(1)+'" text-anchor="end">'
+        + (atPeakNow ? 'At peak · ' : 'Peak · ')
+        + escapeHtml(tftRankLabel(peakEntry.tier, peakEntry.division) + ' ' + peakEntry.lp + ' LP')
+        + '</text>';
+    }
+
+    /* How far under the peak you are, hanging off the star. This one survives narrow widths where
+       the text label above doesn't — it's the number being asked for, and it's readable in a few
+       characters. The connector is drawn before the dots, so the current-value ring paints over its
+       lower end and it reads as terminating at where you stand now. */
+    const lastVal = vals[vals.length-1];
+    const lastValY = yOf(lastVal);
+    const peakGap = peakVal - lastVal; // peak is a global max, so this can never go negative
+    const gapX = W - padR - 4;
+    if(peakGap > 0){
+      peakSvg += '<line x1="'+gapX+'" y1="'+(peakY+8).toFixed(1)+'" x2="'+gapX+'" y2="'+lastValY.toFixed(1)+'"'
+        + ' stroke="var(--gold)" stroke-width="1" stroke-dasharray="2 3" opacity="0.7"/>';
+    }
+    // centre the number on the connector, but never let it ride up into the peak line when the gap
+    // is only a few pixels tall, and never past the bottom into the date labels
+    const gapY = Math.min(
+      Math.max(peakY + 14, (peakY + lastValY) / 2),
+      plotBottom - 3
+    );
+    peakSvg += '<text class="tft-peak-gap'+(peakGap === 0 ? ' at-peak' : '')+'" x="'+(gapX-6)+'" y="'+gapY.toFixed(1)+'" text-anchor="end">'
+      + (peakGap > 0 ? ('−' + peakGap + ' LP') : 'on peak') + '</text>';
+
     const labelIdxs = narrow ? [0, hist.length-1] : [0, Math.floor((hist.length-1)/2), hist.length-1];
     let xLabelSvg = '';
     [...new Set(labelIdxs)].forEach(i=>{
@@ -844,10 +915,12 @@
 
     const net = vals[vals.length-1] - vals[0];
     const summary = 'TFT LP history, '+hist.length+' entries, from '+tftEntryLabel(hist[0])
-      + ' to '+tftEntryLabel(hist[hist.length-1])+', net '+(net>0?'plus ':'')+net+' LP.';
+      + ' to '+tftEntryLabel(hist[hist.length-1])+', net '+(net>0?'plus ':'')+net+' LP.'
+      + ' Peak '+tftEntryLabel(peakEntry)
+      + (atPeakNow ? ', which is where you are now.' : ', '+(peakVal - vals[vals.length-1])+' LP above where you are now.');
 
     wrap.innerHTML = '<svg class="val-chart-svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" tabindex="0">'
-      + defsSvg + gridSvg + areaSvg + lineSvg + dotsSvg + xLabelSvg
+      + defsSvg + gridSvg + areaSvg + lineSvg + peakSvg + dotsSvg + xLabelSvg
       + '<line class="val-chart-cursor" x1="0" y1="'+padT+'" x2="0" y2="'+plotBottom+'"/>'
       + '<circle class="val-chart-hoverdot" cx="0" cy="0" r="5" stroke="var(--surface)" stroke-width="2"/>'
       + '</svg>'
@@ -980,8 +1053,10 @@
   }
 
   /* ---------- sync panel wiring ---------- */
+  // code first: the select is narrow on a phone, and the platform code is the part that has to stay
+  // readable when the label clips — it's the value that actually decides whether a lookup resolves
   el('tftSyncRegion').innerHTML = TFT_REGIONS.map(r=>
-    '<option value="'+r.v+'">'+escapeHtml(r.l)+' ('+r.v+')</option>').join('');
+    '<option value="'+r.v+'">'+escapeHtml(r.v.toUpperCase()+' · '+r.l)+'</option>').join('');
   el('tftSyncRegion').addEventListener('change', ()=>{
     state.tft.sync.region = el('tftSyncRegion').value;
     state.tft.sync.lastError = '';
@@ -1055,11 +1130,42 @@
       state.tft.target.startValue = tftValue(tier, division, lp);
     }
     save();
-    // LP and placement clear; tier/division/date stay — you climb from where you just were
-    el('tftAddLp').value = '';
-    el('tftAddPlacement').value = '';
+    closeTftLogModal();
     renderTft();
   }
+
+  /* ---------- log-a-game modal ----------
+     Hand-rolled like every other modal in this app (there's no shared helper — see the finance
+     add-account overlay for the same shape). The form used to sit inline under the chart, but with
+     sync doing the logging it's a rare action, and a permanent six-control row read as the primary
+     way in when it isn't. */
+  let tftLogReturnFocus = null;
+  function openTftLogModal(){
+    showTftAddErr('');
+    // start from where you actually are — you're logging a game played from the current rank, so
+    // tier and division are nearly always right. LP is left blank: it's the thing that changed.
+    const cur = tftCurrentEntry();
+    if(cur){ el('tftAddTier').value = cur.tier; el('tftAddDiv').value = String(cur.division); }
+    el('tftAddLp').value = '';
+    el('tftAddPlacement').value = '';
+    el('tftAddDate').value = localDateStr(new Date());
+    tftSyncDivVisibility();
+    tftLogReturnFocus = document.activeElement;
+    el('tftLogOverlay').style.display = 'flex';
+    el('tftAddLp').focus();
+  }
+  function closeTftLogModal(){
+    el('tftLogOverlay').style.display = 'none';
+    // hand focus back to whatever opened it, so keyboard users aren't dropped at the top of the page
+    if(tftLogReturnFocus && tftLogReturnFocus.focus) tftLogReturnFocus.focus();
+    tftLogReturnFocus = null;
+  }
+  el('tftOpenLogBtn').addEventListener('click', openTftLogModal);
+  el('tftLogCloseBtn').addEventListener('click', closeTftLogModal);
+  el('tftLogOverlay').addEventListener('click', e=>{ if(e.target === el('tftLogOverlay')) closeTftLogModal(); });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && el('tftLogOverlay').style.display === 'flex') closeTftLogModal();
+  });
 
   el('tftAddBtn').addEventListener('click', addTftEntry);
   el('tftAddLp').addEventListener('keydown', e=>{ if(e.key === 'Enter') addTftEntry(); });

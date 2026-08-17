@@ -204,9 +204,13 @@ state = {
                                        // tiers, which are the same everywhere, with prices typed
                                        // in per region/currency — price 0 means "not sold here"
                                        // and is left out of a cost comparison. `offers` are
-                                       // third-party sellers (a discounted top-up shop): free-form
-                                       // {vp,price} rows pooled with the official tiers, dropped
-                                       // from consideration entirely when useOffers is false, and
+                                       // third-party sellers (a discounted top-up shop):
+                                       // {id,name,vp,price,on} rows pooled with the official
+                                       // tiers, grouped in Settings by `name` (renaming a group
+                                       // renames its rows; its checkbox sets `on` across them, so
+                                       // a seller can be benched without losing its prices),
+                                       // dropped from consideration entirely when useOffers is
+                                       // false or the row's `on` is false, and
                                        // always reported alongside what the official-only route
                                        // would have cost. The search is an unbounded coin change
                                        // that deliberately looks *past* the shortfall, since bulk

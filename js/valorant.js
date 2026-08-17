@@ -961,8 +961,26 @@
   // official tiers, an unpriced row is dropped rather than treated as "sold, cost unknown".
   function valVpOffers(){
     return ((state.valorant.vp && state.valorant.vp.offers) || [])
+      // `on === false` is a seller switched off in Settings — categorising them is only useful if
+      // a whole category can be taken out of the running
+      .filter(o=>o.on !== false)
       .map(o=>({ vp: parseInt(o.vp,10)||0, price: Number(o.price)||0, src: (o.name||'Third party').trim() || 'Third party', id:o.id }))
       .filter(o=>o.vp > 0 && o.price > 0);
+  }
+  // offers grouped by seller, which is what the Settings list edits: a discounted shop sells every
+  // tier, so its rows belong together under one name that can be renamed or switched off once
+  function valVpOfferGroups(){
+    const groups = new Map();
+    ((state.valorant.vp && state.valorant.vp.offers) || []).forEach(o=>{
+      const name = (o.name||'Third party').trim() || 'Third party';
+      if(!groups.has(name)) groups.set(name, { name, on: o.on !== false, rows: [] });
+      const g = groups.get(name);
+      g.rows.push(o);
+      // a group reads as on unless every row in it is off — a half-off group would otherwise
+      // render as a checked box that isn't wholly true
+      if(o.on !== false) g.on = true;
+    });
+    return [...groups.values()].map(g=>({ ...g, rows: g.rows.slice().sort((a,b)=>(parseInt(a.vp,10)||0)-(parseInt(b.vp,10)||0)) }));
   }
   function valVpUseOffers(){
     return state.valorant.vp && state.valorant.vp.useOffers !== false;
@@ -1130,22 +1148,82 @@
       + '</div>').join('');
     renderValVpOffers();
   }
+  /* Every field here is editable in place. Prices move — a shop's discount this month isn't next
+     month's — and re-typing a row from scratch to change one number is the kind of friction that
+     ends with a stale price quietly steering the calculator. Grouped by seller: renaming the group
+     renames its rows (that *is* the categorising operation), and its checkbox takes the whole
+     seller out of consideration without deleting anything you'd have to re-enter later. */
+  /* Which sellers are expanded. Not persisted (same call as the owned-skins sort) and default
+     *collapsed*: a shop with six tiers is six rows of inputs you only look at when a price
+     changes, and several shops stacked open is the crowding this fixes. The header stays
+     readable while folded — name, count, cheapest rate — so collapsed isn't blind. */
+  const valVpOfferOpen = new Set();
+
   function renderValVpOffers(){
     const wrap = el('valVpOfferRows'); if(!wrap) return;
-    const offers = (state.valorant.vp && state.valorant.vp.offers) || [];
+    const groups = valVpOfferGroups();
     el('valVpUseOffers').checked = valVpUseOffers();
-    el('valVpUseOffers').disabled = !offers.length;
-    wrap.innerHTML = offers.length
-      ? offers.map(o=>
+    el('valVpUseOffers').disabled = !groups.length;
+    el('valVpSellerList').innerHTML = groups.map(g=>'<option value="'+escapeHtml(g.name)+'"></option>').join('');
+    if(!groups.length){
+      wrap.innerHTML = '<div class="val-peak-note">No third-party offers saved. Add one above — say a top-up shop selling 1,000 VP cheaper than Riot does — and it gets weighed against the official tiers.</div>';
+      return;
+    }
+    wrap.innerHTML = groups.map(g=>{
+      const open = valVpOfferOpen.has(g.name);
+      return '<div class="val-vp-offer-group'+(g.on?'':' is-off')+'">'
+      + '<div class="val-vp-offer-group-hdr">'
+        + '<button type="button" class="val-vp-offer-fold" data-vp-seller-fold="'+escapeHtml(g.name)+'"'
+          + ' aria-expanded="'+(open?'true':'false')+'" aria-label="'+(open?'Collapse ':'Expand ')+escapeHtml(g.name)+'">'
+          + '<span class="wlg-chevron">'+(open?'▼':'▶')+'</span></button>'
+        + '<label class="val-vp-offer-toggle" title="Use this seller\'s offers in the calculator">'
+          + '<input type="checkbox" data-vp-seller-on="'+escapeHtml(g.name)+'"'+(g.on?' checked':'')+'>'
+        + '</label>'
+        + '<input type="text" class="val-vp-offer-name" value="'+escapeHtml(g.name)+'" maxlength="30"'
+          + ' data-vp-seller-name="'+escapeHtml(g.name)+'" aria-label="Seller name">'
+        // collapsed, the summary is all you get, so it carries the cheapest rate rather than only
+        // a count — enough to tell whether this seller is worth opening
+        + '<button type="button" class="val-vp-offer-group-count" data-vp-seller-fold="'+escapeHtml(g.name)+'" tabindex="-1">'
+          + g.rows.length+' offer'+(g.rows.length===1?'':'s')
+          + (open ? '' : escapeHtml(valVpGroupSummary(g)))
+        + '</button>'
+      + '</div>'
+      + '<div class="val-vp-offer-group-body"'+(open?'':' style="display:none;"')+'>'
+      + g.rows.map(o=>
           '<div class="val-vp-offer-row">'
-          + '<span class="val-vp-offer-name">'+escapeHtml(o.name||'Third party')+'</span>'
-          + '<span class="val-store-item-price">'+(parseInt(o.vp,10)||0).toLocaleString()+'</span>'
-          + '<span class="val-vp-offer-cost">'+escapeHtml(valFmtMoney(Number(o.price)||0))+'</span>'
+          + '<input type="number" class="val-vp-offer-vp" min="1" step="25" inputmode="numeric"'
+            + ' value="'+(parseInt(o.vp,10)||0)+'" data-vp-offer-vp="'+escapeHtml(o.id)+'" aria-label="VP amount">'
+          + '<span class="val-vp-offer-sep">for</span>'
+          + '<input type="number" class="val-vp-offer-price" min="0" step="0.01" inputmode="decimal"'
+            + ' value="'+(Number(o.price)||0)+'" data-vp-offer-price="'+escapeHtml(o.id)+'" aria-label="Price">'
+          // per-VP is the number that actually decides whether an offer is good, and it's the one
+          // nobody wants to work out in their head across six rows
+          + '<span class="val-vp-offer-rate">'+escapeHtml(valVpRateText(o))+'</span>'
           + '<button type="button" class="val-icon-btn" data-vp-offer-del="'+escapeHtml(o.id)+'"'
             + ' data-tile-title="Remove this offer"><span aria-hidden="true">✕</span></button>'
           + '</div>').join('')
-      : '<div class="val-peak-note">No third-party offers saved. Add one above — say a top-up shop selling 1,000 VP cheaper than Riot does — and it gets weighed against the official tiers.</div>';
+      + '</div></div>';
+    }).join('');
     applyValTileTitles(wrap);
+  }
+  // best per-VP rate in a group, for the collapsed header
+  function valVpGroupSummary(g){
+    const rates = g.rows.map(o=>({ vp:parseInt(o.vp,10)||0, price:Number(o.price)||0 }))
+      .filter(o=>o.vp && o.price)
+      .map(o=>o.price/o.vp);
+    if(!rates.length) return '';
+    return ' · from '+valFmtMoney(Math.round(Math.min(...rates)*10000)/10000)+'/VP';
+  }
+  // "₱0.38/VP · 22% off" — the second half only when the same VP amount is sold officially, since
+  // that's the only honest comparison
+  function valVpRateText(o){
+    const vp = parseInt(o.vp,10)||0, price = Number(o.price)||0;
+    if(!vp || !price) return '';
+    const per = valFmtMoney(Math.round((price/vp)*10000)/10000)+'/VP';
+    const official = valVpPackages().find(p=>p.vp === vp && p.price > 0);
+    if(!official) return per;
+    const off = Math.round((1 - price/official.price) * 100);
+    return per + (off > 0 ? ' · '+off+'% off' : (off < 0 ? ' · '+(-off)+'% dearer' : ''));
   }
   el('valVpOfferAddBtn').addEventListener('click', ()=>{
     const vp = parseInt(el('valVpOfferVp').value, 10) || 0;
@@ -1154,17 +1232,51 @@
     // and a price with no VP amount buys nothing
     if(vp <= 0 || price <= 0) return;
     state.valorant.vp.offers = state.valorant.vp.offers || [];
-    state.valorant.vp.offers.push({
-      id: uid(),
-      name: el('valVpOfferName').value.trim() || 'Third party',
-      vp, price,
-    });
+    const name = el('valVpOfferName').value.trim() || 'Third party';
+    state.valorant.vp.offers.push({ id: uid(), name, vp, price });
+    // open the group it landed in — adding a row to a collapsed group would otherwise look like
+    // nothing happened
+    valVpOfferOpen.add(name);
     el('valVpOfferName').value = ''; el('valVpOfferVp').value = ''; el('valVpOfferPrice').value = '';
     save(); renderValVpOffers();
   });
   el('valVpOfferRows').addEventListener('click', e=>{
+    const fold = e.target.closest('[data-vp-seller-fold]');
+    if(fold){
+      const name = fold.dataset.vpSellerFold;
+      if(valVpOfferOpen.has(name)) valVpOfferOpen.delete(name); else valVpOfferOpen.add(name);
+      renderValVpOffers(); // view-only, nothing to save
+      return;
+    }
     const btn = e.target.closest('[data-vp-offer-del]'); if(!btn) return;
     state.valorant.vp.offers = (state.valorant.vp.offers||[]).filter(o=>o.id !== btn.dataset.vpOfferDel);
+    save(); renderValVpOffers();
+  });
+  // `change`, not `input`: every one of these re-renders (a rename regroups the list, a price
+  // changes the per-VP figure beside it), and re-rendering mid-keystroke would take the caret
+  el('valVpOfferRows').addEventListener('change', e=>{
+    const t = e.target;
+    const offers = state.valorant.vp.offers || [];
+    const byId = id => offers.find(o=>o.id === id);
+    if(t.dataset.vpOfferVp){
+      const o = byId(t.dataset.vpOfferVp); if(!o) return;
+      o.vp = Math.max(0, parseInt(t.value,10)||0);
+    } else if(t.dataset.vpOfferPrice){
+      const o = byId(t.dataset.vpOfferPrice); if(!o) return;
+      o.price = Math.max(0, Number(t.value)||0);
+    } else if(t.dataset.vpSellerName){
+      // renaming the group renames its rows — merging into an existing name is a legitimate way
+      // to fold two lists together, so it isn't guarded against
+      const from = t.dataset.vpSellerName;
+      const to = t.value.trim() || 'Third party';
+      offers.forEach(o=>{ if(((o.name||'Third party').trim() || 'Third party') === from) o.name = to; });
+      // carry the fold state across the rename, or editing a name would collapse the group you're
+      // in the middle of working on
+      if(valVpOfferOpen.delete(from)) valVpOfferOpen.add(to);
+    } else if(t.dataset.vpSellerOn){
+      const seller = t.dataset.vpSellerOn;
+      offers.forEach(o=>{ if(((o.name||'Third party').trim() || 'Third party') === seller) o.on = t.checked; });
+    } else return;
     save(); renderValVpOffers();
   });
   el('valVpUseOffers').addEventListener('change', ()=>{

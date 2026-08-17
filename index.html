@@ -1522,9 +1522,12 @@
     <div class="val-vp-price-rows" id="valVpPriceRows"></div>
 
     <div class="section-lbl" style="margin-top:18px;">Third-party offers</div>
-    <div class="view-sub" style="margin-bottom:10px;">A discounted top-up shop selling the same VP for less. Each offer is weighed against the official tiers, and when one wins the calculator also shows what the official-only route would have cost.</div>
+    <div class="view-sub" style="margin-bottom:10px;">A discounted top-up shop selling the same VP for less. Offers are grouped by seller — add every tier a shop sells under one name, and its checkbox takes that whole seller out of the calculator without deleting anything. All fields stay editable, since a shop's prices change. Each offer is weighed against the official tiers, and when one wins the calculator also shows what the official-only route would have cost.</div>
     <div class="val-add-row">
-      <input type="text" id="valVpOfferName" placeholder="Seller, e.g. Codashop sale" maxlength="30" style="flex:2;min-width:150px;">
+      <!-- the datalist is filled from the sellers already saved, so a second offer from the same
+           shop joins that group instead of starting a near-duplicate one -->
+      <input type="text" id="valVpOfferName" list="valVpSellerList" placeholder="Seller, e.g. Codashop" maxlength="30" style="flex:2;min-width:150px;">
+      <datalist id="valVpSellerList"></datalist>
       <input type="number" id="valVpOfferVp" placeholder="VP" min="1" step="1" style="flex:1;min-width:90px;">
       <input type="number" id="valVpOfferPrice" placeholder="Price" min="0" step="0.01" style="flex:1;min-width:90px;">
       <button class="btn btn-ghost" id="valVpOfferAddBtn">+ Add</button>

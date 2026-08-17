@@ -2928,10 +2928,43 @@
   .val-vp-price-row .val-store-item-price{flex:none;font-size:12px;min-width:66px;}
   .val-vp-price-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:'Inter',sans-serif;}
   .val-vp-price-row input:hover,.val-vp-price-row input:focus{border-color:var(--violet);}
-  .val-vp-offer-rows{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
-  .val-vp-offer-row{display:flex;align-items:center;gap:10px;background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;padding:7px 10px;}
-  .val-vp-offer-name{flex:1;min-width:0;font-size:12.5px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .val-vp-offer-cost{flex:none;font-size:12px;font-weight:800;color:var(--text);}
+  /* one block per seller: a header that names and switches the whole group, then its tiers */
+  .val-vp-offer-rows{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
+  .val-vp-offer-group{background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;padding:9px 11px;}
+  /* a switched-off seller stays legible but visibly out of the running */
+  .val-vp-offer-group.is-off{opacity:.55;}
+  .val-vp-offer-group-hdr{display:flex;align-items:center;gap:9px;}
+  /* only the chevron and the count fold the group — the name field and the on/off box in between
+     them are controls of their own, and swallowing their clicks into a fold would be maddening */
+  .val-vp-offer-fold{
+    flex:none;width:20px;height:20px;padding:0;border:none;background:none;cursor:pointer;
+    display:inline-flex;align-items:center;justify-content:center;color:var(--faint);
+  }
+  .val-vp-offer-fold:hover{color:var(--violet);}
+  .val-vp-offer-fold .wlg-chevron{font-size:9px;}
+  .val-vp-offer-group-body{margin-top:7px;}
+  .val-vp-offer-toggle{display:inline-flex;align-items:center;flex:none;cursor:pointer;}
+  .val-vp-offer-name{
+    flex:1;min-width:0;background:transparent;border:1px solid transparent;border-radius:6px;
+    padding:3px 6px;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:800;color:var(--text);
+  }
+  .val-vp-offer-name:hover{border-color:var(--border);}
+  .val-vp-offer-name:focus{border-color:var(--violet);background:var(--surface);outline:none;}
+  .val-vp-offer-group-count{
+    flex:none;background:none;border:none;padding:0;cursor:pointer;font-family:'Inter',sans-serif;
+    font-size:10.5px;font-weight:700;color:var(--faint);
+  }
+  .val-vp-offer-group-count:hover{color:var(--muted);}
+  .val-vp-offer-row{display:flex;align-items:center;gap:8px;padding:3px 0;}
+  .val-vp-offer-row input{
+    background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;
+    padding:5px 7px;font-size:12px;font-weight:700;font-family:'Inter',sans-serif;min-width:0;
+  }
+  .val-vp-offer-row input:hover,.val-vp-offer-row input:focus{border-color:var(--violet);outline:none;}
+  .val-vp-offer-vp{width:76px;flex:none;}
+  .val-vp-offer-price{width:82px;flex:none;}
+  .val-vp-offer-sep{flex:none;font-size:11px;color:var(--faint);font-weight:600;}
+  .val-vp-offer-rate{flex:1;min-width:0;font-size:10.5px;font-weight:700;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .val-vp-use-offers{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;}
 
   /* NIGHT MARKET — six personal discounted skins, open a couple of weeks an act. Its own accent

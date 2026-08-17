@@ -2152,7 +2152,8 @@
      Tier color arrives as one custom property, --tier, set per card in renderValorant(). --tier-ink
      is the theme-corrected *text* shade derived from it: the raw tier colors are tuned for Riot's
      dark UI, and gold/radiant on a white surface land near 2:1. Nothing paints a raw tier color
-     onto text. The plain var() line before each color-mix() is the fallback for engines without it. */
+     onto text. The plain var() line before each color-mix() is the fallback for engines without it.
+
      Scoped to #view-games, not #view-valorant: the Valorant panels moved inside the Games tab
      (#gametab-valorant) when TFT joined them. #view-games is a strict superset of the old element,
      so every rule below still covers everything it used to — and the TFT panel, which reuses
@@ -3015,7 +3016,10 @@
      can shrink but never grow: left-packed, no-wrap, and visibly smaller than a daily offer at
      every width. Player-card art is a ~3:1 banner and sits as a band inside the square — that's
      what the preview modal is for. Being flex also makes .val-store-grid's grid-template-columns
-     (including its mobile overrides) inert here, so nothing downstream has to be re-overridden. */
+     (including its mobile overrides) inert here, so nothing downstream has to be re-overridden.
+     The one place the fixed basis gives way is a phone (see the 560px block), where the offers
+     share the row equally so it ends flush with the skins grid — at that width an evenly split row
+     is still far smaller per tile than the 2-up skins above, so the hierarchy survives it. */
   .val-accessory-grid{display:flex;flex-wrap:nowrap;}
   .val-accessory-item{flex:0 1 96px;min-width:0;aspect-ratio:1;}
   /* the square's height is now the budget: the art area has to be free to shrink under it, so the
@@ -3276,7 +3280,9 @@
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
     .fitness-results{grid-template-columns:repeat(2,1fr);}
     .val-tracker-card{padding:14px;}
-    .val-store-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr));gap:8px;}
+    /* auto-fit, not auto-fill: with four daily offers in a five-track row, auto-fill leaves the
+       fifth track standing empty on the right — auto-fit collapses it so the tiles use the row */
+    .val-store-grid{grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:8px;}
     .val-store-item-img{padding:10px 6px 4px;min-height:56px;}
     .val-store-item-img img{max-height:52px;}
     .val-store-item-name{font-size:9.5px;}
@@ -3291,7 +3297,7 @@
     .val-card-action-btn{width:27px;height:27px;font-size:12px;}
     /* the accessory strip is flex, so the grid rule above doesn't reach it — it only needs its
        tiles to give up a little more width before the row would overflow */
-    .val-accessory-item{flex-basis:76px;}
+    .val-accessory-item{flex:0 1 76px;}
     /* two player-card crops side by side leave neither readable at this width — stack them */
     .val-preview-variants{grid-template-columns:1fr;}
     .val-preview-variant.tall .val-preview-variant-img img{max-height:38vh;}
@@ -3323,13 +3329,44 @@
     #tftStatsStrip .val-chart-stat{flex:1 1 calc(33.333% - 5px);}
   }
 
+  /* PHONES — the store rows stop being auto-filled and become a fixed 2-up.
+     A width-driven grid answers "four daily offers, room for three" with a 3 + 1 orphan, which
+     reads as a broken row rather than a wrapped one. Every section here comes in an even count
+     (four daily offers, six night-market), so two columns fill every row exactly, and the tiles
+     get roughly double the art they had at three-up. An odd count would still orphan its last
+     tile — Riot has never sent one, but nothing guarantees it — so that tile spans the pair
+     instead of sitting half-width next to a hole.
+     Everything here hangs off .val-store-account, i.e. the shop sections only: #valOwnedSkinsList
+     is the same grid class but a collection of arbitrary length, where 2-up would double an
+     already long scroll and the orphan rule would end it on a full-width tile. The :not() keeps
+     the bigger art and type off the accessory squares, which are sized by their own aspect-ratio
+     and would burst if handed a daily offer's 68px art floor. */
+  @media (max-width:560px){
+    .val-store-account .val-store-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
+    .val-store-account .val-store-grid > .val-store-item:last-child:nth-child(odd){grid-column:1 / -1;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img{min-height:68px;padding:14px 12px 6px;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img img{max-height:76px;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-name{font-size:10.5px;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-price{font-size:11px;}
+    /* accessories keep their single no-wrap row, but split it evenly instead of left-packing at a
+       fixed width, so the row ends flush with the skins grid above rather than trailing dead space.
+       Sharing a phone row between four of them still leaves each well under half a daily-offer
+       tile, which is the hierarchy the fixed width protects on wider screens. */
+    .val-store-account .val-accessory-grid{gap:8px;}
+    .val-accessory-item{flex:1 1 0;}
+  }
+
   @media (max-width:420px){
-    .val-store-grid{grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;}
-    .val-accessory-item{flex-basis:64px;}
+    /* store sections keep the 2-up from the block above — only the breathing room tightens */
+    .val-store-account .val-store-grid{gap:8px;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img{min-height:56px;padding:12px 10px 5px;}
+    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img img{max-height:62px;}
     /* at this size the footer bar is most of the square, so the art keeps only a hairline of padding */
     .val-accessory-item .val-store-item-img{padding:7px 5px 2px;}
-    .val-store-item-img{min-height:46px;}
-    .val-store-item-img img{max-height:42px;}
+    /* the owned-skins collection stays auto-filled, so its tiles still shrink here */
+    #valOwnedSkinsList{grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px;}
+    #valOwnedSkinsList .val-store-item-img{min-height:46px;}
+    #valOwnedSkinsList .val-store-item-img img{max-height:42px;}
   }
 
   ::-webkit-scrollbar{width:8px;}

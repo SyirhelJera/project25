@@ -1757,15 +1757,39 @@
   .finance-subnav-btn.subnav-alert{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger);}
 
   /* Games strip (Valorant | TFT): the only sub-nav picking between two *products* rather than two
-     views of one, so each button carries its game's mark. The logo keeps its brand color while the
-     button is inactive — that's the whole point of it, since a strip of two identical grey pills is
-     what the icons are here to break up — and goes white on the active violet fill, where a red or
-     gold mark would only muddy. Sized off the label's own font-size so it tracks the mobile bump. */
-  .games-subnav .finance-subnav-btn{display:inline-flex;align-items:center;gap:7px;}
+     views of one, so each button carries its game's mark, which keeps its brand color throughout —
+     a strip of two identical grey pills is what the icons are here to break up. Sized off the
+     label's own font-size so it tracks the mobile bump.
+
+     This strip deliberately does NOT take the violet fill the other sub-navs use. The Games tab
+     stacks three switches before any content — game, then screen (Shop/RR/Live), then view
+     (Store/Owned) — and when all three wore the same solid violet at the same weight, the header
+     read as three peers shouting and nothing said which one changed what. One accent per screen,
+     and it belongs to the middle level, the one that swaps the whole panel. This level says
+     "you are in Valorant" in the game's own ink instead; the level below says it in violet-pale.
+     The plain declaration before each color-mix() is the fallback for engines without it. */
+  .games-subnav{gap:4px;margin-bottom:10px;}
+  .games-subnav .finance-subnav-btn{display:inline-flex;align-items:center;gap:7px;background:none;border-color:transparent;}
+  .games-subnav .finance-subnav-btn:hover{color:var(--text);background:var(--surface-alt);border-color:transparent;}
+  .games-subnav .finance-subnav-btn.active{
+    color:var(--text);
+    background:var(--surface-alt);
+    background:color-mix(in srgb, var(--game-ink) 12%, var(--surface-alt));
+    border-color:var(--border);
+    border-color:color-mix(in srgb, var(--game-ink) 38%, transparent);
+  }
+  /* hovering the game you're already on still answers, just one step deeper into its own ink */
+  .games-subnav .finance-subnav-btn.active:hover{
+    color:var(--text);
+    background:color-mix(in srgb, var(--game-ink) 18%, var(--surface-alt));
+  }
+  /* selection is carried by the fill and the text weight, never by the ink alone — the game colors
+     don't all clear 3:1 on every one of the four themes' surfaces */
+  .games-subnav .finance-subnav-btn.active span{font-weight:800;}
+  .games-subnav .finance-subnav-btn:not(.active) .game-logo{opacity:.6;}
   .game-logo{width:1.25em;height:1.25em;flex:none;color:var(--game-ink,currentColor);}
   .finance-subnav-btn[data-gametab="valorant"]{--game-ink:#FF4655;}
   .finance-subnav-btn[data-gametab="tft"]{--game-ink:#C89B3C;}
-  .finance-subnav-btn.active .game-logo{color:#fff;}
   .finance-ccy-badge{font-size:10px;font-weight:700;color:var(--muted);background:var(--surface-alt);border-radius:5px;padding:2px 6px;letter-spacing:.05em;flex:none;}
   .chip-danger{background:var(--danger-pale);color:var(--fin-neg,var(--danger));border-color:var(--danger);}
   .fa-thumb{width:36px;height:36px;border-radius:var(--fin-r-ctl);object-fit:cover;flex:none;border:var(--fin-hairline);}
@@ -2454,9 +2478,9 @@
     .val-account-card.expanded{padding:11px 11px 12px;}
     .val-account-card.expanded .val-meta{font-size:10.5px;}
 
-    /* the account dropdown above the store had a 220px cap that left it stranded next to a
-       full-width label; here it takes the rest of its line */
-    .val-store-switcher-row select{max-width:none;min-width:0;}
+    /* (the account dropdown's tablet sizing lives with the rest of the header-stack rules, below
+       .val-store-switcher-row's own declarations — a copy here never applied, since a media block
+       adds no specificity and the base rule is further down the file) */
   }
 
   @media (max-width:560px){
@@ -2602,14 +2626,75 @@
   /* account switcher, above the store card — filters which tracked account's store shows below;
      works purely off already-fetched data, so it's independent of the local helper (whose
      Check Store Now / Add Account / Delete controls live in Settings → Valorant Local Helper) */
-  .val-store-switcher-row{margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .val-store-switcher-row{margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .val-store-switcher-lbl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex:none;}
   .val-store-switcher-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:'Inter',sans-serif;flex:1;min-width:150px;max-width:220px;}
   .val-store-switcher-row select:hover{border-color:var(--violet);}
-  /* Skins / Accessories switch — same pill toggle as elsewhere, minus the standalone bottom
+  /* Store / Owned Skins switch — same pill toggle as elsewhere, minus the standalone bottom
      margin since it's sharing a flex row with the account dropdown */
   .val-store-switcher-row .unit-toggle{margin-bottom:0;}
   .val-store-switcher-row .unit-toggle button{padding:6px 12px;font-size:11.5px;}
+
+  /* ---------- Games header stack: three switches, one accent ----------
+     Reading down the tab: game (Valorant/TFT) → screen (Shop/RR/Live) → view (Store/Owned Skins,
+     plus which account and whether the helper is up). Each level now looks like what it is.
+
+     The screen tabs are the only solid violet on the page, because they're the only control that
+     replaces everything below them. The view switch sits one step quieter in the same hue —
+     violet-pale fill, violet-dark label — so it reads as "selected" without a second shout, and
+     the game strip above is quieter still (see .games-subnav). Intensity of one accent carries the
+     three levels; three different fills carried none.
+
+     Spacing does the grouping the old even 16/16/14 rhythm couldn't: the two navigation strips sit
+     10px apart as one block, then an 18px gap before the controls that belong to the card below. */
+  #valSubtabToggle{margin-bottom:18px;}
+  #valStoreModeToggle button.active{background:var(--violet-pale);color:var(--violet-dark);font-weight:800;}
+  /* the segmented controls are hit with a thumb here — the tab's other buttons already sit at 38px
+     (.finance-subnav-btn) or 40px (.val-icon-btn on coarse pointers), and these were ~30px */
+  #view-games .unit-toggle button{min-height:38px;}
+  @media (pointer:coarse){ #view-games .unit-toggle button{min-height:40px;} }
+
+  /* TABLETS — the sidebar is gone, so the row has a full-width line to itself and the dropdown's
+     220px desktop cap only truncates the account name it exists to show */
+  @media (max-width:760px){
+    .val-store-switcher-row select{max-width:none;min-width:0;}
+  }
+
+  /* PHONES — the row stops wrapping wherever it runs out and becomes two deliberate lines:
+     the account select on its own (it's the widest thing and the one whose value must stay
+     readable — a 220px cap used to truncate "ツSyJera#VALO (MAIN)" mid-name), then the view
+     switch filling the line beneath it with the helper's status square beside it.
+
+     "ACCOUNT" goes visually hidden rather than being deleted: the <label for> is the select's
+     accessible name, and at this width the selected option already says what the control is. */
+  @media (max-width:560px){
+    .val-store-switcher-row{gap:8px;}
+    .val-store-switcher-lbl{
+      position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+      overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0;
+    }
+    /* the second line has to measure the same as the first: 44 = the toggle's 38px button plus its
+       own 2px padding and 1px border, top and bottom. Both go to 46 on a coarse pointer, where the
+       buttons grow to 40 — the select and the helper square follow it rather than the other way
+       round, since the tappable thing is the button inside the tray, not the tray. */
+    .val-store-switcher-row select{flex:1 1 100%;max-width:none;min-width:0;min-height:44px;}
+    .val-store-switcher-row .unit-toggle{flex:1 1 auto;display:flex;padding:2px;}
+    .val-store-switcher-row .unit-toggle button{flex:1;padding:6px 8px;font-size:12px;}
+    /* the screen tabs take the full width as three equal thirds — an inline pill strip that
+       happens to nearly fill the line reads as an accident; this reads as the tab bar it is */
+    #valSubtabToggle{display:flex;}
+    #valSubtabToggle button{flex:1;padding:6px 4px;}
+    /* the helper is a status light, not a third tab: at this width it drops its label and becomes
+       a square the size of the toggle beside it. Its accessible name is set in
+       renderValLocalPanel(), so hiding the text costs nothing to a screen reader. */
+    .val-local-chip{flex:none;gap:4px;padding:0;width:44px;min-height:44px;justify-content:center;}
+    .val-local-chip-lbl{display:none;}
+  }
+
+  @media (max-width:560px) and (pointer:coarse){
+    .val-store-switcher-row select{min-height:46px;}
+    .val-local-chip{width:46px;min-height:46px;}
+  }
 
   /* daily store items (see renderValorantStore() in valorant.js) — one .val-store-account per
      tracked Riot account, labeled with the name chosen when running valorant-login.mjs */

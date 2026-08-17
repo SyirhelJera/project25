@@ -706,9 +706,14 @@
     el('valWishlistOverlay').style.display = 'flex';
     valWishlistReturnFocus = document.activeElement;
     // the input is the point of opening this — unless no account is picked, in which case there's
-    // nothing to type into and the close button is the only control
+    // nothing to type into and the close button is the only control.
+    // Never on touch: focusing a field there throws up the keyboard and iOS scroll-zooms onto it,
+    // so opening the list to *read* it starts by fighting the keyboard back down. A tap on the
+    // field is one gesture away; on a mouse+keyboard the autofocus saves a click and costs nothing.
     const input = el('valWishlistInput');
-    if(state.valorant.selectedStoreLabel) input.focus(); else el('valWishlistCloseBtn').focus();
+    const autoFocus = !window.matchMedia || window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+    if(state.valorant.selectedStoreLabel && autoFocus) input.focus();
+    else el('valWishlistCloseBtn').focus();
   }
   function closeValWishlist(){
     el('valWishlistOverlay').style.display = 'none';

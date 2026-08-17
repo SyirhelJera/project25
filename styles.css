@@ -2622,6 +2622,15 @@
   .val-vp-calc-modal .val-vp-calc{border-top:none;padding-top:0;}
   .val-wishlist-modal .view-sub{margin-bottom:10px;color:var(--muted);}
   .val-wishlist-modal .val-add-row{margin-bottom:12px;}
+  /* iOS Safari zooms the page onto any field it focuses whose text is under 16px, and there's no
+     way to decline it short of locking the viewport's scale — which would kill pinch-zoom for the
+     whole app. So on touch these fields go to 16px instead. The taller box that comes with it is
+     the 40px touch target the coarse-pointer rules use elsewhere anyway. */
+  @media (pointer:coarse){
+    .val-wishlist-modal .val-add-row input{font-size:16px;height:40px;padding:8px 11px;}
+    .val-wishlist-row-price{font-size:16px;width:84px;padding:4px 6px;}
+    .val-vp-calc-modal input[type="number"]{font-size:16px;}
+  }
 
   /* account switcher, above the store card — filters which tracked account's store shows below;
      works purely off already-fetched data, so it's independent of the local helper (whose

@@ -107,18 +107,33 @@ async function callRpc(fn, args){
   if (!resp.ok) throw new Error(`Failed to save to Supabase: HTTP ${resp.status} ${await resp.text().catch(() => '')}`);
 }
 
+// Every purchasable thing in one store check, flattened and tagged with the panel it came from.
+// The wishlist is matched against all of it: a skin you're waiting for can arrive inside the
+// featured bundle or the night market just as easily as in the four daily offers, and a
+// gun buddy or card can arrive in the accessory shop — a watch that only ever read `items` stayed
+// silent through all three.
+export function collectOfferedItems(result){
+  const out = [];
+  (result?.items || []).forEach(it => out.push({ name: it.name, source: 'daily store' }));
+  (result?.nightMarket?.offers || []).forEach(it => out.push({ name: it.name, source: 'night market' }));
+  (result?.bundle?.items || []).forEach(it => out.push({ name: it.name, source: 'bundle' }));
+  (result?.accessories || []).forEach(it => out.push({ name: it.name, source: 'accessory shop' }));
+  return out;
+}
+
 export async function recordAccountResult(label, result){
   // Wishlist first, then the local snapshot, then Supabase: the snapshot is what the desktop
   // widget reads, so writing it before the network call means a Supabase outage leaves the widget
   // showing today's real store rather than yesterday's. callRpc still throws on failure, so the
   // caller's error handling is unchanged.
   const wishlist = await fetchWishlist(label);
+  const offered = collectOfferedItems(result);
   writeStoreSnapshot(label, {
     ...result,
-    wishlisted: (result.items || []).filter(it => wishlistMatchesForItem(it.name, wishlist).length).map(it => it.name),
+    wishlisted: offered.filter(it => wishlistMatchesForItem(it.name, wishlist).length).map(it => it.name),
   });
   await callRpc('valorant_set_daily_store', { p_label: label, p_result: result });
-  await notifyWishlistMatches(label, result.items, wishlist).catch(err => console.error(`  wishlist notify failed: ${err.message}`));
+  await notifyWishlistMatches(label, offered, wishlist).catch(err => console.error(`  wishlist notify failed: ${err.message}`));
 }
 
 export async function recordAccountError(label, message){
@@ -198,11 +213,12 @@ export async function fetchWishlist(label){
   }
 }
 
-// Checks label's wishlist against this run's store items and fires an ntfy.sh push for any
-// matches. No dedupe: every run that finds a wishlist match pushes a notification, even if a
-// previous run today already flagged the same skin. `wishlist` is passed in by
-// recordAccountResult() (which already fetched it for the widget snapshot) to avoid a second RPC
-// round trip; it's fetched here when called without one.
+// Checks label's wishlist against everything this run found for sale — collectOfferedItems()
+// flattens all four panels, and each entry may carry a `source` so the push can say *where* the
+// hit is (a bundle is a very different call from a daily offer). No dedupe: every run that finds
+// a wishlist match pushes a notification, even if a previous run today already flagged the same
+// skin. `wishlist` is passed in by recordAccountResult() (which already fetched it for the widget
+// snapshot) to avoid a second RPC round trip; it's fetched here when called without one.
 export async function notifyWishlistMatches(label, items, wishlist){
   const config = loadNotifyConfig();
   if (!config) return;
@@ -216,7 +232,7 @@ export async function notifyWishlistMatches(label, items, wishlist){
   await fetch(`https://ntfy.sh/${encodeURIComponent(config.ntfyTopic)}`, {
     method: 'POST',
     headers: { Title: 'Valorant shop alert', Priority: 'high', Tags: 'gun' },
-    body: `${label}: ${matched.map(it => it.name).join(', ')} just rotated into today's store!`,
+    body: `${label}: ${matched.map(it => it.source ? `${it.name} (${it.source})` : it.name).join(', ')} — wishlisted and on sale right now!`,
   });
 }
 
@@ -286,9 +302,72 @@ async function resolveAccessoryReward(reward){
   }
 }
 
+// The player card equipped on the account right now, resolved into the same three crops a player
+// card gets in the accessory shop (see ACCESSORY_ITEM_TYPES above). Purely cosmetic — the Valorant
+// tab shows it beside each account's store header so several tracked accounts are tellable apart
+// at a glance without reading their labels. Never throws: a failure here degrades to no avatar,
+// same posture as the featured-bundle lookup, since neither is worth failing a store check over.
+async function fetchEquippedIdentity(shard, puuid, headers){
+  try {
+    const r = await fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers });
+    if (!r.ok) {
+      // noisy enough to notice if Riot moves this route (the tab would otherwise just quietly
+      // stop drawing avatars), quiet enough that it can't be mistaken for a failed store check
+      console.log(`  (loadout lookup skipped: HTTP ${r.status})`);
+      return null;
+    }
+    const ident = (await r.json())?.Identity || {};
+    const cardId = ident.PlayerCardID;
+    if (!cardId) return null;
+    const c = await fetch(`${VALORANT_API_BASE}/playercards/${cardId}`);
+    const d = (await c.json())?.data || {};
+    return {
+      cardName: d.displayName || 'Player Card',
+      // small = the square avatar the tab draws; wide/large are only read by the preview modal
+      cardSmall: d.smallArt || d.displayIcon || '',
+      cardWide: d.wideArt || '',
+      cardLarge: d.largeArt || '',
+      // arrives in the same payload, so it costs nothing — and it's a second cheap way to tell
+      // two accounts apart when they happen to run the same card
+      level: ident.HideAccountLevel ? 0 : (ident.AccountLevel || 0),
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Currency uuids Riot keys the wallet by. Stable, community reverse-engineered constants like the
+// accessory item types above — an unknown one is simply not read rather than mis-labelled.
+const CURRENCY_VP  = '85ad13f7-3d1b-5128-9eb2-7cd8ee0b5741';
+const CURRENCY_RAD = 'e59aa87c-4cbf-517a-5983-6e81511be9b7';
+const CURRENCY_KC  = '85ca954a-41f2-ce94-9b45-8ca3dd39a00d';
+
+// What the account can actually afford, so a 1,775 VP offer can be read against a balance instead
+// of from memory. Same never-throws posture as the bundle/identity lookups: the store is still
+// worth showing when the wallet call fails.
+async function fetchWallet(shard, puuid, headers){
+  try {
+    const r = await fetch(`https://pd.${shard}.a.pvp.net/store/v1/wallet/${puuid}`, { headers });
+    if (!r.ok) {
+      console.log(`  (wallet lookup skipped: HTTP ${r.status})`);
+      return null;
+    }
+    const balances = (await r.json())?.Balances || {};
+    return {
+      vp: balances[CURRENCY_VP] || 0,
+      rad: balances[CURRENCY_RAD] || 0,
+      kc: balances[CURRENCY_KC] || 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Runs the full silent-reauth -> storefront fetch for one saved Riot session. Returns
-// { checkedAt, items, bundle, accessories, accessoriesRemainingSeconds, error:'' } on success or
-// throws an Error with a user-facing message.
+// { checkedAt, items, itemsRemainingSeconds, bundle, accessories, accessoriesRemainingSeconds,
+//   nightMarket, identity, wallet, error:'' } on success, or throws an Error with a user-facing
+// message. Everything after the daily offers is best-effort: bundle, nightMarket, identity and
+// wallet each degrade to null rather than failing a check that otherwise worked.
 export async function checkAccountStore(label, ssid){
   let accessToken, idToken;
   try {
@@ -386,13 +465,46 @@ export async function checkAccountStore(label, ssid){
     try {
       const r = await fetch(`${VALORANT_API_BASE}/bundles/${bundleId}`);
       const j = await r.json();
+      // What's *in* the bundle, resolved from the storefront's own item list rather than
+      // valorant-api's bundle record: this one carries each item's base and discounted price, and
+      // it's the list Riot is actually selling today. A bundle mixes skins with sprays/buddies/
+      // cards, which is exactly what resolveAccessoryReward() already knows how to resolve — the
+      // Item shape here ({ItemTypeID, ItemID}) is the same one the accessory shop uses.
+      const bundleItems = await Promise.all((store?.FeaturedBundle?.Bundle?.Items || []).map(async (entry) => {
+        const info = await resolveAccessoryReward(entry?.Item || {});
+        return { ...info, price: entry?.BasePrice || 0, discountPrice: entry?.DiscountedPrice || 0 };
+      }));
       bundle = {
         name: j?.data?.displayName || 'Featured Bundle',
         imageUrl: j?.data?.displayIcon || '',
         price: firstCostValue(store?.FeaturedBundle?.Bundle?.TotalBaseCost) || 0,
         remainingSeconds: store?.FeaturedBundle?.BundleRemainingDurationInSeconds || 0,
+        items: bundleItems,
       };
     } catch { /* featured bundle is a nice-to-have — a lookup failure shouldn't fail the whole check */ }
+  }
+
+  // Night Market — the same storefront response, and the panel that's absent most of the year:
+  // a personal set of discounted skins Riot opens for a couple of weeks per act. Nothing else in
+  // the store is time-limited in a way you can actually miss, so it's recorded whenever it's
+  // there and simply null the rest of the time. Rewards resolve like every other skin offer.
+  let nightMarket = null;
+  const bonusOffers = store?.BonusStore?.BonusStoreOffers || [];
+  if (bonusOffers.length) {
+    const offers = await Promise.all(bonusOffers.map(async (entry) => {
+      const offer = entry?.Offer || {};
+      const info = await resolveAccessoryReward((offer.Rewards || [])[0] || {});
+      return {
+        ...info,
+        price: firstCostValue(offer.Cost),
+        discountPrice: firstCostValue(entry?.DiscountCosts),
+        discountPercent: entry?.DiscountPercent || 0,
+      };
+    }));
+    nightMarket = {
+      offers,
+      remainingSeconds: store?.BonusStore?.BonusStoreRemainingDurationInSeconds || 0,
+    };
   }
 
   // 8. Accessory shop — same storefront response, separate panel in-game: Kingdom Credit offers
@@ -408,6 +520,12 @@ export async function checkAccountStore(label, ssid){
     return { ...info, price: firstCostValue(offer.Cost) };
   }));
 
+  // 9. Equipped player card and wallet — not part of the storefront at all, but both ride along on
+  // the same auth ladder that's already been climbed above, so they're cheap here and would each
+  // cost a whole reauth anywhere else.
+  const identity = await fetchEquippedIdentity(shard, puuid, commonHeaders);
+  const wallet = await fetchWallet(shard, puuid, commonHeaders);
+
   return {
     checkedAt: Date.now(),
     items,
@@ -418,6 +536,9 @@ export async function checkAccountStore(label, ssid){
     bundle,
     accessories,
     accessoriesRemainingSeconds: store?.AccessoryStore?.AccessoryStoreRemainingDurationInSeconds || 0,
+    nightMarket,
+    identity,
+    wallet,
     error: '',
   };
 }

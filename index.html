@@ -597,22 +597,37 @@
        would start the local-helper Live Match poll for someone who only tracks TFT. -->
   <div class="view" id="view-games">
 
+    <!-- The two game marks are hand-drawn inline SVG in the same 24x24 currentColor idiom as the
+         nav icons above — not the official brand art. Deliberate: this strip is app shell, so it
+         has to render offline and in every theme, and a remote logo file would be the one thing
+         on the page that can 404 or arrive after the buttons do. -->
     <div class="finance-subnav games-subnav">
-      <button class="finance-subnav-btn active" data-gametab="valorant" type="button">Valorant</button>
-      <button class="finance-subnav-btn" data-gametab="tft" type="button">TFT</button>
+      <button class="finance-subnav-btn active" data-gametab="valorant" type="button">
+        <svg class="game-logo" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.6 3H7.8L12 10.8L13.8 7.5H19L12 20.5Z"/></svg>
+        <span>Valorant</span>
+      </button>
+      <button class="finance-subnav-btn" data-gametab="tft" type="button">
+        <svg class="game-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2.4L20.3 7.2V16.8L12 21.6L3.7 16.8V7.2Z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+          <circle cx="12" cy="10.2" r="1.9" fill="currentColor"/>
+          <path d="M8.8 16.4c.3-2.4 1.4-3.4 3.2-3.4s2.9 1 3.2 3.4Z" fill="currentColor"/>
+        </svg>
+        <span>TFT</span>
+      </button>
     </div>
 
     <!-- Everything down to the end of #gametab-valorant is the old #view-valorant body, moved one
          level down and deliberately NOT re-indented — re-indenting it would bury the three lines
          that actually changed under a 170-line whitespace diff. -->
     <div class="gametab" id="gametab-valorant">
-    <div class="view-title">Valorant</div>
-    <div class="view-sub">Track the lobby you're in right now, competitive rank and RR history, and the daily store, across one or more Riot accounts.</div>
+    <!-- no view-title/view-sub here: the games sub-nav above already names the game, and the
+         sub-tab strip below names the pane — a third heading between them only pushed the content
+         down. Same for #gametab-tft. -->
 
     <div class="unit-toggle" id="valSubtabToggle">
-      <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
       <button data-subtab="shop" id="valSubtabBtnShop">Shop Tracker</button>
       <button data-subtab="rr" id="valSubtabBtnRR">RR Tracker</button>
+      <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
     </div>
 
     <!-- Order here is deliberate: the ranks themselves come first, the chart for the selected
@@ -694,46 +709,52 @@
       <div class="val-store-switcher-row">
         <label class="val-store-switcher-lbl" for="valLocalAccountSelect">Account</label>
         <select id="valLocalAccountSelect"><option value="">All accounts</option></select>
+        <!-- Store vs Owned Skins, not Skins vs Accessories: the two shops are one purchase
+             decision and now stack in the same column, while "what's for sale" and "what I already
+             own" are the two things actually worth flipping between. -->
         <div class="unit-toggle" id="valStoreModeToggle">
-          <button data-storemode="skins" id="valStoreModeBtnSkins">Skins</button>
-          <button data-storemode="accessories" id="valStoreModeBtnAccessories">Accessories</button>
+          <button data-storemode="store" id="valStoreModeBtnStore">Store</button>
+          <button data-storemode="owned" id="valStoreModeBtnOwned">Owned Skins</button>
         </div>
+        <!-- Local helper state, as an indicator rather than the panel it used to be: on this tab
+             the helper has no controls (they're in Settings, where they belong — this tab reads
+             already-fetched data and works with the helper off), so a whole card at the bottom was
+             a paragraph of standing text to say one bit. The dot is the bit; the ⓘ opens the rest. -->
+        <button type="button" class="val-local-chip" id="valLocalStatusBtn" style="display:none;" aria-haspopup="dialog">
+          <span class="val-local-dot off" id="valLocalDot"></span>
+          <span class="val-local-chip-lbl">Helper</span>
+          <span class="val-local-chip-info" aria-hidden="true">ⓘ</span>
+        </button>
       </div>
 
-      <div class="val-tracker-card">
-        <div class="val-tracker-grid">
-          <div class="val-tracker-items-col">
-            <div id="valStoreCard"></div>
-          </div>
-          <div class="val-tracker-wishlist-col">
-            <button type="button" class="val-wishlist-hdr" id="valWishlistToggle" aria-expanded="true" aria-controls="valWishlistBody">
-              <span class="wlg-chevron" id="valWishlistChevron">▼</span> Wishlist
-              <span class="val-wishlist-count" id="valWishlistCount"></span>
-            </button>
-            <div class="val-peak-note" id="valWishlistNoAccount" style="display:none;">Wishlists are per account — pick one from the dropdown above the store to view or edit its wishlist.</div>
-            <div id="valWishlistBody">
-              <div class="view-sub">Add a gun or skin name — you'll get a red tick whenever it's in today's store.</div>
-              <div class="val-add-row">
-                <div class="val-wishlist-input-wrap">
-                  <input type="text" id="valWishlistInput" placeholder='Search a skin, e.g. "Vandal" or "Reaver"' maxlength="60" autocomplete="off">
-                  <div class="val-wishlist-suggest" id="valWishlistSuggest" style="display:none;"></div>
-                </div>
-                <button class="btn btn-primary btn-sm" id="valWishlistAddBtn">+ Add</button>
-              </div>
-              <div class="val-wishlist-list" id="valWishlistList"></div>
-              <div class="val-empty-accounts" id="valWishlistEmpty" style="display:none;">No wishlist items yet. Add a gun or skin name above to get notified when it's in the store.</div>
-            </div>
-          </div>
+      <!-- the store gets the full width now that the wishlist lives in a modal
+           (#valWishlistOverlay, opened by the star in this card's corner) -->
+      <div class="val-tracker-card" id="valStorePane">
+        <!-- Card actions, pinned to the top-right corner. Icon-only: these are ways in to modals,
+             not things to read. The wishlist star's badge carries the entry count and turns red
+             when one of them is in today's store — that signal used to be visible in the column
+             the wishlist lived in, so the trigger has to keep it. Its accessible name is set in
+             updateValWishlistBadge(), where the hit count is already known. -->
+        <div class="val-card-actions">
+          <button type="button" class="val-card-action-btn" id="valVpCalcBtn" aria-label="VP calculator" title="VP calculator — work out what to buy for any amount">
+            <span aria-hidden="true">◆</span>
+          </button>
+          <button type="button" class="val-card-action-btn val-wishlist-open-btn" id="valWishlistOpenBtn" aria-label="Wishlist">
+            <span aria-hidden="true">★</span>
+            <span class="val-wishlist-count" id="valWishlistCount"></span>
+          </button>
         </div>
+        <div id="valStoreCard"></div>
       </div>
 
       <div class="val-tracker-card" id="valOwnedSkinsCard" style="display:none;">
         <div class="val-store-account" style="border-bottom:none;padding-bottom:0;">
-          <button type="button" class="val-store-account-hdr val-store-account-hdr-btn" id="valOwnedSkinsToggle" aria-expanded="true" aria-controls="valOwnedSkinsBody">
-            <span class="wlg-chevron" id="valOwnedSkinsChevron">▼</span>
+          <!-- a plain header, not a collapse button: this card is a toggle pane now, and a pane
+               that remembers it was collapsed would open to nothing but its own title -->
+          <div class="val-store-account-hdr">
             <span class="val-store-account-name">Owned Skins</span>
             <span class="val-store-checked" id="valOwnedSkinsChecked" style="display:none;"></span>
-          </button>
+          </div>
           <div id="valOwnedSkinsBody">
             <div class="val-peak-note" id="valOwnedSkinsNoAccount" style="display:none;">Owned skins are per account — pick one from the dropdown above the store to view its collection.</div>
             <div class="val-err" id="valOwnedSkinsErr" style="display:none;"></div>
@@ -755,9 +776,6 @@
         </div>
       </div>
 
-      <div class="val-local-panel" id="valLocalPanel" style="display:none;">
-        <div class="val-local-status" id="valLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
-      </div>
     </div>
 
     <!-- LIVE MATCH — the lobby you're in right now. Everything inside #valLiveBody is rebuilt
@@ -788,8 +806,11 @@
          chart, the LP-per-game average and the placement stats all come out of one log and one add
          form. See js/tft.js. -->
     <div class="gametab" id="gametab-tft" style="display:none;">
-      <div class="view-title">Teamfight Tactics</div>
-      <div class="view-sub">Log where each game left your rank and watch the climb against a target. Manual entry — TFT isn't covered by the Valorant API key. Placements assume standard ranked (1st–8th), not Double Up.</div>
+      <!-- heading dropped for the same reason as the Valorant pane above. The two caveats its
+           sub-line carried are enforced in code rather than stated here: only queue 1100 (ranked
+           standard, not Double Up) is imported — see TFT_RANKED_QUEUE in js/tft.js — and the sync
+           block right below is itself the answer to "why is entry manual". Both are written up in
+           README's "TFT rank sync". -->
 
       <!-- MetaTFT sync. Their public API sends permissive CORS, so this is a direct browser fetch —
            no local helper, no Edge Function. Manual logging below stays as the fallback: this is an
@@ -898,6 +919,72 @@
        fully populated by openValItemPreview() in valorant.js -->
   <div id="valItemPreviewOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card val-preview-card" id="valItemPreviewBody" role="dialog" aria-modal="true" aria-label="Item preview"></div>
+  </div>
+
+  <!-- VP CALCULATOR — the top-up planner pointed at any number you type, rather than at a skin
+       you clicked. Same maths as the item preview and the wishlist total (valVpCalcHtml()). -->
+  <div id="valVpCalcOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card val-vp-calc-modal" role="dialog" aria-modal="true" aria-labelledby="valVpCalcTitle">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title is-neutral" id="valVpCalcTitle">VP calculator</div>
+        <button type="button" class="val-preview-close" id="valVpCalcCloseBtn" title="Close">✕</button>
+      </div>
+      <!-- "price of the thing" and "amount I'm short" are different questions with different
+           answers, and only the first one subtracts your balance -->
+      <div class="unit-toggle" id="valVpCalcModeToggle">
+        <button data-vpmode="price" id="valVpCalcModeBtnPrice" class="active">It costs this much</button>
+        <button data-vpmode="need" id="valVpCalcModeBtnNeed">I need this much more</button>
+      </div>
+      <div class="fitness-field">
+        <label for="valVpCalcInput">Valorant Points</label>
+        <input type="number" id="valVpCalcInput" min="0" step="25" inputmode="numeric" placeholder="e.g. 1775" autocomplete="off">
+      </div>
+      <div id="valVpCalcOut"></div>
+    </div>
+  </div>
+
+  <!-- LOCAL HELPER INFO — the contents of what used to be a standing card on the Shop Tracker,
+       now behind the ⓘ on the status chip. #valLocalStatusTxt is still written by
+       renderValLocalPanel(); only where it's read from changed. -->
+  <div id="valLocalInfoOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card val-local-info-modal" role="dialog" aria-modal="true" aria-labelledby="valLocalInfoTitle">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title is-neutral" id="valLocalInfoTitle">Local helper</div>
+        <button type="button" class="val-preview-close" id="valLocalInfoCloseBtn" title="Close">✕</button>
+      </div>
+      <div class="val-local-status" id="valLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+      <div class="view-sub">Riot blocks this store check from cloud infrastructure, so it runs on your own machine: <code>node scripts/valorant-local-server.mjs</code>. This tab only reads what it has already saved, so the store, wishlist and owned skins all work with the helper off — what needs it running is <em>fetching</em> new data.</div>
+      <div class="view-sub">Check Store Now, Check Owned Skins, Add Account and Delete live in <strong>Settings → Valorant Local Helper</strong>.</div>
+    </div>
+  </div>
+
+  <!-- VALORANT WISHLIST — opened by the ★ Wishlist button in the Shop Tracker's switcher row.
+       A body-level sibling of #view-games for the same reason the preview above is: it renders
+       over the whole page, so it must not sit inside a pane that gets display:none'd. The list
+       itself is per account and follows that row's account dropdown. -->
+  <div id="valWishlistOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card val-wishlist-modal" role="dialog" aria-modal="true" aria-labelledby="valWishlistModalTitle">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title is-neutral" id="valWishlistModalTitle">Wishlist</div>
+        <button type="button" class="val-preview-close" id="valWishlistCloseBtn" title="Close">✕</button>
+      </div>
+      <div class="val-peak-note" id="valWishlistNoAccount" style="display:none;">Wishlists are per account — pick one from the dropdown above the store to view or edit its wishlist.</div>
+      <div id="valWishlistBody">
+        <div class="view-sub">Add a gun or skin name — you'll get a red tick whenever it's in today's store.</div>
+        <div class="val-add-row">
+          <div class="val-wishlist-input-wrap">
+            <input type="text" id="valWishlistInput" placeholder='Search a skin, e.g. "Vandal" or "Reaver"' maxlength="60" autocomplete="off">
+            <div class="val-wishlist-suggest" id="valWishlistSuggest" style="display:none;"></div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="valWishlistAddBtn">+ Add</button>
+        </div>
+        <div class="val-wishlist-list" id="valWishlistList"></div>
+        <div class="val-empty-accounts" id="valWishlistEmpty" style="display:none;">No wishlist items yet. Add a gun or skin name above to get notified when it's in the store.</div>
+        <!-- what the whole list would cost, plus the top-up plan to afford it — filled by
+             renderValWishlistTotal() in valorant.js -->
+        <div id="valWishlistTotal" style="display:none;"></div>
+      </div>
+    </div>
   </div>
 
   <!-- CHECKLISTS -->
@@ -1422,6 +1509,28 @@
       <button class="btn btn-ghost" id="valSaveKeyBtn" style="margin-bottom:0;">Save Key</button>
     </div>
     <div class="val-key-state" id="valApiKeyState"></div>
+
+    <!-- VP purchase calculator prices. The tiers are Riot's and identical everywhere; what varies
+         is the price, per region and per currency, so it's typed in rather than shipped with
+         guesses. See valVpPlan() in js/valorant.js for what's done with them. -->
+    <div class="section-lbl" style="margin-top:22px;">Valorant Points Prices</div>
+    <div class="view-sub" style="margin-bottom:10px;">Powers the top-up calculator: click any VP-priced item on the Shop Tracker and it works out what you're short and which packages cover it most cheaply. Leave a tier blank if it isn't sold in your region — it won't be suggested. With no prices at all the calculator still runs, but optimises for the least wasted VP rather than the lowest cost.</div>
+    <div class="fitness-field" style="max-width:200px;">
+      <label for="valVpCurrency">Currency label</label>
+      <input type="text" id="valVpCurrency" placeholder="e.g. PHP" maxlength="8">
+    </div>
+    <div class="val-vp-price-rows" id="valVpPriceRows"></div>
+
+    <div class="section-lbl" style="margin-top:18px;">Third-party offers</div>
+    <div class="view-sub" style="margin-bottom:10px;">A discounted top-up shop selling the same VP for less. Each offer is weighed against the official tiers, and when one wins the calculator also shows what the official-only route would have cost.</div>
+    <div class="val-add-row">
+      <input type="text" id="valVpOfferName" placeholder="Seller, e.g. Codashop sale" maxlength="30" style="flex:2;min-width:150px;">
+      <input type="number" id="valVpOfferVp" placeholder="VP" min="1" step="1" style="flex:1;min-width:90px;">
+      <input type="number" id="valVpOfferPrice" placeholder="Price" min="0" step="0.01" style="flex:1;min-width:90px;">
+      <button class="btn btn-ghost" id="valVpOfferAddBtn">+ Add</button>
+    </div>
+    <div class="val-vp-offer-rows" id="valVpOfferRows"></div>
+    <label class="val-vp-use-offers"><input type="checkbox" id="valVpUseOffers" checked> Include third-party offers in suggestions</label>
 
     <div class="section-lbl" style="margin-top:22px;">Valorant Local Helper</div>
     <div class="view-sub" style="margin-bottom:10px;">Connects to <code>scripts/valorant-local-server.mjs</code> running on this machine so you can trigger a store check, save Riot account sessions, or delete one here instead of the terminal (see README.md). Pick which saved account to act on from the dropdown under the store on the Valorant tab.</div>

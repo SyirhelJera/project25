@@ -110,6 +110,9 @@
           .map(s=>({
             uuid: s.uuid,
             name: s.displayName,
+            // kept for the wishlist total: valorant-api publishes no prices, but a skin's content
+            // tier implies its standard one (see VAL_TIER_STD_PRICE)
+            tier: s.contentTierUuid,
             icon: s.displayIcon
               || (s.chromas && s.chromas[0] && (s.chromas[0].displayIcon || s.chromas[0].fullRender))
               || (s.levels && s.levels[0] && s.levels[0].displayIcon)
@@ -121,6 +124,76 @@
     return valSkinDbPromise;
   }
   ensureValSkinDb();
+
+  /* Content tiers (Select/Deluxe/Premium/Exclusive/Ultra), fetched once from the same keyless
+     reference API. Resolved by uuid -> devName rather than hardcoding the five tier uuids: they're
+     stable, but they're reverse-engineered constants and a wrong one here would silently misprice
+     a whole tier. Riot prices skins by tier, so the tier is the only price signal available for a
+     skin that isn't currently in anyone's store — valorant-api publishes no prices at all. These
+     are the standard figures and are *estimates*: Exclusive and Ultra in particular vary per skin,
+     so anything derived from them is labelled as approximate wherever it's shown. */
+  const VAL_TIER_STD_PRICE = { Select:875, Deluxe:1275, Premium:1775, Exclusive:2175, Ultra:2475 };
+
+  /* Melee is the exception that breaks tier-based pricing, so it's excluded from it entirely.
+     Two separate problems, either one fatal: melee skins are priced on a different scale from
+     guns (1,750-5,950 rather than 875-2,475), and Riot tags essentially every melee skin
+     "Exclusive" regardless of what it costs — Recon Balisong (1,750) and Elderflame Dagger
+     (5,950) carry the identical content-tier uuid. So no melee price can be inferred from a tier,
+     and pretending otherwise is how Soulstrife Scythe (3,550) came out as 2,175. A melee skin
+     gets a price only from somewhere real: today's store, a price seen in a past check, or one
+     typed in by hand. The Melee "weapon" in valorant-api owns every melee skin, which is how
+     they're identified. */
+  let valMeleeCache = null;
+  let valMeleePromise = null;
+  function ensureValMeleeSkins(){
+    if(valMeleeCache) return Promise.resolve(valMeleeCache);
+    if(valMeleePromise) return valMeleePromise;
+    valMeleePromise = fetch(VALORANT_API_BASE+'/weapons?language=en-US')
+      .then(r=>r.json())
+      .then(json=>{
+        const melee = ((json && json.data) || []).find(w=>/melee/i.test(w.displayName||''));
+        const uuids = new Set(), names = new Set();
+        ((melee && melee.skins) || []).forEach(s=>{
+          if(s.uuid) uuids.add(s.uuid);
+          if(s.displayName) names.add(s.displayName.toLowerCase());
+        });
+        valMeleeCache = { uuids, names };
+        return valMeleeCache;
+      })
+      // an empty set fails *open* — melee then falls back to the tier estimate, which is the old
+      // (wrong) behaviour but only when the lookup itself is unavailable
+      .catch(()=>{ valMeleeCache = { uuids:new Set(), names:new Set() }; return valMeleeCache; });
+    return valMeleePromise;
+  }
+  ensureValMeleeSkins();
+  function valIsMeleeSkin(skinUuid, name){
+    if(!valMeleeCache) return false;
+    if(skinUuid && valMeleeCache.uuids.has(skinUuid)) return true;
+    return !!(name && valMeleeCache.names.has(name.trim().toLowerCase()));
+  }
+  let valContentTierCache = null;
+  let valContentTierPromise = null;
+  function ensureValContentTiers(){
+    if(valContentTierCache) return Promise.resolve(valContentTierCache);
+    if(valContentTierPromise) return valContentTierPromise;
+    valContentTierPromise = fetch(VALORANT_API_BASE+'/contenttiers')
+      .then(r=>r.json())
+      .then(json=>{
+        const map = {};
+        ((json && json.data) || []).forEach(t=>{
+          const dev = (t.devName||t.displayName||'');
+          // substring match, highest tier last — same "don't trust the exact string" posture as
+          // resolveTierRank() in valorant-lib.mjs
+          const key = Object.keys(VAL_TIER_STD_PRICE).find(k=> dev.toLowerCase().includes(k.toLowerCase()));
+          if(t.uuid && key) map[t.uuid] = key;
+        });
+        valContentTierCache = map;
+        return map;
+      })
+      .catch(()=>{ valContentTierCache = {}; return valContentTierCache; });
+    return valContentTierPromise;
+  }
+  ensureValContentTiers();
 
   function valTierColor(tierName){
     if(!tierName) return '#8B92A8';
@@ -303,11 +376,12 @@
     state.valorant.accounts.forEach(acc=> fetchValorantAccount(acc.id));
   });
 
-  /* ---- Live Match / Shop Tracker / RR Tracker sub-tabs: the Valorant view got crowded once the
+  /* ---- Shop Tracker / RR Tracker / Live Match sub-tabs: the Valorant view got crowded once the
      store + wishlist card was added alongside rank tracking, so they're split into switchable
-     panels instead of one long scroll. Live Match reads first because it's the only one that's
-     time-sensitive — the others are just as useful five minutes from now. ---- */
-  const VAL_SUBTABS = ['live','shop','rr'];
+     panels instead of one long scroll. Ordered by how often they're opened, not by urgency — the
+     store is the daily reason to come here (and the pane the tab now always lands on, see
+     showGameSubTab() in tft.js), while Live Match only has anything to show during a match. ---- */
+  const VAL_SUBTABS = ['shop','rr','live'];
   function renderValSubtabs(){
     const active = VAL_SUBTABS.includes(state.valorant.activeSubtab) ? state.valorant.activeSubtab : 'shop';
     VAL_SUBTABS.forEach(key=>{
@@ -353,17 +427,107 @@
       return wl && (lower.includes(wl) || wl.includes(lower));
     });
   }
-  // every {wishlist item, store item} pairing currently sitting in any tracked account's own daily
-  // store — drives both the red nav tick and the "matched" styling on wishlist chips
+  // Everything one account has for sale right now, flattened across all four panels and tagged
+  // with which one it came from. The wishlist is matched against all of it — a skin you're waiting
+  // for arrives in the featured bundle or the night market just as often as in the four daily
+  // offers, and matching only `items` (which is all this used to do) stayed silent through both.
+  // Mirrors collectOfferedItems() in scripts/valorant-lib.mjs, which does the same for the push.
+  function valOfferedItems(ds){
+    if(!ds) return [];
+    return [].concat(
+      (ds.items||[]).map(it=>({ name:it.name, source:'daily' })),
+      ((ds.nightMarket && ds.nightMarket.offers)||[]).map(it=>({ name:it.name, source:'night' })),
+      ((ds.bundle && ds.bundle.items)||[]).map(it=>({ name:it.name, source:'bundle' })),
+      (ds.accessories||[]).map(it=>({ name:it.name, source:'accessory' })),
+    );
+  }
+  /* ---- what a wishlist entry would cost ---------------------------------------------------
+     Two sources, in this order:
+       1. the store itself, when the item is on sale for this account right now — an exact number,
+          and the discounted one where a discount applies (night market, bundle);
+       2. the skin's content tier, which is what Riot prices by. An estimate, and flagged as one
+          everywhere it surfaces.
+     A free-text entry like "Vandal" names a gun rather than a skin and resolves to neither, so it
+     counts as unpriced rather than being guessed at. Accessories are deliberately not a source:
+     they're Kingdom Credits, and adding them to a VP total would produce a number in no currency
+     at all. ---- */
+  // what each price cell's tooltip says about where its number came from
+  const VAL_PRICE_SOURCE_HINT = {
+    manual: 'Price you entered — clear the field to go back to the automatic one',
+    store:  'Price in this account\'s store right now',
+    seen:   'Real price, from a past store check',
+    tier:   'Estimated from the skin\'s tier — type the real price to correct it',
+    melee:  'Melee skins can\'t be estimated (Riot tags them all one tier, from 1,750 to 5,950 VP) — type the real price',
+    '':     'No price known — type it in to include this in the total',
+  };
+  function valOfferedPricedItems(ds){
+    if(!ds) return [];
+    const vpOf = it => parseInt(it.discountPrice,10) || parseInt(it.price,10) || 0;
+    return [].concat(
+      (ds.items||[]).map(it=>({ name: it.name, vp: parseInt(it.price,10)||0 })),
+      ((ds.nightMarket && ds.nightMarket.offers)||[]).map(it=>({ name: it.name, vp: vpOf(it) })),
+      ((ds.bundle && ds.bundle.items)||[]).map(it=>({ name: it.name, vp: vpOf(it) })),
+    ).filter(x=>x.vp > 0);
+  }
+  /* Prices actually seen. Every store check reports real VP prices for whatever was on sale, and
+     those numbers are worth keeping long after that rotation ends: a skin seen once is priced
+     exactly, forever, with no API that publishes prices and no estimate involved. This is the only
+     way melee ever gets a real price without typing one in. Recorded from the *undiscounted*
+     figure — a night-market or bundle discount is a property of that offer, not of the skin. */
+  function valLearnStorePrices(){
+    const seen = state.valorant.skinPrices || (state.valorant.skinPrices = {});
+    let changed = false;
+    const put = (name, vp) => {
+      const k = (name||'').trim().toLowerCase();
+      if(!k || !vp || seen[k] === vp) return;
+      seen[k] = vp; changed = true;
+    };
+    Object.values(state.valorant.dailyStores || {}).forEach(ds=>{
+      if(!ds) return;
+      (ds.items||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
+      ((ds.nightMarket && ds.nightMarket.offers)||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
+      ((ds.bundle && ds.bundle.items)||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
+    });
+    if(changed) save(); // only when something new was actually learned — this runs on every render
+  }
+
+  // Exact name match here, not the loose substring match the wishlist uses for *alerting*: "is
+  // some Vandal skin in my store" is a useful notification and a useless price.
+  function valSkinStdPrice(skinUuid, name){
+    if(!valSkinDbCache || !valContentTierCache) return 0;
+    if(valIsMeleeSkin(skinUuid, name)) return 0; // see ensureValMeleeSkins() — tier says nothing here
+    let rec = skinUuid ? valSkinDbCache.find(s=>s.uuid === skinUuid) : null;
+    if(!rec && name){
+      const n = name.trim().toLowerCase();
+      rec = valSkinDbCache.find(s=>(s.name||'').toLowerCase() === n);
+    }
+    return rec ? (VAL_TIER_STD_PRICE[valContentTierCache[rec.tier]] || 0) : 0;
+  }
+  // Sources in falling order of authority: what you typed, what it costs right now, what it cost
+  // when it was last seen, what its tier implies. Only the last one is a guess.
+  function valWishlistItemPrice(w, label){
+    const nm = (w.name||'').trim().toLowerCase();
+    if(!nm) return { vp:0, source:'' };
+    const manual = parseInt(w.price,10)||0;
+    if(manual) return { vp: manual, source:'manual' };
+    const live = valOfferedPricedItems((state.valorant.dailyStores||{})[label]).find(x=>(x.name||'').toLowerCase() === nm);
+    if(live) return { vp: live.vp, source:'store' };
+    const seen = parseInt((state.valorant.skinPrices||{})[nm],10)||0;
+    if(seen) return { vp: seen, source:'seen' };
+    const est = valSkinStdPrice(w.skinUuid, w.name);
+    if(est) return { vp: est, source:'tier' };
+    return { vp:0, source: valIsMeleeSkin(w.skinUuid, w.name) ? 'melee' : '' };
+  }
+
+  // every {wishlist item, offer} pairing currently sitting in any tracked account's store —
+  // drives both the red nav tick and the "matched" styling on wishlist chips
   function valCurrentWishlistMatches(){
     const stores = state.valorant.dailyStores || {};
     const matches = [];
     Object.keys(stores).forEach(label=>{
-      const ds = stores[label];
-      if(!ds || !Array.isArray(ds.items)) return;
-      ds.items.forEach(it=>{
+      valOfferedItems(stores[label]).forEach(it=>{
         valWishlistMatchesForItem(it.name, label).forEach(w=>{
-          matches.push({ wishlistId: w.id, itemName: it.name, label });
+          matches.push({ wishlistId: w.id, itemName: it.name, label, source: it.source });
         });
       });
     });
@@ -398,6 +562,30 @@
     // glow the nav shield too — the badge is tiny and shrinks into the icon in the collapsed nav
     const navItem = document.querySelector('.nav-item[data-tab="games"]');
     if(navItem) navItem.classList.toggle('wish-glow', hits>0);
+    // and the icon that opens the wishlist modal: with the list no longer sitting open beside the
+    // store, this is the only place a hit shows while you're actually looking at the store. The
+    // icon has no visible label, so the same sentence has to be its accessible name, not just a
+    // hover tooltip — title alone leaves a screen reader with a bare star.
+    const openBtn = el('valWishlistOpenBtn');
+    if(openBtn){
+      openBtn.classList.toggle('has-hit', hits>0);
+      const txt = hits ? (hits===1 ? 'Wishlist — a wishlisted skin is in today\'s store'
+                                   : 'Wishlist — '+hits+' wishlisted skins are in today\'s store')
+                       : 'Wishlist — skins to watch for in the daily store';
+      openBtn.title = txt;
+      openBtn.setAttribute('aria-label', txt);
+    }
+  }
+
+  /* Every wishlist edit has to redraw the *store*, not just the list: the red tile border, the ★
+     badge on a tile and the "account with a match sorts first" ordering are all derived from the
+     wishlist at render time, so a list that changed while the store kept its old HTML leaves a
+     removed entry still flagged in today's offers (and a newly added one unflagged until something
+     unrelated triggers a redraw). Both mutation sites go through here so neither can forget. */
+  function commitValWishlistChange(){
+    save();
+    renderValWishlist();
+    renderValorantStore();
   }
 
   function renderValWishlist(){
@@ -410,7 +598,6 @@
       // "All accounts" is selected in the switcher above — wishlists are per-account, so there's
       // no single list to show or add to until one specific account is picked
       bodyEl.style.display = 'none';
-      el('valWishlistToggle').setAttribute('aria-expanded', 'false');
       if(noAccEl) noAccEl.style.display = 'block';
       el('valWishlistCount').textContent = '';
       updateValWishlistBadge();
@@ -418,38 +605,128 @@
     }
     if(noAccEl) noAccEl.style.display = 'none';
     const wishlist = state.valorant.wishlist[label] || (state.valorant.wishlist[label] = []);
-    const collapsed = !!state.valorant.wishlistCollapsed;
-    bodyEl.style.display = collapsed ? 'none' : 'block';
-    el('valWishlistToggle').setAttribute('aria-expanded', String(!collapsed));
-    el('valWishlistChevron').textContent = collapsed ? '▶' : '▼';
-    el('valWishlistCount').textContent = wishlist.length ? '('+wishlist.length+')' : '';
+    bodyEl.style.display = 'block';
+    // the count rides as a badge on the icon that opens the modal, so the list's size is readable
+    // without opening it — bare number, the pill is the parenthesis
+    el('valWishlistCount').textContent = wishlist.length ? String(wishlist.length) : '';
     el('valWishlistEmpty').style.display = wishlist.length ? 'none' : 'block';
     const matches = valCurrentWishlistMatches();
     // fixed-size rows (not variable-width pills) so a long skin name doesn't blow up its own
     // chip while a short one sits tiny next to it — name truncates with an ellipsis instead
-    listEl.innerHTML = wishlist.map(w=>{
+    valLearnStorePrices();
+    const prices = wishlist.map(w=>valWishlistItemPrice(w, label));
+    listEl.innerHTML = wishlist.map((w,i)=>{
       const hit = matches.find(m=>m.wishlistId===w.id);
+      const p = prices[i];
+      // The price cell is an input, always: every source below "you typed it" can be wrong or
+      // missing, and the fix has to be one click away rather than a settings trip. What's resolved
+      // automatically shows as the placeholder; typing over it pins that number for good.
+      const auto = p.source === 'manual' ? 0 : p.vp;
+      const hint = VAL_PRICE_SOURCE_HINT[p.source] || VAL_PRICE_SOURCE_HINT[''];
+      const priceHtml = '<input type="number" class="val-wishlist-row-price'+(p.source==='tier'?' is-est':'')+'"'
+        + ' min="0" step="25" inputmode="numeric" data-wish-price="'+w.id+'"'
+        + ' aria-label="VP price for '+escapeHtml(w.name)+'" title="'+escapeHtml(hint)+'"'
+        + ' placeholder="'+(auto ? (p.source==='tier'?'~':'')+auto.toLocaleString() : '—')+'"'
+        + (p.source === 'manual' ? ' value="'+p.vp+'"' : '') + '>';
       return '<div class="val-wishlist-row'+(hit?' matched':'')+'" data-wish-id="'+w.id+'">'
         + (w.imageUrl ? '<img class="val-wishlist-row-img" alt="" data-img-src="'+escapeHtml(w.imageUrl)+'">' : '<span class="val-wishlist-row-img"></span>')
         + '<span class="val-wishlist-row-name" data-tile-title="'+escapeHtml(w.name)+'">'+escapeHtml(w.name)+'</span>'
+        + priceHtml
         + (hit ? '<span class="val-wishlist-row-hit" title="In today\'s store"><span aria-hidden="true">✓</span></span>' : '')
         + '<button type="button" class="val-icon-btn" data-wish-del="'+w.id+'" data-tile-title="Remove '+escapeHtml(w.name)+' from wishlist"><span aria-hidden="true">✕</span></button>'
         + '</div>';
     }).join('');
     applyValTileTitles(listEl);
+    // committed on change (not on every keystroke): re-rendering mid-type would take the caret,
+    // and the total is only meaningful once a whole number has been entered
+    listEl.querySelectorAll('[data-wish-price]').forEach(inp=>{
+      inp.addEventListener('change', ()=>{
+        const entry = (state.valorant.wishlist[label]||[]).find(x=>x.id === inp.dataset.wishPrice);
+        if(!entry) return;
+        const v = Math.max(0, parseInt(inp.value,10)||0);
+        if(v) entry.price = v; else delete entry.price; // cleared -> back to the automatic price
+        save(); renderValWishlist();
+      });
+    });
+    renderValWishlistTotal(wishlist, prices, label);
     listEl.querySelectorAll('[data-img-src]').forEach(img=>{ img.src = img.dataset.imgSrc; });
     listEl.querySelectorAll('[data-wish-del]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         state.valorant.wishlist[label] = (state.valorant.wishlist[label]||[]).filter(w=>w.id!==btn.dataset.wishDel);
-        save(); renderValWishlist();
+        commitValWishlistChange();
       });
     });
     updateValWishlistBadge();
   }
 
-  el('valWishlistToggle').addEventListener('click', ()=>{
-    state.valorant.wishlistCollapsed = !state.valorant.wishlistCollapsed;
-    save(); renderValWishlist();
+  /* What the whole list would cost, and what it'd take to afford it — the same top-up planner the
+     item preview uses, pointed at the sum instead of one price. The counts above it are the point
+     as much as the total is: a wishlist half-full of free-text entries ("Vandal") produces a
+     number that's missing items, and a total that doesn't say so is worse than no total. */
+  function renderValWishlistTotal(wishlist, prices, label){
+    const wrap = el('valWishlistTotal'); if(!wrap) return;
+    if(!wishlist.length){ wrap.innerHTML = ''; wrap.style.display = 'none'; return; }
+    wrap.style.display = 'block';
+    const totalVp = prices.reduce((s,p)=>s + p.vp, 0);
+    const estimated = prices.filter(p=>p.source === 'tier').length;
+    const melee = prices.filter(p=>p.source === 'melee').length;
+    const unpriced = prices.filter(p=>!p.vp && p.source !== 'melee').length;
+    if(!totalVp){
+      wrap.innerHTML = '<div class="val-vp-calc-note">No prices known for these entries yet. Type one into any row to count it, or wait until the item turns up in a store check — real prices are remembered from then on.</div>';
+      return;
+    }
+    const notes = [];
+    if(estimated) notes.push(estimated+' price'+(estimated===1?'':'s')+' estimated from tier');
+    // melee is called out separately from "no specific skin": one is unknowable from the API and
+    // fixed by typing a number, the other means the entry doesn't name a single skin at all
+    if(melee) notes.push(melee+' melee skin'+(melee===1?'':'s')+' need a price typed in');
+    if(unpriced) notes.push(unpriced+' entr'+(unpriced===1?'y':'ies')+' not counted (no specific skin)');
+    wrap.innerHTML = valVpCalcHtml(totalVp, label, {
+      title: 'Buying the whole list',
+      priceLabel: (estimated || unpriced) ? 'Total (approx)' : 'Total',
+      note: notes.join(' · '),
+    });
+  }
+
+  /* ---- wishlist modal: the list used to be a column beside the store, which cost the store a
+     third of its width permanently for something read a few seconds a day. Same open/close
+     grammar as the item preview above — backdrop click, Escape, and focus handed back to the
+     button that opened it. Nothing about which account it edits changes: it still follows the
+     account dropdown in the switcher row. ---- */
+  let valWishlistReturnFocus = null;
+  function openValWishlist(){
+    renderValWishlist(); // the store may have been re-checked since it was last open
+    // Pricing the list needs the skin catalogue and the tier table. Both are fetched once at load,
+    // so this is normally already resolved and re-renders immediately; it only matters on a cold
+    // open with a slow network. Kicked off from here rather than from renderValWishlist(), which
+    // it calls back into — the other way round is a render loop.
+    Promise.all([ensureValSkinDb(), ensureValContentTiers(), ensureValMeleeSkins()]).then(()=>{
+      if(el('valWishlistOverlay').style.display === 'flex') renderValWishlist();
+    });
+    el('valWishlistOverlay').style.display = 'flex';
+    valWishlistReturnFocus = document.activeElement;
+    // the input is the point of opening this — unless no account is picked, in which case there's
+    // nothing to type into and the close button is the only control
+    const input = el('valWishlistInput');
+    if(state.valorant.selectedStoreLabel) input.focus(); else el('valWishlistCloseBtn').focus();
+  }
+  function closeValWishlist(){
+    el('valWishlistOverlay').style.display = 'none';
+    hideValWishlistSuggest();
+    if(valWishlistReturnFocus && document.contains(valWishlistReturnFocus)) valWishlistReturnFocus.focus();
+    valWishlistReturnFocus = null;
+  }
+  el('valWishlistOpenBtn').addEventListener('click', openValWishlist);
+  el('valWishlistCloseBtn').addEventListener('click', closeValWishlist);
+  el('valWishlistOverlay').addEventListener('click', e=>{
+    if(e.target === el('valWishlistOverlay')) closeValWishlist();
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key !== 'Escape' || el('valWishlistOverlay').style.display !== 'flex') return;
+    // Escape with the suggestion list open dismisses just the suggestions — the modal itself is
+    // the second press, same as any search field inside a dialog
+    if(el('valWishlistSuggest').style.display === 'block'){ hideValWishlistSuggest(); return; }
+    closeValWishlist();
   });
 
   // shared by the freeform "+ Add to Wishlist" button and by clicking a search suggestion below —
@@ -463,7 +740,7 @@
     const list = state.valorant.wishlist[label] || (state.valorant.wishlist[label] = []);
     if(list.some(w=>w.name.toLowerCase()===name.toLowerCase())) return;
     list.push({ id: uid(), name, imageUrl: imageUrl||'', skinUuid: skinUuid||'', createdAt: Date.now() });
-    save(); renderValWishlist();
+    commitValWishlistChange();
   }
 
   function hideValWishlistSuggest(){
@@ -530,12 +807,17 @@
   // offers aren't tiered), so they're colored by item type instead — enough to tell a spray from
   // a buddy at a glance without pretending the color means rarity.
   const VAL_ACCESSORY_TYPE_COLORS = { 'Spray':'#4BC6F0', 'Gun Buddy':'#F0954B', 'Player Card':'#8B7BF0', 'Player Title':'#2FBE7A', 'Skin':'#E058CF' };
+  // The night market's own accent. Its tiles deliberately don't take a price-band rarity color the
+  // way daily offers do: the discount is what you're reading there, and two color scales on one
+  // tile (rarity edge + discount flag) fight each other.
+  const VAL_NIGHT_COLOR = '#7B61FF';
   function valAccessoryTypeColor(type){ return VAL_ACCESSORY_TYPE_COLORS[type] || '#8B92A8'; }
 
-  // The accessory shop rotates weekly, and `accessoriesRemainingSeconds` is a snapshot taken at
-  // checkedAt — so the elapsed time since the check has to be subtracted, or a store checked two
-  // days ago would still claim a week left. Returns '' when there's nothing meaningful to show.
-  function valAccessoryTimeLeft(checkedAt, remainingSeconds){
+  // Every rotation timer the store check records (weekly accessories, the featured bundle) is a
+  // snapshot taken at checkedAt — so the elapsed time since the check has to be subtracted, or a
+  // store checked two days ago would still claim a week left. Returns '' when there's nothing
+  // meaningful to show.
+  function valStoreTimeLeft(checkedAt, remainingSeconds){
     if(!remainingSeconds || !checkedAt) return '';
     const left = remainingSeconds - Math.floor((Date.now() - checkedAt)/1000);
     if(left <= 0) return 'rotated — re-check';
@@ -545,19 +827,96 @@
     return mins+'m left';
   }
 
+  // Account label plus the player card equipped on that account (written by fetchEquippedIdentity()
+  // in valorant-lib.mjs). The avatar is what makes several tracked accounts tellable apart without
+  // reading their labels, so it leads the header — but it's absent from stores checked before this
+  // was added, and from any check whose loadout lookup failed, so the header must read fine
+  // without it.
   function valStoreHeader(label, ds){
     const checkedHtml = ds.checkedAt
       ? '<span class="val-store-checked" title="'+escapeHtml(fmtDate(ds.checkedAt))+'">Checked '+escapeHtml(valTimeAgo(ds.checkedAt))+'</span>'
       : '';
-    return '<div class="val-store-account-hdr"><span class="val-store-account-name">'+escapeHtml(label)+'</span>'+checkedHtml+'</div>';
+    const id = ds.identity || null;
+    const avatarHtml = (id && id.cardSmall)
+      // a real <button> for the same reason the store tiles are: the three card crops are only
+      // viewable through the preview modal, and clicking art that enlarges everywhere else in
+      // this tab should enlarge here too
+      ? '<button type="button" class="val-store-account-card"'
+        + ' data-preview-kind="identity" data-preview-label="'+escapeHtml(label)+'"'
+        + ' data-tile-title="'+escapeHtml(id.cardName + (id.level ? ' — Level '+id.level : '') + ' — click to enlarge')+'">'
+        + '<img src="'+escapeHtml(id.cardSmall)+'" alt="">'
+        + '</button>'
+      : '';
+    const levelHtml = (id && id.level) ? '<span class="val-store-account-level">Lv '+escapeHtml(String(id.level))+'</span>' : '';
+    // What this account can actually afford, in the two currencies the shops below price in — the
+    // whole point of a store list is deciding, and that decision needs the balance next to the
+    // price. Same coin glyphs as the tiles, so 2,150 in the header and 1,775 on a tile are
+    // obviously the same unit. Absent on stores checked before the wallet lookup existed.
+    const w = ds.wallet || null;
+    const walletHtml = w
+      ? '<span class="val-store-wallet">'
+        + '<span class="val-store-item-price" title="Valorant Points">'+(w.vp||0).toLocaleString()+'</span>'
+        + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(w.kc||0).toLocaleString()+'</span>'
+        + '</span>'
+      : '';
+    return '<div class="val-store-account-hdr">'+avatarHtml
+      + '<span class="val-store-account-name">'+escapeHtml(label)+'</span>'
+      + levelHtml + walletHtml + checkedHtml + '</div>';
   }
-  // sub-header inside one account's section, separating the daily skins grid from the accessory
+  // Sub-header inside one account's section, separating the daily skins grid from the accessory
   // grid below it — smaller/lighter than the account header above so the account stays the
-  // dominant heading
-  function valStoreSectionHdr(name, note){
-    return '<div class="val-store-section-hdr"><span class="val-store-section-name">'+escapeHtml(name)+'</span>'
+  // dominant heading. `primary` marks the section that leads its account (Daily Offers), which
+  // holds the column's three-step hierarchy up: featured bundle, then daily offers, then
+  // accessories, each visibly a rung below the last.
+  function valStoreSectionHdr(name, note, primary){
+    return '<div class="val-store-section-hdr'+(primary?' val-store-section-hdr-primary':'')+'"><span class="val-store-section-name">'+escapeHtml(name)+'</span>'
       + (note ? '<span class="val-store-section-note">'+escapeHtml(note)+'</span>' : '')
       + '</div>';
+  }
+
+  /* ---- featured bundle: Riot runs one featured bundle for everybody, so it's rendered once at
+     the top of the store column rather than repeated inside every tracked account's section —
+     seeing the same banner three times only made the accounts harder to scan. The freshest check
+     wins (rather than, say, the first account): all accounts report the same bundle, so the only
+     thing that differs between their copies is how stale the countdown is. Returns '' when no
+     account has recorded one — either nothing is featured, or every store here predates bundle
+     support. `label` is carried on the tile so the preview click handler can find it again. ---- */
+  function valFeaturedBundleLabel(stores, labels){
+    let best = '', bestAt = 0;
+    labels.forEach(label=>{
+      const ds = stores[label] || {};
+      if(ds.bundle && ds.bundle.name && (ds.checkedAt||0) > bestAt){ best = label; bestAt = ds.checkedAt||0; }
+    });
+    return best;
+  }
+  function valFeaturedBundleHtml(stores, labels){
+    const label = valFeaturedBundleLabel(stores, labels);
+    if(!label) return '';
+    const ds = stores[label];
+    const b = ds.bundle;
+    const price = parseInt(b.price,10)||0;
+    const timeLeft = valStoreTimeLeft(ds.checkedAt, b.remainingSeconds);
+    // a bundle is a bag of items, so a wishlist hit inside one is invisible from the banner unless
+    // it's called out — the names go in the tooltip, since the banner has room for a count only
+    const wishHits = (b.items||[]).filter(it => valWishlistMatchesForItem(it.name, label).length);
+    const wishHtml = wishHits.length
+      ? '<span class="val-bundle-wish"><span aria-hidden="true">★</span> '
+        + wishHits.length + ' wishlisted</span>'
+      : '';
+    const title = b.name + ' — Featured Bundle'
+      + (wishHits.length ? ' — on your wishlist: ' + wishHits.map(it=>it.name).join(', ') : '')
+      + ' — click for contents';
+    return '<button type="button" class="val-bundle'+(wishHits.length?' wishlist-match':'')+'" data-preview-kind="bundle" data-preview-label="'+escapeHtml(label)+'"'
+      + ' data-tile-title="'+escapeHtml(title)+'">'
+      + (b.imageUrl ? '<span class="val-bundle-art"><img src="'+escapeHtml(b.imageUrl)+'" alt=""></span>' : '')
+      + '<span class="val-bundle-body">'
+      + '<span class="val-bundle-kicker">Featured Bundle</span>'
+      + '<span class="val-bundle-name">'+escapeHtml(b.name)+'</span>'
+      + '<span class="val-bundle-meta">'
+      + (price ? '<span class="val-store-item-price" title="Valorant Points">'+price.toLocaleString()+'</span>' : '')
+      + (timeLeft ? '<span class="val-bundle-time">'+escapeHtml(timeLeft)+'</span>' : '')
+      + wishHtml
+      + '</span></span></button>';
   }
 
   /* ---- item preview modal: clicking any store / accessory / owned-skin tile opens that item's
@@ -573,9 +932,280 @@
       + '</figure>';
   }
 
-  // `view` is a normalized { name, subtitle, color, imageUrl, text, art } — daily skins, accessory
-  // offers, and owned skins all carry different fields, so each click handler below maps its own
-  // item into this shape rather than this function having to know which list it came from.
+  /* ---- VP purchase calculator ------------------------------------------------------------
+     Clicking a VP-priced item answers "so what do I actually buy?": the balance the last store
+     check read, the shortfall, and which top-up packages cover it.
+
+     "Optimal" needs a definition, and which one applies depends on what's been filled in:
+       - prices known → cheapest total spend. This is why it searches *past* the shortfall rather
+         than stopping at the first combination that covers it: VP gets cheaper per point in bulk,
+         so one 2,050 pack routinely costs less than 1,000 + 475 + 475 even though it buys more.
+       - no prices → least VP bought (so the least stranded in the wallet afterwards), then the
+         fewest packages. Without prices there's nothing else to be optimal about, and it's the
+         right answer anyway whenever the tiers aren't discounted.
+     Tiers with no price are excluded outright once *any* price exists: a blank there means "not
+     sold in my region", and suggesting a package you can't buy is worse than suggesting none.
+
+     Third-party sellers (a discounted top-up shop) are just more (VP, price) rows in the same
+     pool — nothing about the search changes, they simply undercut the official tier at the same
+     VP amount. They're kept in their own list because they're *optional*: one checkbox drops them
+     out of consideration, and when they're in, the calculator also reports what the official-only
+     answer would have cost, so "cheapest" is never a number you have to take on trust. ---- */
+  function valVpPackages(){
+    return ((state.valorant.vp && state.valorant.vp.packages) || [])
+      .map(p=>({ vp: parseInt(p.vp,10)||0, price: Number(p.price)||0, src:'' }))
+      .filter(p=>p.vp > 0)
+      .sort((a,b)=>a.vp-b.vp);
+  }
+  // A third-party offer with no price is meaningless — the price *is* the offer — so unlike the
+  // official tiers, an unpriced row is dropped rather than treated as "sold, cost unknown".
+  function valVpOffers(){
+    return ((state.valorant.vp && state.valorant.vp.offers) || [])
+      .map(o=>({ vp: parseInt(o.vp,10)||0, price: Number(o.price)||0, src: (o.name||'Third party').trim() || 'Third party', id:o.id }))
+      .filter(o=>o.vp > 0 && o.price > 0);
+  }
+  function valVpUseOffers(){
+    return state.valorant.vp && state.valorant.vp.useOffers !== false;
+  }
+
+  // Unbounded coin-change over the tiers. `deficit` is at most one bundle (~11k VP) and there are
+  // six tiers, so the table is a few tens of thousands of steps — small enough to just run on
+  // every render rather than caching anything.
+  function valVpPlan(deficit, includeOffers){
+    deficit = Math.max(0, Math.ceil(deficit));
+    const official = valVpPackages();
+    const all = official.concat(includeOffers ? valVpOffers() : []);
+    if(!deficit || !all.length) return null;
+    const priced = all.filter(p=>p.price > 0);
+    const usingCost = priced.length > 0;
+    const pool = (usingCost ? priced : all).slice().sort((a,b)=>a.vp-b.vp);
+    const max = pool[pool.length-1].vp;
+    // never worth overshooting by more than one of the largest packs — anything beyond that is
+    // strictly the same combination plus a wholly wasted package
+    const cap = deficit + max;
+    // Two objectives, compared lexicographically: money first, then number of purchases. The
+    // second one matters more than it looks — with evenly-priced tiers, four 475 packs cost
+    // exactly what one 2,050 pack does, and "buy four of them" is a worse answer to the same
+    // question. In the unpriced case every cost is 0, so the comparison falls through to the
+    // package count on its own, which is exactly what's wanted there.
+    const EPS = 1e-9;
+    const cost = new Array(cap+1).fill(Infinity);
+    const cnt  = new Array(cap+1).fill(Infinity);
+    const from = new Array(cap+1).fill(-1);         // which pack closed that total, for readback
+    cost[0] = 0; cnt[0] = 0;
+    for(let v=1; v<=cap; v++){
+      for(let i=0;i<pool.length;i++){
+        const p = pool[i];
+        if(p.vp > v) continue;
+        if(cost[v-p.vp] === Infinity) continue;
+        const c = cost[v-p.vp] + (usingCost ? p.price : 0);
+        const k = cnt[v-p.vp] + 1;
+        if(c < cost[v]-EPS || (c < cost[v]+EPS && k < cnt[v])){ cost[v] = c; cnt[v] = k; from[v] = i; }
+      }
+    }
+    let pick = -1;
+    for(let v=deficit; v<=cap; v++){
+      if(cost[v] === Infinity) continue;
+      if(!usingCost){ pick = v; break; }   // no prices: least overshoot wins outright
+      // cheapest anywhere at or above the shortfall, then fewest purchases, then — when even that
+      // ties — the one that leaves more VP in the wallet, since it cost the same either way
+      if(pick < 0
+        || cost[v] < cost[pick]-EPS
+        || (cost[v] < cost[pick]+EPS && (cnt[v] < cnt[pick] || (cnt[v] === cnt[pick] && v > pick)))){
+        pick = v;
+      }
+    }
+    if(pick < 0) return null;
+    // counted by pool index, not by VP amount: a third-party 1,000 and the official 1,000 are the
+    // same size and different offers, and merging them would misreport both the seller and the cost
+    const counts = new Map();
+    for(let v=pick; v>0; ){
+      const i = from[v];
+      counts.set(i, (counts.get(i)||0) + 1);
+      v -= pool[i].vp;
+    }
+    const packs = [...counts.entries()]
+      .map(([i,qty])=>({ vp: pool[i].vp, qty, price: pool[i].price, src: pool[i].src }))
+      .sort((a,b)=>b.vp-a.vp);
+    return {
+      packs,
+      totalVp: pick,
+      totalCost: usingCost ? packs.reduce((s,p)=>s + p.price*p.qty, 0) : 0,
+      priced: usingCost,
+      count: packs.reduce((s,p)=>s + p.qty, 0),
+    };
+  }
+
+  function valFmtMoney(n){
+    const cur = ((state.valorant.vp && state.valorant.vp.currency) || '').trim();
+    const num = Math.round(n*100)/100;
+    const txt = num.toLocaleString(undefined, { minimumFractionDigits: num % 1 ? 2 : 0, maximumFractionDigits: 2 });
+    return cur ? cur+' '+txt : txt;
+  }
+  function valVpRow(lbl, vp, cls){
+    return '<div class="val-vp-calc-row'+(cls?' '+cls:'')+'"><span>'+escapeHtml(lbl)+'</span>'
+      + '<span class="val-store-item-price">'+vp.toLocaleString()+'</span></div>';
+  }
+
+  // Rendered into the item preview for anything priced in VP, and into the wishlist modal for the
+  // sum of a whole list. `label` is the account whose wallet and store the figure came from — the
+  // balance is per account, so the calculator has to be too. `opts` only relabels things: the
+  // arithmetic is identical whether the number is one skin or twelve.
+  function valVpCalcHtml(vpCost, label, opts){
+    vpCost = parseInt(vpCost,10)||0;
+    if(!vpCost) return '';
+    opts = opts || {};
+    const ds = (state.valorant.dailyStores||{})[label] || {};
+    // rawDeficit: the number *is* the shortfall (the calculator's "I need this much more" mode),
+    // so there's no balance to subtract and none to report
+    const wallet = opts.rawDeficit ? null : (ds.wallet || null);
+    const have = wallet ? (parseInt(wallet.vp,10)||0) : 0;
+    const deficit = opts.rawDeficit ? vpCost : Math.max(0, vpCost - have);
+
+    let html = '<div class="val-vp-calc"><div class="val-vp-calc-hdr">'+escapeHtml(opts.title || 'Buying this')+'</div>'
+      + (opts.note ? '<div class="val-vp-calc-note val-vp-calc-note-top">'+escapeHtml(opts.note)+'</div>' : '')
+      + valVpRow(opts.priceLabel || 'Price', vpCost);
+    if(wallet) html += valVpRow('Your balance', have);
+    if(wallet && !deficit){
+      return html
+        + '<div class="val-vp-calc-ok"><span aria-hidden="true">✓</span> You can afford this — '
+        + (have-vpCost).toLocaleString()+' VP left over.</div></div>';
+    }
+    // in rawDeficit mode the number was already the shortfall, so restating it as a second row
+    // would just be the same figure twice
+    if(!opts.rawDeficit) html += valVpRow(wallet ? 'Short by' : 'You need', deficit, 'is-short');
+    if(!wallet && !opts.rawDeficit){
+      html += '<div class="val-vp-calc-note">This account\'s balance is unknown — run a store check to read the wallet, and this becomes what you\'re actually short.</div>';
+    }
+
+    const useOffers = valVpUseOffers() && valVpOffers().length > 0;
+    const plan = valVpPlan(deficit, useOffers);
+    if(!plan){
+      html += '<div class="val-vp-calc-note">No VP packages configured — add them in Settings → Valorant Points Prices.</div>';
+      return html + '</div>';
+    }
+    const leftover = have + plan.totalVp - vpCost;
+    html += '<div class="val-vp-plan">'
+      + '<div class="val-vp-plan-hdr">'+(plan.priced ? 'Cheapest top-up' : 'Smallest top-up')+'</div>'
+      + plan.packs.map(p=>'<div class="val-vp-plan-pack">'
+          + '<span class="val-vp-plan-qty">'+p.qty+'×</span>'
+          + '<span class="val-store-item-price">'+p.vp.toLocaleString()+'</span>'
+          + (p.src ? '<span class="val-vp-plan-src" title="Third-party seller">'+escapeHtml(p.src)+'</span>' : '')
+          + (p.price ? '<span class="val-vp-plan-cost">'+escapeHtml(valFmtMoney(p.price*p.qty))+'</span>' : '')
+          + '</div>').join('')
+      + '<div class="val-vp-plan-total">'
+        + plan.totalVp.toLocaleString()+' VP'
+        + (plan.priced ? ' · <b>'+escapeHtml(valFmtMoney(plan.totalCost))+'</b>' : '')
+        + ' · '+leftover.toLocaleString()+' VP left after buying'
+      + '</div>';
+
+    // When a third-party seller wins, say what it's beating. A "cheapest" that quietly assumes
+    // you'll use a reseller is a different decision from the official one, and it's yours to make.
+    if(useOffers && plan.priced && plan.packs.some(p=>p.src)){
+      const official = valVpPlan(deficit, false);
+      if(official && official.priced){
+        const saved = official.totalCost - plan.totalCost;
+        html += '<div class="val-vp-plan-alt">Official only: '+escapeHtml(valFmtMoney(official.totalCost))
+          + ' (' + official.totalVp.toLocaleString() + ' VP)'
+          + (saved > 0 ? ' — third party saves '+escapeHtml(valFmtMoney(saved)) : '')
+          + '</div>';
+      }
+    }
+    html += (plan.priced ? '' : '<div class="val-vp-calc-note">Add your local prices in Settings → Valorant Points Prices and this picks the cheapest combination instead of the smallest.</div>')
+      + '</div>';
+    return html + '</div>';
+  }
+
+  /* ---- VP package prices, in Settings. Rows are keyed by their VP amount rather than by array
+     index, so a reordered or partially-filled list can't write a price onto the wrong tier. ---- */
+  function renderValVpSettings(){
+    const wrap = el('valVpPriceRows'); if(!wrap) return;
+    el('valVpCurrency').value = (state.valorant.vp && state.valorant.vp.currency) || '';
+    wrap.innerHTML = valVpPackages().map(p=>
+      '<div class="val-vp-price-row">'
+      + '<span class="val-store-item-price">'+p.vp.toLocaleString()+'</span>'
+      + '<input type="number" min="0" step="0.01" inputmode="decimal" data-vp-price="'+p.vp+'"'
+        + ' aria-label="Price of the '+p.vp+' VP package" placeholder="—"'
+        + (p.price ? ' value="'+p.price+'"' : '') + '>'
+      + '</div>').join('');
+    renderValVpOffers();
+  }
+  function renderValVpOffers(){
+    const wrap = el('valVpOfferRows'); if(!wrap) return;
+    const offers = (state.valorant.vp && state.valorant.vp.offers) || [];
+    el('valVpUseOffers').checked = valVpUseOffers();
+    el('valVpUseOffers').disabled = !offers.length;
+    wrap.innerHTML = offers.length
+      ? offers.map(o=>
+          '<div class="val-vp-offer-row">'
+          + '<span class="val-vp-offer-name">'+escapeHtml(o.name||'Third party')+'</span>'
+          + '<span class="val-store-item-price">'+(parseInt(o.vp,10)||0).toLocaleString()+'</span>'
+          + '<span class="val-vp-offer-cost">'+escapeHtml(valFmtMoney(Number(o.price)||0))+'</span>'
+          + '<button type="button" class="val-icon-btn" data-vp-offer-del="'+escapeHtml(o.id)+'"'
+            + ' data-tile-title="Remove this offer"><span aria-hidden="true">✕</span></button>'
+          + '</div>').join('')
+      : '<div class="val-peak-note">No third-party offers saved. Add one above — say a top-up shop selling 1,000 VP cheaper than Riot does — and it gets weighed against the official tiers.</div>';
+    applyValTileTitles(wrap);
+  }
+  el('valVpOfferAddBtn').addEventListener('click', ()=>{
+    const vp = parseInt(el('valVpOfferVp').value, 10) || 0;
+    const price = Number(el('valVpOfferPrice').value) || 0;
+    // both halves are the offer — a VP amount with no price can't be compared against anything,
+    // and a price with no VP amount buys nothing
+    if(vp <= 0 || price <= 0) return;
+    state.valorant.vp.offers = state.valorant.vp.offers || [];
+    state.valorant.vp.offers.push({
+      id: uid(),
+      name: el('valVpOfferName').value.trim() || 'Third party',
+      vp, price,
+    });
+    el('valVpOfferName').value = ''; el('valVpOfferVp').value = ''; el('valVpOfferPrice').value = '';
+    save(); renderValVpOffers();
+  });
+  el('valVpOfferRows').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-vp-offer-del]'); if(!btn) return;
+    state.valorant.vp.offers = (state.valorant.vp.offers||[]).filter(o=>o.id !== btn.dataset.vpOfferDel);
+    save(); renderValVpOffers();
+  });
+  el('valVpUseOffers').addEventListener('change', ()=>{
+    state.valorant.vp.useOffers = el('valVpUseOffers').checked;
+    save();
+  });
+  el('valVpPriceRows').addEventListener('input', e=>{
+    const input = e.target.closest('[data-vp-price]'); if(!input) return;
+    const vp = parseInt(input.dataset.vpPrice,10);
+    const pkg = (state.valorant.vp.packages||[]).find(p=>(parseInt(p.vp,10)||0) === vp);
+    if(!pkg) return;
+    pkg.price = Math.max(0, Number(input.value) || 0);
+    save(); // no re-render: rewriting the rows mid-keystroke would take the caret with it
+  });
+  el('valVpCurrency').addEventListener('input', ()=>{
+    state.valorant.vp.currency = el('valVpCurrency').value.trim();
+    save();
+  });
+
+  // One row of a bundle's contents list. A bundle's items are the only thing in the store you
+  // can't see from its tile — the banner is one piece of promo art for a bag of five or six
+  // things — so the preview is where "what am I actually buying" gets answered, wishlist hits
+  // included.
+  function valPreviewItemRowHtml(it, wished){
+    const price = parseInt(it.discountPrice,10) || parseInt(it.price,10) || 0;
+    return '<div class="val-preview-item'+(wished?' wishlist-match':'')+'">'
+      + (it.imageUrl
+          ? '<img class="val-preview-item-img" src="'+escapeHtml(it.imageUrl)+'" alt="">'
+          : '<span class="val-preview-item-img"></span>')
+      + '<span class="val-preview-item-name">'+escapeHtml(it.name||'Unknown item')
+        + (wished ? ' <span class="val-preview-item-wish" title="On your wishlist">★</span>' : '')
+      + '</span>'
+      + (it.type ? '<span class="val-preview-item-type">'+escapeHtml(it.type)+'</span>' : '')
+      + (price ? '<span class="val-store-item-price">'+price.toLocaleString()+'</span>' : '')
+      + '</div>';
+  }
+
+  // `view` is a normalized { name, subtitle, color, imageUrl, text, art, items } — daily skins,
+  // accessory offers, bundles and owned skins all carry different fields, so each click handler
+  // below maps its own item into this shape rather than this function having to know which list it
+  // came from. `items` is the bundle's contents list and is absent for everything else.
   let valPreviewReturnFocus = null; // element to hand focus back to when the preview closes
   function openValItemPreview(view){
     const body = el('valItemPreviewBody');
@@ -600,7 +1230,16 @@
       + '</div>'
       + '<button class="val-preview-close" type="button" title="Close">✕</button>'
       + '</div>'
-      + artHtml;
+      + artHtml
+      + ((view.items && view.items.length)
+          ? '<div class="val-preview-items">'
+            + '<div class="val-preview-items-hdr">In this bundle</div>'
+            + view.items.map(it => valPreviewItemRowHtml(it, it._wished)).join('')
+            + '</div>'
+          : '')
+      // anything priced in VP gets the top-up calculator; Kingdom Credit offers and the equipped
+      // card pass no vpCost and so get nothing
+      + valVpCalcHtml(view.vpCost, view.accountLabel);
     body.style.setProperty('--rarity-color', view.color || '#8B92A8');
     body.querySelector('.val-preview-close').addEventListener('click', closeValItemPreview);
     el('valItemPreviewOverlay').style.display = 'flex';
@@ -638,6 +1277,51 @@
         subtitle: rarity.name+' Edition · '+(parseInt(it.price,10)||0).toLocaleString()+' VP',
         color: rarity.color,
         imageUrl: it.imageUrl,
+        vpCost: it.price,
+        accountLabel: tile.dataset.previewLabel,
+      });
+    } else if(tile.dataset.previewKind === 'bundle'){
+      const b = ds.bundle;
+      if(!b) return;
+      const price = parseInt(b.price,10)||0;
+      const label = tile.dataset.previewLabel;
+      openValItemPreview({
+        name: b.name,
+        subtitle: ['Featured Bundle', price ? price.toLocaleString()+' VP' : '', valStoreTimeLeft(ds.checkedAt, b.remainingSeconds)].filter(Boolean).join(' · '),
+        color: '#F0D449',
+        imageUrl: b.imageUrl,
+        // the wishlist flag is resolved here rather than inside the preview, which has no idea
+        // which account's list applies
+        items: (b.items||[]).map(it => ({ ...it, _wished: valWishlistMatchesForItem(it.name, label).length > 0 })),
+        vpCost: price,
+        accountLabel: label,
+      });
+    } else if(tile.dataset.previewKind === 'night'){
+      const it = ((ds.nightMarket && ds.nightMarket.offers)||[]).find(x=>x.uuid===uuid);
+      if(!it) return;
+      const was = parseInt(it.price,10)||0, now = parseInt(it.discountPrice,10)||0;
+      openValItemPreview({
+        name: it.name,
+        subtitle: ['Night Market', it.discountPercent ? '-'+it.discountPercent+'%' : '',
+                   now ? now.toLocaleString()+' VP' : '', was ? 'was '+was.toLocaleString() : '']
+                  .filter(Boolean).join(' · '),
+        color: VAL_NIGHT_COLOR,
+        imageUrl: it.imageUrl,
+        // what you'd actually pay, not the pre-discount price
+        vpCost: now || was,
+        accountLabel: tile.dataset.previewLabel,
+      });
+    } else if(tile.dataset.previewKind === 'identity'){
+      // the equipped player card — same three crops as a player card bought from the accessory
+      // shop, so it reuses the same `art` shape and gets the same side-by-side layout
+      const id = ds.identity;
+      if(!id) return;
+      openValItemPreview({
+        name: id.cardName,
+        subtitle: ['Equipped Player Card', id.level ? 'Level '+id.level : ''].filter(Boolean).join(' · '),
+        color: VAL_ACCESSORY_TYPE_COLORS['Player Card'],
+        imageUrl: id.cardSmall,
+        art: { wide: id.cardWide, large: id.cardLarge, small: id.cardSmall },
       });
     } else {
       const ac = (ds.accessories||[]).find(x=>x.uuid===uuid);
@@ -666,33 +1350,49 @@
     });
   });
 
-  // Skins / Accessories switch above the store — the two shops are separate rotations (daily VP
-  // vs weekly Kingdom Credits) and rendering both at once made the store column crowded, so only
-  // the selected one is built. Persisted, so the tab reopens on whichever shop you last looked at.
+  /* ---- Store / Owned Skins switch above the store. The two shops (daily VP skins, weekly Kingdom
+     Credit accessories) are one purchase decision and now stack in the same column under their own
+     section headers; what's worth flipping between is that whole store and the collection you
+     already own, which is the other thing keyed to the account switcher. Persisted, so the tab
+     reopens on whichever pane you last looked at. Each pane's render function owns its own card's
+     visibility — renderValorantStore() the store card, renderValOwnedSkins() the owned-skins card
+     — so nothing here has to know which elements belong to which. ---- */
+  // Owned mode is conditional on there being *some* local-helper data, because with none the
+  // toggle is hidden — a persisted 'owned' would then strand a first-time user on an empty card
+  // with no control to get back to the store's "run these scripts" setup message.
+  function valStoreHasAnyData(){
+    return !!(Object.keys(state.valorant.dailyStores||{}).length || Object.keys(state.valorant.ownedSkins||{}).length);
+  }
+  function valStoreOwnedMode(){ return state.valorant.storeMode === 'owned' && valStoreHasAnyData(); }
   function renderValStoreModeToggle(){
-    const accessories = state.valorant.storeMode === 'accessories';
-    el('valStoreModeBtnSkins').classList.toggle('active', !accessories);
-    el('valStoreModeBtnAccessories').classList.toggle('active', accessories);
+    const owned = valStoreOwnedMode();
+    el('valStoreModeBtnStore').classList.toggle('active', !owned);
+    el('valStoreModeBtnOwned').classList.toggle('active', owned);
   }
   el('valStoreModeToggle').addEventListener('click', e=>{
     const btn = e.target.closest('[data-storemode]');
     if(!btn) return;
     state.valorant.storeMode = btn.dataset.storemode;
-    save(); renderValStoreModeToggle(); renderValorantStore();
+    save(); renderValStoreModeToggle(); renderValorantStore(); renderValOwnedSkins();
   });
 
   function renderValorantStore(){
     const wrap = el('valStoreCard'); if(!wrap) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
     el('valStoreUnavailable').style.display = unavailable ? 'block' : 'none';
-    if(unavailable){ wrap.innerHTML = ''; el('valStoreModeToggle').style.display = 'none'; return; }
+    // the pane stays visible here even with no store to show: the wishlist column lives inside it
+    // and is editable in this mode, which is how it behaved before the toggle picked panes
+    if(unavailable){ wrap.innerHTML = ''; el('valStoreModeToggle').style.display = 'none'; el('valStorePane').style.display = ''; return; }
     renderValStoreModeToggle();
-    const showAccessories = state.valorant.storeMode === 'accessories';
+    // the store card carries the wishlist column beside it, so the whole card is the "Store" pane
+    el('valStorePane').style.display = valStoreOwnedMode() ? 'none' : '';
 
     const stores = state.valorant.dailyStores || {};
     const allLabels = Object.keys(stores);
-    // nothing to switch between until at least one account has been checked
-    el('valStoreModeToggle').style.display = allLabels.length ? 'inline-flex' : 'none';
+    // The toggle also reaches Owned Skins, so owned data alone is enough to justify showing it —
+    // gating purely on store data would strand the owned-skins pane behind a hidden control.
+    el('valStoreModeToggle').style.display = valStoreHasAnyData() ? 'inline-flex' : 'none';
+    if(valStoreOwnedMode()) return; // pane is hidden; nothing below would be seen
     if(!allLabels.length){
       wrap.innerHTML = '<div class="empty val-store-empty">No store data yet — run <code>scripts/valorant-login.mjs</code> then <code>scripts/valorant-check-store.mjs</code> locally (see README.md "Setup").</div>';
       return;
@@ -706,14 +1406,16 @@
     // its store first, so a hit isn't buried below accounts you have no particular interest in —
     // stable sort keeps everything else in its existing order.
     if(labels.length > 1){
-      const hasWishMatch = label => {
-        const ds = stores[label];
-        return !!(ds && Array.isArray(ds.items) && ds.items.some(it => valWishlistMatchesForItem(it.name, label).length > 0));
-      };
+      const hasWishMatch = label =>
+        valOfferedItems(stores[label]).some(it => valWishlistMatchesForItem(it.name, label).length > 0);
       labels.sort((a,b) => (hasWishMatch(b)?1:0) - (hasWishMatch(a)?1:0));
     }
 
-    wrap.innerHTML = labels.map(label=>{
+    // Built from allLabels, not `labels`: it's the same bundle for every account, so filtering the
+    // view down to one account shouldn't be able to hide it.
+    const bundleHtml = valFeaturedBundleHtml(stores, allLabels);
+
+    wrap.innerHTML = bundleHtml + labels.map(label=>{
       const ds = stores[label] || {};
       const hdrHtml = valStoreHeader(label, ds);
       if(ds.error){
@@ -722,55 +1424,88 @@
       if(!ds.checkedAt){
         return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
       }
-      // Only one of the two shops is on screen at a time (see the Skins/Accessories toggle above
-      // the store) — stacking both grids per account made the column too crowded to scan.
-      let html;
-      if(showAccessories){
-        // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
-        // from stores checked before this was added, so an older dailyStores entry has nothing to
-        // show here until its next check fills this in.
-        const accessories = ds.accessories || [];
-        if(!accessories.length){
-          html = '<div class="val-peak-note">No accessory offers in this store check — re-run scripts/valorant-check-store.mjs locally (checks from before accessory support don\'t include them).</div>';
-        } else {
-          // the section header is where the weekly rotation countdown lives, so it stays even
-          // though the toggle above already names the shop
-          html = valStoreSectionHdr('Accessories', valAccessoryTimeLeft(ds.checkedAt, ds.accessoriesRemainingSeconds));
-          html += '<div class="val-store-grid val-accessory-grid">';
-          accessories.forEach(ac=>{
-            const color = valAccessoryTypeColor(ac.type);
-            const title = ac.name + (ac.type ? ' — ' + ac.type : '') + ' — click to enlarge';
-            html += '<button type="button" class="val-store-item val-accessory-item" style="--rarity-color:'+color+';"'
-              + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
-              + ' data-tile-title="'+escapeHtml(title)+'">'
-              + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
-              + '<span class="val-store-item-img">'
-              + (ac.imageUrl
-                  ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
-                  // player titles have no art at all — show the actual in-game tag text instead
-                  : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
-              + '</span>'
-              + '<span class="val-store-item-footer">'
-              + '<span class="val-store-item-name">'+escapeHtml(ac.name)+'</span>'
-              + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
-              + '</div></button>';
-          });
-          html += '</div>';
-        }
-      } else {
-        const items = ds.items || [];
-        html = '<div class="val-store-grid">';
-        items.forEach(it=>{
-          const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
-          const rarity = valSkinRarityInfo(it.price);
-          html += '<button type="button" class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
-            + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
-            + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
+      // Every shop this account has open, stacked, each under its own header carrying its own
+      // countdown — they refresh on completely different clocks (daily VP, weekly Kingdom Credits,
+      // and a night market that runs for a couple of weeks an act), which is exactly what a reader
+      // needs side by side to decide what to spend on. `lead` hands the brighter header to
+      // whichever section is first: the night market outranks the daily offers when it's open,
+      // because it's the one that won't be there next month.
+      let lead = true;
+      let html = '';
+
+      const nm = ds.nightMarket;
+      if(nm && (nm.offers||[]).length){
+        html += valStoreSectionHdr('Night Market', valStoreTimeLeft(ds.checkedAt, nm.remainingSeconds), lead);
+        lead = false;
+        html += '<div class="val-store-grid">';
+        nm.offers.forEach(o=>{
+          const isWish = valWishlistMatchesForItem(o.name, label).length > 0;
+          const was = parseInt(o.price,10)||0, now = parseInt(o.discountPrice,10)||0;
+          const off = parseInt(o.discountPercent,10)||0;
+          html += '<button type="button" class="val-store-item val-night-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+VAL_NIGHT_COLOR+';"'
+            + ' data-preview-kind="night" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(o.uuid||'')+'"'
+            + ' data-tile-title="'+escapeHtml(o.name+' — Night Market'+(off?' −'+off+'%':'')+(was?' — was '+was.toLocaleString()+' VP':'')+' — click to enlarge')+'">'
+            + (off ? '<span class="val-night-discount">−'+off+'%</span>' : '')
             + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
-            + '<span class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
+            + '<span class="val-store-item-img">'+(o.imageUrl ? '<img src="'+escapeHtml(o.imageUrl)+'" alt="">' : '')+'</span>'
             + '<span class="val-store-item-footer">'
-            + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
-            + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
+            + '<span class="val-store-item-name">'+escapeHtml(o.name)+'</span>'
+            + '<span class="val-store-item-price" title="Valorant Points">'+(now||was).toLocaleString()+'</span>'
+            + '</span></button>';
+        });
+        html += '</div>';
+      }
+
+      const items = ds.items || [];
+      html += valStoreSectionHdr('Daily Offers', valStoreTimeLeft(ds.checkedAt, ds.itemsRemainingSeconds), lead);
+      lead = false;
+      html += '<div class="val-store-grid">';
+      items.forEach(it=>{
+        const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
+        const rarity = valSkinRarityInfo(it.price);
+        html += '<button type="button" class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
+          + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
+          + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
+          + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
+          + '<span class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
+          + '<span class="val-store-item-footer">'
+          + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
+          + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
+          + '</span></button>';
+      });
+      html += '</div>';
+
+      // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
+      // from stores checked before this was added, so an older dailyStores entry shows the
+      // re-check note under the header until its next check fills this in.
+      const accessories = ds.accessories || [];
+      html += valStoreSectionHdr('Accessories', valStoreTimeLeft(ds.checkedAt, ds.accessoriesRemainingSeconds));
+      if(!accessories.length){
+        html += '<div class="val-peak-note">No accessory offers in this store check — re-run scripts/valorant-check-store.mjs locally (checks from before accessory support don\'t include them).</div>';
+      } else {
+        html += '<div class="val-store-grid val-accessory-grid">';
+        accessories.forEach(ac=>{
+          const color = valAccessoryTypeColor(ac.type);
+          const isWish = valWishlistMatchesForItem(ac.name, label).length > 0;
+          const title = ac.name + (ac.type ? ' — ' + ac.type : '') + (isWish ? ' — on your wishlist' : '') + ' — click to enlarge';
+          html += '<button type="button" class="val-store-item val-accessory-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+color+';"'
+            + ' data-preview-kind="accessory" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(ac.uuid||'')+'"'
+            + ' data-tile-title="'+escapeHtml(title)+'">'
+            + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
+            + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
+            + '<span class="val-store-item-img">'
+            + (ac.imageUrl
+                ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
+                // player titles have no art at all — show the actual in-game tag text instead
+                : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
+            + '</span>'
+            + '<span class="val-store-item-footer">'
+            + '<span class="val-store-item-name">'+escapeHtml(ac.name)+'</span>'
+            + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(parseInt(ac.price,10)||0).toLocaleString()+'</span>'
+            // </span>, not </div>: a stray </div> here closed the grid container itself (a <button>
+            // isn't a scoping element for a div end tag), so every tile after the first was parsed
+            // as a sibling of the grid instead of a cell in it — which is why the accessory shop
+            // rendered as a column of full-width cards no matter what the grid rules said
             + '</span></button>';
         });
         html += '</div>';
@@ -845,11 +1580,6 @@
     valOwnedSkinsSort = el('valOwnedSkinsSortSelect').value;
     renderValOwnedSkins();
   });
-  el('valOwnedSkinsToggle').addEventListener('click', ()=>{
-    state.valorant.ownedSkinsCollapsed = !state.valorant.ownedSkinsCollapsed;
-    save();
-    renderValOwnedSkins();
-  });
   // Delegated (chips are regenerated on every render, so binding to each one directly wouldn't
   // survive a re-render) — toggles that one value's membership in the relevant exclude set.
   el('valOwnedSkinsTierFilters').addEventListener('click', e=>{
@@ -878,15 +1608,9 @@
   function renderValOwnedSkins(){
     const card = el('valOwnedSkinsCard'); if(!card) return;
     const unavailable = usingClaudeStorage || !supabaseConfigured;
-    if(unavailable){ card.style.display = 'none'; return; }
+    // the second pane of the Store / Owned Skins toggle — hidden whenever the store is showing
+    if(unavailable || !valStoreOwnedMode()){ card.style.display = 'none'; return; }
     card.style.display = 'block';
-
-    const collapsed = !!state.valorant.ownedSkinsCollapsed;
-    el('valOwnedSkinsChevron').textContent = collapsed ? '▶' : '▼';
-    el('valOwnedSkinsToggle').setAttribute('aria-expanded', String(!collapsed));
-    const bodyEl = el('valOwnedSkinsBody');
-    bodyEl.style.display = collapsed ? 'none' : 'block';
-    if(collapsed) return; // nothing below the header needs updating while hidden
 
     const label = state.valorant.selectedStoreLabel;
     const noAccEl = el('valOwnedSkinsNoAccount');
@@ -1010,10 +1734,10 @@
   }
 
   function renderValLocalPanel(){
-    const wrap = el('valLocalPanel'); if(!wrap) return;
+    const chip = el('valLocalStatusBtn'); if(!chip) return;
     const credsWrap = el('valLocalCredsPanel');
     const unavailable = usingClaudeStorage || !supabaseConfigured;
-    wrap.style.display = unavailable ? 'none' : 'block';
+    chip.style.display = unavailable ? 'none' : 'inline-flex';
     if(credsWrap) credsWrap.style.display = unavailable ? 'none' : 'block';
     if(unavailable) return;
 
@@ -1025,13 +1749,24 @@
     } else {
       statusHtml = '<span class="val-local-dot off"></span> Local helper not running — run <code>node scripts/valorant-local-server.mjs</code> on this machine (see README.md)';
     }
-    // shown in two places — a status-only note on the Valorant tab (account switcher lives there
-    // too, since it just filters already-fetched data and works with or without the local helper)
-    // and next to the actual Check Store Now / Delete / Add Account controls in Settings, since
-    // those genuinely need the local helper running
+    // shown in two places — inside the Shop Tracker's ⓘ modal (the tab itself only needs the dot,
+    // since the account switcher there just filters already-fetched data and works with or without
+    // the helper) and next to the actual Check Store Now / Delete / Add Account controls in
+    // Settings, since those genuinely need the local helper running
     el('valLocalStatusTxt').innerHTML = statusHtml;
     const settingsStatusEl = el('valSettingsLocalStatusTxt');
     if(settingsStatusEl) settingsStatusEl.innerHTML = statusHtml;
+
+    // the chip is the whole status on this tab: dot for the state, and an accessible name that
+    // says it rather than leaving a screen reader with "Helper ⓘ"
+    const n = valLocalStatus.accounts.length;
+    el('valLocalDot').className = 'val-local-dot ' + (valLocalStatus.connected ? 'on' : 'off');
+    chip.classList.toggle('is-on', !!valLocalStatus.connected);
+    const chipTxt = valLocalStatus.connected
+      ? 'Local helper connected' + (n ? ' · '+n+' account'+(n===1?'':'s')+' saved' : '')
+      : 'Local helper not running';
+    chip.title = chipTxt + ' — click for details';
+    chip.setAttribute('aria-label', chipTxt + ' — details');
 
     // union of accounts the local server has a saved session for, and accounts that already
     // have store data — so a device without the local server running (or an account it doesn't
@@ -1056,6 +1791,82 @@
     el('valLocalDeleteBtn').disabled = disabled || !sel.value;
     el('valLocalDeleteBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='delete') ? 'Deleting…' : '🗑 Delete';
   }
+
+  /* ---- standalone VP calculator: the same planner, pointed at a number you type instead of a
+     skin you clicked — for the case where the thing you're saving for isn't in a store you can
+     click (a battlepass, a bundle you've seen elsewhere, next month's plan). Mode matters: "it
+     costs this much" subtracts the picked account's balance, "I need this much more" takes the
+     number as the shortfall already. ---- */
+  let valVpCalcMode = 'price';           // not persisted — resets to the commoner question
+  let valVpCalcReturnFocus = null;
+  function renderValVpCalcModal(){
+    el('valVpCalcModeBtnPrice').classList.toggle('active', valVpCalcMode === 'price');
+    el('valVpCalcModeBtnNeed').classList.toggle('active', valVpCalcMode === 'need');
+    const amount = Math.max(0, parseInt(el('valVpCalcInput').value,10)||0);
+    const out = el('valVpCalcOut');
+    if(!amount){ out.innerHTML = ''; return; }
+    const label = state.valorant.selectedStoreLabel;
+    out.innerHTML = valVpCalcHtml(amount, label, {
+      title: valVpCalcMode === 'need' ? 'Topping up' : 'Buying it',
+      priceLabel: valVpCalcMode === 'need' ? 'You need' : 'Price',
+      rawDeficit: valVpCalcMode === 'need',
+      // the balance is per account, so say whose is being used — the switcher behind this modal
+      // is easy to forget about
+      note: (valVpCalcMode === 'price' && label) ? 'Against '+label+'’s balance' : '',
+    });
+  }
+  function openValVpCalc(){
+    el('valVpCalcOverlay').style.display = 'flex';
+    valVpCalcReturnFocus = document.activeElement;
+    renderValVpCalcModal();
+    el('valVpCalcInput').focus();
+    el('valVpCalcInput').select();
+  }
+  function closeValVpCalc(){
+    el('valVpCalcOverlay').style.display = 'none';
+    if(valVpCalcReturnFocus && document.contains(valVpCalcReturnFocus)) valVpCalcReturnFocus.focus();
+    valVpCalcReturnFocus = null;
+  }
+  el('valVpCalcBtn').addEventListener('click', openValVpCalc);
+  el('valVpCalcCloseBtn').addEventListener('click', closeValVpCalc);
+  // on `input`, not `change`: the whole point is watching the plan change as the number does, and
+  // nothing here is persisted, so there's no save to debounce
+  el('valVpCalcInput').addEventListener('input', renderValVpCalcModal);
+  el('valVpCalcModeToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-vpmode]'); if(!btn) return;
+    valVpCalcMode = btn.dataset.vpmode;
+    renderValVpCalcModal();
+  });
+  el('valVpCalcOverlay').addEventListener('click', e=>{
+    if(e.target === el('valVpCalcOverlay')) closeValVpCalc();
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && el('valVpCalcOverlay').style.display === 'flex') closeValVpCalc();
+  });
+
+  /* ---- local helper ⓘ: same open/close grammar as the wishlist and preview modals. Nothing in
+     here is actionable — it's the explanation the old standing card carried, kept one click away
+     instead of permanently on screen. ---- */
+  let valLocalInfoReturnFocus = null;
+  function openValLocalInfo(){
+    renderValLocalPanel(); // the helper may have gone up or down since the last poll painted
+    el('valLocalInfoOverlay').style.display = 'flex';
+    valLocalInfoReturnFocus = document.activeElement;
+    el('valLocalInfoCloseBtn').focus();
+  }
+  function closeValLocalInfo(){
+    el('valLocalInfoOverlay').style.display = 'none';
+    if(valLocalInfoReturnFocus && document.contains(valLocalInfoReturnFocus)) valLocalInfoReturnFocus.focus();
+    valLocalInfoReturnFocus = null;
+  }
+  el('valLocalStatusBtn').addEventListener('click', openValLocalInfo);
+  el('valLocalInfoCloseBtn').addEventListener('click', closeValLocalInfo);
+  el('valLocalInfoOverlay').addEventListener('click', e=>{
+    if(e.target === el('valLocalInfoOverlay')) closeValLocalInfo();
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key === 'Escape' && el('valLocalInfoOverlay').style.display === 'flex') closeValLocalInfo();
+  });
 
   el('valLocalSaveTokenBtn').addEventListener('click', ()=>{
     state.valorant.localServerToken = el('valLocalToken').value.trim();

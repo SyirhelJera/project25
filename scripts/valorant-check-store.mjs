@@ -52,7 +52,9 @@ async function main(){
     try {
       const result = await checkAccountStore(label, sess.ssid);
       await recordAccountResult(label, result);
-      console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundle ? ' + featured bundle' : ''}.`);
+      // the night market is called out separately because it's the one panel that isn't always
+      // there — a run that finds it is worth noticing in a log you'd otherwise skim
+      console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundle ? ' + featured bundle' : ''}${result.nightMarket ? ` + NIGHT MARKET (${result.nightMarket.offers.length} offers)` : ''}.`);
     } catch (err) {
       console.error(`  failed: ${err.message}`);
       await recordAccountError(label, err.message).catch(()=>{});

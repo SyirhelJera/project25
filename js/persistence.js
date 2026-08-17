@@ -234,9 +234,28 @@
     if(state.valorant.localServerToken===undefined) state.valorant.localServerToken = '';
     // which account's store the Valorant tab shows — '' means "all accounts" (stacked)
     if(state.valorant.selectedStoreLabel===undefined) state.valorant.selectedStoreLabel = '';
-    // which of the two shops the store view shows — 'skins' (daily VP offers) or 'accessories'
-    // (weekly Kingdom Credit offers); they used to be stacked in one column, which got crowded
-    if(state.valorant.storeMode!=='accessories') state.valorant.storeMode = 'skins';
+    // which pane the Shop Tracker shows — 'store' (both shops: daily VP offers plus the weekly
+    // Kingdom Credit accessories, stacked) or 'owned' (the owned-skins browser). Anything else
+    // falls back to 'store', which also migrates the old 'skins'/'accessories' values this used to
+    // hold back when the toggle picked between the two shops instead.
+    if(state.valorant.storeMode!=='owned') state.valorant.storeMode = 'store';
+    // VP purchase calculator (Settings -> Valorant Points Prices, used by the store's item
+    // preview). The tiers are Riot's and are the same everywhere; the *prices* are per region and
+    // per currency, so they're typed in rather than shipped — price 0 means "not sold here / not
+    // filled in yet" and that tier is simply left out of a cost comparison.
+    if(!state.valorant.vp || typeof state.valorant.vp !== 'object') state.valorant.vp = {};
+    if(typeof state.valorant.vp.currency !== 'string') state.valorant.vp.currency = '';
+    if(!Array.isArray(state.valorant.vp.packages) || !state.valorant.vp.packages.length){
+      state.valorant.vp.packages = [475,1000,2050,3650,5350,11000].map(vp=>({ vp, price:0 }));
+    }
+    // third-party sellers (a discounted top-up shop): free-form {id,name,vp,price} rows weighed
+    // against the official tiers, and `useOffers` is the switch that takes them back out
+    // real VP prices harvested from past store checks, keyed by lowercased skin name — the only
+    // exact price source the app has (no API publishes prices) and the only one that works for
+    // melee, whose content tier carries no price information at all
+    if(!state.valorant.skinPrices || typeof state.valorant.skinPrices !== 'object') state.valorant.skinPrices = {};
+    if(!Array.isArray(state.valorant.vp.offers)) state.valorant.vp.offers = [];
+    if(typeof state.valorant.vp.useOffers !== 'boolean') state.valorant.vp.useOffers = true;
     // Live Match panel — PREFERENCES ONLY. The lobby itself is deliberately ephemeral: it's held
     // in scripts/valorant-local-server.mjs's memory and is never written to Supabase. It describes
     // a game state that's wrong within minutes and it's full of other people's puuids, so there is
@@ -605,6 +624,7 @@
     el('pfAge').value = state.profile.age || '';
     el('valApiKey').value = state.valorant.apiKey || '';
     el('valLocalToken').value = state.valorant.localServerToken || '';
+    renderValVpSettings(); // VP package prices — typed in once, same as the two fields above
     applyTheme();
     renderAll();
     resumePlaySessionIfAny();

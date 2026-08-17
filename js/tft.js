@@ -417,7 +417,13 @@
     document.querySelectorAll('#view-games .gametab').forEach(t=>{
       t.style.display = (t.id === 'gametab-'+key) ? '' : 'none';
     });
-    if(key === 'valorant') renderValorant();
+    // Valorant always lands on Shop Tracker, the way the Time tab always lands on Clock — it's the
+    // pane you open the game for daily (the store rotates every day; Live Match only matters while
+    // you happen to be in a game). Reset here rather than dropping state.valorant.activeSubtab
+    // entirely, since flipping between the three panels within a visit still reads it. It also
+    // means entering the tab can never start the Live Match poll on its own — syncValLivePolling()
+    // below sees 'shop' and stays stopped until you actually ask for that panel.
+    if(key === 'valorant'){ state.valorant.activeSubtab = 'shop'; renderValSubtabs(); renderValorant(); }
     if(key === 'tft'){ renderTft(); maybeAutoSyncTft(); }
     // Switching to TFT hides the Live Match panel just as surely as leaving the tab does, and a
     // loop hitting Riot every few seconds from a panel nobody can see is exactly what that feature
@@ -803,6 +809,20 @@
        has something to say. The cost is that a big peak-to-current gap compresses the recent
        detail, which is the honest picture of that gap. */
     const domain = vals.concat([peakVal]);
+
+    /* The target gets folded in too, but conditionally — unlike the peak it's aspirational and can
+       sit arbitrarily far above the data. Zooming out to fit a Challenger goal from Emerald would
+       flatten a whole set's climb into a line at the bottom of the card. So: free if it already
+       falls inside the plotted range, otherwise only if reaching it doesn't more than roughly
+       double the visible span. When it doesn't fit, the marker pins to the top edge instead, so the
+       LP-to-go number is still on screen even though the line can't be. */
+    const TFT_TARGET_ZOOMOUT_MAX = 2.5;
+    const tgtVal = tftTargetValue();
+    const dMin = Math.min(...domain), dMax = Math.max(...domain);
+    const tgtFits = tgtVal != null
+      && (tgtVal <= dMax || (tgtVal - dMin) <= Math.max(dMax - dMin, 60) * TFT_TARGET_ZOOMOUT_MAX);
+    if(tgtFits) domain.push(tgtVal);
+
     const rawSpan = Math.max(60, Math.max(...domain) - Math.min(...domain));
     let minV = Math.max(0, Math.min(...domain) - rawSpan*0.14);
     let maxV = Math.max(...domain) + rawSpan*0.14;
@@ -905,6 +925,33 @@
     peakSvg += '<text class="tft-peak-gap'+(peakGap === 0 ? ' at-peak' : '')+'" x="'+(gapX-6)+'" y="'+gapY.toFixed(1)+'" text-anchor="end">'
       + (peakGap > 0 ? ('−' + peakGap + ' LP') : 'on peak') + '</text>';
 
+    /* Target line — the peak marker's counterpart, in violet against the peak's gold so the two
+       reference lines can never be confused with each other or with a tier boundary. The LP-to-go
+       number is the point of it, so that renders at every width; the rank name is the part that
+       drops on a phone. */
+    if(tgtVal != null){
+      const toGo = tgtVal - lastVal;
+      const reached = toGo <= 0;
+      if(tgtFits){
+        const ty = yOf(tgtVal);
+        peakSvg += '<line x1="'+padL+'" y1="'+ty.toFixed(1)+'" x2="'+peakLineEnd+'" y2="'+ty.toFixed(1)+'"'
+          + ' stroke="var(--violet)" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.85"/>'
+          + '<text class="tft-tgt-mark" x="'+(W-padR-4)+'" y="'+ty.toFixed(1)+'" text-anchor="middle" dominant-baseline="central">◆</text>';
+        if(!narrow){
+          peakSvg += '<text class="tft-tgt-lbl" x="'+(peakLineEnd-5)+'" y="'+(ty-7).toFixed(1)+'" text-anchor="end">Target · '
+            + escapeHtml(tftRankLabel(state.tft.target.tier, state.tft.target.division)) + '</text>';
+        }
+        // sits just under its own line, mirroring how the peak gap hangs under the star
+        peakSvg += '<text class="tft-tgt-gap'+(reached ? ' reached' : '')+'" x="'+(peakLineEnd-5)+'" y="'+(ty+13).toFixed(1)+'" text-anchor="end">'
+          + (reached ? 'target reached' : ('+' + toGo + ' LP to go')) + '</text>';
+      } else {
+        // off the top of the scale — pin it to the ceiling so the number survives even though the
+        // line would have squashed the data
+        peakSvg += '<text class="tft-tgt-gap" x="'+(W-padR-4)+'" y="'+(padT-8).toFixed(1)+'" text-anchor="end">◆ +'
+          + toGo + ' LP to ' + escapeHtml(tftRankLabel(state.tft.target.tier, state.tft.target.division)) + ' ↑</text>';
+      }
+    }
+
     const labelIdxs = narrow ? [0, hist.length-1] : [0, Math.floor((hist.length-1)/2), hist.length-1];
     let xLabelSvg = '';
     [...new Set(labelIdxs)].forEach(i=>{
@@ -917,7 +964,11 @@
     const summary = 'TFT LP history, '+hist.length+' entries, from '+tftEntryLabel(hist[0])
       + ' to '+tftEntryLabel(hist[hist.length-1])+', net '+(net>0?'plus ':'')+net+' LP.'
       + ' Peak '+tftEntryLabel(peakEntry)
-      + (atPeakNow ? ', which is where you are now.' : ', '+(peakVal - vals[vals.length-1])+' LP above where you are now.');
+      + (atPeakNow ? ', which is where you are now.' : ', '+(peakVal - vals[vals.length-1])+' LP above where you are now.')
+      + (tgtVal == null ? '' : (tgtVal - vals[vals.length-1] <= 0
+          ? ' Target reached.'
+          : ' Target ' + tftRankLabel(state.tft.target.tier, state.tft.target.division)
+            + ', ' + (tgtVal - vals[vals.length-1]) + ' LP to go.'));
 
     wrap.innerHTML = '<svg class="val-chart-svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" role="img" tabindex="0">'
       + defsSvg + gridSvg + areaSvg + lineSvg + peakSvg + dotsSvg + xLabelSvg

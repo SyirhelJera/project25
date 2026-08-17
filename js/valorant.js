@@ -1111,11 +1111,13 @@
           + (p.src ? '<span class="val-vp-plan-src" title="Third-party seller">'+escapeHtml(p.src)+'</span>' : '')
           + (p.price ? '<span class="val-vp-plan-cost">'+escapeHtml(valFmtMoney(p.price*p.qty))+'</span>' : '')
           + '</div>').join('')
+      // the total's money sits in the same right-hand column as the per-pack costs above it, so the
+      // figure you actually pay reads down one edge instead of being buried mid-sentence
       + '<div class="val-vp-plan-total">'
-        + plan.totalVp.toLocaleString()+' VP'
-        + (plan.priced ? ' · <b>'+escapeHtml(valFmtMoney(plan.totalCost))+'</b>' : '')
-        + ' · '+leftover.toLocaleString()+' VP left after buying'
-      + '</div>';
+        + '<span>'+plan.totalVp.toLocaleString()+' VP</span>'
+        + (plan.priced ? '<b class="val-vp-plan-cost">'+escapeHtml(valFmtMoney(plan.totalCost))+'</b>' : '')
+      + '</div>'
+      + '<div class="val-vp-plan-left">'+leftover.toLocaleString()+' VP left after buying</div>';
 
     // When a third-party seller wins, say what it's beating. A "cheapest" that quietly assumes
     // you'll use a reseller is a different decision from the official one, and it's yours to make.

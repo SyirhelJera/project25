@@ -240,9 +240,14 @@ export async function notifyWishlistMatches(label, items, wishlist){
 // own client does. Throws a user-facing error if the cookie is missing, wrong, or expired —
 // shared by checkAccountStore() below and valorant-login.mjs's loginAccount() (which uses it
 // just to confirm a freshly-pasted cookie actually works before saving it).
+// The exact URL clicking "Sign In" on playvalorant.com navigates to — Riot's own web client's
+// OAuth entry point. silentReauth() replays it with a saved cookie; valorant-login-window.mjs
+// opens it in a real browser window so a human can sign in there and mint a fresh one.
+export const RIOT_AUTHORIZE_URL = 'https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token%20id_token&nonce=1&scope=account%20openid';
+
 export async function silentReauth(ssid){
   const authResp = await fetch(
-    'https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token%20id_token&nonce=1&scope=account%20openid',
+    RIOT_AUTHORIZE_URL,
     { redirect: 'manual', headers: { Cookie: `ssid=${ssid}`, 'User-Agent': RIOT_USER_AGENT } },
   );
   const location = authResp.headers.get('location') || '';
@@ -373,7 +378,7 @@ export async function checkAccountStore(label, ssid){
   try {
     ({ accessToken, idToken } = await silentReauth(ssid));
   } catch {
-    throw new Error(`Valorant session expired — run \`node scripts/valorant-login.mjs ${label}\` again to save a fresh cookie.`);
+    throw new Error(`Valorant session expired — hit Re-login below to sign in again (or run \`node scripts/valorant-login-window.mjs ${label}\` on that machine).`);
   }
 
   // 2. Entitlements token.

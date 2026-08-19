@@ -1538,7 +1538,15 @@
       const ds = stores[label] || {};
       const hdrHtml = valStoreHeader(label, ds);
       if(ds.error){
-        return '<div class="val-store-account val-store-account-error">'+hdrHtml+'<div class="val-err"><span aria-hidden="true">⚠</span> '+escapeHtml(ds.error)+'</div></div>';
+        // an expired session is the one store error you can actually fix from here, so the button
+        // is offered for that case only — a Riot outage shouldn't invite a pointless re-login.
+        // escapeHtml() round-trips through textContent and so leaves double quotes alone; an
+        // account label going into an attribute needs them handled here.
+        const canRelogin = /expired|invalid/i.test(ds.error);
+        const reloginBtn = canRelogin
+          ? '<button class="btn btn-ghost btn-sm val-relogin-btn" data-val-relogin="'+escapeHtml(label).replace(/"/g,'&quot;')+'">🔑 Re-login</button>'
+          : '';
+        return '<div class="val-store-account val-store-account-error">'+hdrHtml+'<div class="val-err"><span aria-hidden="true">⚠</span> '+escapeHtml(ds.error)+reloginBtn+'</div></div>';
       }
       if(!ds.checkedAt){
         return '<div class="val-store-account val-store-account-empty">'+hdrHtml+'<div class="val-peak-note">No store data yet — run scripts/valorant-check-store.mjs locally (see README.md "Setup").</div></div>';
@@ -1843,6 +1851,10 @@
       const json = await res.json();
       valLocalStatus.connected = true;
       valLocalStatus.accounts = Array.isArray(json.accounts) ? json.accounts : [];
+      // A login window belongs to the machine, not to this page — reloading mid-sign-in, or
+      // opening the tab in a second window, must find the one that's already open rather than
+      // offer a button that would only be refused.
+      adoptValLoginWindow(json.loginWindow);
     }catch(e){
       valLocalStatus.connected = false;
       valLocalStatus.accounts = [];
@@ -1909,6 +1921,7 @@
     // "All accounts"
     el('valLocalDeleteBtn').disabled = disabled || !sel.value;
     el('valLocalDeleteBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='delete') ? 'Deleting…' : '🗑 Delete';
+    renderValLoginWinUi();
   }
 
   /* ---- standalone VP calculator: the same planner, pointed at a number you type instead of a
@@ -2001,9 +2014,10 @@
     renderValOwnedSkins(); // ditto — owned skins are per account too
   });
 
-  el('valLocalCheckBtn').addEventListener('click', async ()=>{
-    el('valSettingsLocalErr').style.display = 'none';
-    const label = el('valLocalAccountSelect').value;
+  // Shared by the Check Store Now button and by a successful re-login (which chains straight into
+  // a check — the whole reason you re-logged in is that the last one couldn't run). Pass no label
+  // to check every saved account.
+  async function runValStoreCheck(label, errTarget){
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/check', {
@@ -2018,9 +2032,14 @@
       }
       await load(); // pulls the dailyStores the local server just wrote to Supabase and re-renders
     }catch(e){
-      showValLocalErr((e && e.message) || 'Could not reach the local helper.');
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.', errTarget);
     }
     valLocalStatus.busy = false; valLocalStatus.busyMsg = ''; renderValLocalPanel();
+  }
+
+  el('valLocalCheckBtn').addEventListener('click', async ()=>{
+    el('valSettingsLocalErr').style.display = 'none';
+    await runValStoreCheck(el('valLocalAccountSelect').value);
   });
 
   el('valLocalCheckInventoryBtn').addEventListener('click', async ()=>{
@@ -2094,6 +2113,143 @@
     }
     valLocalStatus.busy = false; valLocalStatus.busyMsg = '';
     await pollValLocalStatus();
+  });
+
+  /* ---- "Log in with browser": the fix for an expired session, without the DevTools trip.
+     The page itself can never read this cookie — it belongs to auth.riotgames.com and is
+     HttpOnly, so no amount of JavaScript here gets near it. What this does is ask the local
+     helper to open a small, empty browser window on Riot's own login page; you sign in there by
+     hand (nothing is typed for you, and nothing pretends to Riot that the window is anything
+     other than what it is — see the header of scripts/valorant-login-window.mjs), and the helper
+     lifts the resulting ssid straight out of that window and saves it under the label. The
+     manual paste below stays: if Riot ever refuses this window, that's the way through, not a
+     more convincing disguise.
+
+     Signing in takes minutes, not milliseconds, so the helper runs it as a job and this polls —
+     one login window at a time, machine-wide, which is why this state is a single object rather
+     than one per button. ---- */
+  let valLoginWin = { active:false, status:'', label:'', msg:'', timer:null };
+
+  function renderValLoginWinUi(){
+    const busy = valLoginWin.active;
+    const btn = el('valLocalLoginWindowBtn');
+    if(btn){
+      btn.disabled = !valLocalStatus.connected || valLocalStatus.busy || busy;
+      btn.textContent = busy ? 'Waiting for sign-in…' : '🌐 Log in with browser';
+    }
+    const cancelBtn = el('valLocalLoginWindowCancelBtn');
+    if(cancelBtn) cancelBtn.style.display = busy ? 'inline-flex' : 'none';
+    const st = el('valLoginWindowStatus');
+    if(st){
+      st.textContent = valLoginWin.msg || '';
+      st.style.display = valLoginWin.msg ? 'block' : 'none';
+    }
+    // the same job seen from the other end: the Re-login buttons sitting in the store's
+    // expired-session banners. They're rebuilt by every store render, so they're addressed by
+    // query rather than held onto.
+    document.querySelectorAll('[data-val-relogin]').forEach(b=>{
+      b.disabled = busy;
+      b.textContent = (busy && b.getAttribute('data-val-relogin') === valLoginWin.label)
+        ? 'Waiting for sign-in…' : '🔑 Re-login';
+    });
+  }
+
+  async function valLoginWindowPost(pathname, extra){
+    const res = await fetch(valLocalUrl()+pathname, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(Object.assign({ token: state.valorant.localServerToken }, extra||{}))
+    });
+    const json = await res.json().catch(()=>null);
+    if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Request failed (HTTP '+res.status+').'));
+    return json;
+  }
+
+  function pollValLoginWindow(errTarget, autoCheck){
+    valLoginWin.timer = setTimeout(async ()=>{
+      let json;
+      try{ json = await valLoginWindowPost('/login-window-status'); }
+      catch(e){
+        valLoginWin.active = false; valLoginWin.msg = ''; renderValLoginWinUi();
+        showValLocalErr((e && e.message) || 'Lost contact with the local helper.', errTarget);
+        return;
+      }
+      valLoginWin.status = json.status;
+      if(json.status === 'opening' || json.status === 'waiting'){
+        valLoginWin.msg = json.status === 'opening'
+          ? 'Opening a login window on the machine running the local helper…'
+          : 'Waiting for you to sign in — a small browser window is open on the machine running the local helper. Once you\'re through, the session saves itself.';
+        renderValLoginWinUi();
+        pollValLoginWindow(errTarget, autoCheck);
+        return;
+      }
+      const label = valLoginWin.label;
+      valLoginWin.active = false;
+      if(json.status === 'done'){
+        valLoginWin.msg = 'Saved a fresh session for "'+label+'".';
+        if(el('valLocalNewLabel')) el('valLocalNewLabel').value = '';
+        if(el('valLocalNewSsid')) el('valLocalNewSsid').value = '';
+        renderValLoginWinUi();
+        await pollValLocalStatus();
+        // an expired session is the reason this button exists, and that account's store is stale
+        // by definition — so finish the job rather than leaving the old error on screen
+        if(autoCheck) await runValStoreCheck(label, errTarget);
+        renderValLoginWinUi(); // the store re-render above rebuilt the Re-login buttons
+      } else {
+        valLoginWin.msg = '';
+        renderValLoginWinUi();
+        showValLocalErr(json.error || 'The login window closed before the sign-in finished.', errTarget);
+      }
+    }, 1500);
+  }
+
+  async function startValLoginWindow(label, opts){
+    const errTarget = (opts && opts.errTarget) || 'valSettingsLocalErr';
+    const errEl = el(errTarget); if(errEl) errEl.style.display = 'none';
+    if(valLoginWin.active) return;
+    if(!label){ showValLocalErr('Enter a label for this account first, e.g. "main".', errTarget); return; }
+    if(!valLocalStatus.connected){ showValLocalErr('The local helper isn\'t running — start it with `node scripts/valorant-local-server.mjs` on this machine.', errTarget); return; }
+    valLoginWin = { active:true, status:'opening', label:label, msg:'Opening a login window on the machine running the local helper…', timer:null };
+    renderValLoginWinUi();
+    try{
+      await valLoginWindowPost('/login-window', { label });
+    }catch(e){
+      valLoginWin.active = false; valLoginWin.msg = ''; renderValLoginWinUi();
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.', errTarget);
+      return;
+    }
+    pollValLoginWindow(errTarget, !!(opts && opts.autoCheck));
+  }
+
+  function adoptValLoginWindow(lw){
+    if(valLoginWin.active) return;
+    if(!lw || (lw.status !== 'opening' && lw.status !== 'waiting')) return;
+    // the status poll below needs the token; without one, adopting would only produce a repeating
+    // "Invalid token" on a page that never asked for any of this
+    if(!state.valorant.localServerToken) return;
+    valLoginWin = { active:true, status:lw.status, label:lw.label || '', msg:'Waiting for a sign-in already in progress on this machine…', timer:null };
+    renderValLoginWinUi();
+    pollValLoginWindow('valSettingsLocalErr', false);
+  }
+
+  if(el('valLocalLoginWindowBtn')){
+    el('valLocalLoginWindowBtn').addEventListener('click', ()=>{
+      startValLoginWindow(el('valLocalNewLabel').value.trim(), { errTarget:'valSettingsLocalErr' });
+    });
+  }
+  if(el('valLocalLoginWindowCancelBtn')){
+    el('valLocalLoginWindowCancelBtn').addEventListener('click', async ()=>{
+      // closes the window on the helper's side; the poll above then sees 'cancelled' and clears up
+      try{ await valLoginWindowPost('/login-window-cancel'); }catch(e){ /* the poll reports it */ }
+    });
+  }
+
+  // Delegated, because these buttons live inside markup renderValorantStore() rebuilds wholesale.
+  // Re-logging in from the banner also re-runs that account's store check on success.
+  document.addEventListener('click', e=>{
+    const btn = e.target && e.target.closest && e.target.closest('[data-val-relogin]');
+    if(!btn) return;
+    startValLoginWindow(btn.getAttribute('data-val-relogin'), { autoCheck:true });
   });
 
   if(!(usingClaudeStorage || !supabaseConfigured)){

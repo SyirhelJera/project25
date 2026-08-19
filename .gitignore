@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 scripts/.valorant-session.json
+scripts/.valorant-login-profile/
 scripts/.valorant-local-token.json
 scripts/.valorant-notify-config.json
 scripts/.valorant-latest-store.json

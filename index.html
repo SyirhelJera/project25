@@ -1640,7 +1640,16 @@
         <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:220px;">
         <button class="btn btn-ghost" id="valLocalAddAccountBtn">+ Add Account</button>
       </div>
-      <div class="val-peak-note">Log into <code>playvalorant.com</code> in your own browser first, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy the <code>ssid</code> value here.</div>
+      <div class="val-toolbar">
+        <!-- the same save as "+ Add Account", with the cookie fetched instead of pasted: the helper
+             opens a small throwaway browser window on Riot's login page and lifts the ssid out of
+             it once you've signed in yourself. Nothing drives the login form — see the header of
+             scripts/valorant-login-window.mjs. -->
+        <button class="btn btn-primary btn-sm" id="valLocalLoginWindowBtn" title="Opens a small browser window on Riot's login page and saves the session by itself once you've signed in">🌐 Log in with browser</button>
+        <button class="btn btn-ghost btn-sm" id="valLocalLoginWindowCancelBtn" style="display:none;">Cancel</button>
+      </div>
+      <div class="val-peak-note" id="valLoginWindowStatus" style="display:none;"></div>
+      <div class="val-peak-note">Type a label above, then <strong>Log in with browser</strong> — a small, empty browser window opens on Riot's login page, you sign in there as usual, and the session is saved under that label by itself. Use the same label as an existing account to refresh an expired session (the 🔑 Re-login button on the store's error banner does exactly this). Prefer to do it by hand? Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy the <code>ssid</code> value into the field above and press + Add Account.</div>
       <div class="val-err" id="valSettingsLocalErr" style="display:none;"></div>
 
       <div class="section-lbl" style="margin-top:18px;">Live Match</div>

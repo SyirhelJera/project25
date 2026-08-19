@@ -26,6 +26,7 @@ import http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins } from './valorant-lib.mjs';
 import { loginAccount } from './valorant-login.mjs';
+import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
 import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -80,10 +81,12 @@ const server = http.createServer(async (req, res) => {
 
   // GET /status — no token required; only reveals which account labels are saved, not their
   // session cookies, so the app can show a connection indicator and populate the account picker.
+  // loginWindow rides along for the same reason: a login window outlives the page that opened it
+  // (a reload, a second tab), and a page that can't see one is a page offering to open a second.
   if (req.method === 'GET' && url.pathname === '/status') {
     let accounts = [];
     try { accounts = Object.keys(loadSessions()); } catch { /* no session file yet — empty list */ }
-    sendJson(res, 200, { ok: true, accounts }, origin);
+    sendJson(res, 200, { ok: true, accounts, loginWindow: getLoginWindowStatus() }, origin);
     return;
   }
 
@@ -216,6 +219,49 @@ const server = http.createServer(async (req, res) => {
     } catch (err) {
       sendJson(res, 200, { ok: false, error: err.message || String(err) }, origin);
     }
+    return;
+  }
+
+  // POST /login-window — the same cookie save as /login, except the cookie is fetched rather than
+  // pasted: opens a small throwaway browser window on Riot's login page, waits for the human to
+  // sign in there, and lifts the resulting ssid out of that window's own cookie jar. See the
+  // header of valorant-login-window.mjs for why this is not the automated login the README rules
+  // out (nothing drives the form, nothing hides from Riot).
+  //
+  // Signing in takes as long as it takes, so this starts the job and returns immediately; the
+  // page polls /login-window-status. Holding an HTTP request open for ten minutes would just
+  // give the browser a request to time out on.
+  if (req.method === 'POST' && url.pathname === '/login-window') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const label = (body.label || '').trim();
+    if (!label) { sendJson(res, 400, { ok: false, error: 'Missing account label.' }, origin); return; }
+    try {
+      const status = startLoginWindow(label);
+      console.log(`Opened a login window for "${label}" — waiting for sign-in...`);
+      sendJson(res, 200, { ok: true, ...status }, origin);
+    } catch (err) {
+      sendJson(res, 200, { ok: false, error: err.message || String(err) }, origin);
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/login-window-status') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const status = getLoginWindowStatus();
+    if (status.status === 'done') console.log(`Login window: saved a fresh session for "${status.label}".`);
+    else if (status.status === 'error') console.error(`Login window failed: ${status.error}`);
+    sendJson(res, 200, { ok: true, ...status }, origin);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/login-window-cancel') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const cancelled = cancelLoginWindow();
+    if (cancelled) console.log('Login window cancelled.');
+    sendJson(res, 200, { ok: true, cancelled }, origin);
     return;
   }
 

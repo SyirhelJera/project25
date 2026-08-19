@@ -2349,6 +2349,9 @@
 
   .val-peak-note{font-size:11.5px;line-height:1.5;color:var(--muted);}
   .val-err{font-size:11.5px;line-height:1.5;color:var(--val-err-ink,var(--danger));}
+  /* the fix-it button that rides inside an expired-session banner: inline with the message, so the
+     error and its remedy read as one line rather than two stacked blocks */
+  .val-relogin-btn{margin-left:8px;vertical-align:middle;}
 
   /* ---- the expanded card: same card, grown to the full grid width, holding the chart ----
      Region, elo, peak, timestamps and the subgroup field live only here. On a collapsed card each

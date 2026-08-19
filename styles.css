@@ -1600,8 +1600,10 @@
   /* sort controls */
   .sort-select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:9px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;cursor:pointer;}
   .sort-select:focus{border-color:var(--violet);}
-  .sort-dir-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;width:36px;height:36px;cursor:pointer;font-size:13px;flex:none;}
-  .sort-dir-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
+  /* same 36px square as the sort toggle — .toolbar-icon-btn is the general form, so a toolbar
+     button that isn't about sorting (the .txt export) doesn't have to wear the sort class */
+  .sort-dir-btn,.toolbar-icon-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;width:36px;height:36px;cursor:pointer;font-size:13px;flex:none;}
+  .sort-dir-btn:hover,.toolbar-icon-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
 
   /* ========================= FINANCE =========================
      Built around one question — "what am I worth, and is it going up?" — so the hero panel owns
@@ -3464,6 +3466,83 @@
     #valOwnedSkinsList{grid-template-columns:repeat(auto-fit,minmax(84px,1fr));gap:6px;}
     #valOwnedSkinsList .val-store-item-img{min-height:46px;}
     #valOwnedSkinsList .val-store-item-img img{max-height:42px;}
+  }
+
+  /* ================= BOARD OF ADVISERS =================
+     #view-board carries .fin-scope in the markup, so it inherits the shared radii/shadow tokens
+     (--fin-r-card, --fin-shadow, --fin-hairline) and their dark-theme overrides rather than
+     growing a parallel scale. --adviser-color is set per card from the adviser's own colour and
+     falls back to the theme violet, so an adviser with no colour still reads as one of the set. */
+  .board-subnav{margin-bottom:16px;}
+  .board-textarea{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:var(--fin-r-ctl);padding:12px 14px;font-size:13.5px;line-height:1.55;outline:none;font-family:'Inter',sans-serif;resize:vertical;}
+  .board-textarea:focus{border-color:var(--violet);}
+  .board-prompt-box{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;background:var(--surface-alt);}
+  .board-prompt-meta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;font-size:11.5px;color:var(--faint);}
+
+  /* seats: a chip per hired adviser, toggling who sits on this particular consult */
+  .board-seats{display:flex;flex-wrap:wrap;gap:8px;}
+  .board-seat{--adviser-color:var(--violet);background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:var(--fin-r-pill);padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;font-family:'Inter',sans-serif;transition:transform .12s ease,border-color .12s ease;}
+  .board-seat:active{transform:scale(0.97);}
+  /* an excluded seat is dimmed rather than hidden — you need to see who you left out */
+  .board-seat.on{border-color:var(--adviser-color);color:var(--text);box-shadow:inset 0 0 0 1px var(--adviser-color);}
+  .board-seat:not(.on){opacity:.45;}
+  .board-seat-emoji{font-size:14px;line-height:1;}
+
+  .board-ctx-row{display:flex;flex-wrap:wrap;gap:8px 14px;}
+  .board-ctx-opt{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);cursor:pointer;user-select:none;}
+  .board-ctx-opt input{accent-color:var(--violet);width:15px;height:15px;cursor:pointer;}
+
+  .board-rules-head{margin-top:18px;margin-bottom:8px;}
+  .board-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:14px;}
+  .board-actions-sep{font-size:11.5px;color:var(--faint);}
+  .board-tool-row{display:inline-flex;flex-wrap:wrap;gap:6px;}
+  .board-tool-btn{font-weight:600;}
+
+  /* roster */
+  .board-roster-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px;}
+  .adviser-card,.adviser-hire-card{--adviser-color:var(--violet);background:var(--surface);border:var(--fin-hairline);border-left:3px solid var(--adviser-color);border-radius:var(--fin-r-card);padding:14px 16px;margin-bottom:9px;display:flex;align-items:flex-start;gap:13px;box-shadow:var(--fin-shadow);}
+  .adviser-emoji{font-size:22px;line-height:1.2;flex:none;}
+  .adviser-body{flex:1;min-width:0;}
+  .adviser-name{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .adviser-lens{font-size:12.5px;color:var(--muted);line-height:1.55;margin-top:4px;}
+  .adviser-actions{display:flex;align-items:center;gap:6px;flex:none;}
+
+  /* hire sheet — .struggle-overlay's shell, widened for two-line preset descriptions */
+  .board-sheet{max-width:620px;}
+  .board-sheet-title{font-size:15px;font-weight:700;margin-bottom:4px;}
+  .board-sheet-actions{display:flex;gap:8px;margin-top:16px;}
+  .adviser-hire-card{align-items:center;}
+  /* an already-hired preset stays listed but inert, so the library reads as a complete set
+     rather than shrinking as you hire from it */
+  .adviser-hire-card.hired{opacity:.5;}
+  .board-edit-grid{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .board-field{display:flex;flex-direction:column;gap:5px;flex:1;min-width:140px;font-size:11.5px;color:var(--muted);font-weight:600;}
+  .board-field-emoji{flex:0 0 72px;min-width:72px;}
+  .board-field-color{flex:0 0 78px;min-width:78px;}
+  .board-field-color input{padding:3px;height:36px;cursor:pointer;}
+  .board-field textarea{margin-top:0;}
+
+  /* history */
+  .board-session{background:var(--surface);border:var(--fin-hairline);border-radius:var(--fin-r-card);margin-bottom:9px;overflow:hidden;box-shadow:var(--fin-shadow);}
+  .board-session-head{display:flex;align-items:center;gap:10px;padding:13px 15px;cursor:pointer;}
+  .board-session.open .board-session-head{border-bottom:var(--fin-hairline);}
+  .board-session-seats{font-size:13px;letter-spacing:-1px;flex:none;}
+  .board-session-q{flex:1;min-width:0;font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .board-session-date{font-size:11.5px;color:var(--faint);flex:none;}
+  .board-session-body{padding:14px 15px;}
+  .board-session-actions{display:flex;gap:8px;margin-top:9px;align-items:center;}
+  /* the pasted answer is markdown from whichever tool produced it, rendered through the same
+     renderMarkdown() the Notes bodies use */
+  .board-session-render{font-size:13px;line-height:1.6;color:var(--text);}
+  .board-session-render h2,.board-session-render h3{font-size:13.5px;font-weight:700;margin:14px 0 5px;}
+  .board-session-render p{margin:0 0 9px;}
+  .board-session-render ul,.board-session-render ol{margin:0 0 9px;padding-left:20px;}
+  .board-session-render code{background:var(--surface-alt);border-radius:4px;padding:1px 4px;font-size:12px;}
+
+  @media (max-width:600px){
+    .board-session-q{white-space:normal;}
+    .board-session-date{display:none;}
+    .board-actions-sep{display:none;}
   }
 
   ::-webkit-scrollbar{width:8px;}

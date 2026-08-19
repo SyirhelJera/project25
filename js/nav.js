@@ -24,6 +24,10 @@
       if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); maybeSyncPinterestCategories(); }
       if(t.dataset.tab==='checklists') renderChecklists();
       if(t.dataset.tab==='notes') renderNotes();
+      // Board always opens on Ask. Unlike the Games tab's persisted choice, its three panes are
+      // three views of one job — composing a consult — so the roster and history are places you
+      // visit and come back from, not a mode you'd want the tab to remember.
+      if(t.dataset.tab==='board') showBoardSubTab('ask');
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
       if(t.dataset.tab==='fitness') renderFitness();
       // Games holds both Valorant and TFT. Unlike Time above it does NOT reset to the first pane —

@@ -1572,6 +1572,30 @@
     el('starredFirstBtn').classList.toggle('btn-ghost', !starredFirst);
     renderGoals();
   });
+  /* ---------- export the visible goal titles as a .txt ----------
+     Titles only, one per line, in the order the list is currently showing them — plain enough to
+     paste anywhere. It reads visibleGoals(), so the filter and sort you can see are the ones you
+     get; the filter name goes in the file name so two exports can't be confused for each other.
+     CRLF because this most often lands in Notepad, which is the one reader that still ignores a
+     bare newline. Nothing is written to state, so no save() here. */
+  function exportGoalTitles(){
+    const titles = visibleGoals().map(g => (g.title || '').trim()).filter(Boolean);
+    if(!titles.length) return;
+    const name = 'goals-' + goalFilter + '-' + localDateStr(new Date()) + '.txt';
+    // BOM so Notepad reads the file as UTF-8 rather than the system codepage — goal titles carry
+    // emoji and accents often enough that it would otherwise mangle them.
+    const blob = new Blob(['\ufeff' + titles.join('\r\n') + '\r\n'], { type:'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // the click is synchronous but the fetch of the blob isn't, so give it a tick before revoking
+    setTimeout(()=> URL.revokeObjectURL(url), 1000);
+  }
+  el('exportGoalsBtn').addEventListener('click', exportGoalTitles);
+
   el('goalSortSelect').addEventListener('change', e=>{ sortMode = e.target.value; renderGoals(); });
   el('goalSortDirBtn').addEventListener('click', ()=>{
     sortDir = sortDir === 'asc' ? 'desc' : 'asc';

@@ -443,6 +443,39 @@
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
     state.protectedDayColor = parsed.protectedDayColor || '';
+    /* Board of Advisers (js/board.js). The seed is keyed off the whole `board` object being
+       ABSENT, never off advisers being empty — firing every adviser is a thing you're allowed to
+       do, and re-seeding the five defaults on the next reload would silently undo it. */
+    state.board = parsed.board || defaultBoardState();
+    if(!Array.isArray(state.board.advisers)) state.board.advisers = [];
+    state.board.advisers.forEach(a=>{
+      if(a.id===undefined) a.id = uid();
+      if(a.presetKey===undefined) a.presetKey = '';   // '' = hand-written, never offered in the hire sheet
+      if(a.emoji===undefined) a.emoji = '💬';
+      if(a.name===undefined) a.name = 'Adviser';
+      if(a.lens===undefined) a.lens = '';
+      if(a.color===undefined) a.color = '';
+      if(a.hired===undefined) a.hired = true;
+      if(a.createdAt===undefined) a.createdAt = Date.now();
+    });
+    // trimmed on the way IN as well as on save: a blob written by an older/looser build, or one
+    // hand-edited in a backup, shouldn't be able to reintroduce an unbounded history
+    state.board.sessions = (Array.isArray(state.board.sessions) ? state.board.sessions : []).slice(0, BOARD_SESSION_CAP);
+    state.board.sessions.forEach(s=>{
+      if(s.id===undefined) s.id = uid();
+      if(s.createdAt===undefined) s.createdAt = Date.now();
+      if(s.question===undefined) s.question = '';
+      if(!Array.isArray(s.adviserIds)) s.adviserIds = [];
+      if(!Array.isArray(s.attach)) s.attach = [];
+      if(s.prompt===undefined) s.prompt = '';
+      if(s.response===undefined) s.response = '';
+    });
+    if(!state.board.prefs || typeof state.board.prefs !== 'object') state.board.prefs = {};
+    if(!state.board.prefs.attach || typeof state.board.prefs.attach !== 'object') state.board.prefs.attach = {};
+    // an empty rules string means "never set" rather than "deliberately blank" — a board with no
+    // output contract produces a wall of prose, so fall back to the default rather than honour it
+    if(!state.board.prefs.rules) state.board.prefs.rules = BOARD_DEFAULT_RULES;
+    if(!state.board.prefs.tool) state.board.prefs.tool = 'chatgpt';
     // NOTE: state.notes is deliberately NOT hydrated here — like Jobs, the Notes outliner has its
     // own dedicated storage resource. It's the app's other unbounded-growth key (free-text bodies,
     // and every keystroke debounce-saves), so keeping it in this blob would re-upload the whole

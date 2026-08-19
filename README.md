@@ -19,6 +19,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, starring/favoriting (starred applications pin to the top of the default order, plus a "★ Starred only" toolbar toggle that narrows whatever the chips/search already selected), per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
 | **Time** | Two panes behind a toggle. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
+| **Board** | A personal board of advisers — a roster of AI personas (Truth-Teller, Pragmatist, Visionary, Health Anchor, Outsider, plus eight more to hire and any number you write yourself), a prompt maker that turns a decision into one block of markdown, and a log of past consults with the answer pasted back. Nothing here calls a model: it builds the prompt and hands it to whichever AI tool you already use. See "Board of Advisers" below. |
 | **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks, and rings those days on the habit calendars and the Goals heat map in a configurable color), and backup restore. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance. The Net Worth and Fitness Level rows each carry a ▲/▼ trend marker (`trendMarker()` in `js/core.js`) — net worth against the newest `netWorthHistory` point from an earlier day, fitness against the previous `weightLog` entry. Arrow direction and color are independent: rising net worth is a green ▲, but rising weight is a red ▲ and losing weight a green ▼.
@@ -69,6 +70,18 @@ state = {
                                        // it doesn't break a streak, but doesn't inflate it either
   countdowns: [ { id, label, date, pinned, createdAt } ],
   mantras: [ { id, text } ],
+  board: {                             // Board of Advisers (js/board.js) — AI personas + consults
+    advisers: [ { id, presetKey, emoji, name, lens, color, hired, createdAt } ],
+                                       // `lens` is the text written into the prompt under the
+                                       // adviser's name; presetKey '' = hand-written. Seeded with
+                                       // five defaults by applyLoadedState() the first time the
+                                       // key is absent — absent, not empty, so firing everyone
+                                       // stays fired instead of re-seeding on the next reload
+    sessions: [ { id, createdAt, question, adviserIds, attach, prompt, response } ],
+                                       // newest first, hard-capped at BOARD_SESSION_CAP (25) —
+                                       // this rides the shared blob, so it can't grow unbounded
+    prefs: { attach:{}, rules, tool }  // which context sources are ticked, the output contract,
+  },                                   // and the last AI tool used
   notes: [ { id, title, body, parentId, collapsed, pinned, task, done, createdAt, updatedAt } ],
                                        // the Notes outliner — deliberately a FLAT array. Nesting
                                        // is the parentId link (null = top level) and sibling order
@@ -468,6 +481,28 @@ Three things worth knowing:
 
 `sw.js` lists `api.metatft.com` in `LIVE_DATA_HOSTS` so rank data always hits the network — without that, its cache-first branch would serve a stale rank forever. `raw.communitydragon.org` (the rank crests) is deliberately *not* listed: that art is immutable and worth having offline.
 
+### Board of Advisers
+
+A standing panel of perspectives to run a decision past. It is a **prompt workshop, not an AI client** — nothing in the tab calls a model, and it has no API key, no Edge Function, no rate limit and no bill. It assembles a prompt; you take that prompt to whichever tool you already pay for.
+
+That is a deliberate choice rather than a missing feature. The app already has one server-side model call (`suggest-subtasks`), and routing board consults through the same path would mean a per-consult cost, a shared daily cap, and answers from a model this app picks instead of the one you are subscribed to. Copy-and-paste costs one click and removes all three.
+
+**Three panes** under a sub-nav, always opening on Ask (unlike Games, the choice is not persisted — they are three views of one job):
+
+- **Ask** — the situation, a chip per adviser to pick who sits on this particular consult, checkboxes for the context to attach, the output contract, and the generated prompt.
+- **The Board** — the roster. `+ Hire an adviser` opens a library of 13 presets (an already-hired one stays listed but greyed, so the library reads as a complete set); `+ Create custom` writes one from scratch. Every field of every adviser is editable, preset or not, and firing one is a `confirm()` away.
+- **History** — the most recent 25 consults, each expanding to a field for pasting the board's answer back. Saved answers render through the same `renderMarkdown()` the Notes bodies use.
+
+**The generated prompt** is four markdown sections — the roster (one `###` heading and lens per selected adviser), the situation, the context pack, and the output contract. The contract defaults to: persona breakdown first with no preamble, 2–3 sentences per adviser in a distinct voice, advisers must reference and challenge each other by name, and a closing `📊 Board Consensus` with a 3-step compromise. It is a plain textarea, so it is editable, and so is the finished prompt — a hand-edit sticks until an input above it changes or you press Rebuild.
+
+**The context pack** is what makes the answers specific: `buildBoardContext()` summarizes your own dashboard — goal progress and target dates, net worth and the last 30 days by spending category, habit streaks, tasks you keep failing, weight and BMI, upcoming countdowns, job-pipeline counts. Everything is derived (counts, totals, percentages) and capped per section, reusing the existing helpers rather than recomputing: `goalProgress()`, `getNetWorthNum()`, `categoryTotalsForPeriod()`, `calcStreak()`, `getStrugglingItems()`, `daysLeft()`. It deliberately does **not** call `calcFitness()`, which renders into the Fitness tab rather than returning anything.
+
+> **What may never go into the context pack.** This is the one function in the app whose output is meant to leave the machine, so the exclusion list at the top of the builder is a safety rule, not a formatting preference: never `state.jobSiteAccounts` (plaintext site passwords), never `state.valorant.apiKey` or `localServerToken`, never note bodies. Every context source is **opt-in and defaults to off** — attaching your finances is a deliberate tick each time, not a setting configured once and forgotten.
+
+**Hand-off** copies the prompt first and opens the tool second, so a link that cannot carry the prompt is an inconvenience rather than a dead end. ChatGPT, Claude and Perplexity accept a `?q=` prefill; **Gemini does not** — Google exposes no such parameter, so that button opens the app bare and relies on the clipboard write. Past ~6000 characters the prefill is dropped for every tool rather than sending a silently truncated prompt. The copy helper also carries a `document.execCommand` fallback that `jobAccountCopy()` does not need: `navigator.clipboard` is undefined on a non-secure origin, and opening `index.html` straight off the filesystem is a supported way to run this app.
+
+Consults ride in the shared `app_data` row, which is why they are capped at 25 rather than kept forever — every save re-uploads that blob whole, and a consult carries a full prompt plus a pasted answer. The cap is `BOARD_SESSION_CAP` in `js/core.js` and is enforced both when saving and when loading.
+
 ### External APIs used
 
 | API | Used for | Auth |
@@ -554,6 +589,7 @@ js/
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
   music.js                          background music for a checklist Play session (YouTube IFrame player)
+  board.js                          Board of Advisers — adviser roster, prompt maker, consult log (no API calls)
   goals.js / habits.js / finance.js / fitness.js / valorant.js / motivation.js /
   checklists.js / notes.js / countdowns.js / mantras.js / backups.js / insights.js
                                      one file per feature tab

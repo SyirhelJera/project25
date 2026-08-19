@@ -5,6 +5,45 @@
   const CURRENCY_SYMBOLS = {USD:'$',PHP:'₱',EUR:'€',GBP:'£',JPY:'¥',AUD:'A$',CAD:'C$',SGD:'S$',INR:'₹',CNY:'¥'};
   const DEFAULT_RATES = {USD:1,PHP:58.5,EUR:0.92,GBP:0.79,JPY:157,AUD:1.52,CAD:1.36,SGD:1.34,INR:83.5,CNY:7.25};
 
+  /* ---------- Board of Advisers (js/board.js) ----------
+     The roster of personas the prompt maker writes into a prompt. Defined HERE rather than in
+     board.js for the same reason DEFAULT_RATES is: applyLoadedState() in persistence.js needs
+     seedBoardAdvisers() to fill an absent board key, and persistence.js parses before board.js.
+     `lens` is the sentence that literally goes into the prompt under the adviser's name, so it's
+     written as an instruction to the model, not as a description of the persona. ---- */
+  const BOARD_PRESETS = [
+    { key:'truth',     emoji:'👤', name:'The Truth-Teller', color:'#DC2626', lens:'Brutally honest, analytical. Cut through my excuses, name the cognitive biases I am running, and tell me what I NEED to hear rather than what I want to hear.' },
+    { key:'pragmatist',emoji:'⚙️', name:'The Pragmatist',   color:'#64748B', lens:'Focused entirely on logic, risk management, execution, numbers, efficiency, and resource constraints — time and money. Ask what this actually costs and whether it can be done with what I have.' },
+    { key:'visionary', emoji:'🚀', name:'The Visionary',    color:'#7C3AED', lens:'Optimistic and growth-minded. Push me toward bold moves, long-term opportunity and compounding upside, and stop me from playing too safe.' },
+    { key:'health',    emoji:'🧠', name:'The Health Anchor',color:'#059669', lens:'Focused on my mental health, relationship quality, boundaries, stress levels, and avoiding burnout. Guard the parts of my life that do not show up on a spreadsheet.' },
+    { key:'outsider',  emoji:'🌍', name:'The Outsider',     color:'#0284C7', lens:'Completely detached, big-picture. Question my baseline assumptions, and ask whether this even matters in five years.' },
+    // offered in the hire sheet, not seeded
+    { key:'operator',  emoji:'🛠️', name:'The Operator',     color:'#B45309', lens:'Cares only about the next concrete action. Turn everything into a specific step with an owner and a date, and call out anything that is a plan to make a plan.' },
+    { key:'contrarian',emoji:'🔀', name:'The Contrarian',   color:'#DB2777', lens:'Argue the opposite of whatever the room is converging on. If everyone agrees, that is the signal something has not been examined.' },
+    { key:'money',     emoji:'💰', name:'The Money Coach',  color:'#0F7A38', lens:'Read every decision through cash flow, runway, and opportunity cost. Be specific about what this does to my savings rate and my net worth over the next 12 months.' },
+    { key:'mentor',    emoji:'🧭', name:'The Mentor',       color:'#4F46E5', lens:'Someone ten years ahead of me who has already made this mistake. Be warm but direct, and tell me what you would do differently with hindsight.' },
+    { key:'future',    emoji:'⏳', name:'Future Me',        color:'#9333EA', lens:'Speak as me, five years from now, looking back at this decision. Tell me which part of it I will still be thinking about and which part turned out not to matter.' },
+    { key:'skeptic',   emoji:'🔍', name:'The Skeptic',      color:'#475569', lens:'Attack the evidence. Ask what I actually know versus what I am assuming, and what would have to be true for this to work.' },
+    { key:'closer',    emoji:'🏁', name:'The Closer',       color:'#EA580C', lens:'Impatient with deliberation. Force a decision, name the deadline, and point out the cost of spending another week thinking about it.' },
+    { key:'devil',     emoji:'😈', name:"The Devil's Advocate", color:'#991B1B', lens:'Build the strongest possible case for the option I am least inclined to take, in good faith and without strawmanning it.' }
+  ];
+  const BOARD_DEFAULT_KEYS = ['truth','pragmatist','visionary','health','outsider'];
+  // The output contract sent with every prompt — editable per-board in the Ask pane.
+  const BOARD_DEFAULT_RULES = 'Start immediately with the persona breakdown. No introductory pleasantries.\n'
+    + 'Each adviser gives a short, punchy critique of my situation through their own lens — 2-3 sentences maximum. Make them sound like distinct people, not one voice with different labels.\n'
+    + 'Advisers must reference or challenge each other by name (e.g. "While the Visionary wants to jump, the Pragmatist is right about the cash flow risk...").\n'
+    + 'Conclude with a section called "📊 Board Consensus" giving a 3-step actionable compromise.';
+  // Consult history rides the shared app_data row, so it is capped rather than unbounded — a saved
+  // consult carries the whole prompt plus a pasted answer, and every save re-uploads the blob whole.
+  const BOARD_SESSION_CAP = 25;
+  function seedBoardAdvisers(){
+    return BOARD_PRESETS.filter(p=>BOARD_DEFAULT_KEYS.indexOf(p.key)>=0)
+      .map(p=>({ id:uid(), presetKey:p.key, emoji:p.emoji, name:p.name, lens:p.lens, color:p.color, hired:true, createdAt:Date.now() }));
+  }
+  function defaultBoardState(){
+    return { advisers: seedBoardAdvisers(), sessions: [], prefs: { attach:{}, rules: BOARD_DEFAULT_RULES, tool:'chatgpt' } };
+  }
+
   let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '', catOrder: 'added', speakMantra: false }, checklists: [], checklistExp: 0,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], debts: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
@@ -51,6 +90,13 @@
     // shared row rather than the dedicated jobs row (see js/jobs.js) — it's a tiny bounded map, and
     // keeping it here means doSave()'s rest-destructure carries it automatically.
     jobCategoryColors: {},
+    // Board of Advisers (js/board.js) — a roster of AI personas plus the consults you've run past
+    // them. The tab builds a prompt and hands it to whichever AI tool you use; nothing here calls
+    // an API. Deliberately EMPTY here rather than seeded with the five default advisers: seeding
+    // calls seedBoardAdvisers() -> uid(), and uid() is declared below this literal, so calling it
+    // at parse time would hit the temporal dead zone. applyLoadedState() does the seeding instead,
+    // which is also the only place that can tell "never had a board" from "fired everyone".
+    board: { advisers: [], sessions: [], prefs: { attach:{}, rules:'', tool:'chatgpt' } },
     profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
     // background music for Play sessions (js/music.js) — `url` is the playlist currently loaded
     // (any YouTube / YouTube Music link), `playlists` the saved shortlist you can switch between

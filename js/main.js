@@ -3,7 +3,7 @@
     applyTabIcons();
     applyTabVisibility();
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
-    renderFinance(); renderFitness(); renderValorant(); renderTft(); renderClock(); renderWishlist(); renderJobs(); renderNotes();
+    renderFinance(); renderFitness(); renderValorant(); renderTft(); renderClock(); renderWishlist(); renderJobs(); renderNotes(); renderBoard();
     // re-renders whichever game the Games tab is showing — one code path decides which pane is
     // visible, same as nav.js's showTimeSubTab('clock') on the Time tab. Cheap, and it means the
     // pane's visibility can't drift from state.games.active.

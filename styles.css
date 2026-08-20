@@ -2144,11 +2144,92 @@
   .chart-legend span{display:inline-flex;align-items:center;gap:5px;}
   .chart-legend .dot{width:9px;height:9px;border-radius:50%;display:inline-block;}
   .chart-zoom-row{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;}
+
+  /* ---- weight trend chart ----------------------------------------------------------------
+     Hierarchy: the headline change figure first, the plotted line second, the axis/bands last.
+     The BMI band tints are tokens rather than literal rgba() in the JS so the dark themes can
+     raise their alpha — a 14% tint tuned for a white card is invisible on a #1C1F2B one. */
+  :root{
+    --wt-band-under:rgba(245,165,36,.13);
+    --wt-band-ok:rgba(22,163,74,.12);
+    --wt-band-over:rgba(245,165,36,.20);
+    --wt-band-obese:rgba(239,68,68,.13);
+    /* text-safe tones, >=4.5:1 on --surface and on the pale chips — the same values Finance
+       already uses for the identical problem (--fin-pos/--fin-neg), since the raw --success and
+       --gold sit near 3:1 and this figure is 15px, well short of the large-text exemption */
+    --wt-pos:#0F7A38;
+    --wt-neg:#C0261F;
+    --wt-gold-text:#B45309;
+  }
+  body[data-theme="dark"],body[data-theme="ios-dark"],body.dark-mode{
+    --wt-band-under:rgba(251,191,36,.15);
+    --wt-band-ok:rgba(52,211,153,.13);
+    --wt-band-over:rgba(251,191,36,.22);
+    --wt-band-obese:rgba(248,113,113,.16);
+    /* on a dark surface the theme's own colours already clear 4.5:1, so use the real ones */
+    --wt-pos:var(--success);
+    --wt-neg:var(--danger);
+    --wt-gold-text:var(--gold);
+  }
+  .wt-chart-card{padding:14px 16px 12px;}
+  /* headline: one figure at high weight, its context muted underneath — reading the panel should
+     not require reading the plot */
+  .wt-delta{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+  .wt-delta:empty{display:none;}
+  .wt-delta-val{display:inline-flex;align-items:center;gap:5px;font-size:15px;font-weight:800;
+    font-variant-numeric:tabular-nums;border-radius:999px;padding:3px 11px;line-height:1.25;}
+  /* the arrow says which way the weight moved; the colour says whether that was toward the
+     target — so the tone words beside it carry the same meaning without relying on colour */
+  .wt-delta-val.good{color:var(--wt-pos);background:var(--success-pale);}
+  .wt-delta-val.bad{color:var(--wt-neg);background:var(--danger-pale);}
+  .wt-delta-val.neutral{color:var(--violet-dark);background:var(--violet-pale);}
+  /* --text, not --muted: muted grey on the pale chip lands at 4.25:1, and this chip is the
+     headline whenever the weight held steady. The neutral hue keeps it quiet without
+     making it the one unreadable figure on the card. */
+  .wt-delta-val.flat{color:var(--text);background:var(--surface-alt);}
+  .wt-delta-note{font-size:12px;color:var(--muted);font-weight:600;}
+  .wt-chart-empty{padding:34px 12px;text-align:center;font-size:12.5px;color:var(--muted);line-height:1.6;}
+
+  #weightChartWrap{position:relative;}
+  #weightChartWrap svg{width:100%;height:auto;display:block;overflow:visible;touch-action:pan-y;}
+  /* readout that follows the pointer/finger along the trend line */
+  .wt-tip{position:absolute;pointer-events:none;transform:translate(-50%,-100%);
+    background:var(--text);color:var(--surface);border-radius:9px;padding:6px 10px;
+    white-space:nowrap;opacity:0;transition:opacity .12s ease;z-index:2;text-align:center;
+    font-variant-numeric:tabular-nums;box-shadow:0 4px 12px rgba(16,20,40,.22);}
+  .wt-tip.on{opacity:1;}
+  .wt-tip-date{display:block;font-size:10px;font-weight:500;opacity:.72;}
+  .wt-tip-val{display:block;font-size:13px;font-weight:800;letter-spacing:-.01em;}
+  /* both secondary lines inherit the bubble's foreground rather than tinting themselves --gold:
+     the bubble's background is --text, which is near-white in the dark themes, so gold-on-that is
+     unreadable. The "avg" prefix and the legend below already say which line it is. */
+  .wt-tip-delta{margin-left:6px;font-size:10.5px;font-weight:700;opacity:.7;}
+  .wt-tip-ma{display:block;font-size:10px;font-weight:600;opacity:.7;}
+  @media (prefers-reduced-motion: reduce){
+    .wt-tip{transition:none;}
+  }
+  /* the dashed legend swatches match the strokes they stand for, so the mapping survives without
+     reading the caption */
+  .chart-legend .dot.dash{width:14px;height:0;border-radius:0;border-top:2px dashed currentColor;
+    background:none;align-self:center;}
+  .wt-legend-bands{flex-basis:100%;justify-content:center;text-align:center;line-height:1.5;}
+  .wt-legend-bands b{font-weight:700;}
+  .wt-legend-bands b.ok{color:var(--wt-pos);}
+  .wt-legend-bands b.warn{color:var(--wt-gold-text);}
+  .wt-legend-bands b.bad{color:var(--wt-neg);}
   .chart-zoom-btn{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:5px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;}
   .chart-zoom-btn:hover{border-color:var(--violet);color:var(--text);}
   .chart-zoom-btn.active{background:var(--violet-pale);border-color:var(--violet);color:var(--violet-dark);}
   .chart-zoom-btn:disabled{opacity:.4;cursor:default;}
   .chart-zoom-btn:disabled:hover{border-color:var(--border);color:var(--muted);}
+  /* keyboard users navigate this row by its focus ring; without one the range picker is
+     unusable without a mouse. Shared by the weight, TFT and Valorant charts. */
+  .chart-zoom-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  /* a 25px-tall pill is a coin toss to hit with a thumb. Bumped only under a coarse
+     pointer so the desktop rows keep their density. */
+  @media (pointer:coarse){
+    .chart-zoom-btn{min-height:40px;padding:5px 15px;}
+  }
 
   /* segmented control — one recessed track with a raised active segment, instead of a row of
      separate outlined pills where the selected one is just a different colour. Used for both the

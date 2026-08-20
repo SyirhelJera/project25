@@ -13,7 +13,10 @@
       // you've navigated away from has nothing on screen to justify the traffic.
       if(t.dataset.tab!=='games') stopValLivePolling();
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
-      if(t.dataset.tab==='settings'){ renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
+      // Settings always opens on Appearance. Its five categories are five views of one concern
+      // (like Finance and Board below, unlike the Games tab's persisted game choice), so there's
+      // nothing to remember and no new state key to default.
+      if(t.dataset.tab==='settings'){ showSettingsSubTab('appearance'); renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders
       // whichever pane it reveals, and flipping the toggle renders the other one then
       if(t.dataset.tab==='time') showTimeSubTab('clock');

@@ -147,6 +147,12 @@
     } else {
       state.checklistExp = parsed.checklistExp;
     }
+    // null rather than the current level for data saved before the level-up popup existed: the
+    // first updateExpUI() of a session marks it silently, so an upgrade can't fire a stale popup
+    state.lastLevelSeen = (typeof parsed.lastLevelSeen === 'number') ? parsed.lastLevelSeen : null;
+    // this state came out of storage (boot, or a backup restore), so whatever level it works out
+    // to gets recorded silently by the next updateExpUI() rather than celebrated
+    if(typeof resetLevelSeenPrime === 'function') resetLevelSeenPrime();
     state.finance = parsed.finance || { accounts: [], subscriptions: [], moneyGoals: [], rates: Object.assign({}, DEFAULT_RATES) };
     if(!state.finance.accounts) state.finance.accounts = [];
     if(!state.finance.subscriptions) state.finance.subscriptions = [];

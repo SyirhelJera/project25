@@ -75,15 +75,10 @@
     if(age < 60) return { headR:21, hairR:24, hairCy:36, hairColor:'#3D2B1F', glasses:false };
     return { headR:21, hairR:22, hairCy:37, hairColor:'#B8BCC4', glasses:true };
   }
-  // Chest-pin color by XP level tier — same bronze/silver/gold/platinum/diamond progression
-  // used elsewhere for level tiers.
-  function avatarLevelColor(level){
-    if(level >= 30) return '#EC4899';
-    if(level >= 20) return '#3B82F6';
-    if(level >= 10) return '#F5A524';
-    if(level >= 5) return '#B7C0CC';
-    return '#CD7F32';
-  }
+  // Chest-pin color by XP level tier — the bronze/silver/gold/platinum/diamond progression whose
+  // thresholds and colors levelTier() in goals.js owns (the level-up popup names the same tier),
+  // so this is only the lookup.
+  function avatarLevelColor(level){ return levelTier(level).color; }
   // Outfit color (and a crown at the top tier) by net worth — richer colors as net worth climbs.
   function avatarWorthTier(nw){
     if(nw >= 1000000) return { color:'#A855F7', crown:true };

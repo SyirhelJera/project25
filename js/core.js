@@ -45,6 +45,10 @@
   }
 
   let state = { goals: [], habits: [], countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '', catOrder: 'added', speakMantra: false }, checklists: [], checklistExp: 0,
+    // The level the user has already been congratulated for. Level itself is derived from exp on
+    // every load, so without a remembered mark the level-up popup (js/goals.js) would replay on
+    // every reload after a level-up. null = never marked; see noteLevelChange().
+    lastLevelSeen: null,
     finance: { accounts: [], subscriptions: [], moneyGoals: [], debts: [], rates: Object.assign({}, DEFAULT_RATES), netWorthHistory: [] },
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], progressPhotos:[] },
     // valorant.live holds PREFERENCES ONLY — the live lobby itself is never stored anywhere,

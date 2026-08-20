@@ -168,6 +168,23 @@
     }
   }
 
+  /* ---- settings sub-nav (Appearance / Navigation / Tracking / Valorant / Data) ----
+     The reset to Appearance lives in nav.js on tab entry, NOT in renderSettings() — two of the
+     toggles below re-render the whole tab as their save step, and resetting here would throw you
+     back to the first category every time you flipped one. Nothing here needs a render call the
+     way showFinanceSubTab() does: renderSettings(), renderValLocalPanel() and renderProtectedDays()
+     already fill all five panes on entry, and a hidden pane holds its values fine. */
+  function showSettingsSubTab(key){
+    document.querySelectorAll('#view-settings .finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.settab===key));
+    document.querySelectorAll('.settab').forEach(t=>t.style.display = (t.id==='settab-'+key) ? '' : 'none');
+    // the Valorant category is several screens tall, so switching out of it from the bottom would
+    // otherwise leave a short category scrolled past its own content
+    if(window.scrollY > 0) window.scrollTo({top:0, behavior:'auto'});
+  }
+  document.querySelectorAll('#view-settings .finance-subnav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> showSettingsSubTab(btn.dataset.settab));
+  });
+
   function renderSettings(){
     applyTheme();
     renderTabOrderSettings();

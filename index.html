@@ -1520,242 +1520,316 @@
   </div>
 
   <!-- SETTINGS -->
+  <!-- SETTINGS
+       Fourteen unrelated controls in one flat scroll had no findable structure, so they're grouped
+       into five categories behind a .finance-subnav strip (the app's existing sub-nav pattern, as
+       on Finance and Games) and each control sits in its own .set-card with a real heading instead
+       of a whisper-weight .section-lbl. The category choice deliberately does NOT persist — like
+       Finance's sub-nav these are five views of one concern, so Settings always opens on the same
+       screen and there's no new state key to default. showSettingsSubTab() in js/insights.js owns
+       the switching. Every control id below is unchanged, so the wiring in insights.js,
+       valorant.js, protecteddays.js and backups.js still finds all of them. -->
   <div class="view" id="view-settings">
     <div class="view-title">Settings</div>
     <div class="view-sub">App-wide preferences.</div>
 
-    <div class="section-lbl" style="margin-top:4px;">Appearance</div>
-    <div class="theme-picker" id="themePicker">
-      <div class="theme-option" data-theme="light">
-        <div class="theme-swatch" style="background:#F5F6FA;"><span style="background:#6366F1;"></span></div>
-        <div class="theme-option-label">Light</div>
-      </div>
-      <div class="theme-option" data-theme="dark">
-        <div class="theme-swatch" style="background:#14161F;"><span style="background:#818CF8;"></span></div>
-        <div class="theme-option-label">Dark</div>
-      </div>
-      <div class="theme-option" data-theme="ios-light">
-        <div class="theme-swatch" style="background:#F2F2F7;"><span style="background:#007AFF;"></span></div>
-        <div class="theme-option-label">iOS Light</div>
-      </div>
-      <div class="theme-option" data-theme="ios-dark">
-        <div class="theme-swatch" style="background:#000000;"><span style="background:#0A84FF;"></span></div>
-        <div class="theme-option-label">iOS Dark</div>
-      </div>
+    <div class="finance-subnav settings-subnav">
+      <button class="finance-subnav-btn active" data-settab="appearance" type="button">Appearance</button>
+      <button class="finance-subnav-btn" data-settab="navigation" type="button">Navigation</button>
+      <button class="finance-subnav-btn" data-settab="tracking" type="button">Tracking</button>
+      <button class="finance-subnav-btn" data-settab="valorant" type="button">Valorant</button>
+      <button class="finance-subnav-btn" data-settab="data" type="button">Data</button>
     </div>
 
-    <div class="section-lbl" style="margin-top:22px;">Navbar Tabs</div>
-    <div class="view-sub" style="margin-bottom:10px;">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put.</div>
-    <div id="tabOrderList" class="tab-order-list"></div>
-
-    <div class="section-lbl" style="margin-top:22px;">Tab Icons</div>
-    <div class="view-sub" style="margin-bottom:10px;">Show or hide the little logo next to each tab in the navbar. On mobile the tab strip is icon-only, so hiding them switches it to text labels instead.</div>
-    <div class="unit-toggle" id="tabIconVisToggle">
-      <button data-vis="show">Show</button>
-      <button data-vis="hide">Hide</button>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Protected Days</div>
-    <div class="view-sub" style="margin-bottom:4px;">Vacation, sick, or event days here won't count against habit streaks or checklist miss-streaks. Applies to every habit and checklist automatically.</div>
-    <div class="view-sub" id="protectedDayTodayNote" style="display:none;margin-bottom:10px;"></div>
-    <div class="fitness-fields" id="protectedDayFields">
-      <div class="fitness-field"><label>Type</label>
-        <select id="pdType">
-          <option value="vacation">🏖️ Vacation</option>
-          <option value="sick">🤒 Sick</option>
-          <option value="event">📅 Event</option>
-        </select>
-      </div>
-      <div class="fitness-field"><label>Start date</label><input type="date" id="pdStart"></div>
-      <div class="fitness-field"><label>End date (optional)</label><input type="date" id="pdEnd"></div>
-      <div class="fitness-field"><label>Note (optional)</label><input type="text" id="pdLabel" maxlength="60" placeholder='e.g. "Cancun trip"'></div>
-    </div>
-    <button class="btn btn-primary btn-sm" id="addProtectedDayBtn" type="button" style="margin-top:10px;">+ Add</button>
-    <div class="fitness-fields" style="margin-top:14px;">
-      <div class="fitness-field"><label>Marker color</label><input type="color" id="pdColorInput"></div>
-    </div>
-    <div class="view-sub" style="margin-top:6px;">Colors the ring on protected days in the habit calendars and on the Goals heat map.</div>
-    <button class="btn btn-ghost btn-sm" id="pdColorResetBtn" type="button" style="margin-top:8px;">Reset to theme default</button>
-    <div id="protectedDayList" style="margin-top:12px;"></div>
-    <div class="empty" id="protectedDayEmpty" style="display:none;">No protected days yet.</div>
-
-    <div class="section-lbl" style="margin-top:22px;">Trend Comparison</div>
-    <div class="view-sub" style="margin-bottom:10px;">What the ▲▼ arrows next to Net Worth and Fitness Level measure against — on the profile card and on the Goals board. "The last entry" compares the two most recent readings, whenever they happened. "Start of this week/month" answers how far you've moved so far this week or month; the day counts reach back a fixed distance instead. Either way it compares against the closest reading on or before that date, and if nothing was recorded that far back, the oldest reading you have is used. On a phone, tap a figure on the Goals board to read the full comparison.</div>
-    <div class="fitness-fields">
-      <div class="fitness-field">
-        <label for="trendWindowSelect">Compare against</label>
-        <select id="trendWindowSelect">
-          <option value="0">The last entry</option>
-          <option value="week">Start of this week</option>
-          <option value="month">Start of this month</option>
-          <option value="7">7 days ago</option>
-          <option value="30">30 days ago</option>
-          <option value="90">90 days ago</option>
-          <option value="365">A year ago</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Countdown Mosaic Colors</div>
-    <div class="view-sub" style="margin-bottom:10px;">Customize the day-dot colors on the pinned countdown's mosaic (Goals page).</div>
-    <div class="fitness-fields" id="mosaicColorFields">
-      <div class="fitness-field"><label>Past days</label><input type="color" id="mcFilledInput"></div>
-      <div class="fitness-field"><label>Today</label><input type="color" id="mcTodayInput"></div>
-      <div class="fitness-field"><label>Upcoming days</label><input type="color" id="mcEmptyInput"></div>
-    </div>
-    <button class="btn btn-ghost btn-sm" id="mosaicColorResetBtn" type="button" style="margin-top:10px;">Reset to theme default</button>
-
-    <div class="section-lbl" style="margin-top:22px;">Perfect Days</div>
-    <div class="view-sub" style="margin-bottom:6px;">Days where every "dailies" checklist item was completed stand out on the mosaic above.</div>
-    <div class="unit-toggle" id="perfectGlowToggle">
-      <button data-glow="on" id="perfectGlowBtnOn" type="button">Highlight on</button>
-      <button data-glow="off" id="perfectGlowBtnOff" type="button">Highlight off</button>
-    </div>
-    <div class="fitness-fields" id="perfectStyleFields" style="margin-top:10px;">
-      <div class="fitness-field">
-        <label>Style</label>
-        <select id="perfectStyleSelect">
-          <option value="color">Solid color</option>
-          <option value="outline">Outline</option>
-          <option value="rainbow">Rainbow</option>
-          <option value="golden">Golden shimmer</option>
-          <option value="emoji">Emoji</option>
-        </select>
-      </div>
-      <div class="fitness-field" id="perfectColorField"><label>Color</label><input type="color" id="mcPerfectInput"></div>
-      <div class="fitness-field" id="perfectEmojiField"><label>Emoji</label><input type="text" id="perfectEmojiInput" maxlength="4" style="width:60px;text-align:center;"></div>
-    </div>
-    <div class="swatches" id="perfectEmojiPresets">
-      <div class="emoji-swatch" data-emoji="⭐" title="⭐">⭐</div>
-      <div class="emoji-swatch" data-emoji="✨" title="✨">✨</div>
-      <div class="emoji-swatch" data-emoji="🌈" title="🌈">🌈</div>
-      <div class="emoji-swatch" data-emoji="👑" title="👑">👑</div>
-      <div class="emoji-swatch" data-emoji="🔥" title="🔥">🔥</div>
-      <div class="emoji-swatch" data-emoji="💯" title="💯">💯</div>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Profile Avatar</div>
-    <div class="view-sub" style="margin-bottom:10px;">Show or hide your avatar on the profile card.</div>
-    <div class="unit-toggle" id="avatarVisToggle">
-      <button data-vis="show" id="avatarVisBtnShow">Show</button>
-      <button data-vis="hide" id="avatarVisBtnHide">Hide</button>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Net Worth Display Currency</div>
-    <div class="fitness-field" style="max-width:260px;">
-      <label>Shown on your profile card</label>
-      <select id="settingsNetWorthCurrency"></select>
-    </div>
-
-    <div class="section-lbl" style="margin-top:22px;">Valorant API Key</div>
-    <div class="view-sub" style="margin-bottom:10px;">Rank and match-history lookups on the Valorant tab use the unofficial HenrikDev API, which needs a free key — join <code>https://discord.com/invite/X3GaVkX2YN</code>, then generate one on the <code>api.henrikdev.xyz</code> dashboard.</div>
-    <div class="val-api-row">
-      <div class="fitness-field">
-        <label for="valApiKey">HenrikDev API Key</label>
-        <input type="password" id="valApiKey" placeholder="Paste your API key">
-      </div>
-      <button class="btn btn-ghost" id="valSaveKeyBtn" style="margin-bottom:0;">Save Key</button>
-    </div>
-    <div class="val-key-state" id="valApiKeyState"></div>
-
-    <!-- VP purchase calculator prices. The tiers are Riot's and identical everywhere; what varies
-         is the price, per region and per currency, so it's typed in rather than shipped with
-         guesses. See valVpPlan() in js/valorant.js for what's done with them. -->
-    <div class="section-lbl" style="margin-top:22px;">Valorant Points Prices</div>
-    <div class="view-sub" style="margin-bottom:10px;">Powers the top-up calculator: click any VP-priced item on the Shop Tracker and it works out what you're short and which packages cover it most cheaply. Leave a tier blank if it isn't sold in your region — it won't be suggested. With no prices at all the calculator still runs, but optimises for the least wasted VP rather than the lowest cost.</div>
-    <div class="fitness-field" style="max-width:200px;">
-      <label for="valVpCurrency">Currency label</label>
-      <input type="text" id="valVpCurrency" placeholder="e.g. PHP" maxlength="8">
-    </div>
-    <div class="val-vp-price-rows" id="valVpPriceRows"></div>
-
-    <div class="section-lbl" style="margin-top:18px;">Third-party offers</div>
-    <div class="view-sub" style="margin-bottom:10px;">A discounted top-up shop selling the same VP for less. Offers are grouped by seller — add every tier a shop sells under one name, and its checkbox takes that whole seller out of the calculator without deleting anything. All fields stay editable, since a shop's prices change. Each offer is weighed against the official tiers, and when one wins the calculator also shows what the official-only route would have cost.</div>
-    <div class="val-add-row">
-      <!-- the datalist is filled from the sellers already saved, so a second offer from the same
-           shop joins that group instead of starting a near-duplicate one -->
-      <input type="text" id="valVpOfferName" list="valVpSellerList" placeholder="Seller, e.g. Codashop" maxlength="30" style="flex:2;min-width:150px;">
-      <datalist id="valVpSellerList"></datalist>
-      <input type="number" id="valVpOfferVp" placeholder="VP" min="1" step="1" style="flex:1;min-width:90px;">
-      <input type="number" id="valVpOfferPrice" placeholder="Price" min="0" step="0.01" style="flex:1;min-width:90px;">
-      <button class="btn btn-ghost" id="valVpOfferAddBtn">+ Add</button>
-    </div>
-    <div class="val-vp-offer-rows" id="valVpOfferRows"></div>
-    <label class="val-vp-use-offers"><input type="checkbox" id="valVpUseOffers" checked> Include third-party offers in suggestions</label>
-
-    <div class="section-lbl" style="margin-top:22px;">Valorant Local Helper</div>
-    <div class="view-sub" style="margin-bottom:10px;">Connects to <code>scripts/valorant-local-server.mjs</code> running on this machine so you can trigger a store check, save Riot account sessions, or delete one here instead of the terminal (see README.md). Pick which saved account to act on from the dropdown under the store on the Valorant tab.</div>
-    <div class="val-local-status" id="valSettingsLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
-    <div class="val-local-panel" id="valLocalCredsPanel" style="display:none;">
-      <div class="val-toolbar">
-        <button class="btn btn-primary btn-sm" id="valLocalCheckBtn">Check Store Now</button>
-        <button class="btn btn-ghost btn-sm" id="valLocalCheckInventoryBtn" title="Fetches every owned weapon skin, with its content tier">🎨 Check Owned Skins</button>
-        <button class="btn btn-ghost btn-sm val-local-delete-btn" id="valLocalDeleteBtn" title="Delete the selected saved account">🗑 Delete</button>
-      </div>
-      <div class="val-api-row">
-        <div class="fitness-field">
-          <label>Local Helper Token</label>
-          <input type="password" id="valLocalToken" placeholder="Paste the token printed by valorant-local-server.mjs">
+    <!-- ---- Appearance ---- -->
+    <div class="settab" id="settab-appearance">
+      <div class="set-card">
+        <div class="set-card-h">Theme</div>
+        <div class="set-card-sub">Applies everywhere, instantly.</div>
+        <div class="theme-picker" id="themePicker">
+          <div class="theme-option" data-theme="light">
+            <div class="theme-swatch" style="background:#F5F6FA;"><span style="background:#6366F1;"></span></div>
+            <div class="theme-option-label">Light</div>
+          </div>
+          <div class="theme-option" data-theme="dark">
+            <div class="theme-swatch" style="background:#14161F;"><span style="background:#818CF8;"></span></div>
+            <div class="theme-option-label">Dark</div>
+          </div>
+          <div class="theme-option" data-theme="ios-light">
+            <div class="theme-swatch" style="background:#F2F2F7;"><span style="background:#007AFF;"></span></div>
+            <div class="theme-option-label">iOS Light</div>
+          </div>
+          <div class="theme-option" data-theme="ios-dark">
+            <div class="theme-swatch" style="background:#000000;"><span style="background:#0A84FF;"></span></div>
+            <div class="theme-option-label">iOS Dark</div>
+          </div>
         </div>
-        <button class="btn btn-ghost" id="valLocalSaveTokenBtn" style="margin-bottom:0;">Save Token</button>
       </div>
-      <div class="val-add-row">
-        <input type="text" id="valLocalNewLabel" placeholder='Account label, e.g. "main"' maxlength="30" style="flex:1;min-width:120px;">
-        <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:200px;">
-        <!-- Riot rejects an ssid-only reauth (303 to the login page, indistinguishable from an
-             expired session), so clid is required, not optional. -->
-        <input type="password" id="valLocalNewClid" placeholder="Paste the clid cookie value" style="flex:2;min-width:200px;">
-        <button class="btn btn-ghost" id="valLocalAddAccountBtn">+ Add Account</button>
-      </div>
-      <div class="val-toolbar">
-        <!-- the same save as "+ Add Account", with the cookie fetched instead of pasted: the helper
-             opens a small throwaway browser window on Riot's login page and lifts the ssid out of
-             it once you've signed in yourself. Nothing drives the login form — see the header of
-             scripts/valorant-login-window.mjs. -->
-        <button class="btn btn-primary btn-sm" id="valLocalLoginWindowBtn" title="Opens a small browser window on Riot's login page and saves the session by itself once you've signed in">🌐 Log in with browser</button>
-        <button class="btn btn-ghost btn-sm" id="valLocalLoginWindowCancelBtn" style="display:none;">Cancel</button>
-      </div>
-      <div class="val-peak-note" id="valLoginWindowStatus" style="display:none;"></div>
-      <div class="val-peak-note">Type a label above, then <strong>Log in with browser</strong> — a small, empty browser window opens on Riot's login page, you sign in there as usual, and the session is saved under that label by itself. Use the same label as an existing account to refresh an expired session (the 🔑 Re-login button on the store's error banner does exactly this). Prefer to do it by hand? Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy <strong>both</strong> the <code>ssid</code> and the <code>clid</code> value into the fields above and press + Add Account. Riot needs the pair: <code>ssid</code> on its own is refused as though the session had expired.</div>
-      <div class="val-err" id="valSettingsLocalErr" style="display:none;"></div>
 
-      <div class="section-lbl" style="margin-top:18px;">Live Match</div>
-      <div class="view-sub" style="margin-bottom:10px;">Settings for the Valorant tab's Live Match panel. Nothing it shows is ever saved — the lobby is read from the local helper while you're in a game and thrown away afterwards.</div>
-      <div class="val-live-settings">
-        <div class="fitness-field">
-          <label for="valLiveRegionSelect">Region</label>
-          <!-- Riot's geo endpoint returns a *shard*; the live-match hosts need a region too, and
-               the NA shard also serves LATAM and BR. Auto probes for it and remembers the answer;
-               this is here for the case where the probe can't tell. -->
-          <select id="valLiveRegionSelect">
-            <option value="">Auto (detect)</option>
-            <option value="na">NA</option>
-            <option value="latam">LATAM</option>
-            <option value="br">BR</option>
-            <option value="eu">EU</option>
-            <option value="ap">APAC</option>
-            <option value="kr">KR</option>
-          </select>
+      <div class="set-card">
+        <div class="set-card-h">Profile avatar</div>
+        <div class="set-card-sub">Show or hide your avatar on the profile card.</div>
+        <div class="unit-toggle" id="avatarVisToggle">
+          <button data-vis="show" id="avatarVisBtnShow" type="button">Show</button>
+          <button data-vis="hide" id="avatarVisBtnHide" type="button">Hide</button>
         </div>
-        <div class="fitness-field">
-          <label for="valLiveDepthSelect">Win-rate window</label>
-          <select id="valLiveDepthSelect">
-            <option value="8">Last 8 comp matches</option>
-            <option value="10">Last 10 comp matches</option>
-            <option value="15">Last 15 comp matches</option>
-            <option value="20">Last 20 comp matches</option>
+      </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Countdown mosaic</div>
+        <div class="set-card-sub">The day-dot colors on the pinned countdown's mosaic, over on the Goals page.</div>
+        <div class="fitness-fields set-fields-3" id="mosaicColorFields">
+          <div class="fitness-field"><label for="mcFilledInput">Past days</label><input type="color" id="mcFilledInput"></div>
+          <div class="fitness-field"><label for="mcTodayInput">Today</label><input type="color" id="mcTodayInput"></div>
+          <div class="fitness-field"><label for="mcEmptyInput">Upcoming days</label><input type="color" id="mcEmptyInput"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="mosaicColorResetBtn" type="button">Reset to theme default</button>
+
+        <div class="set-divider"></div>
+
+        <div class="set-sub-h">Perfect days</div>
+        <div class="set-card-sub">Days where every "dailies" checklist item was completed stand out on that same mosaic.</div>
+        <div class="unit-toggle" id="perfectGlowToggle">
+          <button data-glow="on" id="perfectGlowBtnOn" type="button">Highlight on</button>
+          <button data-glow="off" id="perfectGlowBtnOff" type="button">Highlight off</button>
+        </div>
+        <div class="fitness-fields set-fields-3" id="perfectStyleFields">
+          <div class="fitness-field">
+            <label for="perfectStyleSelect">Style</label>
+            <select id="perfectStyleSelect">
+              <option value="color">Solid color</option>
+              <option value="outline">Outline</option>
+              <option value="rainbow">Rainbow</option>
+              <option value="golden">Golden shimmer</option>
+              <option value="emoji">Emoji</option>
+            </select>
+          </div>
+          <div class="fitness-field" id="perfectColorField"><label for="mcPerfectInput">Color</label><input type="color" id="mcPerfectInput"></div>
+          <div class="fitness-field" id="perfectEmojiField"><label for="perfectEmojiInput">Emoji</label><input type="text" id="perfectEmojiInput" maxlength="4" class="set-emoji-input"></div>
+        </div>
+        <div class="swatches" id="perfectEmojiPresets">
+          <div class="emoji-swatch" data-emoji="⭐" title="⭐">⭐</div>
+          <div class="emoji-swatch" data-emoji="✨" title="✨">✨</div>
+          <div class="emoji-swatch" data-emoji="🌈" title="🌈">🌈</div>
+          <div class="emoji-swatch" data-emoji="👑" title="👑">👑</div>
+          <div class="emoji-swatch" data-emoji="🔥" title="🔥">🔥</div>
+          <div class="emoji-swatch" data-emoji="💯" title="💯">💯</div>
+        </div>
+      </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Level up popup</div>
+        <div class="set-card-sub">Finishing a goal or ticking off checklist items earns XP, and crossing into a new level sets off a celebration. This shows the one you are working toward next — a preview only, so it never counts as the real thing.</div>
+        <button class="btn btn-ghost btn-sm" id="levelUpPreviewBtn" type="button">Preview the celebration</button>
+      </div>
+    </div>
+
+    <!-- ---- Navigation ---- -->
+    <div class="settab" id="settab-navigation" style="display:none;">
+      <div class="set-card">
+        <div class="set-card-h">Navbar tabs</div>
+        <div class="set-card-sub">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put.</div>
+        <div id="tabOrderList" class="tab-order-list"></div>
+      </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Tab icons</div>
+        <div class="set-card-sub">Show or hide the little logo next to each tab in the navbar. On mobile the tab strip is icon-only, so hiding them switches it to text labels instead.</div>
+        <div class="unit-toggle" id="tabIconVisToggle">
+          <button data-vis="show" type="button">Show</button>
+          <button data-vis="hide" type="button">Hide</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Tracking ---- -->
+    <div class="settab" id="settab-tracking" style="display:none;">
+      <div class="set-card">
+        <div class="set-card-h">Protected days</div>
+        <div class="set-card-sub">Vacation, sick, or event days here won't count against habit streaks or checklist miss-streaks. Applies to every habit and checklist automatically.</div>
+        <div class="set-note-ok" id="protectedDayTodayNote" style="display:none;"></div>
+        <div class="fitness-fields" id="protectedDayFields">
+          <div class="fitness-field"><label for="pdType">Type</label>
+            <select id="pdType">
+              <option value="vacation">🏖️ Vacation</option>
+              <option value="sick">🤒 Sick</option>
+              <option value="event">📅 Event</option>
+            </select>
+          </div>
+          <div class="fitness-field"><label for="pdStart">Start date</label><input type="date" id="pdStart"></div>
+          <div class="fitness-field"><label for="pdEnd">End date (optional)</label><input type="date" id="pdEnd"></div>
+          <div class="fitness-field"><label for="pdLabel">Note (optional)</label><input type="text" id="pdLabel" maxlength="60" placeholder='e.g. "Cancun trip"'></div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="addProtectedDayBtn" type="button">+ Add</button>
+        <div id="protectedDayList" class="set-list"></div>
+        <div class="empty set-list" id="protectedDayEmpty" style="display:none;">No protected days yet.</div>
+
+        <div class="set-divider"></div>
+
+        <div class="set-sub-h">Marker color</div>
+        <div class="set-card-sub">Colors the ring on protected days in the habit calendars and on the Goals heat map.</div>
+        <div class="set-inline-row">
+          <div class="fitness-field set-field-color"><label for="pdColorInput">Color</label><input type="color" id="pdColorInput"></div>
+          <button class="btn btn-ghost btn-sm" id="pdColorResetBtn" type="button">Reset to theme default</button>
+        </div>
+      </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Trend comparison</div>
+        <div class="set-card-sub">What the ▲▼ arrows next to Net Worth and Fitness Level measure against — on the profile card and on the Goals board. "The last entry" compares the two most recent readings, whenever they happened. "Start of this week/month" answers how far you've moved so far this week or month; the day counts reach back a fixed distance instead. Either way it compares against the closest reading on or before that date, and if nothing was recorded that far back, the oldest reading you have is used. On a phone, tap a figure on the Goals board to read the full comparison.</div>
+        <div class="fitness-field set-field-narrow">
+          <label for="trendWindowSelect">Compare against</label>
+          <select id="trendWindowSelect">
+            <option value="0">The last entry</option>
+            <option value="week">Start of this week</option>
+            <option value="month">Start of this month</option>
+            <option value="7">7 days ago</option>
+            <option value="30">30 days ago</option>
+            <option value="90">90 days ago</option>
+            <option value="365">A year ago</option>
           </select>
         </div>
       </div>
-      <label class="val-live-check"><input type="checkbox" id="valLiveEnemyStats" checked> Look up agent win rates for the enemy team too <span class="val-peak-note">(off = half the match lookups, but you only see comfort picks for your own team)</span></label>
-      <label class="val-live-check"><input type="checkbox" id="valLiveShowIncognito"> Show Riot IDs of players using incognito <span class="val-peak-note">(off = they show as "Incognito"; rank and agent are shown either way)</span></label>
+
+      <div class="set-card">
+        <div class="set-card-h">Net worth display currency</div>
+        <div class="set-card-sub">Everything on the Finance tab keeps its own currency — this only changes the single figure on your profile card.</div>
+        <div class="fitness-field set-field-narrow">
+          <label for="settingsNetWorthCurrency">Shown on your profile card</label>
+          <select id="settingsNetWorthCurrency"></select>
+        </div>
+      </div>
     </div>
 
-    <div class="section-lbl" style="margin-top:22px;">Backups</div>
-    <div class="view-sub" style="margin-bottom:10px;">Daily snapshots are saved automatically. Restoring replaces everything currently in the app with an older snapshot.</div>
-    <button class="btn btn-ghost btn-sm" id="loadBackupsBtn" type="button">⟳ Refresh backup list</button>
-    <div id="backupList" style="margin-top:10px;"></div>
-    <div id="restoreSlot"></div>
+    <!-- ---- Valorant ---- -->
+    <div class="settab" id="settab-valorant" style="display:none;">
+      <div class="set-card">
+        <div class="set-card-h">HenrikDev API key</div>
+        <div class="set-card-sub">Rank and match-history lookups on the Valorant tab use the unofficial HenrikDev API, which needs a free key — join <code>https://discord.com/invite/X3GaVkX2YN</code>, then generate one on the <code>api.henrikdev.xyz</code> dashboard.</div>
+        <div class="val-api-row">
+          <div class="fitness-field">
+            <label for="valApiKey">API key</label>
+            <input type="password" id="valApiKey" placeholder="Paste your API key">
+          </div>
+          <button class="btn btn-ghost" id="valSaveKeyBtn" type="button" style="margin-bottom:0;">Save Key</button>
+        </div>
+        <div class="val-key-state" id="valApiKeyState"></div>
+      </div>
+
+      <!-- VP purchase calculator prices. The tiers are Riot's and identical everywhere; what varies
+           is the price, per region and per currency, so it's typed in rather than shipped with
+           guesses. See valVpPlan() in js/valorant.js for what's done with them. Third-party offers
+           share this card because one calculator weighs them against these same tiers — two cards
+           implied two unrelated settings. -->
+      <div class="set-card">
+        <div class="set-card-h">Valorant Points prices</div>
+        <div class="set-card-sub">Powers the top-up calculator: click any VP-priced item on the Shop Tracker and it works out what you're short and which packages cover it most cheaply. Leave a tier blank if it isn't sold in your region — it won't be suggested. With no prices at all the calculator still runs, but optimises for the least wasted VP rather than the lowest cost.</div>
+        <div class="fitness-field set-field-narrow">
+          <label for="valVpCurrency">Currency label</label>
+          <input type="text" id="valVpCurrency" placeholder="e.g. PHP" maxlength="8">
+        </div>
+        <div class="val-vp-price-rows" id="valVpPriceRows"></div>
+
+        <div class="set-divider"></div>
+
+        <div class="set-sub-h">Third-party offers</div>
+        <div class="set-card-sub">A discounted top-up shop selling the same VP for less. Offers are grouped by seller — add every tier a shop sells under one name, and its checkbox takes that whole seller out of the calculator without deleting anything. All fields stay editable, since a shop's prices change. Each offer is weighed against the official tiers, and when one wins the calculator also shows what the official-only route would have cost.</div>
+        <div class="val-add-row">
+          <!-- the datalist is filled from the sellers already saved, so a second offer from the same
+               shop joins that group instead of starting a near-duplicate one -->
+          <input type="text" id="valVpOfferName" list="valVpSellerList" placeholder="Seller, e.g. Codashop" maxlength="30" style="flex:2;min-width:150px;" aria-label="Seller">
+          <datalist id="valVpSellerList"></datalist>
+          <input type="number" id="valVpOfferVp" placeholder="VP" min="1" step="1" style="flex:1;min-width:90px;" aria-label="VP amount">
+          <input type="number" id="valVpOfferPrice" placeholder="Price" min="0" step="0.01" style="flex:1;min-width:90px;" aria-label="Price">
+          <button class="btn btn-ghost" id="valVpOfferAddBtn" type="button">+ Add</button>
+        </div>
+        <div class="val-vp-offer-rows" id="valVpOfferRows"></div>
+        <label class="val-vp-use-offers"><input type="checkbox" id="valVpUseOffers" checked> Include third-party offers in suggestions</label>
+      </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Local helper</div>
+        <div class="set-card-sub">Connects to <code>scripts/valorant-local-server.mjs</code> running on this machine so you can trigger a store check, save Riot account sessions, or delete one here instead of the terminal (see README.md). Pick which saved account to act on from the dropdown under the store on the Valorant tab.</div>
+        <div class="val-local-status" id="valSettingsLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+        <div class="val-local-panel" id="valLocalCredsPanel" style="display:none;">
+          <div class="val-toolbar">
+            <button class="btn btn-primary btn-sm" id="valLocalCheckBtn" type="button">Check Store Now</button>
+            <button class="btn btn-ghost btn-sm" id="valLocalCheckInventoryBtn" type="button" title="Fetches every owned weapon skin, with its content tier">🎨 Check Owned Skins</button>
+            <button class="btn btn-ghost btn-sm val-local-delete-btn" id="valLocalDeleteBtn" type="button" title="Delete the selected saved account">🗑 Delete</button>
+          </div>
+          <div class="val-api-row">
+            <div class="fitness-field">
+              <label for="valLocalToken">Local Helper Token</label>
+              <input type="password" id="valLocalToken" placeholder="Paste the token printed by valorant-local-server.mjs">
+            </div>
+            <button class="btn btn-ghost" id="valLocalSaveTokenBtn" type="button" style="margin-bottom:0;">Save Token</button>
+          </div>
+          <div class="val-add-row">
+            <input type="text" id="valLocalNewLabel" placeholder='Account label, e.g. "main"' maxlength="30" style="flex:1;min-width:120px;" aria-label="Account label">
+            <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:200px;" aria-label="ssid cookie">
+            <!-- Riot rejects an ssid-only reauth (303 to the login page, indistinguishable from an
+                 expired session), so clid is required, not optional. -->
+            <input type="password" id="valLocalNewClid" placeholder="Paste the clid cookie value" style="flex:2;min-width:200px;" aria-label="clid cookie">
+            <button class="btn btn-ghost" id="valLocalAddAccountBtn" type="button">+ Add Account</button>
+          </div>
+          <div class="val-toolbar">
+            <!-- the same save as "+ Add Account", with the cookie fetched instead of pasted: the helper
+                 opens a small throwaway browser window on Riot's login page and lifts the ssid out of
+                 it once you've signed in yourself. Nothing drives the login form — see the header of
+                 scripts/valorant-login-window.mjs. -->
+            <button class="btn btn-primary btn-sm" id="valLocalLoginWindowBtn" type="button" title="Opens a small browser window on Riot's login page and saves the session by itself once you've signed in">🌐 Log in with browser</button>
+            <button class="btn btn-ghost btn-sm" id="valLocalLoginWindowCancelBtn" type="button" style="display:none;">Cancel</button>
+          </div>
+          <div class="val-peak-note" id="valLoginWindowStatus" style="display:none;"></div>
+          <div class="val-peak-note">Type a label above, then <strong>Log in with browser</strong> — a small, empty browser window opens on Riot's login page, you sign in there as usual, and the session is saved under that label by itself. Use the same label as an existing account to refresh an expired session (the 🔑 Re-login button on the store's error banner does exactly this). Prefer to do it by hand? Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy <strong>both</strong> the <code>ssid</code> and the <code>clid</code> value into the fields above and press + Add Account. Riot needs the pair: <code>ssid</code> on its own is refused as though the session had expired.</div>
+          <div class="val-err" id="valSettingsLocalErr" style="display:none;"></div>
+
+          <div class="set-divider"></div>
+
+          <div class="set-sub-h">Live Match</div>
+          <div class="set-card-sub">Settings for the Valorant tab's Live Match panel. Nothing it shows is ever saved — the lobby is read from the local helper while you're in a game and thrown away afterwards.</div>
+          <div class="val-live-settings">
+            <div class="fitness-field">
+              <label for="valLiveRegionSelect">Region</label>
+              <!-- Riot's geo endpoint returns a *shard*; the live-match hosts need a region too, and
+                   the NA shard also serves LATAM and BR. Auto probes for it and remembers the answer;
+                   this is here for the case where the probe can't tell. -->
+              <select id="valLiveRegionSelect">
+                <option value="">Auto (detect)</option>
+                <option value="na">NA</option>
+                <option value="latam">LATAM</option>
+                <option value="br">BR</option>
+                <option value="eu">EU</option>
+                <option value="ap">APAC</option>
+                <option value="kr">KR</option>
+              </select>
+            </div>
+            <div class="fitness-field">
+              <label for="valLiveDepthSelect">Win-rate window</label>
+              <select id="valLiveDepthSelect">
+                <option value="8">Last 8 comp matches</option>
+                <option value="10">Last 10 comp matches</option>
+                <option value="15">Last 15 comp matches</option>
+                <option value="20">Last 20 comp matches</option>
+              </select>
+            </div>
+          </div>
+          <label class="val-live-check"><input type="checkbox" id="valLiveEnemyStats" checked> Look up agent win rates for the enemy team too <span class="val-peak-note">(off = half the match lookups, but you only see comfort picks for your own team)</span></label>
+          <label class="val-live-check"><input type="checkbox" id="valLiveShowIncognito"> Show Riot IDs of players using incognito <span class="val-peak-note">(off = they show as "Incognito"; rank and agent are shown either way)</span></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- Data ---- -->
+    <div class="settab" id="settab-data" style="display:none;">
+      <div class="set-card">
+        <div class="set-card-h">Backups</div>
+        <div class="set-card-sub">Daily snapshots are saved automatically. Restoring replaces everything currently in the app with an older snapshot.</div>
+        <button class="btn btn-ghost btn-sm" id="loadBackupsBtn" type="button">⟳ Refresh backup list</button>
+        <div id="backupList" class="set-list"></div>
+        <div id="restoreSlot"></div>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -1769,6 +1843,26 @@
 <div id="tabSwitcherOverlay" class="tab-switcher-overlay" style="display:none;">
   <div class="tab-switcher-sheet" id="tabSwitcherSheet"></div>
   <div class="tab-switcher-hint" id="tabSwitcherHint">Slide onto a tab, then let go</div>
+</div>
+
+<!-- LEVEL UP — celebration popup, filled and opened by showLevelUp() in js/goals.js when total
+     exp crosses into a new level. Lives at body level, not inside a view, because exp comes from
+     two tabs (finishing a goal, ticking a checklist item) and it also has to sit ABOVE an open
+     goal sheet — which is where a goal usually gets its last subtask checked off. -->
+<div id="levelUpOverlay" class="levelup-overlay" style="display:none;" role="alertdialog" aria-modal="true" aria-labelledby="levelUpHeading">
+  <div class="levelup-card" id="levelUpCard">
+    <div class="levelup-rays" aria-hidden="true"></div>
+    <div class="levelup-eyebrow">Level Up</div>
+    <div class="levelup-medal" aria-hidden="true">
+      <span class="levelup-medal-lbl">LV</span>
+      <span class="levelup-medal-num" id="levelUpNum">2</span>
+    </div>
+    <div class="levelup-heading" id="levelUpHeading">You reached Level 2</div>
+    <div class="levelup-jump" id="levelUpJump"></div>
+    <div class="levelup-tier" id="levelUpTier"></div>
+    <div class="levelup-next" id="levelUpNext"></div>
+    <button class="btn btn-primary levelup-btn" id="levelUpClose" type="button">Keep going</button>
+  </div>
 </div>
 
 <script src="js/core.js"></script>

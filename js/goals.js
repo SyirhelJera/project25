@@ -166,6 +166,23 @@
     while(exp >= floor + need){ floor += need; level++; need = Math.round(need*1.25); }
     return { level, into: exp-floor, need };
   }
+
+  /* Level tiers — the bronze/silver/gold/platinum/diamond progression the profile avatar's chest
+     pin already used. Owned here now, with names attached, because the level-up popup says the
+     tier out loud: avatarLevelColor() in fitness.js reads its colour off this, so a tier can't
+     mean one colour on the card and another in the popup. Highest threshold first — levelTier()
+     takes the first match. */
+  const LEVEL_TIERS = [
+    { at:30, label:'Diamond',  color:'#EC4899' },
+    { at:20, label:'Platinum', color:'#3B82F6' },
+    { at:10, label:'Gold',     color:'#F5A524' },
+    { at:5,  label:'Silver',   color:'#B7C0CC' },
+    { at:0,  label:'Bronze',   color:'#CD7F32' }
+  ];
+  function levelTier(level){
+    return LEVEL_TIERS.find(t=> level >= t.at) || LEVEL_TIERS[LEVEL_TIERS.length-1];
+  }
+
   function updateExpUI(){
     const exp = totalExp();
     const { level, into, need } = levelInfo(exp);
@@ -173,7 +190,144 @@
     el('pfExpNum').textContent = into + ' / ' + need + ' XP';
     el('pfExpFill').style.width = Math.round((into/need)*100) + '%';
     syncBoardStats();
+    noteLevelChange(level, into, need);
   }
+
+  /* ---------- level-up celebration ----------
+     Exp comes from two places (finishing a goal, ticking a checklist item) and both already funnel
+     through updateExpUI(), so the crossing is detected here rather than at either call site — a
+     third exp source would light this up for free.
+
+     state.lastLevelSeen is what makes it fire exactly once. It has to be persisted, because level
+     is derived from exp on every load: with no remembered mark, every reload after a level-up
+     would replay the popup. The first updateExpUI() of a session only *records* the level
+     (levelSeenPrimed) — at that point the number came out of storage rather than out of anything
+     the user just did, and levelling up on another device shouldn't ambush this one on open. A
+     level going DOWN (a finished goal reopened, a goal deleted) re-marks silently, so climbing
+     back over the same line celebrates again. */
+  let levelSeenPrimed = false;
+  // Called by applyLoadedState(). A backup restore (js/backups.js) re-applies a whole saved blob
+  // and re-renders WITHOUT a page reload, so the level can jump several steps in one go without
+  // anything having been earned — re-priming makes that land silently, same as a fresh load.
+  function resetLevelSeenPrime(){ levelSeenPrimed = false; }
+  function noteLevelChange(level, into, need){
+    const seen = state.lastLevelSeen;
+    if(!levelSeenPrimed || typeof seen !== 'number'){
+      levelSeenPrimed = true;
+      state.lastLevelSeen = level;
+      return;  // deliberately not saved: nothing changed for the user, the next real save carries it
+    }
+    if(level === seen) return;
+    state.lastLevelSeen = level;
+    save();  // before the popup, so closing the tab mid-celebration can't replay it on the next load
+    if(level > seen) showLevelUp(seen, level, into, need);
+  }
+
+  /* Confetti and the AudioContext both live in js/checklists.js (the checklist-completion
+     celebration) and are reused rather than copied — a second AudioContext means a second output
+     bus, which is exactly what the compressor over there exists to avoid. That file loads AFTER
+     this one, hence the typeof guards: the helpers are always defined by the time a level can
+     actually change, but not while this file is still executing. */
+  let levelUpOpen = false, levelUpHideTimer = null, levelUpReturnFocus = null;
+  function showLevelUp(from, to, into, need){
+    const overlay = el('levelUpOverlay'), card = el('levelUpCard');
+    if(!overlay || !card) return;  // stale cached index.html (see SHELL_ASSETS in sw.js) — skip, don't throw
+    const tier = levelTier(to);
+    card.style.setProperty('--lvl-color', tier.color);
+    el('levelUpNum').textContent = to;
+    el('levelUpHeading').textContent = 'You reached Level ' + to;
+    const jumped = to - from;
+    // finishing a Mythical goal is worth 200 exp, so more than one level at a time is possible
+    el('levelUpJump').textContent = 'Lv. ' + from + '  →  Lv. ' + to + (jumped > 1 ? '   (+' + jumped + ' levels)' : '');
+    // a tier only changes on the level that crosses into it — worth calling out, it's the rarer event
+    const tierChanged = levelTier(from).label !== tier.label;
+    const tierEl = el('levelUpTier');
+    tierEl.textContent = tierChanged ? 'New tier — ' + tier.label : tier.label + ' tier';
+    tierEl.classList.toggle('is-new', tierChanged);
+    el('levelUpNext').textContent = (need - into) + ' XP to Level ' + (to + 1);
+
+    clearTimeout(levelUpHideTimer);  // reopening mid-close must not get hidden by the old timer
+    if(!levelUpOpen){ levelUpReturnFocus = document.activeElement; lockPageScroll(); }
+    levelUpOpen = true;
+    overlay.style.display = 'flex';
+    // two frames, same reason as createSheet(): in one frame the browser coalesces the class change
+    // with display:flex and skips the transition entirely, so the card would just appear
+    requestAnimationFrame(()=> requestAnimationFrame(()=> overlay.classList.add('is-open')));
+    el('levelUpClose').focus({preventScroll:true});
+
+    if(typeof fireConfettiBurst === 'function'){
+      fireConfettiBurst();
+      // a second wave — a level outranks a checklist, and one burst is over in about a second
+      if(!wcReducedMotion) setTimeout(fireConfettiBurst, 420);
+    }
+    playLevelUpFanfare();
+  }
+
+  /* Settings → "Preview the celebration". Shows the popup for the level actually being worked
+     toward next, so the tier, the colour and the XP line are all the real ones rather than a
+     made-up sample. It goes through showLevelUp() like any other — which writes nothing to state
+     — so a preview can never consume the real celebration or move state.lastLevelSeen. */
+  function previewLevelUp(){
+    const current = levelInfo(totalExp()).level;
+    const next = current + 1;
+    // levelInfo() of the exp total the next level STARTS at: into = 0, need = that level's bar
+    const at = levelInfo(levelFloorExp(next));
+    showLevelUp(current, next, at.into, at.need);
+  }
+  // The exp total a level begins at — the inverse of levelInfo()'s loop, and the only other place
+  // the 100 / x1.25 curve is written down. Keep the two in step.
+  function levelFloorExp(level){
+    let exp = 0, need = 100;
+    for(let l = 1; l < level; l++){ exp += need; need = Math.round(need*1.25); }
+    return exp;
+  }
+
+  function closeLevelUp(){
+    if(!levelUpOpen) return;
+    levelUpOpen = false;
+    const overlay = el('levelUpOverlay');
+    overlay.classList.remove('is-open');
+    // released now rather than after the fade: the restore is a synchronous scrollTo, so doing it
+    // while the backdrop is still up keeps it invisible
+    unlockPageScroll();
+    if(levelUpReturnFocus && document.contains(levelUpReturnFocus)) levelUpReturnFocus.focus({preventScroll:true});
+    levelUpReturnFocus = null;
+    levelUpHideTimer = setTimeout(()=>{ overlay.style.display = 'none'; }, 260);  // after the fade out
+  }
+
+  /* A bigger sound than the checklist chime on purpose: a rising C-E-G-C run, then the whole triad
+     struck together underneath it. Same duck-aware split as playCelebrateChime() — when the in-app
+     player can be dipped it stays modest, and when the music is playing in YouTube Music's own tab
+     (nothing on this page can turn that down) it plays loud, with an octave doubling on top, since
+     a bright partial cuts through a dense mix better than raw volume does. */
+  function playLevelUpFanfare(){
+    if(typeof sfxOutput !== 'function' || !sfxOutput()) return;
+    const ducked = (typeof duckSessionMusic === 'function') ? duckSessionMusic(1700) : false;
+    const now = sfxCtx.currentTime;
+    const peak = ducked ? 0.20 : 0.36;
+    const notes = [523.25, 659.25, 783.99, 1046.5];  // C5 E5 G5 C6
+    notes.forEach((freq, i)=> sfxTone(freq, now + i*0.105, peak, 0.4));
+    const chord = now + 0.46;  // the run lands on the chord rather than just stopping
+    notes.forEach(freq=>{
+      sfxTone(freq, chord, peak*0.8, 1.2);
+      if(!ducked) sfxTone(freq*2, chord, peak*0.26, 0.9, 'triangle');
+    });
+  }
+
+  // Guarded as a block: with a stale cached index.html these elements are absent, and an
+  // addEventListener on null here would take the whole rest of goals.js down with it.
+  const levelUpOverlayEl = el('levelUpOverlay'), levelUpCloseEl = el('levelUpClose');
+  if(levelUpOverlayEl && levelUpCloseEl){
+    levelUpCloseEl.addEventListener('click', closeLevelUp);
+    levelUpOverlayEl.addEventListener('click', e=>{ if(e.target === levelUpOverlayEl) closeLevelUp(); });
+    // Capture phase + stopPropagation: the popup can be sitting on top of an open goal sheet, and
+    // one Escape should dismiss the popup only, not tear down the sheet underneath it too.
+    document.addEventListener('keydown', e=>{
+      if(e.key === 'Escape' && levelUpOpen){ e.stopPropagation(); closeLevelUp(); }
+    }, true);
+  }
+  const levelUpPreviewBtn = el('levelUpPreviewBtn');
+  if(levelUpPreviewBtn) levelUpPreviewBtn.addEventListener('click', previewLevelUp);
 
   /* The sidebar profile card is hidden below 760px, so level / net worth / fitness are mirrored
      onto the Goals board for phones. Copied from that card's own elements rather than recomputed:

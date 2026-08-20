@@ -1917,21 +1917,19 @@
         if(!oldRect || !newRect.width || !newRect.height) return;
         const dx = oldRect.left - newRect.left;
         const dy = oldRect.top - newRect.top;
-        const sx = oldRect.width / newRect.width;
-        const sy = oldRect.height / newRect.height;
-        if(Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx-1) < .01 && Math.abs(sy-1) < .01) return;
+        const sizeChanged = Math.abs(oldRect.width-newRect.width) > .5 || Math.abs(oldRect.height-newRect.height) > .5;
+        if(Math.abs(dx) < .5 && Math.abs(dy) < .5 && !sizeChanged) return;
         const timing = { duration:340, easing:'cubic-bezier(.22,1.12,.36,1)' };
         chip.animate([
-          { opacity:.82, transformOrigin:'left center', transform:'translate('+dx+'px,'+dy+'px) scale('+sx+','+sy+')' },
-          { opacity:1, transformOrigin:'left center', transform:'translate(0,0) scale(1,1)' }
+          { opacity:.82, transform:'translate('+dx+'px,'+dy+'px)' },
+          { opacity:1, transform:'translate(0,0)' }
         ], timing);
-        // Counter-scale the artwork so it stays circular while its containing chip expands or
-        // contracts. The rounded container clips it during the transition, like a matched view.
-        const image = chip.querySelector('.val-acct-chip-img');
-        if(image){
-          image.animate([
-            { transformOrigin:'left center', transform:'scale('+Math.min(4, 1/sx)+','+Math.min(2, 1/sy)+')' },
-            { transformOrigin:'left center', transform:'scale(1,1)' }
+        // Expansion is revealed from the avatar side instead of scaling the whole chip. That
+        // leaves the circular player-card artwork at its natural size throughout.
+        if(chip.classList.contains('active') && sizeChanged){
+          chip.animate([
+            { clipPath:'inset(0 calc(100% - 40px) 0 0 round 999px)' },
+            { clipPath:'inset(0 0 0 0 round 999px)' }
           ], timing);
         }
       });

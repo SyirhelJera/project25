@@ -2447,22 +2447,21 @@
      .val-toolbar and .val-add-row are reused by the Local Helper panel in Settings and by the
      store wishlist, neither of which wants this layout. */
   @media (max-width:760px){
-    /* "Custom order (drag to reorder)" is a wider option than the screen, so the select either
-       overflowed the strip or wrapped and left Refresh All alone on a right-aligned line. Each of
-       the two takes a full line of its own instead, Sort first, Refresh All against the list. */
-    #valToolbar{gap:8px;}
-    #valToolbar .val-sort-group{flex:1 1 100%;display:flex;min-width:0;}
+    /* Keep sorting and Refresh All together: the select absorbs the available width while the
+       action stays a compact, predictable button at the row's end. */
+    #valToolbar{gap:8px;flex-wrap:nowrap;}
+    #valToolbar .val-sort-group{flex:1 1 auto;display:flex;min-width:0;}
     #valToolbar .val-sort-group select{flex:1;min-width:0;}
-    #valToolbar .val-refresh-all-btn{flex:1 1 100%;margin-left:0;}
+    #valToolbar .val-refresh-all-btn{flex:0 0 auto;margin-left:0;padding-left:8px;padding-right:8px;white-space:nowrap;}
     /* tap targets, not pointer targets */
     #valToolbar .btn,#valToolbar select{min-height:38px;}
 
-    /* same treatment one strip up: the one-line form doesn't survive a phone, so the Riot ID keeps
-       a line of its own and region / platform / Add split the next one evenly below it */
-    #valAddRow{gap:6px;}
-    #valAddRow input.val-riotid-input{flex:1 1 100%;max-width:none;}
-    #valAddRow select{flex:1 1 0;min-width:0;}
-    #valAddRow .btn{flex:1 1 0;}
+    /* Keep the add-account controls in one compact line on phones. The Riot ID is the only field
+       allowed to give up width; the two short selects and Add remain reliably tappable. */
+    #valAddRow{gap:6px;flex-wrap:nowrap;}
+    #valAddRow input.val-riotid-input{flex:1 1 auto;min-width:0;max-width:none;}
+    #valAddRow select{flex:0 1 72px;width:72px;min-width:0;}
+    #valAddRow .btn{flex:0 0 74px;padding-left:8px;padding-right:8px;white-space:nowrap;}
     #valAddRow input,#valAddRow select,#valAddRow .btn{height:38px;}
 
     /* The card's own chrome is the budget: at the coarse-pointer 40px the two icon buttons plus
@@ -2659,17 +2658,17 @@
 
   /* Account chips share the available line rather than scrolling off-screen. Names ellipsize,
      keeping every tracked account visible at once. */
-  .val-acct-switcher{display:flex;align-items:center;gap:6px;flex:1;min-width:0;padding:2px 0;}
+  .val-acct-switcher{display:flex;align-items:center;gap:6px;flex:1;min-width:0;overflow:hidden;}
   .val-acct-chip{
     display:inline-flex;align-items:center;gap:8px;flex:1 1 0;min-width:0;
     background:var(--surface);border:1px solid var(--border);color:var(--muted);
     border-radius:999px;padding:1px 12px 1px 1px;font-size:12.5px;font-weight:600;
     font-family:'Inter',sans-serif;cursor:pointer;
-    transition:background-color .15s,border-color .15s,color .15s;max-width:none;min-height:36px;
+    transition:background-color .15s,border-color .15s,color .15s;max-width:none;min-height:40px;
     overflow:hidden;
   }
   .val-acct-chip.is-all{
-    width:36px;min-width:36px;flex:0 0 36px;padding:1px;justify-content:center;border-radius:50%;
+    width:40px;min-width:40px;flex:0 0 40px;padding:1px;justify-content:center;border-radius:50%;
     font-size:10px;
   }
   .val-acct-chip:hover{border-color:var(--violet);color:var(--text);}
@@ -2680,13 +2679,13 @@
     to{opacity:1;transform:translateX(0);}
   }
   .val-acct-chip-img{
-    width:32px;height:32px;object-fit:cover;flex:0 0 32px;
+    width:36px;height:36px;object-fit:cover;flex:0 0 36px;
     background:var(--surface-alt);border:0;border-radius:50%;
   }
   .val-acct-chip.active .val-acct-chip-img{border-color:rgba(255,255,255,.45);}
   .val-acct-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   /* A label that cannot fit becomes a true icon-only chip — no empty pill or padding remains. */
-  .val-acct-chip.is-icon-only{width:36px;min-width:36px;flex:0 0 36px;padding:1px;gap:0;border-radius:50%;}
+  .val-acct-chip.is-icon-only{width:40px;min-width:40px;flex:0 0 40px;padding:1px;gap:0;border-radius:50%;}
   .val-acct-chip.is-icon-only .val-acct-chip-img{width:100%;height:100%;flex:0 0 100%;border:0;}
   .val-acct-chip.is-icon-only .val-acct-chip-name{display:none;}
   /* the same two signals the nav badge carries, per account and in the place you pick accounts */
@@ -2698,7 +2697,7 @@
   /* rename only appears on the account you're already looking at — a pencil on every chip would
      be five affordances for something done once a year */
   .val-acct-edit{
-    display:inline-flex;align-items:center;justify-content:center;flex:none;
+    display:inline-flex;align-items:center;justify-content:center;flex:none;position:relative;z-index:1;
     width:22px;height:22px;border-radius:50%;border:1px solid var(--border);
     background:var(--surface);color:var(--muted);font-size:11px;cursor:pointer;transition:all .15s;
   }
@@ -2726,8 +2725,8 @@
      three levels; three different fills carried none.
 
      Spacing does the grouping the old even 16/16/14 rhythm couldn't: the two navigation strips sit
-     10px apart as one block, then an 18px gap before the controls that belong to the card below. */
-  #valSubtabToggle{margin-bottom:18px;}
+     10px apart as one block, then a compact 8px gap before the controls that belong to the card below. */
+  #valSubtabToggle{margin-bottom:8px;}
   #valStoreModeToggle button.active{background:var(--violet-pale);color:var(--violet-dark);font-weight:800;}
   /* the segmented controls are hit with a thumb here — the tab's other buttons already sit at 38px
      (.finance-subnav-btn) or 40px (.val-icon-btn on coarse pointers), and these were ~30px */
@@ -2760,7 +2759,7 @@
     .val-store-switcher-row select{flex:1 1 100%;max-width:none;min-width:0;min-height:44px;}
     /* full-width row of its own on phones, and chips grow to a thumb-sized target */
     .val-acct-switcher{flex:1 1 100%;}
-    .val-acct-chip{min-height:36px;font-size:13px;}
+    .val-acct-chip{min-height:40px;font-size:13px;}
     .val-acct-edit{width:30px;height:30px;}
     .val-acct-rename{flex:1 1 100%;}
     .val-acct-rename input{max-width:none;min-height:38px;}

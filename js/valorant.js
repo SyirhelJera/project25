@@ -539,10 +539,13 @@
     const stores = state.valorant.dailyStores || {};
     return Object.keys(stores).filter(label=>{
       const err = stores[label] && stores[label].error;
-      return !!err && /expired/i.test(err);
+      // "incomplete" is the pre-clid saved session: not expired, but fixed the same way
+      return !!err && /expired|incomplete/i.test(err);
     });
   }
   function updateValWishlistBadge(){
+    // the per-account ★ on the switcher chips is the same signal, so it refreshes here too
+    renderValAcctSwitcher();
     // one wishlist entry can match two store items, so count wishlisted skins, not pairings
     const matches = valCurrentWishlistMatches();
     const hits = new Set(matches.map(m=>m.label+'::'+m.wishlistId)).size;
@@ -1542,7 +1545,7 @@
         // is offered for that case only — a Riot outage shouldn't invite a pointless re-login.
         // escapeHtml() round-trips through textContent and so leaves double quotes alone; an
         // account label going into an attribute needs them handled here.
-        const canRelogin = /expired|invalid/i.test(ds.error);
+        const canRelogin = /expired|invalid|incomplete/i.test(ds.error);
         const reloginBtn = canRelogin
           ? '<button class="btn btn-ghost btn-sm val-relogin-btn" data-val-relogin="'+escapeHtml(label).replace(/"/g,'&quot;')+'">🔑 Re-login</button>'
           : '';
@@ -1864,6 +1867,195 @@
     renderValLive();
   }
 
+  /* ---- Account switcher: chips, not a dropdown.
+     The set is the union of accounts the helper has a session for and accounts that already have
+     store or inventory data, so a device without the helper running still shows everything it can
+     read. "All" only appears when there's more than one account to combine.
+     valSelectedLabel() is the single reader of the current choice — the <select> used to be the
+     source of truth for Settings' buttons too, and state was only a mirror of it. ---- */
+  function valAccountLabels(){
+    return Array.from(new Set([
+      ...valLocalStatus.accounts,
+      ...Object.keys(state.valorant.dailyStores||{}),
+      ...Object.keys(state.valorant.ownedSkins||{}),
+    ]));
+  }
+  // "" means All. A label that has since been deleted falls back to All rather than filtering the
+  // store down to an account that no longer exists.
+  function valSelectedLabel(){
+    const labels = valAccountLabels();
+    return labels.includes(state.valorant.selectedStoreLabel) ? state.valorant.selectedStoreLabel : '';
+  }
+
+  let valAcctRenaming = '';   // label being renamed, '' when not renaming — not persisted
+
+  function fitValAcctChips(wrap){
+    // Only the selected account stays expanded. Every other account is a compact circular
+    // player-card button, which keeps the switcher predictable regardless of label length.
+    const chips = Array.from(wrap.querySelectorAll('.val-acct-chip:not(.is-all)'));
+    chips.forEach(chip=>chip.classList.remove('is-icon-only'));
+    chips.forEach(chip=>{
+      if(!chip.classList.contains('active')) chip.classList.add('is-icon-only');
+    });
+  }
+
+  function captureValAcctChipRects(wrap){
+    const rects = new Map();
+    wrap.querySelectorAll('[data-acct]').forEach(chip=>{
+      rects.set(chip.getAttribute('data-acct'), chip.getBoundingClientRect());
+    });
+    return rects;
+  }
+
+  function animateValAcctChipLayout(wrap, before){
+    // FLIP animation: render the new selection immediately, then visually move each new chip
+    // from its old bounds. It animates the expand/minimize change without delaying the UI state.
+    requestAnimationFrame(()=>{
+      wrap.querySelectorAll('[data-acct]').forEach(chip=>{
+        const oldRect = before.get(chip.getAttribute('data-acct'));
+        const newRect = chip.getBoundingClientRect();
+        if(!oldRect || !newRect.width || !newRect.height) return;
+        const dx = oldRect.left - newRect.left;
+        const dy = oldRect.top - newRect.top;
+        const sx = oldRect.width / newRect.width;
+        const sy = oldRect.height / newRect.height;
+        if(Math.abs(dx) < .5 && Math.abs(dy) < .5 && Math.abs(sx-1) < .01 && Math.abs(sy-1) < .01) return;
+        const timing = { duration:340, easing:'cubic-bezier(.22,1.12,.36,1)' };
+        chip.animate([
+          { opacity:.82, transformOrigin:'left center', transform:'translate('+dx+'px,'+dy+'px) scale('+sx+','+sy+')' },
+          { opacity:1, transformOrigin:'left center', transform:'translate(0,0) scale(1,1)' }
+        ], timing);
+        // Counter-scale the artwork so it stays circular while its containing chip expands or
+        // contracts. The rounded container clips it during the transition, like a matched view.
+        const image = chip.querySelector('.val-acct-chip-img');
+        if(image){
+          image.animate([
+            { transformOrigin:'left center', transform:'scale('+Math.min(4, 1/sx)+','+Math.min(2, 1/sy)+')' },
+            { transformOrigin:'left center', transform:'scale(1,1)' }
+          ], timing);
+        }
+      });
+    });
+  }
+
+  function renderValAcctSwitcher(){
+    const wrap = el('valAcctSwitcher'); if(!wrap) return;
+    const renameWrap = el('valAcctRename');
+    if(valAcctRenaming){
+      wrap.style.display = 'none';
+      if(renameWrap) renameWrap.style.display = 'flex';
+      return;
+    }
+    wrap.style.display = 'flex';
+    if(renameWrap) renameWrap.style.display = 'none';
+
+    const labels = valAccountLabels();
+    const selected = valSelectedLabel();
+    const stores = state.valorant.dailyStores || {};
+    const stale = valExpiredSessionLabels();
+    // counted once for the row: one wishlist entry can match two store items, so count skins
+    const wishHits = {};
+    valCurrentWishlistMatches().forEach(m=>{
+      (wishHits[m.label] || (wishHits[m.label] = new Set())).add(m.wishlistId);
+    });
+
+    let html = '';
+    if(labels.length > 1){
+      html += '<button type="button" role="tab" class="val-acct-chip is-all'+(selected===''?' active':'')+'"'
+        + ' aria-selected="'+(selected===''?'true':'false')+'" data-acct="">All</button>';
+    }
+    html += labels.map(label=>{
+      const ds = stores[label] || {};
+      // the equipped player card, already fetched by the store check — an account is easier to
+      // recognise by its card than by whatever it got called
+      const img = ds.identity && (ds.identity.cardSmall || ds.identity.cardWide);
+      const hits = wishHits[label] ? wishHits[label].size : 0;
+      const isStale = stale.includes(label);
+      const active = selected === label;
+      // escapeHtml() leaves double quotes alone, so anything going into an attribute needs them
+      const attr = escapeHtml(label).replace(/"/g,'&quot;');
+      return '<button type="button" role="tab" class="val-acct-chip'+(active?' active':'')+'"'
+        + ' aria-selected="'+(active?'true':'false')+'" aria-label="'+attr+'" data-acct="'+attr+'" title="'+attr+'">'
+        + (img ? '<img class="val-acct-chip-img" src="'+escapeHtml(img).replace(/"/g,'&quot;')+'" alt="">' : '')
+        + '<span class="val-acct-chip-name">'+escapeHtml(label)+'</span>'
+        + (hits ? '<span class="val-acct-chip-mark is-wish" aria-hidden="true" title="Wishlisted skin in today\'s store">★</span>' : '')
+        + (isStale ? '<span class="val-acct-chip-mark is-stale" aria-hidden="true" title="Session needs re-login">⚠</span>' : '')
+        + '</button>';
+    }).join('');
+    if(selected){
+      html += '<button type="button" class="val-acct-edit" id="valAcctEditBtn"'
+        + ' title="Rename this account" aria-label="Rename this account"><span aria-hidden="true">✎</span></button>';
+    }
+    wrap.innerHTML = html;
+    requestAnimationFrame(()=>fitValAcctChips(wrap));
+  }
+
+  function startValAcctRename(){
+    const label = valSelectedLabel(); if(!label) return;
+    valAcctRenaming = label;
+    renderValAcctSwitcher();
+    const input = el('valAcctRenameInput');
+    input.value = label;
+    input.focus();
+    input.select();
+  }
+  function cancelValAcctRename(){
+    valAcctRenaming = '';
+    renderValAcctSwitcher();
+  }
+
+  // The label is the key in five places: the helper's session file, the widget's snapshot file,
+  // and dailyStores / ownedSkins / wishlist in the shared row (plus live.label, which pins an
+  // account for Live Match). The helper owns the two files; everything else moves here and rides
+  // out on the next save().
+  async function commitValAcctRename(){
+    const from = valAcctRenaming;
+    const to = el('valAcctRenameInput').value.trim();
+    if(!from) return;
+    if(!to){ showValLocalErr('Give the account a name.', 'valSettingsLocalErr'); return; }
+    if(to === from){ cancelValAcctRename(); return; }
+    if(valAccountLabels().includes(to)){ showValLocalErr('"'+to+'" is already a tracked account.', 'valSettingsLocalErr'); return; }
+    if(!valLocalStatus.connected){
+      showValLocalErr('Renaming needs the local helper running — it holds the saved session under that name.', 'valSettingsLocalErr');
+      return;
+    }
+
+    const saveBtn = el('valAcctRenameSaveBtn');
+    saveBtn.disabled = true; saveBtn.textContent = 'Renaming…';
+    try{
+      const res = await fetch(valLocalUrl()+'/rename-account', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken, from, to })
+      });
+      const json = await res.json().catch(()=>null);
+      if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Rename failed (HTTP '+res.status+').'));
+
+      // move every per-account bucket. Done after the helper agreed, so a failure there leaves the
+      // page's data and the session file agreeing on the old name rather than disagreeing.
+      ['dailyStores','ownedSkins','wishlist'].forEach(key=>{
+        const bag = state.valorant[key];
+        if(bag && Object.prototype.hasOwnProperty.call(bag, from)){
+          bag[to] = bag[from];
+          delete bag[from];
+        }
+      });
+      if(state.valorant.selectedStoreLabel === from) state.valorant.selectedStoreLabel = to;
+      if(state.valorant.live && state.valorant.live.label === from) state.valorant.live.label = to;
+      save();
+
+      valAcctRenaming = '';
+      await pollValLocalStatus();
+      renderValorantStore();
+      renderValWishlist();
+      renderValOwnedSkins();
+    }catch(e){
+      showValLocalErr((e && e.message) || 'Could not reach the local helper.', 'valSettingsLocalErr');
+    }
+    saveBtn.disabled = false; saveBtn.textContent = 'Save';
+    renderValAcctSwitcher();
+  }
+
   function renderValLocalPanel(){
     const chip = el('valLocalStatusBtn'); if(!chip) return;
     const credsWrap = el('valLocalCredsPanel');
@@ -1887,6 +2079,8 @@
     el('valLocalStatusTxt').innerHTML = statusHtml;
     const settingsStatusEl = el('valSettingsLocalStatusTxt');
     if(settingsStatusEl) settingsStatusEl.innerHTML = statusHtml;
+    const addAcctStatusEl = el('valAddAccountHelperTxt');
+    if(addAcctStatusEl) addAcctStatusEl.innerHTML = statusHtml;
 
     // the chip is the whole status on this tab: dot for the state, and an accessible name that
     // says it rather than leaving a screen reader with "Helper ⓘ"
@@ -1902,11 +2096,7 @@
     // union of accounts the local server has a saved session for, and accounts that already
     // have store data — so a device without the local server running (or an account it doesn't
     // know about yet) can still pick from and view whatever's already been checked
-    const dropdownLabels = Array.from(new Set([...valLocalStatus.accounts, ...Object.keys(state.valorant.dailyStores||{}), ...Object.keys(state.valorant.ownedSkins||{})]));
-    const sel = el('valLocalAccountSelect');
-    sel.innerHTML = '<option value="">All accounts</option>'
-      + dropdownLabels.map(a=>'<option value="'+escapeHtml(a)+'">'+escapeHtml(a)+'</option>').join('');
-    sel.value = dropdownLabels.includes(state.valorant.selectedStoreLabel) ? state.valorant.selectedStoreLabel : '';
+    renderValAcctSwitcher();
 
     const disabled = !valLocalStatus.connected || valLocalStatus.busy;
     el('valLocalCheckBtn').disabled = disabled || !valLocalStatus.accounts.length;
@@ -1919,7 +2109,7 @@
     // dailyStores/ownedSkins data for the label — so it's available for "stale" labels too
     // (a dailyStores-only entry left over after a session was already removed), just not for
     // "All accounts"
-    el('valLocalDeleteBtn').disabled = disabled || !sel.value;
+    el('valLocalDeleteBtn').disabled = disabled || !valSelectedLabel();
     el('valLocalDeleteBtn').textContent = (valLocalStatus.busy && valLocalStatus.busyMsg==='delete') ? 'Deleting…' : '🗑 Delete';
     renderValLoginWinUi();
   }
@@ -2006,12 +2196,27 @@
     pollValLocalStatus();
   });
 
-  el('valLocalAccountSelect').addEventListener('change', ()=>{
-    state.valorant.selectedStoreLabel = el('valLocalAccountSelect').value;
+  // delegated: the chips are rebuilt by every renderValAcctSwitcher()
+  el('valAcctSwitcher').addEventListener('click', e=>{
+    const edit = e.target.closest && e.target.closest('#valAcctEditBtn');
+    if(edit){ startValAcctRename(); return; }
+    const chip = e.target.closest && e.target.closest('[data-acct]');
+    if(!chip) return;
+    const switcher = el('valAcctSwitcher');
+    const before = captureValAcctChipRects(switcher);
+    state.valorant.selectedStoreLabel = chip.getAttribute('data-acct');
     save();
+    renderValAcctSwitcher();
+    animateValAcctChipLayout(switcher, before);
     renderValorantStore();
     renderValWishlist(); // wishlist is per-account, so it needs to follow the same switcher
     renderValOwnedSkins(); // ditto — owned skins are per account too
+  });
+  el('valAcctRenameSaveBtn').addEventListener('click', commitValAcctRename);
+  el('valAcctRenameCancelBtn').addEventListener('click', cancelValAcctRename);
+  el('valAcctRenameInput').addEventListener('keydown', e=>{
+    if(e.key === 'Enter') commitValAcctRename();
+    else if(e.key === 'Escape'){ e.stopPropagation(); cancelValAcctRename(); }
   });
 
   // Shared by the Check Store Now button and by a successful re-login (which chains straight into
@@ -2039,12 +2244,12 @@
 
   el('valLocalCheckBtn').addEventListener('click', async ()=>{
     el('valSettingsLocalErr').style.display = 'none';
-    await runValStoreCheck(el('valLocalAccountSelect').value);
+    await runValStoreCheck(valSelectedLabel());
   });
 
   el('valLocalCheckInventoryBtn').addEventListener('click', async ()=>{
     el('valSettingsLocalErr').style.display = 'none';
-    const label = el('valLocalAccountSelect').value;
+    const label = valSelectedLabel();
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check-inventory'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/check-inventory', {
@@ -2066,7 +2271,7 @@
 
   el('valLocalDeleteBtn').addEventListener('click', async ()=>{
     el('valSettingsLocalErr').style.display = 'none';
-    const label = el('valLocalAccountSelect').value;
+    const label = valSelectedLabel();
     if(!label) return; // button is disabled in this case, but guard anyway
     const hasSession = valLocalStatus.accounts.includes(label);
     const confirmMsg = hasSession
@@ -2095,19 +2300,24 @@
     el('valSettingsLocalErr').style.display = 'none';
     const label = el('valLocalNewLabel').value.trim();
     const ssid = el('valLocalNewSsid').value.trim();
+    const clid = el('valLocalNewClid').value.trim();
     if(!label){ showValLocalErr('Enter a label for this account, e.g. "main".', 'valSettingsLocalErr'); return; }
     if(!ssid){ showValLocalErr('Paste the ssid cookie value (see the note below) — log into playvalorant.com in your own browser first, then copy it from DevTools.', 'valSettingsLocalErr'); return; }
+    // not optional: Riot refuses an ssid-only reauth in a way that reads as "session expired",
+    // so accepting one here would just save a session that silently never works
+    if(!clid){ showValLocalErr('Paste the clid cookie value too — it sits next to ssid under auth.riotgames.com, and Riot rejects the session without it.', 'valSettingsLocalErr'); return; }
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'login'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/login', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: state.valorant.localServerToken, label, ssid })
+        body: JSON.stringify({ token: state.valorant.localServerToken, label, ssid, clid })
       });
       const json = await res.json().catch(()=>null);
       if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Login failed (HTTP '+res.status+').'));
       el('valLocalNewLabel').value = '';
       el('valLocalNewSsid').value = '';
+      el('valLocalNewClid').value = '';
     }catch(e){
       showValLocalErr((e && e.message) || 'Could not reach the local helper.', 'valSettingsLocalErr');
     }
@@ -2139,18 +2349,28 @@
     }
     const cancelBtn = el('valLocalLoginWindowCancelBtn');
     if(cancelBtn) cancelBtn.style.display = busy ? 'inline-flex' : 'none';
-    const st = el('valLoginWindowStatus');
-    if(st){
+    // the Add-account modal carries its own pair of these; one job, two places showing it
+    const mBtn = el('valAddAccountWindowBtn');
+    if(mBtn){
+      mBtn.disabled = !valLocalStatus.connected || valLocalStatus.busy || busy;
+      mBtn.textContent = busy ? 'Waiting for sign-in…' : '🌐 Log in with browser';
+    }
+    const mCancel = el('valAddAccountWindowCancelBtn');
+    if(mCancel) mCancel.style.display = busy ? 'inline-flex' : 'none';
+    [el('valLoginWindowStatus'), el('valAddAccountWindowStatus')].forEach(st=>{
+      if(!st) return;
       st.textContent = valLoginWin.msg || '';
       st.style.display = valLoginWin.msg ? 'block' : 'none';
-    }
+    });
     // the same job seen from the other end: the Re-login buttons sitting in the store's
     // expired-session banners. They're rebuilt by every store render, so they're addressed by
     // query rather than held onto.
+    // only the account a window is actually open for — the button opens a paste dialog now, so
+    // blocking every other account's while one sign-in is in flight would just be in the way
     document.querySelectorAll('[data-val-relogin]').forEach(b=>{
-      b.disabled = busy;
-      b.textContent = (busy && b.getAttribute('data-val-relogin') === valLoginWin.label)
-        ? 'Waiting for sign-in…' : '🔑 Re-login';
+      const mine = busy && b.getAttribute('data-val-relogin') === valLoginWin.label;
+      b.disabled = mine;
+      b.textContent = mine ? 'Waiting for sign-in…' : '🔑 Re-login';
     });
   }
 
@@ -2189,6 +2409,10 @@
         valLoginWin.msg = 'Saved a fresh session for "'+label+'".';
         if(el('valLocalNewLabel')) el('valLocalNewLabel').value = '';
         if(el('valLocalNewSsid')) el('valLocalNewSsid').value = '';
+        if(el('valLocalNewClid')) el('valLocalNewClid').value = '';
+        if(el('valAddAccountSsid')) el('valAddAccountSsid').value = '';
+        if(el('valAddAccountClid')) el('valAddAccountClid').value = '';
+        if(el('valAddAccountOverlay') && el('valAddAccountOverlay').style.display === 'flex') closeValAddAccount();
         renderValLoginWinUi();
         await pollValLocalStatus();
         // an expired session is the reason this button exists, and that account's store is stale
@@ -2245,12 +2469,122 @@
   }
 
   // Delegated, because these buttons live inside markup renderValorantStore() rebuilds wholesale.
-  // Re-logging in from the banner also re-runs that account's store check on success.
+  // Opens the paste dialog rather than launching a browser window: re-logging in is usually a
+  // copy of two cookies you already have open in DevTools, and a window that opens itself is a
+  // worse default than one you can still choose from inside the dialog.
   document.addEventListener('click', e=>{
     const btn = e.target && e.target.closest && e.target.closest('[data-val-relogin]');
     if(!btn) return;
-    startValLoginWindow(btn.getAttribute('data-val-relogin'), { autoCheck:true });
+    openValAddAccount({ label: btn.getAttribute('data-val-relogin') });
   });
+
+  /* ---- Add account, from the Shop Tracker itself rather than from Settings. Two ways in, both
+     ending at the same POST /login: the browser window (which captures the whole cookie jar), or
+     a pasted ssid.
+
+     clid is deliberately a second, optional field rather than a required one. Riot validates it —
+     only the account's own cluster code is accepted — but a session that lives on the *default*
+     cluster reauths with no clid at all, which is why some accounts need it and some don't. So
+     the ssid is tried on its own first and Riot gets to say whether that's enough; the field is
+     there, labelled, for when the answer is no. Guessing cluster codes here would be traffic
+     spent on something the user can read off the same DevTools screen. ---- */
+  let valAddAccountReturnFocus = null;
+
+  function showValAddAccountErr(msg){
+    const e2 = el('valAddAccountErr');
+    if(!e2) return;
+    e2.textContent = msg;
+    e2.style.display = msg ? 'block' : 'none';
+  }
+
+  // opts.label switches the dialog into "refresh this account's session" mode: same fields, same
+  // POST /login, but the name is fixed — saving under the existing label replaces its cookies and
+  // leaves its wishlist, store history and owned-skin list attached.
+  function openValAddAccount(opts){
+    const ov = el('valAddAccountOverlay'); if(!ov) return;
+    const relogin = (opts && opts.label) || '';
+    showValAddAccountErr('');
+    el('valAddAccountSsid').value = '';
+    el('valAddAccountClid').value = '';
+    el('valAddAccountLabel').value = relogin;
+    el('valAddAccountLabel').readOnly = !!relogin;
+    el('valAddAccountModalTitle').textContent = relogin ? 'Re-login' : 'Add account';
+    el('valAddAccountReloginNote').style.display = relogin ? 'block' : 'none';
+    el('valAddAccountSaveBtn').textContent = relogin ? 'Save session' : 'Add account';
+    ov.style.display = 'flex';
+    valAddAccountReturnFocus = document.activeElement;
+    renderValLocalPanel();   // syncs the helper line and the window buttons inside the modal
+    // same rule as the wishlist modal: never steal focus into a field on touch, where it throws
+    // the keyboard up before you've read anything
+    const autoFocus = !window.matchMedia || window.matchMedia('(hover:hover) and (pointer:fine)').matches;
+    if(!autoFocus) el('valAddAccountCloseBtn').focus();
+    else if(relogin) el('valAddAccountSsid').focus();   // the name is already known
+    else el('valAddAccountLabel').focus();
+  }
+  function closeValAddAccount(){
+    const ov = el('valAddAccountOverlay'); if(!ov) return;
+    ov.style.display = 'none';
+    if(valAddAccountReturnFocus && document.contains(valAddAccountReturnFocus)) valAddAccountReturnFocus.focus();
+    valAddAccountReturnFocus = null;
+  }
+
+  if(el('valAddAccountModalBtn')){
+    el('valAddAccountModalBtn').addEventListener('click', ()=>openValAddAccount());
+    el('valAddAccountCloseBtn').addEventListener('click', closeValAddAccount);
+    el('valAddAccountOverlay').addEventListener('click', e=>{
+      if(e.target === el('valAddAccountOverlay')) closeValAddAccount();
+    });
+    document.addEventListener('keydown', e=>{
+      if(e.key !== 'Escape') return;
+      if(el('valAddAccountOverlay').style.display !== 'flex') return;
+      // a sign-in window is a job on another machine; Escape shouldn't silently orphan it
+      if(valLoginWin.active) return;
+      closeValAddAccount();
+    });
+
+    el('valAddAccountWindowBtn').addEventListener('click', ()=>{
+      startValLoginWindow(el('valAddAccountLabel').value.trim(), { errTarget:'valAddAccountErr', autoCheck:true });
+    });
+    el('valAddAccountWindowCancelBtn').addEventListener('click', async ()=>{
+      try{ await valLoginWindowPost('/login-window-cancel'); }catch(e){ /* the poll reports it */ }
+    });
+
+    el('valAddAccountSaveBtn').addEventListener('click', async ()=>{
+      showValAddAccountErr('');
+      const label = el('valAddAccountLabel').value.trim();
+      const ssid = el('valAddAccountSsid').value.trim();
+      const clid = el('valAddAccountClid').value.trim();
+      if(!label){ showValAddAccountErr('Give this account a name, e.g. "main".'); return; }
+      if(!ssid){ showValAddAccountErr('Paste the ssid cookie value, or use "Log in with browser" above.'); return; }
+      if(!valLocalStatus.connected){ showValAddAccountErr('The local helper isn\'t running — start it with `node scripts/valorant-local-server.mjs` on this machine.'); return; }
+
+      const btn = el('valAddAccountSaveBtn');
+      const wasLabel = btn.textContent;
+      btn.disabled = true; btn.textContent = 'Checking…';
+      try{
+        const res = await fetch(valLocalUrl()+'/login', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ token: state.valorant.localServerToken, label, ssid, clid: clid || undefined })
+        });
+        const json = await res.json().catch(()=>null);
+        if(!res.ok || !json || json.ok===false) throw new Error((json && json.error) || ('Could not save the account (HTTP '+res.status+').'));
+        el('valAddAccountSsid').value = '';
+        el('valAddAccountClid').value = '';
+        closeValAddAccount();
+        await pollValLocalStatus();
+        // a just-added account has no store yet, and fetching it is the whole reason it was added
+        await runValStoreCheck(label, 'valSettingsLocalErr');
+      }catch(e){
+        showValAddAccountErr((e && e.message) || 'Could not reach the local helper.');
+      }
+      btn.disabled = false; btn.textContent = wasLabel;
+    });
+
+    ['valAddAccountLabel','valAddAccountSsid','valAddAccountClid'].forEach(id=>{
+      el(id).addEventListener('keydown', e=>{ if(e.key==='Enter') el('valAddAccountSaveBtn').click(); });
+    });
+  }
 
   if(!(usingClaudeStorage || !supabaseConfigured)){
     pollValLocalStatus();
@@ -3579,4 +3913,3 @@
     fetchValorantAccount(acc.id);
   });
   el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valAddAccountBtn').click(); });
-

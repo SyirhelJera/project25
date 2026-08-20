@@ -2194,6 +2194,7 @@
      reach them — they have to be named or their controls lose the ring entirely */
   #view-games :is(button,input,select,summary,[tabindex]):focus-visible,
   .val-preview-card :is(button,input):focus-visible,
+  .val-addacct-modal :is(button,input):focus-visible,
   .val-wishlist-modal :is(button,input):focus-visible{
     outline:2px solid var(--violet);
     outline-offset:2px;
@@ -2612,6 +2613,18 @@
   /* wishlist modal — narrower than the item preview: it's a list of short rows plus one input,
      and a 520px column of 40px rows reads better than a wide one with acres of empty right edge */
   .val-wishlist-modal{max-width:460px;}
+  .val-addacct-modal{max-width:460px;}
+  .val-addacct-modal .fitness-field{margin-bottom:12px;}
+  .val-addacct-modal .val-toolbar{margin-bottom:0;}
+  /* a labelled divider between the two ways in, so "or paste it" reads as an alternative to the
+     button above rather than a heading for everything below it */
+  .val-addacct-or{
+    display:flex;align-items:center;gap:10px;
+    margin:16px 0 12px;font-size:11px;font-weight:700;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--faint);
+  }
+  .val-addacct-or::before,.val-addacct-or::after{content:"";flex:1;height:1px;background:var(--border);}
+  .val-addacct-opt{font-weight:500;text-transform:none;letter-spacing:0;color:var(--faint);}
   /* the standalone VP calculator: one field and a plan, so narrower still */
   .val-vp-calc-modal{max-width:420px;}
   .val-vp-calc-modal .unit-toggle{margin-bottom:14px;}
@@ -2643,6 +2656,59 @@
   .val-store-switcher-row{margin-bottom:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .val-store-switcher-lbl{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;flex:none;}
   .val-store-switcher-row select{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:'Inter',sans-serif;flex:1;min-width:150px;max-width:220px;}
+
+  /* Account chips share the available line rather than scrolling off-screen. Names ellipsize,
+     keeping every tracked account visible at once. */
+  .val-acct-switcher{display:flex;align-items:center;gap:6px;flex:1;min-width:0;padding:2px 0;}
+  .val-acct-chip{
+    display:inline-flex;align-items:center;gap:8px;flex:1 1 0;min-width:0;
+    background:var(--surface);border:1px solid var(--border);color:var(--muted);
+    border-radius:999px;padding:1px 12px 1px 1px;font-size:12.5px;font-weight:600;
+    font-family:'Inter',sans-serif;cursor:pointer;
+    transition:background-color .15s,border-color .15s,color .15s;max-width:none;min-height:36px;
+    overflow:hidden;
+  }
+  .val-acct-chip.is-all{
+    width:36px;min-width:36px;flex:0 0 36px;padding:1px;justify-content:center;border-radius:50%;
+    font-size:10px;
+  }
+  .val-acct-chip:hover{border-color:var(--violet);color:var(--text);}
+  .val-acct-chip.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .val-acct-chip.active .val-acct-chip-name{animation:val-acct-name-reveal .18s ease-out both;}
+  @keyframes val-acct-name-reveal{
+    from{opacity:0;transform:translateX(-4px);}
+    to{opacity:1;transform:translateX(0);}
+  }
+  .val-acct-chip-img{
+    width:32px;height:32px;object-fit:cover;flex:0 0 32px;
+    background:var(--surface-alt);border:0;border-radius:50%;
+  }
+  .val-acct-chip.active .val-acct-chip-img{border-color:rgba(255,255,255,.45);}
+  .val-acct-chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* A label that cannot fit becomes a true icon-only chip — no empty pill or padding remains. */
+  .val-acct-chip.is-icon-only{width:36px;min-width:36px;flex:0 0 36px;padding:1px;gap:0;border-radius:50%;}
+  .val-acct-chip.is-icon-only .val-acct-chip-img{width:100%;height:100%;flex:0 0 100%;border:0;}
+  .val-acct-chip.is-icon-only .val-acct-chip-name{display:none;}
+  /* the same two signals the nav badge carries, per account and in the place you pick accounts */
+  .val-acct-chip-mark{font-size:10px;flex:none;line-height:1;}
+  .val-acct-chip-mark.is-wish{color:var(--vp-gold);}
+  .val-acct-chip.active .val-acct-chip-mark.is-wish{color:#FFE9A8;}
+  .val-acct-chip-mark.is-stale{color:var(--danger);}
+  .val-acct-chip.active .val-acct-chip-mark.is-stale{color:#FFD9D9;}
+  /* rename only appears on the account you're already looking at — a pencil on every chip would
+     be five affordances for something done once a year */
+  .val-acct-edit{
+    display:inline-flex;align-items:center;justify-content:center;flex:none;
+    width:22px;height:22px;border-radius:50%;border:1px solid var(--border);
+    background:var(--surface);color:var(--muted);font-size:11px;cursor:pointer;transition:all .15s;
+  }
+  .val-acct-edit:hover{border-color:var(--violet);color:var(--violet);}
+  .val-acct-rename{display:flex;align-items:center;gap:6px;flex:1;min-width:0;}
+  .val-acct-rename input{
+    background:var(--surface);border:1px solid var(--violet);color:var(--text);
+    border-radius:8px;padding:7px 10px;font-size:12.5px;font-family:'Inter',sans-serif;
+    flex:1;min-width:0;max-width:220px;
+  }
   .val-store-switcher-row select:hover{border-color:var(--violet);}
   /* Store / Owned Skins switch — same pill toggle as elsewhere, minus the standalone bottom
      margin since it's sharing a flex row with the account dropdown */
@@ -2692,6 +2758,12 @@
        buttons grow to 40 — the select and the helper square follow it rather than the other way
        round, since the tappable thing is the button inside the tray, not the tray. */
     .val-store-switcher-row select{flex:1 1 100%;max-width:none;min-width:0;min-height:44px;}
+    /* full-width row of its own on phones, and chips grow to a thumb-sized target */
+    .val-acct-switcher{flex:1 1 100%;}
+    .val-acct-chip{min-height:36px;font-size:13px;}
+    .val-acct-edit{width:30px;height:30px;}
+    .val-acct-rename{flex:1 1 100%;}
+    .val-acct-rename input{max-width:none;min-height:38px;}
     .val-store-switcher-row .unit-toggle{flex:1 1 auto;display:flex;padding:2px;}
     .val-store-switcher-row .unit-toggle button{flex:1;padding:6px 8px;font-size:12px;}
     /* the screen tabs take the full width as three equal thirds — an inline pill strip that

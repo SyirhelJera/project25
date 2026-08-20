@@ -708,8 +708,18 @@
       <div class="view-sub" id="valStoreUnavailable" style="display:none;">Daily store checks need the Supabase-hosted deployment (a scheduled local script writes here — see README.md) and aren't available in this mode.</div>
 
       <div class="val-store-switcher-row">
-        <label class="val-store-switcher-lbl" for="valLocalAccountSelect">Account</label>
-        <select id="valLocalAccountSelect"><option value="">All accounts</option></select>
+        <!-- One chip per tracked account instead of a <select>: with a handful of accounts the
+             dropdown cost two clicks and hid the thing you were choosing between, while the chips
+             show each account's own player card and carry its wishlist/stale markers inline.
+             Built by renderValAcctSwitcher(). -->
+        <div class="val-acct-switcher" id="valAcctSwitcher" role="tablist" aria-label="Account"></div>
+        <!-- rename swaps in here, replacing the chips: an input inside a chip fights the row's
+             scroll and the chip's own click handler -->
+        <div class="val-acct-rename" id="valAcctRename" style="display:none;">
+          <input type="text" id="valAcctRenameInput" maxlength="30" autocomplete="off" aria-label="Account name">
+          <button class="btn btn-primary btn-sm" id="valAcctRenameSaveBtn">Save</button>
+          <button class="btn btn-ghost btn-sm" id="valAcctRenameCancelBtn">Cancel</button>
+        </div>
         <!-- Store vs Owned Skins, not Skins vs Accessories: the two shops are one purchase
              decision and now stack in the same column, while "what's for sale" and "what I already
              own" are the two things actually worth flipping between. -->
@@ -743,6 +753,11 @@
           <button type="button" class="val-card-action-btn val-wishlist-open-btn" id="valWishlistOpenBtn" aria-label="Wishlist">
             <span aria-hidden="true">★</span>
             <span class="val-wishlist-count" id="valWishlistCount"></span>
+          </button>
+          <!-- adding an account belongs next to the store it adds one to; Settings keeps the same
+               controls for the rest of the account admin (delete, token, manual check) -->
+          <button type="button" class="val-card-action-btn" id="valAddAccountModalBtn" aria-label="Add account" title="Add an account to track">
+            <span aria-hidden="true">＋</span>
           </button>
         </div>
         <div id="valStoreCard"></div>
@@ -963,6 +978,57 @@
        A body-level sibling of #view-games for the same reason the preview above is: it renders
        over the whole page, so it must not sit inside a pane that gets display:none'd. The list
        itself is per account and follows that row's account dropdown. -->
+  <!-- Add account. Body-level sibling of #view-games, same as the wishlist and preview overlays
+       (see CLAUDE.md) - the tab-scoped focus-ring rule can't reach it, so .val-addacct-modal is
+       named explicitly in that selector. -->
+  <div id="valAddAccountOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card val-addacct-modal" role="dialog" aria-modal="true" aria-labelledby="valAddAccountModalTitle">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title is-neutral" id="valAddAccountModalTitle">Add account</div>
+        <button type="button" class="val-preview-close" id="valAddAccountCloseBtn" title="Close">✕</button>
+      </div>
+      <div class="val-local-status" id="valAddAccountHelperTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+      <div id="valAddAccountBody">
+        <div class="view-sub">Track another Riot account's store. Give it a name, then either sign in through a browser window or paste the session cookie yourself.</div>
+
+        <div class="fitness-field">
+          <label for="valAddAccountLabel">Name</label>
+          <!-- read-only when the dialog was opened by a store banner's Re-login: the intent there
+               is "fix this account", and an editable name would quietly add a second one -->
+          <input type="text" id="valAddAccountLabel" placeholder='e.g. "main" or "smurf"' maxlength="30" autocomplete="off">
+        </div>
+        <div class="val-peak-note" id="valAddAccountReloginNote" style="display:none;">Refreshing this account's saved session — paste a fresh <code>ssid</code> and <code>clid</code> below and it keeps its name, wishlist and history.</div>
+
+        <div class="val-toolbar">
+          <button class="btn btn-primary btn-sm" id="valAddAccountWindowBtn" title="Opens a small browser window on Riot's login page and captures the session by itself">🌐 Log in with browser</button>
+          <button class="btn btn-ghost btn-sm" id="valAddAccountWindowCancelBtn" style="display:none;">Cancel</button>
+        </div>
+        <div class="val-peak-note" id="valAddAccountWindowStatus" style="display:none;"></div>
+
+        <div class="val-addacct-or">or paste it</div>
+
+        <div class="fitness-field">
+          <label for="valAddAccountSsid">ssid cookie</label>
+          <input type="password" id="valAddAccountSsid" placeholder="Paste the ssid cookie value" autocomplete="off">
+        </div>
+        <!-- Optional, and genuinely so: with no clid the reauth goes to Riot's default auth
+             cluster, which is where some accounts' sessions live and some don't. Asking for it
+             up front would be a field most people don't need; hiding it entirely would make the
+             ones who do need it unable to add an account at all. -->
+        <div class="fitness-field">
+          <label for="valAddAccountClid">clid cookie <span class="val-addacct-opt">— only if the ssid alone is refused</span></label>
+          <input type="password" id="valAddAccountClid" placeholder="Leave blank first; add it if you're asked to" autocomplete="off">
+        </div>
+        <div class="val-peak-note">Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code>. Both cookies are in that list, next to each other.</div>
+
+        <div class="val-err" id="valAddAccountErr" style="display:none;"></div>
+        <div class="val-toolbar" style="margin-top:12px;">
+          <button class="btn btn-primary" id="valAddAccountSaveBtn">Add account</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div id="valWishlistOverlay" class="struggle-overlay" style="display:none;">
     <div class="struggle-overlay-card val-wishlist-modal" role="dialog" aria-modal="true" aria-labelledby="valWishlistModalTitle">
       <div class="struggle-overlay-head">
@@ -1637,7 +1703,10 @@
       </div>
       <div class="val-add-row">
         <input type="text" id="valLocalNewLabel" placeholder='Account label, e.g. "main"' maxlength="30" style="flex:1;min-width:120px;">
-        <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:220px;">
+        <input type="password" id="valLocalNewSsid" placeholder="Paste the ssid cookie value" style="flex:2;min-width:200px;">
+        <!-- Riot rejects an ssid-only reauth (303 to the login page, indistinguishable from an
+             expired session), so clid is required, not optional. -->
+        <input type="password" id="valLocalNewClid" placeholder="Paste the clid cookie value" style="flex:2;min-width:200px;">
         <button class="btn btn-ghost" id="valLocalAddAccountBtn">+ Add Account</button>
       </div>
       <div class="val-toolbar">
@@ -1649,7 +1718,7 @@
         <button class="btn btn-ghost btn-sm" id="valLocalLoginWindowCancelBtn" style="display:none;">Cancel</button>
       </div>
       <div class="val-peak-note" id="valLoginWindowStatus" style="display:none;"></div>
-      <div class="val-peak-note">Type a label above, then <strong>Log in with browser</strong> — a small, empty browser window opens on Riot's login page, you sign in there as usual, and the session is saved under that label by itself. Use the same label as an existing account to refresh an expired session (the 🔑 Re-login button on the store's error banner does exactly this). Prefer to do it by hand? Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy the <code>ssid</code> value into the field above and press + Add Account.</div>
+      <div class="val-peak-note">Type a label above, then <strong>Log in with browser</strong> — a small, empty browser window opens on Riot's login page, you sign in there as usual, and the session is saved under that label by itself. Use the same label as an existing account to refresh an expired session (the 🔑 Re-login button on the store's error banner does exactly this). Prefer to do it by hand? Log into <code>playvalorant.com</code> in your own browser, then DevTools (F12) → Application → Cookies → <code>auth.riotgames.com</code> → copy <strong>both</strong> the <code>ssid</code> and the <code>clid</code> value into the fields above and press + Add Account. Riot needs the pair: <code>ssid</code> on its own is refused as though the session had expired.</div>
       <div class="val-err" id="valSettingsLocalErr" style="display:none;"></div>
 
       <div class="section-lbl" style="margin-top:18px;">Live Match</div>

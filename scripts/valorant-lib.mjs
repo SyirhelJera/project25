@@ -24,7 +24,7 @@ const STORE_SNAPSHOT_FILE = path.join(__dirname, '.valorant-latest-store.json');
 export function loadSessions(){
   if(!fs.existsSync(SESSION_FILE)) return {};
   const raw = JSON.parse(fs.readFileSync(SESSION_FILE, 'utf8'));
-  if (raw && raw.ssid && !raw.accounts) return { default: { ssid: raw.ssid, savedAt: raw.savedAt } };
+  if (raw && raw.ssid && !raw.accounts) return { default: { ssid: raw.ssid, clid: raw.clid, savedAt: raw.savedAt } };
   return raw.accounts || {};
 }
 export function saveSessions(accounts){
@@ -56,6 +56,19 @@ export function writeStoreSnapshot(label, entry){
   } catch (err) {
     console.error(`  (could not write local widget snapshot: ${err.message})`);
   }
+}
+
+// The widget reads this file and nothing else (see the comment on writeStoreSnapshot), so a
+// rename that skipped it would leave the widget showing the old name until the next check.
+export function renameStoreSnapshot(from, to){
+  try {
+    const snap = readStoreSnapshot();
+    if (!(from in snap.accounts)) return;
+    snap.accounts[to] = snap.accounts[from];
+    delete snap.accounts[from];
+    snap.updatedAt = Date.now();
+    fs.writeFileSync(STORE_SNAPSHOT_FILE, JSON.stringify(snap, null, 2));
+  } catch { /* cache-only — the next check rewrites it under the new name anyway */ }
 }
 
 export function deleteStoreSnapshot(label){
@@ -245,17 +258,42 @@ export async function notifyWishlistMatches(label, items, wishlist){
 // opens it in a real browser window so a human can sign in there and mint a fresh one.
 export const RIOT_AUTHORIZE_URL = 'https://auth.riotgames.com/authorize?redirect_uri=https%3A%2F%2Fplayvalorant.com%2Fopt_in&client_id=play-valorant-web-prod&response_type=token%20id_token&nonce=1&scope=account%20openid';
 
-export async function silentReauth(ssid){
+// A saved session is a small cookie jar, not one cookie. `ssid` identifies the session and
+// `clid` identifies the client it was issued to, and Riot requires BOTH: an ssid-only request is
+// answered with 303 -> authenticate.riotgames.com/login, which is indistinguishable from a genuinely
+// expired session and is exactly why a freshly-copied cookie could still read as "session expired".
+// The rest are sent when present because they cost nothing and the browser sends them too; only
+// ssid and clid are known to matter (tdid and csid were tested and don't).
+const SESSION_COOKIE_NAMES = ['ssid', 'clid', 'csid', 'tdid', 'ccid', 'asid', 'sub'];
+
+// Accepts a session record ({ssid, clid, ...}) or, for callers that predate the clid requirement,
+// a bare ssid string — which will fail the reauth, but with a message that says why.
+export function sessionCookieHeader(session){
+  const jar = typeof session === 'string' ? { ssid: session } : (session || {});
+  return SESSION_COOKIE_NAMES.filter(n => jar[n]).map(n => `${n}=${jar[n]}`).join('; ');
+}
+
+export async function silentReauth(session){
+  const jar = typeof session === 'string' ? { ssid: session } : (session || {});
+  if (!jar.ssid) throw new Error('No saved session for this account.');
+
   const authResp = await fetch(
     RIOT_AUTHORIZE_URL,
-    { redirect: 'manual', headers: { Cookie: `ssid=${ssid}`, 'User-Agent': RIOT_USER_AGENT } },
+    { redirect: 'manual', headers: { Cookie: sessionCookieHeader(jar), 'User-Agent': RIOT_USER_AGENT } },
   );
   const location = authResp.headers.get('location') || '';
   const frag = parseFragment(location);
   const accessToken = frag.get('access_token');
   const idToken = frag.get('id_token');
   if (!accessToken || !idToken) {
-    throw new Error('That session cookie is invalid or expired — log in again in your browser and copy a fresh ssid value.');
+    // Worth separating from "expired": with no clid the reauth goes to Riot's default auth
+    // cluster, which only works if that's where this session happens to live (it does for some
+    // accounts, not others). Retrying the same ssid can't fix it — the clid cookie can.
+    // The word "incomplete" is load-bearing: js/valorant.js matches it to offer Re-login.
+    if (!jar.clid) {
+      throw new Error('Valorant session incomplete — Riot refused it with only the ssid cookie. It also needs "clid", which sits right beside ssid under auth.riotgames.com.');
+    }
+    throw new Error('That session is invalid or expired — log in again to save a fresh one.');
   }
   return { accessToken, idToken };
 }
@@ -373,12 +411,16 @@ async function fetchWallet(shard, puuid, headers){
 //   nightMarket, identity, wallet, error:'' } on success, or throws an Error with a user-facing
 // message. Everything after the daily offers is best-effort: bundle, nightMarket, identity and
 // wallet each degrade to null rather than failing a check that otherwise worked.
-export async function checkAccountStore(label, ssid){
+export async function checkAccountStore(label, session){
   let accessToken, idToken;
   try {
-    ({ accessToken, idToken } = await silentReauth(ssid));
-  } catch {
-    throw new Error(`Valorant session expired — hit Re-login below to sign in again (or run \`node scripts/valorant-login-window.mjs ${label}\` on that machine).`);
+    ({ accessToken, idToken } = await silentReauth(session));
+  } catch (err) {
+    // silentReauth() already distinguishes "expired" from "incomplete"; keep its wording rather
+    // than flattening both into one misleading message, and add the way out.
+    // JSON.stringify quotes the label: these names routinely contain spaces and a #, either of
+    // which turns the suggested command into something the shell mangles.
+    throw new Error(`${err.message} Hit Re-login below to paste fresh cookies, or run \`node scripts/valorant-login.mjs ${JSON.stringify(label)} <ssid> <clid>\`.`);
   }
 
   // 2. Entitlements token.
@@ -631,12 +673,12 @@ async function fetchSkinCatalog(){
 // shape/contract as checkAccountStore() above. Runs its own reauth independently rather than
 // sharing a session with checkAccountStore() — a little more Riot traffic per manual click, but
 // keeps that already-working function untouched.
-export async function checkAccountOwnedSkins(label, ssid){
+export async function checkAccountOwnedSkins(label, session){
   let accessToken, idToken;
   try {
-    ({ accessToken, idToken } = await silentReauth(ssid));
-  } catch {
-    throw new Error(`Valorant session expired — run \`node scripts/valorant-login.mjs ${label}\` again to save a fresh cookie.`);
+    ({ accessToken, idToken } = await silentReauth(session));
+  } catch (err) {
+    throw new Error(`${err.message} Hit Re-login to paste fresh cookies, or run \`node scripts/valorant-login.mjs ${JSON.stringify(label)} <ssid> <clid>\`.`);
   }
 
   const entResp = await fetch('https://entitlements.auth.riotgames.com/api/token/v1', {

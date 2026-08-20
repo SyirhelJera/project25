@@ -2,8 +2,12 @@
 // scripts/valorant-login-window.mjs
 //
 // Opens a small, throwaway browser window on Riot's own login page, waits for YOU to sign in
-// there by hand, then picks the resulting `ssid` session cookie straight out of that window and
-// saves it under a label — so refreshing an expired session doesn't mean a trip through DevTools.
+// there by hand, then picks the resulting session cookies straight out of that window and saves
+// them under a label — so refreshing an expired session doesn't mean a trip through DevTools.
+//
+// Note "cookies", plural: Riot needs `ssid` AND `clid` together (see silentReauth() in
+// valorant-lib.mjs). That is the main practical advantage this has over the manual paste — the
+// cookie jar is taken whole, so the next cookie Riot decides to require is already there.
 //
 // ---------------------------------------------------------------------------------------------
 // Why this is NOT the Puppeteer login the README says won't come back
@@ -308,12 +312,17 @@ async function runLoginWindow(current, exe){
       cookies = [];
     }
 
-    const ssid = cookies.find(c => c.name === 'ssid' && c.value && /(^|\.)riotgames\.com$/.test(String(c.domain || '')));
-    if (ssid && ssid.value) {
+    // Take the whole Riot jar rather than hunting one cookie: silentReauth() decides which of
+    // them matter, and a login isn't finished until the set actually works.
+    const jar = {};
+    for (const c of cookies) {
+      if (c.value && /(^|\.)riotgames\.com$/.test(String(c.domain || ''))) jar[c.name] = c.value;
+    }
+    if (jar.ssid && jar.clid) {
       try {
-        // loginAccount() silent-reauths before saving, so a half-finished login (a cookie set
+        // loginAccount() silent-reauths before saving, so a half-finished login (cookies set
         // before the flow completed) fails here and the loop simply carries on waiting.
-        await loginAccount(current.label, ssid.value);
+        await loginAccount(current.label, jar);
         await finish('done', '');
         return;
       } catch { /* not a usable session yet — keep waiting */ }

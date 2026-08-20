@@ -162,16 +162,16 @@ const liveAuth = new Map();
 
 export function invalidateLiveAuth(label){ liveAuth.delete(label); }
 
-export async function ensureLiveAuth(label, ssid, opts = {}){
+export async function ensureLiveAuth(label, sess, opts = {}){
   const cached = liveAuth.get(label);
   if (cached && !opts.force && Date.now() < cached.expiresAt) return cached;
 
   let accessToken, idToken;
   try {
-    ({ accessToken, idToken } = await silentReauth(ssid));
-  } catch {
+    ({ accessToken, idToken } = await silentReauth(sess));
+  } catch (err) {
     throw new LiveError('session_expired',
-      `Valorant session expired — run \`node scripts/valorant-login.mjs ${label}\` again to save a fresh cookie.`);
+      `${err.message} Run \`node scripts/valorant-login-window.mjs ${label}\` on that machine to sign in again.`);
   }
 
   const entResp = await fetchJson('https://entitlements.auth.riotgames.com/api/token/v1', {
@@ -223,15 +223,15 @@ export async function ensureLiveAuth(label, ssid, opts = {}){
 
 // One wrapper so a token that expired mid-poll is retried exactly once rather than surfacing as a
 // spurious "not in a match". A second failure is a real session problem.
-async function riotFetch(auth, ssid, url, opts, timeoutMs){
+async function riotFetch(auth, sess, url, opts, timeoutMs){
   let res = await fetchJson(url, { ...opts, headers: { ...auth.headers, ...(opts && opts.headers) } }, timeoutMs);
   if (res.status === 401) {
     invalidateLiveAuth(auth.label);
-    const fresh = await ensureLiveAuth(auth.label, ssid, { force: true });
+    const fresh = await ensureLiveAuth(auth.label, sess, { force: true });
     Object.assign(auth, fresh);   // callers hold a reference; keep it pointing at live credentials
     res = await fetchJson(url, { ...opts, headers: { ...auth.headers, ...(opts && opts.headers) } }, timeoutMs);
     if (res.status === 401) throw new LiveError('session_expired',
-      `Valorant session expired — run \`node scripts/valorant-login.mjs ${auth.label}\` again to save a fresh cookie.`);
+      `Valorant session expired — run \`node scripts/valorant-login-window.mjs ${auth.label}\` on that machine to sign in again.`);
   }
   return res;
 }
@@ -251,7 +251,7 @@ function glzHost(region, shard){ return `https://glz-${region}-1.${shard}.a.pvp.
 // but it also 404s on the *correct* host when the game is closed, so a 200 is treated as proof
 // and a Riot-shaped error only as a hint. A region is written back to the session file only when
 // it was proven, never when it was guessed.
-export async function resolveGlzHost(auth, ssid, opts = {}){
+export async function resolveGlzHost(auth, sess, opts = {}){
   const shard = auth.shard;
   const candidates = REGION_CANDIDATES[shard] || [shard];
 
@@ -411,13 +411,13 @@ function resolveMode(match){
 
 // Coregame first, then pregame: if you're in a live game that's the answer, and only if you
 // aren't is it worth asking whether you're in agent select.
-async function fetchPresence(auth, ssid){
-  const core = await riotFetch(auth, ssid, `${auth.glzBase}/core-game/v1/players/${auth.puuid}`, {}, TIMEOUT.presence);
+async function fetchPresence(auth, sess){
+  const core = await riotFetch(auth, sess, `${auth.glzBase}/core-game/v1/players/${auth.puuid}`, {}, TIMEOUT.presence);
   if (core.ok && core.json?.MatchID) {
     confirmHost(auth);
     return { phase: 'coregame', matchId: core.json.MatchID };
   }
-  const pre = await riotFetch(auth, ssid, `${auth.glzBase}/pregame/v1/players/${auth.puuid}`, {}, TIMEOUT.presence);
+  const pre = await riotFetch(auth, sess, `${auth.glzBase}/pregame/v1/players/${auth.puuid}`, {}, TIMEOUT.presence);
   if (pre.ok && pre.json?.MatchID) {
     confirmHost(auth);
     return { phase: 'pregame', matchId: pre.json.MatchID };
@@ -454,8 +454,8 @@ function badgeOf(p){
   };
 }
 
-async function fetchCoreGameRoster(auth, ssid, matchId){
-  const res = await riotFetch(auth, ssid, `${auth.glzBase}/core-game/v1/matches/${matchId}`, {}, TIMEOUT.match);
+async function fetchCoreGameRoster(auth, sess, matchId){
+  const res = await riotFetch(auth, sess, `${auth.glzBase}/core-game/v1/matches/${matchId}`, {}, TIMEOUT.match);
   if (!res.ok) return null;
   const m = res.json || {};
   const players = (m.Players || [])
@@ -473,8 +473,8 @@ async function fetchCoreGameRoster(auth, ssid, matchId){
 
 // Pregame only ever exposes your own team — Riot doesn't hand out the enemy roster before the
 // barrier drops, and nothing here tries to work around that.
-async function fetchPregameRoster(auth, ssid, matchId){
-  const res = await riotFetch(auth, ssid, `${auth.glzBase}/pregame/v1/matches/${matchId}`, {}, TIMEOUT.match);
+async function fetchPregameRoster(auth, sess, matchId){
+  const res = await riotFetch(auth, sess, `${auth.glzBase}/pregame/v1/matches/${matchId}`, {}, TIMEOUT.match);
   if (!res.ok) return null;
   const m = res.json || {};
   const team = m.AllyTeam || (m.Teams || [])[0] || {};
@@ -489,8 +489,8 @@ async function fetchPregameRoster(auth, ssid, matchId){
   return { players, mapId: m.MapID || '', mode: resolveMode(m), enemyTeamSize: m.EnemyTeamSize || 0 };
 }
 
-async function fetchNames(auth, ssid, puuids){
-  const res = await riotFetch(auth, ssid, `${auth.pdBase}/name-service/v2/players`, {
+async function fetchNames(auth, sess, puuids){
+  const res = await riotFetch(auth, sess, `${auth.pdBase}/name-service/v2/players`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(puuids),
@@ -504,16 +504,16 @@ async function fetchNames(auth, ssid, puuids){
 
 /* ------------------------------------------------------------------ MMR */
 
-async function fetchMmr(auth, ssid, puuid){
+async function fetchMmr(auth, sess, puuid){
   const url = `${auth.pdBase}/mmr/v1/players/${puuid}`;
-  let res = await riotFetch(auth, ssid, url, {}, TIMEOUT.mmr);
+  let res = await riotFetch(auth, sess, url, {}, TIMEOUT.mmr);
   // ten of these go out at once the instant a match starts, which is also when the last lobby's
   // match-details sweep is still winding down — a 429 here is a "come back in a second", not an
   // answer about this player
   if (res.status === 429) {
     const wait = Math.min(5000, (Number(res.headers?.get('retry-after')) || 2) * 1000);
     await sleep(wait);
-    res = await riotFetch(auth, ssid, url, {}, TIMEOUT.mmr);
+    res = await riotFetch(auth, sess, url, {}, TIMEOUT.mmr);
   }
   if (!res.ok) {
     // deliberately returns ONLY the error: the caller Object.assign()s this onto the player, and
@@ -553,8 +553,8 @@ async function fetchMmr(auth, ssid, puuid){
 // Riot exposes each player's current party id, which is the only *authoritative* way to know who
 // queued together. It has restricted this for non-friends before, so a 403/404 here is treated as
 // "unknown", never as "solo" — and groupParties() falls back to the inferred signal below.
-async function fetchParty(auth, ssid, puuid){
-  const res = await riotFetch(auth, ssid, `${auth.glzBase}/parties/v1/players/${puuid}`, {}, TIMEOUT.party);
+async function fetchParty(auth, sess, puuid){
+  const res = await riotFetch(auth, sess, `${auth.glzBase}/parties/v1/players/${puuid}`, {}, TIMEOUT.party);
   if (!res.ok) return null;
   return res.json?.CurrentPartyID || null;
 }
@@ -563,8 +563,8 @@ async function fetchParty(auth, ssid, puuid){
 // nobody — a bucket of one isn't a stack. This is what turns it into "these three queued
 // together", and it's the one piece of party data Riot never withholds, because it's yours. So
 // however coy Riot is about the rest of the lobby, your own premade is never a guess.
-async function fetchPartyMembers(auth, ssid, partyId){
-  const res = await riotFetch(auth, ssid, `${auth.glzBase}/parties/v1/parties/${partyId}`, {}, TIMEOUT.party);
+async function fetchPartyMembers(auth, sess, partyId){
+  const res = await riotFetch(auth, sess, `${auth.glzBase}/parties/v1/parties/${partyId}`, {}, TIMEOUT.party);
   if (!res.ok) return null;
   return (res.json?.Members || []).map(m => m && m.Subject).filter(Boolean);
 }
@@ -634,24 +634,24 @@ function rebuildStacks(snap, inferredPairs){
 
 /* ------------------------------------------------------------------ agent stats */
 
-async function fetchHistory(auth, ssid, puuid, depth){
+async function fetchHistory(auth, sess, puuid, depth){
   const url = `${auth.pdBase}/match-history/v1/history/${puuid}?startIndex=0&endIndex=${depth}&queue=competitive`;
-  const res = await riotFetch(auth, ssid, url, {}, TIMEOUT.history);
+  const res = await riotFetch(auth, sess, url, {}, TIMEOUT.history);
   if (!res.ok) return null;
   return (res.json?.History || []).map(h => h.MatchID).filter(Boolean);
 }
 
 // Fetches one match and reduces it to the handful of bytes the comfort/win-rate maths needs.
 // Returns the cached summary when there is one, so the caller can count "new fetches" separately.
-async function fetchMatchSummary(auth, ssid, matchId){
+async function fetchMatchSummary(auth, sess, matchId){
   const cache = readMatchCache();
   if (cache[matchId]) return { summary: cache[matchId], cached: true };
 
-  let res = await riotFetch(auth, ssid, `${auth.pdBase}/match-details/v1/matches/${matchId}`, {}, TIMEOUT.details);
+  let res = await riotFetch(auth, sess, `${auth.pdBase}/match-details/v1/matches/${matchId}`, {}, TIMEOUT.details);
   if (res.status === 429) {
     const wait = Math.min(5000, (Number(res.headers?.get('retry-after')) || 2) * 1000);
     await sleep(wait);
-    res = await riotFetch(auth, ssid, `${auth.pdBase}/match-details/v1/matches/${matchId}`, {}, TIMEOUT.details);
+    res = await riotFetch(auth, sess, `${auth.pdBase}/match-details/v1/matches/${matchId}`, {}, TIMEOUT.details);
     if (res.status === 429) return { summary: null, cached: false, rateLimited: true };
   }
   if (!res.ok || !res.json) return { summary: null, cached: false };
@@ -736,7 +736,7 @@ function applyFinal(snap, summary){
   flushMatchCache();
 }
 
-function ensureFinalScoreboard(snap, auth, ssid){
+function ensureFinalScoreboard(snap, auth, sess){
   if (!snap.final || snap.final.state !== 'pending' || snap._finalRunning) return;
   snap._finalRunning = true;
   (async () => {
@@ -744,7 +744,7 @@ function ensureFinalScoreboard(snap, auth, ssid){
       if (wait) await sleep(wait);
       if (snap._finalCancelled) return;
       let summary = null;
-      try { summary = (await fetchMatchSummary(auth, ssid, snap.matchId)).summary; }
+      try { summary = (await fetchMatchSummary(auth, sess, snap.matchId)).summary; }
       catch { /* a transient failure is not an answer — keep waiting for Riot */ }
       if (summary) { applyFinal(snap, summary); return; }
     }
@@ -907,7 +907,7 @@ function carryOver(players){
 // systematically the most exposed to that, because their five lookups are the ones fired at the
 // exact moment the barrier drops. Re-entrant and idempotent, so kickRankRetry() can call it again
 // on a later poll; players already resolved from MMR are skipped.
-async function resolveRanks(snap, auth, ssid){
+async function resolveRanks(snap, auth, sess){
   if (snap._ranksRunning || snap.aborted) return;
   const pending = snap.players.filter(p => p.rankSource !== 'mmr');
   if (!pending.length) { snap.stages.ranks = 'done'; return; }
@@ -918,7 +918,7 @@ async function resolveRanks(snap, auth, ssid){
     await pool(pending, LIMIT.mmr, async (p) => {
       if (snap.aborted) return;
       p.rankError = '';
-      try { Object.assign(p, await fetchMmr(auth, ssid, p.puuid)); }
+      try { Object.assign(p, await fetchMmr(auth, sess, p.puuid)); }
       catch (err) { p.rankError = err.code === 'session_expired' ? 'forbidden' : 'unavailable'; }
     });
   } finally {
@@ -939,24 +939,24 @@ async function resolveRanks(snap, auth, ssid){
 // Cheap, and fired from the memoized poll path rather than the build path: a poll that would
 // otherwise cost one presence request picks up the ranks that a rate limit swallowed a few
 // seconds earlier.
-function kickRankRetry(snap, auth, ssid){
+function kickRankRetry(snap, auth, sess){
   if (!snap.stages || !snap.stages.ranksRetrying || snap._ranksRunning || snap.aborted) return;
   if (snap.stages.ranksAttempts >= RANK_RETRY_MAX) return;
   if (Date.now() < (snap._ranksNextAt || 0)) return;
-  resolveRanks(snap, auth, ssid).catch(() => { snap.stages.ranks = 'partial'; });
+  resolveRanks(snap, auth, sess).catch(() => { snap.stages.ranks = 'partial'; });
 }
 
 // Ranks + parties, once per matchId. The party half genuinely is once-only — Riot either shares a
 // player's party id or it doesn't, and that answer doesn't change mid-match.
-async function runRanksStage(snap, auth, ssid){
-  await resolveRanks(snap, auth, ssid);
+async function runRanksStage(snap, auth, sess){
+  await resolveRanks(snap, auth, sess);
 
   const needParty = snap.players.filter(p => !p.party);
   let partyOk = 0, partyOthers = 0;
   await pool(needParty, LIMIT.party, async (p) => {
     if (snap.aborted) return;
     try {
-      const id = await fetchParty(auth, ssid, p.puuid);
+      const id = await fetchParty(auth, sess, p.puuid);
       if (id) { p.party = { id, group: '', size: 0, inferred: false }; partyOk++; if (!p.isSelf) partyOthers++; }
     } catch { /* unknown, not solo */ }
   });
@@ -964,7 +964,7 @@ async function runRanksStage(snap, auth, ssid){
   const mine = snap.players.find(p => p.isSelf);
   if (!snap.aborted && mine && mine.party && mine.party.id) {
     try {
-      const members = await fetchPartyMembers(auth, ssid, mine.party.id);
+      const members = await fetchPartyMembers(auth, sess, mine.party.id);
       for (const p of (members ? snap.players : [])) {
         if (p.isSelf || !members.includes(p.puuid)) continue;
         p.party = { id: mine.party.id, group: '', size: 0, inferred: false };
@@ -983,7 +983,7 @@ async function runRanksStage(snap, auth, ssid){
 
 // Agent stats. Competitive only — deathmatch doesn't have comfort picks, and a DM lobby is 14
 // people, so skipping it there is both what the panel needs and what keeps it fast.
-async function runStatsStage(snap, auth, ssid, opts){
+async function runStatsStage(snap, auth, sess, opts){
   const depth = opts.depth;
   // Two different target lists on purpose. A match history is a list of matchIds — one small
   // response per player — and it is the only free evidence there is for who queued with whom, so
@@ -1003,7 +1003,7 @@ async function runStatsStage(snap, auth, ssid, opts){
   await pool(historyTargets, LIMIT.history, async (p) => {
     if (snap.aborted) return;
     if (p._history) return;
-    const ids = await fetchHistory(auth, ssid, p.puuid, depth);
+    const ids = await fetchHistory(auth, sess, p.puuid, depth);
     p._history = ids;
     // no history at all (lookup refused, or a genuinely fresh account) settles this player now —
     // there is nothing to fetch details for, and "unknown" is the honest answer
@@ -1051,7 +1051,7 @@ async function runStatsStage(snap, auth, ssid, opts){
     }
     let summary;
     try {
-      const r = await fetchMatchSummary(auth, ssid, matchId);
+      const r = await fetchMatchSummary(auth, sess, matchId);
       if (r.rateLimited) { rateLimited = true; return; }
       summary = r.summary;
     } catch { return; }
@@ -1176,15 +1176,15 @@ function publicSnapshot(snap){
  * Cost per call, once a lobby has been built: exactly one presence request. Everything else is
  * memoized against the matchId, because a coregame roster cannot change.
  */
-export async function getLiveMatch(label, ssid, opts = {}){
+export async function getLiveMatch(label, sess, opts = {}){
   const depth = Math.max(5, Math.min(20, Number(opts.depth) || DEFAULT_DEPTH));
   const enemyStats = opts.enemyStats !== false;
 
   await ensureRefData();
-  const auth = await ensureLiveAuth(label, ssid);
-  await resolveGlzHost(auth, ssid, { override: opts.region });
+  const auth = await ensureLiveAuth(label, sess);
+  await resolveGlzHost(auth, sess, { override: opts.region });
 
-  const presence = await fetchPresence(auth, ssid);
+  const presence = await fetchPresence(auth, sess);
   const session = { shard: auth.shard, region: auth.region };
 
   if (presence.phase === 'none') {
@@ -1194,7 +1194,7 @@ export async function getLiveMatch(label, ssid, opts = {}){
     // ...but keep the lobby itself on screen, now with its result, until a new game replaces it
     if (lastLobby) {
       markEnded(lastLobby);
-      ensureFinalScoreboard(lastLobby, auth, ssid);
+      ensureFinalScoreboard(lastLobby, auth, sess);
       lastLobby.fetchedAt = Date.now();
       return publicSnapshot(lastLobby);
     }
@@ -1216,11 +1216,11 @@ export async function getLiveMatch(label, ssid, opts = {}){
     existing.fetchedAt = Date.now();
     // free ride on a poll that was going to cost one presence request anyway: pick up any rank
     // that a rate limit or a timeout swallowed a few seconds ago
-    kickRankRetry(existing, auth, ssid);
+    kickRankRetry(existing, auth, sess);
     // pregame is the one thing that legitimately changes *within* a phase: agents lock in over
     // ~90 seconds. Re-read just the agent columns; ranks and stats stay memoized.
     if (presence.phase === 'pregame') {
-      const fresh = await fetchPregameRoster(auth, ssid, presence.matchId);
+      const fresh = await fetchPregameRoster(auth, sess, presence.matchId);
       if (fresh) {
         for (const p of fresh.players) {
           const cur = existing.players.find(q => q.puuid === p.puuid);
@@ -1232,8 +1232,8 @@ export async function getLiveMatch(label, ssid, opts = {}){
   }
 
   const roster = presence.phase === 'coregame'
-    ? await fetchCoreGameRoster(auth, ssid, presence.matchId)
-    : await fetchPregameRoster(auth, ssid, presence.matchId);
+    ? await fetchCoreGameRoster(auth, sess, presence.matchId)
+    : await fetchPregameRoster(auth, sess, presence.matchId);
   // a 404 here after a 200 presence means the match ended between the two calls
   if (!roster || !roster.players.length) {
     return { ok: true, label, fetchedAt: Date.now(), session, phase: 'none', matchId: null, players: [] };
@@ -1266,7 +1266,7 @@ export async function getLiveMatch(label, ssid, opts = {}){
     if (!p.leaderboardRank) p.leaderboardRank = roster.players.find(q => q.puuid === p.puuid)?.badgeLeaderboard || 0;
   }
 
-  const names = await fetchNames(auth, ssid, players.map(p => p.puuid));
+  const names = await fetchNames(auth, sess, players.map(p => p.puuid));
   for (const p of players) {
     const n = names[p.puuid];
     if (n) { p.name = n.name; p.tag = n.tag; }
@@ -1302,8 +1302,8 @@ export async function getLiveMatch(label, ssid, opts = {}){
 
   // Return the roster now; ranks and stats land over the next few polls. The panel paints a
   // usable lobby in well under a second rather than blocking on a minute of match lookups.
-  runRanksStage(snap, auth, ssid)
-    .then(() => statsApplies && !snap.aborted ? runStatsStage(snap, auth, ssid, { depth, enemyStats }) : null)
+  runRanksStage(snap, auth, sess)
+    .then(() => statsApplies && !snap.aborted ? runStatsStage(snap, auth, sess, { depth, enemyStats }) : null)
     .catch(err => {
       snap.stages.statsNote = (err && err.message) || String(err);
       if (snap.stages.ranks === 'loading') snap.stages.ranks = 'failed';
@@ -1339,7 +1339,7 @@ export async function getLiveMatchAuto(sessions, opts = {}){
     auto: { enabled: true, checked, locked: autoState.locked, accounts: labels },
   });
 
-  if (labels.length === 1) return tag(await getLiveMatch(labels[0], sessions[labels[0]].ssid, opts), labels[0]);
+  if (labels.length === 1) return tag(await getLiveMatch(labels[0], sessions[labels[0]], opts), labels[0]);
 
   const now = Date.now();
   const usable = labels.filter(l => !(autoState.cooldown.get(l) > now));
@@ -1353,7 +1353,7 @@ export async function getLiveMatchAuto(sessions, opts = {}){
   // us rather than this account, so it propagates.
   const probe = async (label) => {
     try {
-      const snap = await getLiveMatch(label, sessions[label].ssid, opts);
+      const snap = await getLiveMatch(label, sessions[label], opts);
       autoState.cooldown.delete(label);
       return snap;
     } catch (err) {
@@ -1417,7 +1417,7 @@ async function main(){
   let snap;
   try {
     if (label) {
-      snap = await getLiveMatch(label, sessions[label].ssid);
+      snap = await getLiveMatch(label, sessions[label]);
     } else {
       // no account named: find whichever one is playing. getLiveMatchAuto() checks one per call
       // by design (it's built for a poll loop), so from a one-shot CLI just turn the rotation

@@ -50,7 +50,7 @@ async function main(){
     }
     console.log(`Checking store for "${label}"...`);
     try {
-      const result = await checkAccountStore(label, sess.ssid);
+      const result = await checkAccountStore(label, sess);
       await recordAccountResult(label, result);
       // the night market is called out separately because it's the one panel that isn't always
       // there — a run that finds it is worth noticing in a log you'd otherwise skim

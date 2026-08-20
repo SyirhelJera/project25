@@ -24,7 +24,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins } from './valorant-lib.mjs';
+import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins, renameStoreSnapshot } from './valorant-lib.mjs';
 import { loginAccount } from './valorant-login.mjs';
 import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
 import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
@@ -108,7 +108,7 @@ const server = http.createServer(async (req, res) => {
       }
       console.log(`Checking store for "${label}"...`);
       try {
-        const result = await checkAccountStore(label, sess.ssid);
+        const result = await checkAccountStore(label, sess);
         await recordAccountResult(label, result);
         results[label] = { ok: true, items: result.items.length, accessories: result.accessories.length, bundle: !!result.bundle, nightMarket: !!result.nightMarket };
         console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundle ? ' + featured bundle' : ''}${result.nightMarket ? ` + NIGHT MARKET (${result.nightMarket.offers.length} offers)` : ''}.`);
@@ -145,7 +145,7 @@ const server = http.createServer(async (req, res) => {
       }
       console.log(`Checking owned skins for "${label}"...`);
       try {
-        const result = await checkAccountOwnedSkins(label, sess.ssid);
+        const result = await checkAccountOwnedSkins(label, sess);
         await recordOwnedSkinsResult(label, result);
         results[label] = { ok: true, skins: result.skins.length };
         console.log(`  done: ${result.skins.length} owned skin(s) found.`);
@@ -190,7 +190,7 @@ const server = http.createServer(async (req, res) => {
       // whole point is that you don't tell it anything. See getLiveMatchAuto() for why that
       // costs the same one request per poll as naming an account outright.
       const snapshot = label
-        ? await getLiveMatch(label, sessions[label].ssid, opts)
+        ? await getLiveMatch(label, sessions[label], opts)
         : await getLiveMatchAuto(sessions, opts);
       sendJson(res, 200, snapshot, origin);
     } catch (err) {
@@ -211,10 +211,14 @@ const server = http.createServer(async (req, res) => {
     if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
     const label = (body.label || '').trim();
     const ssid = (body.ssid || '').trim();
+    const clid = (body.clid || '').trim();
     if (!label) { sendJson(res, 400, { ok: false, error: 'Missing account label.' }, origin); return; }
-    if (!ssid) { sendJson(res, 400, { ok: false, error: 'Missing session cookie.' }, origin); return; }
+    if (!ssid) { sendJson(res, 400, { ok: false, error: 'Missing ssid cookie.' }, origin); return; }
+    // clid is optional on the way in: an ssid-only session works when it lives on Riot's default
+    // auth cluster, and loginAccount() validates before saving either way — so the honest answer
+    // ("this one also needs clid") comes from Riot rather than from a guess made here.
     try {
-      await loginAccount(label, ssid);
+      await loginAccount(label, clid ? { ssid, clid } : { ssid });
       sendJson(res, 200, { ok: true }, origin);
     } catch (err) {
       sendJson(res, 200, { ok: false, error: err.message || String(err) }, origin);
@@ -262,6 +266,35 @@ const server = http.createServer(async (req, res) => {
     const cancelled = cancelLoginWindow();
     if (cancelled) console.log('Login window cancelled.');
     sendJson(res, 200, { ok: true, cancelled }, origin);
+    return;
+  }
+
+  // POST /rename-account — the label is the key everywhere (session file, widget snapshot, and
+  // the per-account entries in the shared Supabase row), so a rename is a migration rather than a
+  // text edit. This half owns the two local files; the page owns its own state and saves it, which
+  // is what carries the Supabase side.
+  if (req.method === 'POST' && url.pathname === '/rename-account') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const from = (body.from || '').trim();
+    const to = (body.to || '').trim();
+    if (!from || !to) { sendJson(res, 400, { ok: false, error: 'Missing account name.' }, origin); return; }
+    if (from === to) { sendJson(res, 200, { ok: true, unchanged: true }, origin); return; }
+
+    const sessions = loadSessions();
+    if (to in sessions) { sendJson(res, 200, { ok: false, error: `"${to}" is already a tracked account.` }, origin); return; }
+    if (from in sessions) {
+      sessions[to] = sessions[from];
+      delete sessions[from];
+      saveSessions(sessions);
+      console.log(`Renamed account "${from}" to "${to}".`);
+    } else {
+      // a label with store data but no live session (an account whose session was deleted, or one
+      // added on another machine) is still worth renaming — the page's own data moves either way
+      console.log(`No saved session for "${from}"; renaming its stored data only.`);
+    }
+    renameStoreSnapshot(from, to);
+    sendJson(res, 200, { ok: true }, origin);
     return;
   }
 

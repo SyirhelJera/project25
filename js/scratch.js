@@ -1,7 +1,7 @@
   /* ================= SCRATCH — the napkin =================
-     ONE free-form page. No files, no tree, no titles. The Notes tab is the organized outliner;
-     this is deliberately its opposite, for the thought you want out of your head in two seconds
-     and don't want to file anywhere.
+     A small stack of free-form pages. No files, no tree, no typed titles. The Notes tab is the
+     organized outliner; this is deliberately its opposite, for the thought you want out of your
+     head in two seconds and don't want to file anywhere.
 
      The way IN is an easter egg and is meant to stay one: the only door is a click on the sidebar
      logo, and `.brand` is left visually untouched — no cursor:pointer, no hover state, no title
@@ -20,7 +20,7 @@
      a real obligation — see the sanitizer below. Content is HTML, held per page in state.scratch.pages.
 
      Storage: its OWN resource (row id 'scratch'), the same split Jobs and Notes have, for the
-     sharper version of their reason — this is a single string that debounce-saves per keystroke,
+     sharper version of their reason — the pages debounce-save per keystroke,
      so in the shared blob every paragraph typed would re-upload every goal, habit, finance record
      and Valorant store in the app. See the persistence block below.
      ======================================================== */
@@ -721,12 +721,25 @@
   }
 
   function insertScratchTick(done){
+    const surf = el('scratchText');
+    if(!surf) return;
+    /* execCommand inserts at the current selection — but only when that selection is genuinely
+       inside THIS editable. When it isn't, browsers quietly append at the end of the element
+       instead, which is how a tick ends up beside the last line rather than the one you're on.
+       Put the caret somewhere real before asking. */
+    const sel0 = window.getSelection();
+    if(!(sel0 && sel0.rangeCount && surf.contains(sel0.getRangeAt(0).commonAncestorContainer))){
+      surf.focus({ preventScroll:true });
+      placeScratchCaretAtEnd(surf);
+    }
     const marker = 'sc' + uid();
     scratchExec('insertHTML', '<span id="' + marker + '"></span>');
     const slot = document.getElementById(marker);
     if(!slot) return;
     const box = makeScratchTick(done);
-    const sp = document.createTextNode(' ');
+    // a non-breaking space: a plain trailing space collapses at the end of a line, leaving the
+    // caret jammed against the box with no gap to type into
+    const sp = document.createTextNode('\u00A0');
     slot.replaceWith(box, sp);
     const sel = window.getSelection();
     if(sel){
@@ -744,15 +757,23 @@
     const r = sel.getRangeAt(0);
     if(!r.collapsed || r.startContainer.nodeType !== 3) return false;
     const node = r.startContainer, off = r.startOffset;
-    const m = /(?:^|\n)[ \t]*\[( |x|X)?\]$/.exec(node.nodeValue.slice(0, off));
+    const before = node.nodeValue.slice(0, off);
+    const m = /\[( |x|X)?\]$/.exec(before);
     if(!m) return false;
-    const lead = /^\n/.test(m[0]) ? 1 : 0;
+    // Only at the start of a line: nothing but whitespace between the line break and the bracket,
+    // so "see [x]" mid-sentence is left alone.
+    if(!/(?:^|\n)[ \t]*$/.test(before.slice(0, before.length - m[0].length))) return false;
+    /* The bracket token is SELECTED and left in place for execCommand to replace, rather than
+       being deleted first. Deleting it emptied the line's own text node, the browser then dropped
+       that empty node, and the range was left pointing at something detached — so the selection
+       was no longer inside the editable and execCommand fell back to appending at the very end of
+       the page. That was the "tick lands next to the last line instead of the line I'm on" bug.
+       Starting at the bracket rather than the line break also preserves any indentation. */
     const rr = document.createRange();
-    rr.setStart(node, off - (m[0].length - lead));
+    rr.setStart(node, off - m[0].length);
     rr.setEnd(node, off);
-    rr.deleteContents();
-    const sel2 = window.getSelection();
-    sel2.removeAllRanges(); sel2.addRange(rr);
+    sel.removeAllRanges();
+    sel.addRange(rr);
     insertScratchTick(/x/i.test(m[1] || ''));
     return true;
   }
@@ -904,7 +925,7 @@
     commitScratchSurface();               // while scratchOpen is still true
     const swept = sweepTrailingEmptyScratchPages();
     scratchOpen = false;
-    scratchTabHeld = false; scratchTabUsed = false;
+    scratchTabHeld = false; scratchTabUsed = false; scratchWheelAcc = 0; scratchWheelDir = 0; scratchWheelStepAt = 0;
     if(swept){
       // the sweep is a real edit, and there may be no pending timer to carry it
       state.scratch.updatedAt = Date.now();
@@ -968,6 +989,20 @@
 
   scratchSurface.addEventListener('input', onScratchInput);
 
+  // The single place a tickbox's attribute is brought back in line with its live checkedness.
+  function syncScratchTick(box){
+    if(box.checked) box.setAttribute('checked', ''); else box.removeAttribute('checked');
+    onScratchInput();
+  }
+  /* Belt and braces alongside the click handler below: 'change' fires once checkedness has
+     settled, and covers any route to a toggle that isn't a plain click (a keyboard space on a
+     focused box, or a browser that resolves activation later than the click event). Running both
+     is harmless — syncScratchTick is idempotent and the save behind it is debounced. */
+  scratchSurface.addEventListener('change', e=>{
+    const box = e.target && e.target.closest && e.target.closest(SCRATCH_TICK_SEL);
+    if(box) syncScratchTick(box);
+  });
+
   scratchSurface.addEventListener('keydown', e=>{
     if((e.ctrlKey || e.metaKey) && !e.altKey){
       const k = e.key.toLowerCase();
@@ -987,15 +1022,15 @@
     if(!t || !t.closest) return;
     const box = t.closest(SCRATCH_TICK_SEL);
     if(box){
-      /* Toggle explicitly rather than letting the browser do it. Inside a contenteditable the
-         native activation behaviour isn't reliable, and more importantly only the `checked`
-         ATTRIBUTE survives innerHTML serialization — the .checked property alone would look right
-         until the next reload and then come back unticked. */
-      e.preventDefault();
-      const next = !box.hasAttribute('checked');
-      box.checked = next;
-      if(next) box.setAttribute('checked', ''); else box.removeAttribute('checked');
-      onScratchInput();
+      /* Let the browser's own activation do the toggling, and mirror the result into the
+         ATTRIBUTE — which is the only half of a checkbox that innerHTML serializes, so without
+         this the tick would look right until the next reload and then come back empty.
+
+         Deliberately NOT preventDefault(): checkedness is set by the pre-click activation steps
+         BEFORE this event is dispatched, and cancelling the event makes the browser REVERT it once
+         the handler returns. That undid the visible tick while leaving the attribute set, which is
+         why a click appeared to do nothing until you changed page and it re-rendered from state. */
+      syncScratchTick(box);
       return;
     }
     const a = t.closest('a');
@@ -1075,7 +1110,8 @@
      e.repeat is ignored so held-Tab autorepeat doesn't re-arm it every frame, and window blur
      clears the flag, or an alt-tab away would swallow the keyup and leave the modifier stuck down
      for good. */
-  let scratchTabHeld = false, scratchTabUsed = false, scratchWheelAt = 0;
+  let scratchTabHeld = false, scratchTabUsed = false;
+  let scratchWheelAt = 0, scratchWheelAcc = 0, scratchWheelDir = 0, scratchWheelStepAt = 0;
 
   el('scratchOverlay').addEventListener('keydown', e=>{
     if(e.key !== 'Tab') return;
@@ -1084,17 +1120,73 @@
   });
 
   /* passive:false because this has to preventDefault — otherwise the surface scrolls under you
-     while you're paging. Only the SIGN of deltaY is used: the magnitude is meaningless across
-     devices (a mouse notch and a trackpad flick differ by orders of magnitude), and the cooldown is
-     what stops one flick from flying through the whole stack. */
+     while you're paging.
+
+     THREE rules, because a wheel is asked three different questions and no single rule answers
+     them all. Each was learned by getting it wrong:
+       1. Any scroll at all turns one page IMMEDIATELY (`fresh`) — a small nudge has to feel alive.
+       2. Past that, distance accumulates and every SCRATCH_WHEEL_STEP worth turns another, so a
+          hard flick covers proportionally more ground.
+       3. While the wheel is still moving, never go longer than SCRATCH_WHEEL_CADENCE without
+          turning a page — a slow CONTINUOUS scroll satisfies neither 1 (the gesture never ends)
+          nor 2 (it never covers the distance), and without this it goes dead mid-scroll.
+     The history, so nobody collapses these back into one: a fixed cooldown after each step made a
+     hard scroll move exactly one page, because everything in the next 220ms was thrown away. A pure
+     distance threshold fixed that and killed gentle scrolls, which never reached it. Adding rule 1
+     fixed single nudges but not sustained slow ones. Rule 3 is a FLOOR — it can only add a step
+     that distance didn't already earn, never suppress one — which is exactly how it differs from
+     the cooldown that started all this.
+     deltaMode is normalised first: Firefox reports LINES, so a notch there is deltaY 3 rather than
+     Chrome's 100, and a pixel assumption would make it take ~33 notches to move one page. A
+     direction change or a pause resets the accumulator, so a new gesture never inherits leftovers
+     from the last one and a flick back the other way responds on its first event. */
+  const SCRATCH_WHEEL_STEP = 100;   // one mouse notch, in pixel mode
+  const SCRATCH_WHEEL_GAP = 400;      // ms of stillness that ends a gesture
+  const SCRATCH_WHEEL_CADENCE = 150;  // while scrolling continues, never go longer than this without moving
   el('scratchOverlay').addEventListener('wheel', e=>{
     if(!scratchTabHeld || !e.deltaY) return;
     e.preventDefault();
     scratchTabUsed = true;
+    let d = e.deltaY;
+    if(e.deltaMode === 1) d *= 40;        // lines -> px (Firefox sends 3 lines per notch)
+    else if(e.deltaMode === 2) d *= 400;  // pages -> px
+    const dir = d < 0 ? -1 : 1;           // up = back, down = forward
     const now = Date.now();
-    if(now - scratchWheelAt < 220) return;
+    /* The FIRST event of a gesture always moves exactly one page, however small it was. Gating the
+       start behind a distance threshold is what made gentle scrolling feel dead — a short trackpad
+       nudge never reached 100px and so did nothing at all. Responsiveness belongs at the START of
+       a gesture; proportionality belongs to whatever follows it, which is what the accumulator
+       below is for. */
+    const fresh = (now - scratchWheelAt > SCRATCH_WHEEL_GAP) || dir !== scratchWheelDir;
     scratchWheelAt = now;
-    scratchStep(e.deltaY < 0 ? -1 : 1); // scroll up = back, down = forward
+    scratchWheelDir = dir;
+    let steps = 0;
+    if(fresh){
+      steps = 1;
+      scratchWheelAcc = 0; // this event's distance is spent on that first page
+    } else {
+      scratchWheelAcc += Math.abs(d);
+      // capped per EVENT only, so a sustained scroll keeps going across events — it just can't
+      // teleport on one absurd delta from an accelerated wheel
+      while(scratchWheelAcc >= SCRATCH_WHEEL_STEP && steps < 3){
+        scratchWheelAcc -= SCRATCH_WHEEL_STEP;
+        steps++;
+      }
+      /* Cadence floor. A slow, CONTINUOUS scroll never ends its gesture (events keep arriving
+         inside the gap) and never covers much distance either, so both rules above sit silent and
+         the page stops responding while your finger is still moving. This guarantees it keeps
+         turning at a steady rate whenever the wheel is genuinely still in motion.
+         Note this is a FLOOR, not the ceiling that the very first version used: it can only ADD a
+         step that distance didn't already earn, never suppress one. A ceiling is what made hard
+         scrolling dead; a floor is what keeps gentle scrolling alive. */
+      if(!steps && now - scratchWheelStepAt >= SCRATCH_WHEEL_CADENCE){
+        steps = 1;
+        scratchWheelAcc = 0;
+      }
+    }
+    if(steps) scratchWheelStepAt = now;
+    // one jump rather than N, so a flick doesn't re-render every page it passes through
+    if(steps) scratchGoTo(scratchActiveIndex() + dir * steps);
   }, { passive:false });
 
   el('scratchOverlay').addEventListener('keyup', e=>{

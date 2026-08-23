@@ -498,6 +498,19 @@
   let scratchTickAt = 0;
   const scratchBrandEl = document.querySelector('.brand');
 
+  /* Whether the app may take focus on its own. On a touch device the answer is no: a soft keyboard
+     is a huge animated slab over half the screen, and raising it before you have even read the page
+     — then again on every swipe — is the opposite of what opening a notebook should feel like. The
+     writing area is contenteditable, so TAPPING it focuses natively and raises the keyboard exactly
+     when you mean to write, which is the only time it should appear.
+     With a hardware keyboard none of that applies and being able to type straight away is the whole
+     point, so focus is taken as before. matchMedia is held rather than re-queried because .matches
+     is live, so this follows a device that changes its primary pointer. */
+  const scratchCoarsePointer = (function(){
+    try{ return window.matchMedia('(pointer: coarse)'); }catch(e){ return null; }
+  })();
+  function scratchWantsAutoFocus(){ return !(scratchCoarsePointer && scratchCoarsePointer.matches); }
+
   function setScratchStatus(kind){
     scratchStatusKind = kind;
     const n = el('scratchStatus');
@@ -711,6 +724,9 @@
 
   function scratchGoTo(i){
     ensureScratchPages();
+    // read BEFORE the innerHTML swap below, so "were you already typing?" is answered about the
+    // page you were on rather than the one you land on
+    const wasWriting = document.activeElement === el('scratchText');
     const pages = state.scratch.pages;
     const from = scratchActiveIndex();
     const to = Math.max(0, Math.min(pages.length - 1, i));
@@ -722,8 +738,14 @@
     updateScratchFooter();
     animateScratchPage(to > from ? 1 : -1);
     playScratchPageTick(to > from ? 1 : -1);
+    /* Take focus only if we already had it — keeping a keyboard that's already up, and keeping the
+       caret valid after the innerHTML swap — or if there's no soft keyboard to summon in the first
+       place. Flipping between pages must never be the thing that raises it. */
     const surf = el('scratchText');
-    if(surf){ surf.focus({ preventScroll:true }); placeScratchCaretAtEnd(surf); }
+    if(surf && (wasWriting || scratchWantsAutoFocus())){
+      surf.focus({ preventScroll:true });
+      placeScratchCaretAtEnd(surf);
+    }
     // which page you're on is persisted, so reopening lands where you left off — that's a real
     // state change and is saved like any other
     setScratchStatus('dirty');
@@ -731,9 +753,12 @@
   }
   function scratchStep(delta){ scratchGoTo(scratchActiveIndex() + delta); }
 
+  // Called after the dot row rebuilds itself and destroys the button that was clicked. On a
+  // hardware keyboard that would otherwise strand focus on <body>; on touch there is nothing to
+  // strand and grabbing focus would only raise the keyboard for a tidy-up action nobody typed into.
   function focusScratchSurface(){
     const surf = el('scratchText');
-    if(surf) surf.focus({ preventScroll:true });
+    if(surf && (scratchWantsAutoFocus() || document.activeElement === surf)) surf.focus({ preventScroll:true });
   }
 
   function animateScratchPage(dir){
@@ -757,6 +782,9 @@
     animateScratchPage(1);
     playScratchPageTick(1);
     setScratchStatus('dirty');
+    // Deliberately unconditional, unlike every other focus in this file: asking for a BLANK page is
+    // an explicit "I want to write something", so raising the keyboard is the expected answer even
+    // on touch. Navigating to a page you already have is not the same act.
     const surf = el('scratchText');
     if(surf) surf.focus({ preventScroll:true });
     debouncedSaveScratch();
@@ -1067,12 +1095,16 @@
     updateScratchFooter();
     lockPageScroll(); // js/goals.js — counted, iOS-safe; without it a swipe past the surface's own
                       // scroll end moves the page behind and you exit somewhere else entirely
-    /* Stays synchronous inside the click handler's call stack on purpose: awaiting anything, or
-       deferring this focus() into a setTimeout, drops it out of the user-gesture window and iOS
-       then refuses to open the software keyboard. */
+    /* Touch devices are deliberately left unfocused — see scratchWantsAutoFocus(). Tap the writing
+       area to start typing.
+       Where focus IS taken it stays synchronous inside the click handler's call stack: awaiting
+       anything, or deferring focus() into a setTimeout, drops out of the user-gesture window and
+       the focus is refused. */
     const surf = el('scratchText');
-    surf.focus({ preventScroll:true });
-    placeScratchCaretAtEnd(surf);
+    if(scratchWantsAutoFocus()){
+      surf.focus({ preventScroll:true });
+      placeScratchCaretAtEnd(surf);
+    }
     surf.scrollTop = surf.scrollHeight;
   }
 

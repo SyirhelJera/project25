@@ -144,7 +144,7 @@
     // hydrated by applyLoadedScratchState() and written by saveScratch(). Defaulted here as well
     // as there because flushPendingScratchSave() is wired to visibilitychange and can fire before
     // a load has finished.
-    scratch: { pages: [], activeId: '', updatedAt: 0 } };
+    scratch: { pages: [], activeId: '', updatedAt: 0, mute: false } };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';

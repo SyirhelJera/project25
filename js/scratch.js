@@ -234,7 +234,9 @@
         pages = [ { id: uid(), html: scratchPlainToHtml(raw.text), updatedAt: at } ];
       }
     }
-    state.scratch = { pages: pages, activeId: activeId, updatedAt: at };
+    // mute rides the row rather than localStorage so the preference follows you between devices,
+    // the same as which page you had open
+    state.scratch = { pages: pages, activeId: activeId, updatedAt: at, mute: !!(raw && raw.mute) };
     ensureScratchPages();
     syncScratchSurface(true);
     renderScratchPages();
@@ -253,7 +255,7 @@
   function serializeScratch(){
     ensureScratchPages();
     const pages = state.scratch.pages.map(p => ({ id: p.id, html: sanitizeScratchHtml(p.html || ''), updatedAt: p.updatedAt || 0 }));
-    return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0 };
+    return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0, mute: !!state.scratch.mute };
   }
 
   function cacheScratchStateLocally(){
@@ -490,6 +492,7 @@
   let scratchReturnFocus = null;
   let scratchStatusKind = '';
   let scratchCountTimer = null;
+  let scratchTickAt = 0;
   const scratchBrandEl = document.querySelector('.brand');
 
   function setScratchStatus(kind){
@@ -609,18 +612,113 @@
     scratchActivePage().html = surf.innerHTML;
   }
 
+  /* A page-turn tick, voiced as a creamy keyboard switch — a thock, not a click.
+
+     The distinction is entirely about where the energy sits. A bright, clacky switch is high and
+     sizzly; a creamy one is LOW and damped, its body around 150-250Hz with everything above ~1kHz
+     rolled off, and a softly rounded attack rather than a razor transient. Two earlier attempts got
+     this wrong in the same direction: a square-wave harmonic at ~1.4kHz (a chiptune), then
+     bandpassed noise at 2.7kHz (a sharp UI tick). Both were far too bright to feel like a key.
+
+     So the voice is a low sine "thock" carrying the weight, a quieter mid sine giving it roundness,
+     and a LOWPASSED noise burst for the impact of the keycap landing. Lowpass, not bandpass: it is
+     the removal of the highs that makes this creamy rather than clacky, and any hiss left up top
+     undoes the whole effect. Each part sweeps downward in pitch, which is what makes a sound read
+     as something coming to rest instead of a note being played.
+
+     Built from raw nodes rather than checklists.js's sfxTone(): that helper opens over a 15ms
+     linear ramp and offers only bare oscillators, so it can make neither the shaped attack nor the
+     pitch sweeps this needs. The AudioContext is still very much shared via sfxOutput() — the rule
+     recorded in js/goals.js is about never opening a SECOND context, and this opens none.
+
+     Direction is a mere 15% on the fundamental, not a musical interval. Real keys don't change
+     pitch by which way you're going, and anything wider turns paging back and forth into a tune.
+
+     The noise buffer is built once and reused: a hard scroll fires these ~30ms apart and a fresh
+     float array per tick would churn the heap for nothing. */
+  let scratchTickBuf = null;
+  function scratchTickNoise(ctx){
+    if(scratchTickBuf && scratchTickBuf.sampleRate === ctx.sampleRate) return scratchTickBuf;
+    const len = Math.floor(ctx.sampleRate * 0.022);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    // squared fade, not cubic: still front-loaded, but with enough shoulder to sound like a keycap
+    // being caught by the pad under it rather than a stick being snapped
+    for(let i=0; i<len; i++){
+      const fade = 1 - i / len;
+      data[i] = (Math.random() * 2 - 1) * fade * fade;
+    }
+    scratchTickBuf = buf;
+    return buf;
+  }
+
+  function playScratchPageTick(dir){
+    if(state.scratch && state.scratch.mute) return;
+    if(typeof sfxOutput !== 'function') return;
+    const now = Date.now();
+    if(now - scratchTickAt < 25) return;
+    scratchTickAt = now;
+    const out = sfxOutput();
+    if(!out) return; // Web Audio blocked or unavailable — the slide still carries the move
+    try{
+      const ctx = sfxCtx;
+      const t = ctx.currentTime;
+      const f0 = dir > 0 ? 205 : 178; // the thock itself
+
+      // --- impact: the keycap bottoming out. Lowpassed hard so none of it reads as hiss.
+      const src = ctx.createBufferSource();
+      src.buffer = scratchTickNoise(ctx);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(820, t);
+      lp.frequency.exponentialRampToValueAtTime(380, t + 0.03); // the highs die first, as they do in a damped case
+      lp.Q.setValueAtTime(0.7, t);
+      const ng = ctx.createGain();
+      ng.gain.setValueAtTime(0.0001, t);
+      ng.gain.exponentialRampToValueAtTime(0.075, t + 0.003); // ~3ms: rounded, not a razor edge
+      ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+      src.connect(lp); lp.connect(ng); ng.connect(out);
+      src.start(t); src.stop(t + 0.055);
+
+      // --- body: the low thock that carries the weight
+      const low = ctx.createOscillator();
+      low.type = 'sine';
+      low.frequency.setValueAtTime(f0, t);
+      low.frequency.exponentialRampToValueAtTime(f0 * 0.62, t + 0.055);
+      const lg = ctx.createGain();
+      lg.gain.setValueAtTime(0.0001, t);
+      lg.gain.exponentialRampToValueAtTime(0.15, t + 0.004);
+      lg.gain.exponentialRampToValueAtTime(0.0001, t + 0.075);
+      low.connect(lg); lg.connect(out);
+      low.start(t); low.stop(t + 0.085);
+
+      // --- cream: a quiet mid partial. Without it the thock is a dull thud; too much and it clacks.
+      const mid = ctx.createOscillator();
+      mid.type = 'sine';
+      mid.frequency.setValueAtTime(f0 * 2.4, t);
+      mid.frequency.exponentialRampToValueAtTime(f0 * 1.5, t + 0.04);
+      const mg = ctx.createGain();
+      mg.gain.setValueAtTime(0.0001, t);
+      mg.gain.exponentialRampToValueAtTime(0.045, t + 0.003);
+      mg.gain.exponentialRampToValueAtTime(0.0001, t + 0.045);
+      mid.connect(mg); mg.connect(out);
+      mid.start(t); mid.stop(t + 0.055);
+    }catch(e){ /* a page turn is never worth throwing over */ }
+  }
+
   function scratchGoTo(i){
     ensureScratchPages();
     const pages = state.scratch.pages;
     const from = scratchActiveIndex();
     const to = Math.max(0, Math.min(pages.length - 1, i));
-    if(to === from) return;
+    if(to === from) return; // no click when there's nowhere to go — silence IS the end-of-stack cue
     commitScratchSurface();
     state.scratch.activeId = pages[to].id;
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
     animateScratchPage(to > from ? 1 : -1);
+    playScratchPageTick(to > from ? 1 : -1);
     const surf = el('scratchText');
     if(surf){ surf.focus({ preventScroll:true }); placeScratchCaretAtEnd(surf); }
     // which page you're on is persisted, so reopening lands where you left off — that's a real
@@ -629,6 +727,11 @@
     debouncedSaveScratch();
   }
   function scratchStep(delta){ scratchGoTo(scratchActiveIndex() + delta); }
+
+  function focusScratchSurface(){
+    const surf = el('scratchText');
+    if(surf) surf.focus({ preventScroll:true });
+  }
 
   function animateScratchPage(dir){
     const surf = el('scratchText');
@@ -649,6 +752,7 @@
     renderScratchPages();
     updateScratchFooter();
     animateScratchPage(1);
+    playScratchPageTick(1);
     setScratchStatus('dirty');
     const surf = el('scratchText');
     if(surf) surf.focus({ preventScroll:true });
@@ -669,6 +773,7 @@
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
+    focusScratchSurface(); // the - button that was clicked no longer exists; don't strand focus
     setScratchStatus('dirty');
     debouncedSaveScratch();
   }
@@ -707,6 +812,12 @@
     // + and − rather than a word: they pair obviously, and the page's own name lives on its dot
     h += '<button type="button" class="scratch-pagebtn" id="scratchAddPage" title="New page" aria-label="New page">+</button>';
     if(pages.length > 1) h += '<button type="button" class="scratch-pagebtn" id="scratchDelPage" title="Delete this page" aria-label="Delete this page">−</button>';
+    // A page-turn sound you can't silence would be a menace in a room with other people, so it gets
+    // a switch — here rather than in Settings, which would give the easter egg a visible entry.
+    const muted = !!state.scratch.mute;
+    h += '<button type="button" class="scratch-pagebtn scratch-mute' + (muted ? ' is-off' : '') + '" id="scratchMuteBtn"'
+       + ' title="' + (muted ? 'Page-turn sound off' : 'Page-turn sound on') + '"'
+       + ' aria-pressed="' + (muted ? 'true' : 'false') + '" aria-label="Toggle page-turn sound">♪</button>';
     row.innerHTML = h;
   }
 
@@ -979,6 +1090,17 @@
     if(!t || !t.closest) return;
     if(t.closest('#scratchAddPage')){ addScratchPage(); return; }
     if(t.closest('#scratchDelPage')){ deleteScratchPage(); return; }
+    if(t.closest('#scratchMuteBtn')){
+      state.scratch.mute = !state.scratch.mute;
+      renderScratchPages();
+      if(!state.scratch.mute) playScratchPageTick(1); // let you hear what you just switched back on
+      // renderScratchPages() just replaced the button that was clicked, so focus would otherwise
+      // fall to <body> and the next thing typed would go nowhere
+      focusScratchSurface();
+      setScratchStatus('dirty');
+      debouncedSaveScratch();
+      return;
+    }
     const dot = t.closest('.scratch-dot');
     if(dot) scratchGoTo(parseInt(dot.getAttribute('data-i'), 10) || 0);
   });

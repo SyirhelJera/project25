@@ -1848,6 +1848,49 @@
 
 </div>
 
+<!-- SCRATCH — the napkin. ONE free-form page: no files, no tree, no titles, no preview. The Notes
+     tab is the organized outliner; this is deliberately its opposite, which is why it isn't a tab
+     and has no nav item, no Settings entry and no discoverability of any kind. The only way in is
+     a click on the sidebar logo (js/scratch.js), and .brand is left visually untouched — no
+     cursor:pointer, no hover state, no title attribute. It's meant to be indistinguishable from
+     decoration; that absence is the feature, not an oversight.
+     Body level, NOT inside a .view: .view{display:none} would hide it whenever its tab wasn't
+     active — the same trap the #valItemPreviewOverlay / #view-games note in CLAUDE.md records —
+     and it has to cover the sidebar, which nothing inside .main does.
+     Its own storage row (id='scratch'), like Jobs and Notes — see js/scratch.js for why. -->
+<div id="scratchOverlay" class="scratch-overlay" style="display:none;" role="dialog" aria-label="Scratch page" aria-modal="true">
+  <!-- scratch-scoped, like the Jobs and Notes pairs: this saves to its own resource, so a conflict
+       or outage here says nothing about the shared blob the other tabs use -->
+  <div id="scratchConflictBanner" class="confirm-banner scratch-banner" style="display:none;"></div>
+  <div id="scratchOfflineBanner" class="confirm-banner scratch-banner" style="display:none;"></div>
+  <!-- contenteditable, not a <textarea>: a textarea can't hold the three things this page is for
+       beyond plain text — tickboxes, links and pasted images. Content is HTML, and everything
+       arriving from storage or a clipboard goes through sanitizeScratchHtml() in js/scratch.js
+       first; nothing else may write to this element (see syncScratchSurface). The soft length cap
+       lives in JS, since contenteditable has no maxlength. -->
+  <div id="scratchText" class="scratch-text" contenteditable="true" spellcheck="false"
+       role="textbox" aria-multiline="true" aria-label="Scratch page"
+       data-placeholder="…"></div>
+  <div class="scratch-foot">
+    <span id="scratchCount">0 words</span>
+    <span id="scratchStatus" class="scratch-status"></span>
+    <span class="scratch-tips">type <b>[]</b> for a tick · <span class="scratch-tip-key">ctrl+K to link · </span>paste an image</span>
+    <span class="scratch-hint">esc to exit</span>
+    <button id="scratchCloseBtn" class="scratch-close" type="button" aria-label="Close scratch page">×</button>
+  </div>
+  <!-- The logo, redrawn on top of the takeover — which is what an opaque inset:0 layer would
+       otherwise hide, taking "click the logo again to exit" with it. Position and size come from
+       .brand's live bounding rect in openScratch() (the sidebar is still laid out underneath,
+       merely covered), so it lands exactly over the real one at both breakpoints with nothing
+       hardcoded. Keep this SVG identical to the one in .brand above.
+       Unlike the way IN, this is meant to look clickable: the easter egg is the entrance, not the
+       exit — nobody should have to guess how to get back out. -->
+  <div id="scratchBrand" class="scratch-brand" role="button" tabindex="0" aria-label="Close scratch page" title="Close">
+    <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6.3 9.8 12 4.6l5.7 5.2"/><path d="M6.3 15.9 12 10.7l5.7 5.2"/><path d="M6.3 20.6h11.4"/></svg></div>
+    <div class="brand-name">Project 25</div>
+  </div>
+</div>
+
 <!-- MOBILE TAB SWITCHER — press and hold the button, slide onto a tab, release to open it.
      A plain tap opens the same sheet and keeps it up so tabs can be tapped instead.
      Built from the sidebar's .nav-item list by js/nav.js; hidden above the mobile breakpoint. -->
@@ -1893,6 +1936,9 @@
 <script src="js/music.js"></script>
 <script src="js/checklists.js"></script>
 <script src="js/notes.js"></script>
+<!-- the app's other free-text surface, and its fourth storage resource; not a tab, so
+     nothing in renderAll() or the nav ever touches it -->
+<script src="js/scratch.js"></script>
 <script src="js/finance.js"></script>
 <script src="js/wishlist.js"></script>
 <script src="js/jobs.js"></script>

@@ -51,9 +51,9 @@
       const { data, error } = await supa.functions.invoke('manage-backups', { body: { action: 'restore', file } });
       if(error) throw error;
       if(data && data.error) throw new Error(data.error);
-      applyLoadedState(data.data); // every tab except Jobs and Notes, exactly as before
-      // Jobs and Notes live in their own storage resources, so each has to be restored alongside
-      // the shared blob rather than falling out of applyLoadedState(). Prefer the backup's
+      applyLoadedState(data.data); // every tab except Jobs, Notes and the scratch page, exactly as before
+      // Jobs, Notes and the scratch page live in their own storage resources, so each has to be
+      // restored alongside the shared blob rather than falling out of applyLoadedState(). Prefer the backup's
       // dedicated row; fall back to a copy still embedded in the shared blob for backups taken
       // before that tab was split out. Same precedence as the standing migrations in
       // jobs.js:loadJobsData() / notes.js:loadNotesData().
@@ -65,14 +65,18 @@
                       : (data.data && Array.isArray(data.data.notes)) ? data.data.notes
                       : [];
       applyLoadedNotesState({ notes: notesSeed });
+      // No fallback to a copy embedded in the shared blob, unlike jobsSeed/notesSeed above: the
+      // scratch page has only ever lived in its own row, so a backup that lacks it simply predates
+      // the feature and an empty page is the correct result — there is no older location to look in.
+      applyLoadedScratchState(data.scratchData || null);
       pendingRestore = null;
-      // force: restoring is a deliberate, user-confirmed overwrite of all three resources.
-      // allSettled rather than all/sequential-await because save()/saveJobs()/saveNotes() never
+      // force: restoring is a deliberate, user-confirmed overwrite of all four resources.
+      // allSettled rather than all/sequential-await because save()/saveJobs()/saveNotes()/saveScratch() never
       // reject even on remote failure (they fall back to their own offline banner + retry-on-
       // reconnect) — so this can't meaningfully distinguish partial failure, and treating one as
       // fatal would wrongly report "Restore failed. Nothing was changed." when the data was in
       // fact applied and cached.
-      await Promise.allSettled([ save(true), saveJobs(true), saveNotes(true) ]);
+      await Promise.allSettled([ save(true), saveJobs(true), saveNotes(true), saveScratch(true) ]);
       el('restoreSlot').innerHTML = '<div class="confirm-banner"><span>Restored '+escapeHtml(file.replace(/\.json$/,''))+'.</span></div>';
       renderAll();
     }catch(e){

@@ -1590,6 +1590,64 @@
   .confirm-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .confirm-banner span{flex:1;font-size:12.5px;color:#3730A3;min-width:200px;}
 
+  /* ---------- scratch (js/scratch.js) — the napkin ----------
+     A MODE, not a modal. It replaces the whole screen including the sidebar, so it sits at 950 in
+     the ladder: above the mobile sticky sidebar (40) and above the tab-switcher FAB/overlay
+     (900/899 — both position:fixed, so without this a violet floating button would hover over an
+     otherwise-bare page and wreck the whole point), and below the 1000 modal tier
+     (.struggle-overlay, .play-overlay, .mosaic-overlay) so anything genuinely modal that is
+     already up still wins. Above that: 1400 level-up, 2000 confetti, 9999 boot splash — all
+     correct to outrank it.
+     Every colour is a token, so all four themes come free, and --bg/--text is exactly the "just
+     text on the page" look this is meant to have. */
+  .scratch-overlay{position:fixed;inset:0;height:100dvh;z-index:950;background:var(--bg);color:var(--text);display:flex;flex-direction:column;padding:max(30px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left));}
+  .scratch-banner{flex:none;width:100%;max-width:70ch;margin:0 auto 12px;}
+  /* full-bleed: no border, no background, no resize grip — the field IS the page. 70ch is a
+     comfortable prose measure; 1.75 line-height because this gets written in paragraphs.
+     overflow-y here rather than on the overlay so the footer and the logo stay put while the
+     writing scrolls under them. */
+  .scratch-text{flex:1;width:100%;max-width:70ch;margin:0 auto;min-height:0;overflow-y:auto;background:transparent;border:none;outline:none;padding:0;color:var(--text);font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.75;caret-color:var(--violet);white-space:pre-wrap;overflow-wrap:break-word;}
+  /* contenteditable has no ::placeholder and is almost never truly :empty (browsers leave a stray
+     <br> behind), so markScratchEmpty() sets this class instead */
+  .scratch-text.is-empty::before{content:attr(data-placeholder);color:var(--faint);pointer-events:none;}
+  .scratch-text img{max-width:100%;height:auto;border-radius:10px;margin:6px 0;display:block;}
+  .scratch-text a{color:var(--violet);text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
+  .scratch-text blockquote{margin:6px 0;padding-left:12px;border-left:2px solid var(--border);color:var(--muted);}
+  .scratch-text code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--surface-alt);border-radius:4px;padding:1px 4px;}
+  .scratch-text ul,.scratch-text ol{margin:4px 0;padding-left:22px;}
+  /* the tickbox: sized up from the browser default because this gets tapped on a phone, and
+     vertical-align keeps it sitting on the text baseline rather than riding above it */
+  .scratch-text input.scratch-tick{width:15px;height:15px;margin:0 7px 0 0;vertical-align:-2px;accent-color:var(--violet);cursor:pointer;flex:none;}
+  /* an in-flight image upload. Both of these are UI, never content — the sanitizer drops them, so
+     a save landing mid-upload can't persist the word "uploading…" into the page. */
+  .scratch-uploading{color:var(--faint);font-style:italic;}
+  .scratch-uperr{color:var(--danger);font-style:italic;}
+  /* the only chrome, and deliberately at --faint: it should read as a margin note, never as a bar */
+  .scratch-foot{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
+  .scratch-status{flex:none;}
+  .scratch-tips{flex:1;text-align:center;opacity:.75;}
+  .scratch-tips b{font-weight:700;}
+  .scratch-close{flex:none;background:none;border:none;padding:4px 6px;margin:-4px -6px;color:var(--faint);font-size:17px;line-height:1;cursor:pointer;}
+  /* The logo, redrawn over the takeover and doubling as the close button. Absolutely positioned
+     from .brand's measured rect (js/scratch.js), so the padding here has to match .brand's own or
+     the two would sit a few pixels apart. z-index clears the writing column beneath it. */
+  .scratch-brand{position:absolute;display:flex;align-items:center;gap:10px;padding:0 4px 18px;z-index:2;cursor:pointer;transition:opacity .15s ease;}
+  .scratch-brand:hover{opacity:.72;}
+  .scratch-brand:focus-visible{outline:2px solid var(--violet);outline-offset:4px;border-radius:12px;}
+  .scratch-brand .brand-name{pointer-events:none;}
+  @media (max-width:760px){
+    /* --nav-h is the measured height of the sticky top bar (js/nav.js). Unlike .g-sheet this does
+       NOT reserve it as clearance — the scratch page REPLACES the nav rather than sitting under
+       it. It's used only to keep the top strip, where .brand was and where #scratchBrandHit now
+       is, clear of the text, so a tap meant for the logo can't land mid-paragraph. */
+    .scratch-overlay{padding-top:calc(var(--nav-h, 56px) + 10px);}
+    .scratch-text{font-size:16px;} /* anything smaller and iOS zooms the page on focus */
+    .scratch-hint{display:none;}   /* no Esc key to hint at — the × carries it */
+    .scratch-tip-key{display:none;}/* nor a ctrl key; the [] shorthand still works, so the tip stays */
+    .scratch-brand{padding:0;justify-content:center;} /* .brand centres itself in the mobile top bar */
+    .scratch-text input.scratch-tick{width:17px;height:17px;} /* thumb-sized */
+  }
+
   /* the switcher only exists on mobile; !important beats the inline display:flex nav.js sets on
      the overlay, so a rotate/resize to desktop width can't leave a stray sheet on screen */
   @media (min-width:761px){

@@ -69,15 +69,18 @@ Deno.serve(async (req) => {
       //    "id" key, [{ data: {...whole state, jobs still embedded...} }], because the old backup
       //    script only selected `data`. Every backup taken before that change looks like this.
       //  - Current: one element per fetched row, tagged by id — e.g.
-      //    [{id:"jobs",...},{id:"notes",...},{id:"shared",...}].
+      //    [{id:"jobs",...},{id:"notes",...},{id:"scratch",...},{id:"shared",...}].
       //    Rows MUST be selected by .id, never by array position: the script orders by id.asc, so
-      //    "jobs" and "notes" both sort before "shared" and index 0 is NOT the main state.
-      // The jobs and notes rows may each legitimately be absent (account never used that tab, or
-      // the backup predates that tab's split) — not an error; the corresponding field just stays
-      // null and the client falls back to any copy still embedded in the shared blob.
+      //    "jobs", "notes" and "scratch" ALL sort before "shared" and index 0 is NOT the main state.
+      // The jobs, notes and scratch rows may each legitimately be absent (account never used that
+      // tab, or the backup predates that tab's split) — not an error; the corresponding field just
+      // stays null. For jobs and notes the client then falls back to any copy still embedded in the
+      // shared blob; scratch has no such fallback, because it has never lived anywhere but its own
+      // row, so a backup without it simply predates the feature and an empty page is correct.
       let mainData;
       let jobsData = null;
       let notesData = null;
+      let scratchData = null;
       if (parsed[0].id === undefined) {
         mainData = parsed[0].data;
       } else {
@@ -87,12 +90,15 @@ Deno.serve(async (req) => {
         const jobsRow = parsed.find((r: any) => r && r.id === "jobs");
         // deno-lint-ignore no-explicit-any
         const notesRow = parsed.find((r: any) => r && r.id === "notes");
+        // deno-lint-ignore no-explicit-any
+        const scratchRow = parsed.find((r: any) => r && r.id === "scratch");
         mainData = sharedRow ? sharedRow.data : undefined;
         jobsData = jobsRow ? jobsRow.data : null;
         notesData = notesRow ? notesRow.data : null;
+        scratchData = scratchRow ? scratchRow.data : null;
       }
       if (!mainData) return json({ error: "Backup file doesn't contain the expected data" }, 500);
-      return json({ data: mainData, jobsData, notesData });
+      return json({ data: mainData, jobsData, notesData, scratchData });
     }
 
     return json({ error: "Unknown action" }, 400);

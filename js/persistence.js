@@ -538,14 +538,15 @@
   async function doSave(force){
     if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
     cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
-    // Jobs and Notes each live in their own storage resource now (see saveJobs() in js/jobs.js and
-    // saveNotes() in js/notes.js), so neither may be part of this payload. Rest-destructuring rather
+    // Jobs, Notes and the scratch page each live in their own storage resource now (see saveJobs()
+    // in js/jobs.js, saveNotes() in js/notes.js and saveScratch() in js/scratch.js), so none of the
+    // three may be part of this payload. Rest-destructuring rather
     // than a hand-maintained key list is deliberate: every OTHER top-level key of state carries
     // forward automatically, including any added later, with nothing to remember to update here.
     // Note the write below REPLACES the whole jsonb column (it isn't a merge), so anything
     // accidentally omitted from this object is destroyed on the next save of any tab —
     // jobSiteAccounts in particular looks Jobs-adjacent but must stay included.
-    const { jobs, notes, ...mainState } = state;
+    const { jobs, notes, scratch, ...mainState } = state;
     try{
       if(usingClaudeStorage){ await setWithRetry('app-data', JSON.stringify(mainState)); hideOfflineBanner(); return; }
       if(!supa) return;
@@ -612,6 +613,7 @@
           if(res && res.value){ parsedMain = JSON.parse(res.value); applyLoadedState(parsedMain); }
           await loadJobsData(parsedMain);
           await loadNotesData(parsedMain);
+          await loadScratchData();
           loadedOk = true;
           cacheStateLocally();
           hideOfflineBanner();
@@ -621,12 +623,14 @@
           if(/not found|no such key|does not exist/i.test(msg)){
             await loadJobsData(null);
             await loadNotesData(null);
+            await loadScratchData();
             loadedOk = true;
           } else {
             console.error('load failed', e);
             fallbackToLocalCache();
             await loadJobsData(null);
             await loadNotesData(null);
+            await loadScratchData();
           }
         }
       } else {
@@ -641,12 +645,14 @@
             fallbackToLocalCache();
             await loadJobsData(null);
             await loadNotesData(null);
+            await loadScratchData();
           } else {
             let parsedMain = null;
             if(data && data.data){ parsedMain = data.data; applyLoadedState(parsedMain); }
             lastKnownUpdatedAt = data ? data.updated_at : null;
             await loadJobsData(parsedMain);
             await loadNotesData(parsedMain);
+            await loadScratchData();
             loadedOk = true;
             cacheStateLocally();
             hideOfflineBanner();
@@ -658,6 +664,7 @@
       fallbackToLocalCache();
       await loadJobsData(null);
       await loadNotesData(null);
+      await loadScratchData();
     }
     el('pfName').value = state.profile.name || '';
     el('pfAge').value = state.profile.age || '';

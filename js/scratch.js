@@ -238,6 +238,9 @@
     // the same as which page you had open
     state.scratch = { pages: pages, activeId: activeId, updatedAt: at, mute: !!(raw && raw.mute) };
     ensureScratchPages();
+    // Re-baseline rather than diff: arriving at a different set of pages (first load, or a
+    // conflict-reload of someone else's newer copy) is not this session deleting anything.
+    noteScratchImages();
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
@@ -773,6 +776,7 @@
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
+    sweepDeletedScratchImages(); // a deleted page is confirmed and unundoable — reclaim now
     focusScratchSurface(); // the - button that was clicked no longer exists; don't strand focus
     setScratchStatus('dirty');
     debouncedSaveScratch();
@@ -945,6 +949,7 @@
       img.src = url;
       if(slot) slot.replaceWith(img);
       else el('scratchText').appendChild(img);
+      scratchKnownImages.add(url); // so pasting then deleting in one sitting still reclaims the file
       setScratchStatus('dirty');
       onScratchInput();
     }).catch(err=>{
@@ -956,6 +961,57 @@
       setScratchStatus('dirty');
       onScratchInput();
     });
+  }
+
+  /* ---------- reclaiming deleted images ----------
+     An image removed from a page gets its file removed from Storage too, so the bucket doesn't fill
+     with things nothing points at any more.
+
+     Free-form HTML gives no "this was removed" event, so this works by DIFFING: the set of image
+     URLs across every page is captured when the pad loads, and on the way out anything that has
+     since disappeared is deleted. Three details make that safe, and each is load-bearing:
+
+       Across ALL pages, never per page. Cutting an image from one page and pasting it on another
+       must not read as a deletion, and an image copied onto two pages must survive losing one.
+
+       On CLOSE, not on edit. Deleting the instant an <img> vanishes would destroy the file on any
+       Ctrl+Z, and on the gap between cutting and pasting. Waiting until the pad is closed means
+       the state is re-checked once the dust has settled, and an undo inside the session simply
+       puts the URL back before anything is compared.
+
+       Newly uploaded URLs join the known set immediately, or pasting an image and then deleting it
+       in the same sitting would leave the file behind: it was never in the baseline, so the diff
+       would see nothing go missing.
+
+     deleteStorageImage() (js/core.js) is already best-effort and already no-ops on anything that
+     isn't a Storage URL, so data: fallbacks and foreign links pass straight through.
+
+     Two limits worth knowing. An image cut, then closed, then pasted back on a later visit is gone
+     — the clipboard is not readable, so nothing here can know it is still spoken for. And a backup
+     restored from before a deletion will reference a file that no longer exists; the HTML comes
+     back, the bytes do not. */
+  let scratchKnownImages = new Set();
+
+  function scratchImageUrls(){
+    const set = new Set();
+    const pages = (state.scratch && state.scratch.pages) || [];
+    for(let i=0; i<pages.length; i++){
+      const doc = new DOMParser().parseFromString('<body>' + (pages[i].html || '') + '</body>', 'text/html');
+      const imgs = doc.querySelectorAll('img[src]');
+      for(let k=0; k<imgs.length; k++) set.add(imgs[k].getAttribute('src'));
+    }
+    return set;
+  }
+
+  function noteScratchImages(){ scratchKnownImages = scratchImageUrls(); }
+
+  function sweepDeletedScratchImages(){
+    if(typeof deleteStorageImage !== 'function') return;
+    const live = scratchImageUrls();
+    const gone = [];
+    scratchKnownImages.forEach(url => { if(!live.has(url)) gone.push(url); });
+    scratchKnownImages = live; // the new baseline, so nothing is ever offered for deletion twice
+    for(let i=0; i<gone.length; i++) deleteStorageImage(gone[i]);
   }
 
   function scratchImageFrom(dt){
@@ -1035,6 +1091,7 @@
     if(!scratchOpen) return;
     commitScratchSurface();               // while scratchOpen is still true
     const swept = sweepTrailingEmptyScratchPages();
+    sweepDeletedScratchImages();          // after the commit, so the last edit counts
     scratchOpen = false;
     scratchTabHeld = false; scratchTabUsed = false; scratchWheelAcc = 0; scratchWheelDir = 0; scratchWheelStepAt = 0;
     if(swept){

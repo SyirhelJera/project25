@@ -1630,6 +1630,16 @@
   .scratch-dot:hover{background:var(--muted);background-clip:content-box;}
   .scratch-dot.is-active{background:var(--violet);background-clip:content-box;transform:scale(1.3);}
   .scratch-dot:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* touch-action:none is required, not cosmetic: without it the browser claims a horizontal drag
+     on a dot as a pan gesture and the pointermove stream stops mid-reorder on touch. */
+  .scratch-dot{touch-action:none;}
+  .scratch-dot.is-dragging{background:var(--violet);background-clip:content-box;transform:scale(1.55);}
+  /* while reordering, the dots read as a track being rearranged rather than a row of buttons */
+  .scratch-pages.is-reordering{cursor:grabbing;}
+  .scratch-pages.is-reordering .scratch-dot{transition:none;cursor:grabbing;}
+  @media (prefers-reduced-motion: reduce){
+    .scratch-dot{transition:none;}
+  }
   /* + and - rather than words: they pair obviously and stay out of the way */
   .scratch-pagebtn{background:none;border:none;padding:3px 7px;margin-left:2px;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;border-radius:6px;transition:color .15s ease,background .15s ease;}
   .scratch-pagebtn:hover{color:var(--text);background:var(--surface-alt);}

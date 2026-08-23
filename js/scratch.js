@@ -804,7 +804,7 @@
     let h = '';
     for(let i=0; i<pages.length; i++){
       const label = scratchPageTitle(pages[i]);
-      h += '<button type="button" class="scratch-dot' + (i === active ? ' is-active' : '') + '" data-i="' + i + '"'
+      h += '<button type="button" class="scratch-dot' + (i === active ? ' is-active' : '') + (pages[i].id === scratchDragId ? ' is-dragging' : '') + '" data-i="' + i + '"'
          + ' title="' + escapeHtml(label) + '"'
          + ' aria-label="Page ' + (i + 1) + ' of ' + pages.length + ': ' + escapeHtml(label) + '"'
          + (i === active ? ' aria-current="true"' : '') + '></button>';
@@ -1085,7 +1085,90 @@
     if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); closeScratch(); }
   });
 
+  /* ---------- reordering ----------
+     Drag a dot to move its page. The dots ARE the pages, so they're the honest handle; there is no
+     separate list to open and nothing new on screen when you aren't reordering.
+
+     Pointer events rather than HTML5 drag-and-drop (which notes.js uses): that API doesn't fire on
+     touch at all, and this page is used on a phone. Pointer events cover mouse, touch and pen from
+     one path.
+
+     The subtle part is WHERE the pointer is captured. Capture goes on the ROW, not on the dot being
+     dragged, because reordering re-renders the row's innerHTML on every crossing — capturing the
+     dot would release the moment that node was replaced and the drag would die after one step. The
+     row element itself survives every re-render, so the gesture doesn't. */
+  let scratchDragId = null, scratchDragFrom = -1, scratchDragX = 0, scratchDragging = false;
+  let scratchSuppressDotClick = false;
+
+  function moveScratchPage(from, to){
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    if(from === to || from < 0 || to < 0 || from >= pages.length || to >= pages.length) return false;
+    pages.splice(to, 0, pages.splice(from, 1)[0]);
+    // activeId is an id, not an index, so whichever page you were on is still the page you're on —
+    // it simply sits somewhere else in the row now
+    state.scratch.updatedAt = Date.now();
+    return true;
+  }
+
+  // which slot the pointer is currently over, by dot centres in their CURRENT on-screen order
+  function scratchDotIndexAt(x){
+    const dots = el('scratchPages').querySelectorAll('.scratch-dot');
+    for(let i=0; i<dots.length; i++){
+      const r = dots[i].getBoundingClientRect();
+      if(x < r.left + r.width / 2) return i;
+    }
+    return dots.length - 1;
+  }
+
+  el('scratchPages').addEventListener('pointerdown', e=>{
+    const dot = e.target && e.target.closest && e.target.closest('.scratch-dot');
+    if(!dot || state.scratch.pages.length < 2) return;
+    scratchDragFrom = parseInt(dot.getAttribute('data-i'), 10);
+    if(isNaN(scratchDragFrom)) return;
+    scratchDragId = state.scratch.pages[scratchDragFrom].id;
+    scratchDragX = e.clientX;
+    scratchDragging = false; // not a drag until it actually travels — a tap must still select
+    try{ el('scratchPages').setPointerCapture(e.pointerId); }catch(err){}
+  });
+
+  el('scratchPages').addEventListener('pointermove', e=>{
+    if(!scratchDragId) return;
+    // 6px of travel before this counts as a drag, so a slightly imprecise tap still just switches
+    if(!scratchDragging && Math.abs(e.clientX - scratchDragX) < 6) return;
+    if(!scratchDragging){
+      scratchDragging = true;
+      el('scratchPages').classList.add('is-reordering');
+      renderScratchPages(); // paint the lifted dot
+    }
+    const to = scratchDotIndexAt(e.clientX);
+    if(to !== scratchDragFrom && moveScratchPage(scratchDragFrom, to)){
+      scratchDragFrom = to;
+      renderScratchPages();
+      playScratchPageTick(1); // one thock per slot crossed — the whole point is that it feels physical
+    }
+  });
+
+  function endScratchDrag(){
+    if(!scratchDragId) return;
+    const wasDragging = scratchDragging;
+    scratchDragId = null; scratchDragFrom = -1; scratchDragging = false;
+    el('scratchPages').classList.remove('is-reordering');
+    renderScratchPages();
+    if(wasDragging){
+      // a completed drag ends with a click event on the dot; without this it would also navigate
+      scratchSuppressDotClick = true;
+      setTimeout(()=>{ scratchSuppressDotClick = false; }, 0);
+      focusScratchSurface();
+      setScratchStatus('dirty');
+      debouncedSaveScratch();
+    }
+  }
+  el('scratchPages').addEventListener('pointerup', endScratchDrag);
+  el('scratchPages').addEventListener('pointercancel', endScratchDrag);
+
   el('scratchPages').addEventListener('click', e=>{
+    if(scratchSuppressDotClick) return; // that click was the tail of a reorder, not a choice
     const t = e.target;
     if(!t || !t.closest) return;
     if(t.closest('#scratchAddPage')){ addScratchPage(); return; }

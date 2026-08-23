@@ -1,0 +1,318 @@
+  /* ================= INSIGHTS ================= */
+  function computedVarHex(varName){
+    const v = getComputedStyle(document.body).getPropertyValue(varName).trim();
+    return v || '#000000';
+  }
+  // color inputs need a concrete hex to display even when uncustomized — shows the current
+  // theme's actual color in that case, without writing anything to state.mosaicColors
+  function renderMosaicColorInputs(){
+    if(!state.mosaicColors) state.mosaicColors = { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
+    const mc = state.mosaicColors;
+    el('mcFilledInput').value = mc.filled || computedVarHex('--violet');
+    el('mcTodayInput').value = mc.today || computedVarHex('--gold');
+    el('mcEmptyInput').value = mc.empty || computedVarHex('--border');
+    el('mcPerfectInput').value = mc.perfect || computedVarHex('--gold');
+    document.querySelectorAll('#perfectGlowToggle [data-glow]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.glow === 'on') === (mc.perfectGlow !== false));
+    });
+    const style = mc.perfectStyle || 'color';
+    el('perfectStyleSelect').value = style;
+    el('perfectColorField').style.display = (style === 'color' || style === 'outline') ? '' : 'none';
+    el('perfectEmojiField').style.display = style === 'emoji' ? '' : 'none';
+    el('perfectEmojiPresets').style.display = style === 'emoji' ? '' : 'none';
+    el('perfectEmojiInput').value = mc.perfectEmoji || '⭐';
+    document.querySelectorAll('#perfectEmojiPresets .emoji-swatch').forEach(b=>{
+      b.classList.toggle('selected', b.dataset.emoji === (mc.perfectEmoji || '⭐'));
+    });
+  }
+
+  // moves each .nav-item into state.tabOrder's order (tabs missing from a stale saved order —
+  // e.g. added after the order was last saved — fall in at the end, keeping their relative order)
+  function applyTabOrder(){
+    const nav = el('navList'); if(!nav) return;
+    const order = state.tabOrder;
+    if(!order || !order.length) return;
+    const items = Array.from(nav.querySelectorAll('.nav-item'));
+    const byKey = {}; items.forEach(it=>{ byKey[it.dataset.tab] = it; });
+    order.forEach(key=>{ if(byKey[key]) nav.appendChild(byKey[key]); });
+    items.forEach(it=>{ if(!order.includes(it.dataset.tab)) nav.appendChild(it); });
+  }
+
+  // Settings > Tab Icons. Just a body class the nav CSS keys off (styles.css, .nav-item svg and its
+  // mobile override), so flipping it never has to rebuild the nav or re-render a tab.
+  function applyTabIcons(){
+    document.body.classList.toggle('hide-tab-icons', !!state.hideTabIcons);
+  }
+
+  /* Settings > Show Tabs. Hiding is presentation only — the view and its data stay put, the tab is
+     just marked .nav-hidden so it drops out of the sidebar and the mobile switcher sheet (which
+     reads visibleNavItems()). Settings can never be hidden; it's the only way back to this
+     control. */
+  function applyTabVisibility(){
+    const nav = el('navList'); if(!nav) return;
+    const hidden = Array.isArray(state.hiddenTabs) ? state.hiddenTabs : [];
+    const items = Array.from(nav.querySelectorAll('.nav-item'));
+    items.forEach(it=>{
+      it.classList.toggle('nav-hidden', it.dataset.tab !== 'settings' && hidden.includes(it.dataset.tab));
+    });
+    // hiding the tab you're standing on would leave the main pane blank — move to the first
+    // surviving tab instead (its own nav click handler does the rendering)
+    const active = items.find(it=>it.classList.contains('active'));
+    if(active && active.classList.contains('nav-hidden')){
+      const first = items.find(it=>!it.classList.contains('nav-hidden'));
+      if(first) first.click();
+    }
+  }
+
+  // the nav as the user actually sees it — hidden tabs are skipped by everything that walks it
+  function visibleNavItems(){
+    return Array.from(document.querySelectorAll('#navList .nav-item:not(.nav-hidden)'));
+  }
+
+  function setTabHidden(key, hide){
+    if(key === 'settings') return;
+    const hidden = (Array.isArray(state.hiddenTabs) ? state.hiddenTabs : []).filter(k=>k!==key);
+    if(hide) hidden.push(key);
+    state.hiddenTabs = hidden;
+    save();
+    applyTabVisibility();
+    renderTabOrderSettings();
+  }
+
+  // commits a new tab key order — used by both the drag-drop handler (desktop) and the up/down
+  // move buttons (mobile, where .drag-handle is hidden since HTML5 drag events don't fire on touch)
+  function commitTabOrder(order){
+    state.tabOrder = order;
+    save();
+    applyTabOrder();
+    renderTabOrderSettings();
+  }
+
+  /* drag-to-reorder navbar tabs (Settings page) — same delegated dragstart/dragover/drop/dragend
+     pattern as finance accounts / checklists, but reorders the live sidebar nav too, not just a
+     data array, since the sidebar's DOM order *is* the source of truth for tab order. Also offers
+     ▲▼ move buttons alongside the handle, since drag-and-drop doesn't work on touch (see the
+     .drag-handle{display:none} mobile override) and this is the one reorder list in the app that
+     needs a touch-friendly fallback. */
+  let draggedTabKey = null;
+  function renderTabOrderSettings(){
+    const list = el('tabOrderList'); if(!list) return;
+    const navItems = Array.from(document.querySelectorAll('#navList .nav-item'));
+    list.innerHTML = navItems.map((item, idx)=>{
+      const key = item.dataset.tab;
+      const label = item.querySelector('.nav-label').textContent;
+      const iconHtml = item.querySelector('svg').outerHTML;
+      const isHidden = item.classList.contains('nav-hidden');
+      const locked = key === 'settings'; // can't hide the way back to this screen
+      return '<div class="tab-order-row'+(isHidden?' is-hidden':'')+'" data-tab-key="'+key+'">'
+        + '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+        + '<span class="tab-order-icon">'+iconHtml+'</span>'
+        + '<span class="tab-order-label">'+escapeHtml(label)+'</span>'
+        + '<button class="tab-vis-btn'+(isHidden?' off':'')+'" type="button" data-vis-tab="'+key+'"'
+        +   (locked?' disabled title="Settings always stays in the navbar"':' title="'+(isHidden?'Show in navbar':'Hide from navbar')+'"')+'>'
+        +   (isHidden?'Hidden':'Shown')
+        + '</button>'
+        + '<div class="tab-order-move-btns">'
+        +   '<button class="tab-order-move-btn" type="button" data-dir="up" title="Move up"'+(idx===0?' disabled':'')+'>▲</button>'
+        +   '<button class="tab-order-move-btn" type="button" data-dir="down" title="Move down"'+(idx===navItems.length-1?' disabled':'')+'>▼</button>'
+        + '</div>'
+        + '</div>';
+    }).join('');
+    if(!list.dataset.wired){
+      list.dataset.wired = '1';
+      list.addEventListener('click', e=>{
+        const visBtn = e.target.closest('.tab-vis-btn');
+        if(visBtn){
+          if(!visBtn.disabled) setTabHidden(visBtn.dataset.visTab, !visBtn.classList.contains('off'));
+          return;
+        }
+        const btn = e.target.closest('.tab-order-move-btn');
+        if(!btn || btn.disabled) return;
+        const row = btn.closest('.tab-order-row');
+        const order = Array.from(list.querySelectorAll('.tab-order-row')).map(r=>r.dataset.tabKey);
+        const idx = order.indexOf(row.dataset.tabKey);
+        const swapIdx = btn.dataset.dir === 'up' ? idx-1 : idx+1;
+        if(swapIdx<0 || swapIdx>=order.length) return;
+        [order[idx], order[swapIdx]] = [order[swapIdx], order[idx]];
+        commitTabOrder(order);
+      });
+      list.addEventListener('dragstart', e=>{
+        const handle = e.target.closest('.drag-handle');
+        if(!handle) return;
+        const row = handle.closest('.tab-order-row');
+        draggedTabKey = row ? row.dataset.tabKey : null;
+        e.dataTransfer.effectAllowed = 'move';
+      });
+      list.addEventListener('dragover', e=>{
+        if(!draggedTabKey) return;
+        e.preventDefault();
+        const overRow = e.target.closest('.tab-order-row');
+        list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+        if(overRow && overRow.dataset.tabKey !== draggedTabKey) overRow.classList.add('drag-over');
+      });
+      list.addEventListener('drop', e=>{
+        if(!draggedTabKey) return;
+        e.preventDefault();
+        list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over'));
+        const overRow = e.target.closest('.tab-order-row');
+        const toKey = overRow ? overRow.dataset.tabKey : null;
+        const fromKey = draggedTabKey; draggedTabKey = null;
+        if(!toKey || toKey === fromKey) return;
+        const order = Array.from(list.querySelectorAll('.tab-order-row')).map(r=>r.dataset.tabKey);
+        const fromIdx = order.indexOf(fromKey), toIdx = order.indexOf(toKey);
+        if(fromIdx<0 || toIdx<0) return;
+        order.splice(toIdx, 0, order.splice(fromIdx,1)[0]);
+        commitTabOrder(order);
+      });
+      list.addEventListener('dragend', ()=>{ draggedTabKey = null; list.querySelectorAll('.tab-order-row.drag-over').forEach(r=>r.classList.remove('drag-over')); });
+    }
+  }
+
+  /* ---- settings sub-nav (Appearance / Navigation / Tracking / Valorant / Data) ----
+     The reset to Appearance lives in nav.js on tab entry, NOT in renderSettings() — two of the
+     toggles below re-render the whole tab as their save step, and resetting here would throw you
+     back to the first category every time you flipped one. Nothing here needs a render call the
+     way showFinanceSubTab() does: renderSettings(), renderValLocalPanel() and renderProtectedDays()
+     already fill all five panes on entry, and a hidden pane holds its values fine. */
+  function showSettingsSubTab(key){
+    document.querySelectorAll('#view-settings .finance-subnav-btn').forEach(b=>b.classList.toggle('active', b.dataset.settab===key));
+    document.querySelectorAll('.settab').forEach(t=>t.style.display = (t.id==='settab-'+key) ? '' : 'none');
+    // the Valorant category is several screens tall, so switching out of it from the bottom would
+    // otherwise leave a short category scrolled past its own content
+    if(window.scrollY > 0) window.scrollTo({top:0, behavior:'auto'});
+  }
+  document.querySelectorAll('#view-settings .finance-subnav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> showSettingsSubTab(btn.dataset.settab));
+  });
+
+  function renderSettings(){
+    applyTheme();
+    renderTabOrderSettings();
+
+    const tabIconVisToggle = el('tabIconVisToggle');
+    if(tabIconVisToggle && !tabIconVisToggle.dataset.wired){
+      tabIconVisToggle.dataset.wired = '1';
+      tabIconVisToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-vis]');
+        if(!btn) return;
+        state.hideTabIcons = btn.dataset.vis === 'hide';
+        save(); applyTabIcons(); renderSettings();
+      });
+    }
+    document.querySelectorAll('#tabIconVisToggle [data-vis]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.vis === 'hide') === !!state.hideTabIcons);
+    });
+
+    const sel = el('settingsNetWorthCurrency');
+    if(!sel.options.length){
+      sel.innerHTML = CURRENCIES.map(c=>'<option value="'+c+'">'+c+' ('+ccySymbol(c)+')</option>').join('');
+      sel.addEventListener('change', ()=>{
+        state.profile.netWorthCurrency = sel.value;
+        save(); renderGoals();
+      });
+    }
+    sel.value = state.profile.netWorthCurrency || 'USD';
+
+    const avatarVisToggle = el('avatarVisToggle');
+    if(avatarVisToggle && !avatarVisToggle.dataset.wired){
+      avatarVisToggle.dataset.wired = '1';
+      avatarVisToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-vis]');
+        if(!btn) return;
+        state.profile.hideAvatar = btn.dataset.vis === 'hide';
+        save(); renderSettings(); updateAvatar();
+      });
+    }
+    document.querySelectorAll('#avatarVisToggle [data-vis]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.vis === 'hide') === !!state.profile.hideAvatar);
+    });
+
+    // Trend Comparison — how far back the Net Worth / Fitness ▲▼ arrows measure (trendCutoffKey()
+    // in core.js). Both trends redraw through the renders below.
+    const trendWindowSelect = el('trendWindowSelect');
+    if(trendWindowSelect){
+      trendWindowSelect.value = state.trendWindow == null ? '0' : String(state.trendWindow);
+      if(!trendWindowSelect.dataset.wired){
+        trendWindowSelect.dataset.wired = '1';
+        trendWindowSelect.addEventListener('change', ()=>{
+          state.trendWindow = trendWindowSelect.value;
+          save();
+          renderGoals();                                                   // net worth arrow
+          if(typeof updateFitnessLevelUI === 'function') updateFitnessLevelUI(); // fitness arrow
+        });
+      }
+    }
+
+    renderMosaicColorInputs();
+    const mcFields = el('mosaicColorFields');
+    if(mcFields && !mcFields.dataset.wired){
+      mcFields.dataset.wired = '1';
+      el('mcFilledInput').addEventListener('input', ()=>{ state.mosaicColors.filled = el('mcFilledInput').value; applyMosaicColors(); debouncedSave(); });
+      el('mcTodayInput').addEventListener('input', ()=>{ state.mosaicColors.today = el('mcTodayInput').value; applyMosaicColors(); debouncedSave(); });
+      el('mcEmptyInput').addEventListener('input', ()=>{ state.mosaicColors.empty = el('mcEmptyInput').value; applyMosaicColors(); debouncedSave(); });
+      el('mcPerfectInput').addEventListener('input', ()=>{ state.mosaicColors.perfect = el('mcPerfectInput').value; applyMosaicColors(); debouncedSave(); });
+      el('mosaicColorResetBtn').addEventListener('click', ()=>{
+        // reset colors only — leaves the perfectGlow on/off toggle alone, that's a separate control
+        state.mosaicColors.filled = ''; state.mosaicColors.today = ''; state.mosaicColors.empty = ''; state.mosaicColors.perfect = '';
+        applyMosaicColors(); save(); renderMosaicColorInputs();
+      });
+    }
+
+    // protected-day marker color (Settings → Protected Days). Only a CSS custom property changes,
+    // so no re-render is needed — the habit cells and heat-map dots recolor in place.
+    const pdColorInput = el('pdColorInput');
+    if(pdColorInput){
+      pdColorInput.value = state.protectedDayColor || computedVarHex('--violet');
+      if(!pdColorInput.dataset.wired){
+        pdColorInput.dataset.wired = '1';
+        pdColorInput.addEventListener('input', ()=>{
+          state.protectedDayColor = pdColorInput.value; applyProtectedDayColor(); debouncedSave();
+        });
+        el('pdColorResetBtn').addEventListener('click', ()=>{
+          state.protectedDayColor = ''; applyProtectedDayColor(); save();
+          pdColorInput.value = computedVarHex('--violet');
+        });
+      }
+    }
+
+    const perfectGlowToggle = el('perfectGlowToggle');
+    if(perfectGlowToggle && !perfectGlowToggle.dataset.wired){
+      perfectGlowToggle.dataset.wired = '1';
+      perfectGlowToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-glow]');
+        if(!btn) return;
+        state.mosaicColors.perfectGlow = btn.dataset.glow === 'on';
+        save(); renderGoals(); renderMosaicColorInputs();
+      });
+    }
+    const perfectStyleSelect = el('perfectStyleSelect');
+    if(perfectStyleSelect && !perfectStyleSelect.dataset.wired){
+      perfectStyleSelect.dataset.wired = '1';
+      perfectStyleSelect.addEventListener('change', ()=>{
+        state.mosaicColors.perfectStyle = perfectStyleSelect.value;
+        save(); renderGoals(); renderMosaicColorInputs();
+      });
+    }
+    const perfectEmojiInput = el('perfectEmojiInput');
+    if(perfectEmojiInput && !perfectEmojiInput.dataset.wired){
+      perfectEmojiInput.dataset.wired = '1';
+      perfectEmojiInput.addEventListener('input', ()=>{
+        state.mosaicColors.perfectEmoji = perfectEmojiInput.value.trim() || '⭐';
+        renderGoals(); debouncedSave();
+        document.querySelectorAll('#perfectEmojiPresets .emoji-swatch').forEach(b=>{
+          b.classList.toggle('selected', b.dataset.emoji === state.mosaicColors.perfectEmoji);
+        });
+      });
+    }
+    const perfectEmojiPresets = el('perfectEmojiPresets');
+    if(perfectEmojiPresets && !perfectEmojiPresets.dataset.wired){
+      perfectEmojiPresets.dataset.wired = '1';
+      perfectEmojiPresets.addEventListener('click', e=>{
+        const btn = e.target.closest('.emoji-swatch');
+        if(!btn) return;
+        state.mosaicColors.perfectEmoji = btn.dataset.emoji;
+        save(); renderGoals(); renderMosaicColorInputs();
+      });
+    }
+  }
+

@@ -20,6 +20,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Time** | Two panes behind a toggle. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
 | **Board** | A personal board of advisers — a roster of AI personas (Truth-Teller, Pragmatist, Visionary, Health Anchor, Outsider, plus eight more to hire and any number you write yourself), a prompt maker that turns a decision into one block of markdown, and a log of past consults with the answer pasted back. Nothing here calls a model: it builds the prompt and hands it to whichever AI tool you already use. See "Board of Advisers" below. |
+| **Insights** | The one cross-tracker view — every other tab answers "how is *this* going", this one answers "how am I doing". Four sections of summary cards: *Today* (level/XP, habits done, dailies done, and a "needs you" count), *Trends* (net worth, weight, habit consistency and daily activity, each a headline figure with a ▲▼ delta and a 90-day sparkline), *Pipelines* (goal completion, money goals/debts/subscriptions, the job funnel, the next countdowns) and *Games* (Valorant RR — with a chip row to pick which tracked account the card reads, defaulting to whichever one the Valorant tab has selected — and TFT LP with progress toward your goal rank). Every card is a doorway: it summarises, then links into the tab that owns the data, where the real chart lives. Nothing here is a new number — each figure is read through the owning tab's own helper, so the two can never disagree. Read-only; it never writes to `state`. |
 | **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks, and rings those days on the habit calendars and the Goals heat map in a configurable color), and backup restore. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance. The Net Worth and Fitness Level rows each carry a ▲/▼ trend marker (`trendMarker()` in `js/core.js`) — net worth against the newest `netWorthHistory` point from an earlier day, fitness against the previous `weightLog` entry. Arrow direction and color are independent: rising net worth is a green ▲, but rising weight is a red ▲ and losing weight a green ▼.
@@ -30,9 +31,9 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 
 ```
 core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
-countdowns.js → insights.js → backups.js → mantras.js → motivation.js → music.js →
+countdowns.js → settings.js → backups.js → mantras.js → motivation.js → music.js →
 checklists.js → notes.js → finance.js → wishlist.js → jobs.js → fitness.js →
-valorant.js → clock.js → tft.js → main.js
+valorant.js → clock.js → tft.js → board.js → insights.js → main.js
 ```
 
 `tft.js` sits after `valorant.js` on purpose: it owns `showGameSubTab()`, which calls `renderValorant()` and `syncValLivePolling()`. The same list is precached by hand in `sw.js` — a name missing there installs fine and then boots offline with that tab's render function undefined, so the two must be edited together (and `SHELL_CACHE` bumped).
@@ -44,7 +45,8 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `insights.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `countdowns.js`, `mantras.js`, `backups.js`, `settings.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- **`insights.js`** — the Insights tab, and the one file that reads across all the others. It loads last for that reason. Read-only: it never mutates `state` and never calls `save()`.
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
 Rendering is done by tearing down and rebuilding `innerHTML` for the relevant section on every state change (no virtual DOM, no diffing) — `save()` is called after essentially every mutation, and most mutations are followed by a call to that tab's own `render*()`.
@@ -333,7 +335,7 @@ state = {
                                        // to the first visible one
   hideTabIcons: false,                 // Settings -> "Tab Icons": drops the per-tab logos for a
                                        // text-only nav (mobile's icon-only strip switches to
-                                       // labels) — applyTabIcons(), all three in js/insights.js
+                                       // labels) — applyTabIcons(), all three in js/settings.js
   trendWindow: '0',                    // Settings -> "Trend Comparison": how far back the Net
                                        // Worth / Fitness Level ▲▼ arrows measure. '0' = against
                                        // the previous reading (the original behaviour); 'week' /
@@ -618,7 +620,8 @@ js/
   music.js                          background music for a checklist Play session (YouTube IFrame player)
   board.js                          Board of Advisers — adviser roster, prompt maker, consult log (no API calls)
   goals.js / habits.js / finance.js / fitness.js / valorant.js / motivation.js /
-  checklists.js / notes.js / countdowns.js / mantras.js / backups.js / insights.js
+  checklists.js / notes.js / countdowns.js / mantras.js / backups.js / settings.js
+  insights.js
                                      one file per feature tab
 supabase/functions/
   manage-backups/                   list/restore daily backups

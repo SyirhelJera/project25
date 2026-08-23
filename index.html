@@ -60,6 +60,7 @@
 
   <div class="nav" id="navList">
     <div class="nav-item active" data-tab="motivation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0011 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 11-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 002.5 2.5z"/></svg><span class="nav-label">Motivation</span></div>
+    <div class="nav-item" data-tab="insights"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3.5-4.5L14 14l4-6"/><circle cx="7" cy="15" r="1.3" fill="currentColor" stroke="none"/><circle cx="18" cy="8" r="1.3" fill="currentColor" stroke="none"/></svg><span class="nav-label">Insights</span></div>
     <div class="nav-item" data-tab="goals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg><span class="nav-label">Goals</span><span class="nav-badge" id="goalRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="habits"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg><span class="nav-label">Habits</span><span class="nav-badge" id="habitRiskBadge" style="display:none;"></span></div>
     <div class="nav-item" data-tab="finance"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 6.5v11M9 9.2c0-1.3 1.3-2.2 3-2.2s3 .9 3 2c0 1.5-1.6 1.9-3 2.3-1.5.4-3 .9-3 2.4 0 1.1 1.3 2.1 3 2.1s3-.8 3-2"/></svg><span class="nav-label">Finance</span></div>
@@ -82,6 +83,19 @@
   <div id="loadWarningBanner" class="setup-banner" style="display:none;"></div>
   <div id="conflictBanner" class="setup-banner" style="display:none;"></div>
   <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
+
+  <!-- INSIGHTS — the one cross-tracker view: every other tab answers "how is THIS going", this one
+       answers "how am I doing". Deliberately READ-ONLY — it never mutates state and never calls
+       save(), so it sits outside every data-safety rule in CLAUDE.md (no new state key, no
+       applyLoadedState() default, no doSave() change). Every card summarises and then hands off:
+       the real chart always lives in the tab that owns the data, reached by the card's → link.
+       class="fin-scope" is load-bearing — --fin-r-card/--fin-shadow/--fin-pos/--fin-neg are
+       defined on #view-finance/.fin-scope/#view-goals/.goal-scope, not on :root. -->
+  <div class="view fin-scope" id="view-insights">
+    <div class="view-title">Insights</div>
+    <div class="view-sub">Everything at a glance — tap any card to open the tab behind it.</div>
+    <div id="insBody"></div>
+  </div>
 
   <!-- GOALS — a dashboard, not a workspace.
        Three things: where it all stands (the progress board, which is also the way into the list),
@@ -1526,8 +1540,8 @@
        on Finance and Games) and each control sits in its own .set-card with a real heading instead
        of a whisper-weight .section-lbl. The category choice deliberately does NOT persist — like
        Finance's sub-nav these are five views of one concern, so Settings always opens on the same
-       screen and there's no new state key to default. showSettingsSubTab() in js/insights.js owns
-       the switching. Every control id below is unchanged, so the wiring in insights.js,
+       screen and there's no new state key to default. showSettingsSubTab() in js/settings.js owns
+       the switching. Every control id below is unchanged, so the wiring in settings.js,
        valorant.js, protecteddays.js and backups.js still finds all of them. -->
   <div class="view" id="view-settings">
     <div class="view-title">Settings</div>
@@ -1872,7 +1886,7 @@
 <script src="js/goals.js"></script>
 <script src="js/habits.js"></script>
 <script src="js/countdowns.js"></script>
-<script src="js/insights.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/backups.js"></script>
 <script src="js/mantras.js"></script>
 <script src="js/motivation.js"></script>
@@ -1889,6 +1903,9 @@
 <script src="js/tft.js"></script>
 <!-- after notes.js: the History pane renders saved answers through renderMarkdown() -->
 <script src="js/board.js"></script>
+<!-- after every feature file: it reads their helpers (totalExp, calcStreak, moneyGoalSaved,
+     tftSortedEntries, …) rather than re-deriving any number of its own -->
+<script src="js/insights.js"></script>
 <script src="js/main.js"></script>
 <script>
   if('serviceWorker' in navigator){

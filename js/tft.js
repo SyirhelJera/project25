@@ -152,6 +152,34 @@
     return t.tier ? tftValue(t.tier, t.division, t.lp) : null;
   }
 
+  /* The climb toward the target as one record — the same anchor, span and percentage the progress
+     bar on this tab draws. It lives here rather than in the renderer because Insights states the
+     figure too, and a second derivation is how two screens start disagreeing about one number.
+     Null when there is no target or no history: those are the two cases with no climb to measure,
+     and each gets its own wording in renderTftTarget().
+
+     `anchor` is where the climb started, not Iron IV — otherwise setting a Diamond target from
+     Platinum shows 85% done before a single game. It comes from target.startValue (stamped when
+     the target was set) and falls back to the oldest entry for targets set before any history
+     existed. */
+  function tftTargetProgress(){
+    const t = state.tft.target;
+    const targetVal = tftTargetValue();
+    const cur = tftCurrentEntry();
+    if(targetVal == null || !cur) return null;
+    const curVal = tftEntryValue(cur);
+    const sorted = tftSortedEntries();
+    const anchor = t.startValue != null ? t.startValue : (sorted.length ? tftEntryValue(sorted[0]) : 0);
+    const span = targetVal - anchor;
+    return {
+      cur, curVal, targetVal, anchor, span,
+      remaining: Math.max(0, targetVal - curVal),
+      // span <= 0 means the target sits at or below where the climb began — already there
+      pct: span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((curVal - anchor)/span)*100))),
+      label: tftRankLabel(t.tier, t.division)
+    };
+  }
+
   /* ================= MetaTFT auto-sync =================
      MetaTFT's public API answers with a permissive CORS header (it reflects the request Origin),
      so the browser can call it straight out of the page. That's why there's no local helper and no
@@ -582,13 +610,11 @@
       return;
     }
 
-    const remaining = Math.max(0, targetVal - curVal);
-    // anchor the bar at where the climb started, not at Iron IV — otherwise setting a Diamond target
-    // from Platinum shows 85% done before a single game
+    // the anchor/percentage maths lives in tftTargetProgress() so Insights can state the same
+    // figure without re-deriving it
+    const prog = tftTargetProgress();
+    const remaining = prog.remaining, anchor = prog.anchor, pct = prog.pct;
     const sorted = tftSortedEntries();
-    const anchor = t.startValue != null ? t.startValue : (sorted.length ? tftEntryValue(sorted[0]) : 0);
-    const span = targetVal - anchor;
-    const pct = span <= 0 ? 100 : Math.max(0, Math.min(100, Math.round(((curVal - anchor)/span)*100)));
 
     bar.style.display = 'block';
     el('tftTargetFill').style.width = pct + '%';

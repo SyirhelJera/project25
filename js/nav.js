@@ -39,6 +39,9 @@
       // Jobs always opens on Prospect with a clean search — that's the pile that only moves if you
       // act on it (and what the nav badge counts). Mirrors Goals resetting to 'working' above.
       if(t.dataset.tab==='jobs'){ resetJobsView(); renderJobs(); }
+      // force=true: renderInsights() no-ops unless the view is active, since renderAll() calls it
+      // too and recomputing every tracker's aggregates after each unrelated save would be waste.
+      if(t.dataset.tab==='insights') renderInsights(true);
     });
   });
 

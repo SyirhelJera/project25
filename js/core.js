@@ -111,7 +111,7 @@
     // navbar appearance (Settings tab): tabOrder is the sidebar's tab keys in display order
     // (empty = the order they appear in index.html), hideTabIcons drops the per-tab logos,
     // hiddenTabs are the tab keys kept out of the navbar entirely ('settings' is never hideable).
-    // All three are applied by applyTabOrder()/applyTabIcons()/applyTabVisibility() in js/insights.js.
+    // All three are applied by applyTabOrder()/applyTabIcons()/applyTabVisibility() in js/settings.js.
     tabOrder: [], hideTabIcons: false, hiddenTabs: [],
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
     // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;

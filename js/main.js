@@ -10,6 +10,7 @@
     showGameSubTab(state.games.active);
     shuffleMotivationImages(); openToPinnedMotivationCategory(); renderMotivation();
     maybeSyncPinterestCategories(); // no-op unless a Pinterest category hasn't refreshed today yet
+    renderInsights(); // no-op unless the Insights tab is the one on screen (see its guard)
   }
 
   function applyTheme(){

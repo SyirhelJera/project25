@@ -177,14 +177,14 @@
     font-size:13.5px;font-weight:600;color:var(--muted);
     transition:background-color .15s ease, color .15s ease, padding .18s ease, gap .18s ease, transform .1s ease;
   }
-  /* Settings > Navbar Tabs (state.hiddenTabs, applied by applyTabVisibility() in js/insights.js).
+  /* Settings > Navbar Tabs (state.hiddenTabs, applied by applyTabVisibility() in js/settings.js).
      !important so the mobile strip's own .nav-item display rule can't bring it back. */
   .nav-item.nav-hidden{display:none !important;}
   .nav-item:hover{background:var(--surface-alt);color:var(--text);}
   .nav-item:active{transform:scale(.96);}
   .nav-item.active{background:var(--violet-pale);color:var(--violet-dark);}
   .nav-item svg{width:16px;height:16px;flex:none;}
-  /* Settings > Tab Icons (state.hideTabIcons, applied by applyTabIcons() in js/insights.js) —
+  /* Settings > Tab Icons (state.hideTabIcons, applied by applyTabIcons() in js/settings.js) —
      a text-only nav. The mobile override further down has to bring every label back, since the
      mobile strip is icon-only by default and would otherwise be blank. */
   body.hide-tab-icons .nav-item svg{display:none;}
@@ -202,6 +202,7 @@
   .nav-item[data-tab="wishlist"] svg{color:var(--pink);}
   .nav-item[data-tab="mantras"] svg{color:var(--violet);}
   .nav-item[data-tab="motivation"] svg{color:var(--orange);}
+  .nav-item[data-tab="insights"] svg{color:var(--teal);}
   .nav-item[data-tab="settings"] svg{color:var(--slate);}
   .nav-badge{margin-left:auto;background:var(--danger);color:#fff;font-size:10px;font-weight:800;border-radius:999px;min-width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
   /* pulsing glow on the Games icon whenever a wishlisted Valorant skin is in a tracked account's
@@ -1649,7 +1650,7 @@
     .val-drag-handle{display:none !important;}
     /* Notes has no handle to hide — its rows are draggable themselves — but HTML5 drag events
        don't fire on touch either way, so it needs the same fallback: the indent/outdent/move
-       buttons appear here, mirroring the ▲▼ pattern in js/insights.js. cursor:grab is meaningless
+       buttons appear here, mirroring the ▲▼ pattern in js/settings.js. cursor:grab is meaningless
        without a pointer, so it goes too. */
     .notes-move-btns{display:flex;}
     .notes-row{cursor:default;gap:4px;padding-left:calc(var(--depth) * 14px + 6px);background-position:11px 0;background-size:calc(var(--depth) * 14px) 100%;background-image:repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px 14px);}
@@ -2737,6 +2738,20 @@
   .val-local-panel .val-err{margin-top:0;}
   .val-local-panel > :last-child{margin-bottom:0;}
 
+  /* The three in-game currency icons, inlined byte-for-byte from Riot's own currency art
+     (VALORANT Points, Radianite Points, Kingdom Credits — the same files the wiki serves) rather
+     than redrawn, so the logos are the real ones. 128px sources for a ~15px slot: that's the
+     headroom a 3x display needs, and at ~4KB each they cost less than the three extra requests
+     an <img> would, while keeping the shell offline-complete with nothing to precache.
+     :root, not the .val-tracker-card block below, because Settings' Valorant Points prices
+     (.val-vp-price-rows in index.html) reuse .val-store-item-price from inside a .set-card,
+     which is outside that card's variable scope. */
+  :root{
+    --icon-vp:url("data:image/png;base64,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");
+    --icon-rad:url("data:image/png;base64,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");
+    --icon-kc:url("data:image/png;base64,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");
+  }
+
   /* Store Tracker — one unified card holding today's store (left) and the wishlist (right); see
      the "VALORANT" view in index.html and renderValorantStore()/renderValWishlist() in valorant.js.
      Styled after Valorant's own in-game store (dark panel, condensed bold item labels, gold VP
@@ -2765,6 +2780,9 @@
     --danger:#FF4655;
     --vp-gold:#ECE1B8;
     --kc-green:#8FD14F; /* Kingdom Credits, the accessory shop's currency */
+    /* Radianite Points. Not a shop currency at all — it upgrades skins you already own — but it
+       rides along in the same wallet call, so it reads beside the other two in the account header. */
+    --rad-cyan:#88D8E6;
     color:var(--text);
   }
   .val-tracker-card{
@@ -3294,6 +3312,11 @@
   .val-vp-price-rows{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px;margin-bottom:6px;}
   .val-vp-price-row{display:flex;align-items:center;gap:9px;background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;padding:7px 10px;}
   .val-vp-price-row .val-store-item-price{flex:none;font-size:12px;min-width:66px;}
+  /* Riot's icon is white art, which is invisible on a light Settings card — this is the only
+     place a price escapes the dark tracker card, so it's the only place that needs the flip. */
+  .val-vp-price-row .val-store-item-price::before{filter:invert(1) opacity(.7);}
+  body[data-theme="dark"] .val-vp-price-row .val-store-item-price::before,
+  body[data-theme="ios-dark"] .val-vp-price-row .val-store-item-price::before{filter:none;}
   .val-vp-price-row input{flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:'Inter',sans-serif;}
   .val-vp-price-row input:hover,.val-vp-price-row input:focus{border-color:var(--violet);}
   /* one block per seller: a header that names and switches the whole group, then its tiers */
@@ -3366,7 +3389,16 @@
   }
   .val-store-item-name{font-size:11px;font-weight:800;letter-spacing:.2px;text-transform:uppercase;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0;}
   .val-store-item-price{flex:none;font-size:11.5px;font-weight:800;color:var(--vp-gold);display:inline-flex;align-items:center;gap:4px;}
-  .val-store-item-price::before{content:'';width:8px;height:8px;flex:none;background:var(--vp-gold);clip-path:polygon(50% 0%,100% 50%,50% 100%,0% 50%);}
+  /* Sized in em so the icon tracks the price's font-size, which the wallet, the VP-price rows and
+     the breakpoints all override; contain keeps each logo's own aspect. Bigger than the flat
+     8px marker it replaces because these are the full logos, ring and all, and the ring is the
+     first thing to close up at a smaller size. The art is white, so only the figure beside it
+     carries the currency's colour — see the light-theme rule further down for the one place that
+     white lands on a light card. */
+  .val-store-item-price::before{
+    content:'';width:1.25em;height:1.25em;flex:none;
+    background:var(--icon-vp) center/contain no-repeat;
+  }
 
   /* store item currently matching a wishlist entry (see valWishlistMatchesForItem() in valorant.js) */
   .val-store-item.wishlist-match{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
@@ -3395,8 +3427,10 @@
      otherwise spill out of the shrunken art area and across the name/price bar */
   .val-accessory-item .val-store-item-img{min-height:0;padding:12px 8px 4px;overflow:hidden;}
   .val-accessory-item .val-store-item-img img{max-height:100%;}
+  .val-store-item-price.rad{color:var(--rad-cyan,#88D8E6);}
+  .val-store-item-price.rad::before{background-image:var(--icon-rad);}
   .val-store-item-price.kc{color:var(--kc-green,#8FD14F);}
-  .val-store-item-price.kc::before{background:var(--kc-green,#8FD14F);clip-path:circle(50%);}
+  .val-store-item-price.kc::before{background-image:var(--icon-kc);}
   .val-accessory-type{
     position:absolute;top:6px;left:6px;z-index:1;padding:2px 6px;border-radius:5px;
     font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
@@ -3815,3 +3849,101 @@
 
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+
+  /* ---------- INSIGHTS (js/insights.js) ----------
+     The cross-tracker tab. Two shapes only — a tile for the Today strip, a card for everything
+     else — because the tab's job is comparison: fourteen figures that all look alike are scannable
+     in a way fourteen bespoke widgets are not. Everything here is a doorway (role="button"), so
+     the hover lift and the → in each header are the affordance saying so.
+     #view-insights carries .fin-scope, which is where --fin-r-card / --fin-shadow / --fin-pos /
+     --fin-neg come from — they're defined on that selector list, not on :root. */
+  .ins-today{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:6px;}
+  .ins-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:12px;margin-bottom:6px;}
+
+  .ins-tile,.ins-card{background:var(--surface);border:1px solid var(--border);cursor:pointer;
+    transition:box-shadow .14s ease,transform .14s ease,border-color .14s ease;}
+  .ins-tile:hover,.ins-card:hover{box-shadow:var(--fin-shadow-lift);transform:translateY(-1px);border-color:var(--violet);}
+  .ins-tile{border-radius:var(--fin-r-ctl);padding:11px 13px;}
+  .ins-card{border-radius:var(--fin-r-card);padding:13px 15px;box-shadow:var(--fin-shadow);}
+
+  .ins-tile-num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;font-variant-numeric:tabular-nums;
+    color:var(--text);line-height:1.15;}
+  .ins-tile-num.pos{color:var(--fin-pos);}
+  .ins-tile-num.neg{color:var(--fin-neg);}
+  .ins-tile-lbl{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-top:3px;}
+  .ins-tile-sub{margin-top:7px;}
+  .ins-tile-meta{font-size:11.5px;color:var(--faint);font-weight:600;}
+  /* the XP bar — same read as .mana-track on the Goals board, at tile scale */
+  .ins-mini{height:4px;border-radius:999px;background:var(--surface-alt);overflow:hidden;margin-bottom:5px;}
+  .ins-mini-fill{height:100%;background:var(--violet);border-radius:999px;}
+
+  .ins-card-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
+  .ins-card-title{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ins-card-go{color:var(--faint);font-size:13px;flex:none;transition:color .14s ease,transform .14s ease;}
+  .ins-card:hover .ins-card-go{color:var(--violet);transform:translateX(2px);}
+
+  .ins-big{font-family:'Manrope',sans-serif;font-size:23px;font-weight:800;font-variant-numeric:tabular-nums;
+    color:var(--text);line-height:1.15;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;}
+  .ins-big small{font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:0;}
+  .ins-note{font-size:11.5px;color:var(--faint);font-weight:600;margin-top:3px;}
+  .ins-delta{display:inline-flex;align-items:center;gap:3px;font-size:11.5px;font-weight:700;margin-top:5px;}
+  .ins-delta.pos{color:var(--fin-pos);}
+  .ins-delta.neg{color:var(--fin-neg);}
+  .ins-delta.flat{color:var(--faint);}
+  /* the arrow inherits the chip rather than keeping .pf-trend-mark's own --success/--danger:
+     the chip already carries the good/bad meaning, and --fin-pos/--fin-neg are the pair that
+     clears 4.5:1 on the iOS-light surface, which raw --success does not */
+  .ins-delta .pf-trend-mark{color:inherit;cursor:inherit;}
+  .ins-chip{display:inline-block;margin-left:7px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;}
+
+  /* The Valorant card's account picker — a card-scale cousin of .val-acct-chip on the Shop
+     Tracker, same pill read at a size that sits inside a card instead of a toolbar. Real buttons,
+     because unlike everything else on this tab they act in place rather than opening a doorway;
+     the pick is session-only (see insights.js), so there is nothing stored behind them. */
+  .ins-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px;}
+  .ins-chip-btn{
+    max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
+    border-radius:999px;padding:3px 10px;font-size:11px;font-weight:700;
+    font-family:'Inter',sans-serif;cursor:pointer;
+    transition:background-color .15s,border-color .15s,color .15s;
+  }
+  .ins-chip-btn:hover{border-color:var(--violet);color:var(--text);}
+  .ins-chip-btn.on{background:var(--violet);border-color:var(--violet);color:#fff;}
+
+  /* stretched by preserveAspectRatio="none" — the path uses non-scaling-stroke so the line keeps
+     an even weight however wide the card lands */
+  .ins-spark{display:block;width:100%;height:34px;margin-top:9px;overflow:visible;}
+
+  .ins-bar{display:flex;height:6px;border-radius:999px;background:var(--surface-alt);overflow:hidden;margin:8px 0 4px;gap:1px;}
+  .ins-bar-seg{height:100%;background:var(--violet);}
+  .ins-bar-seg.pos{background:var(--success);}
+  .ins-bar-seg.neg{background:var(--danger);}
+
+  .ins-row{display:flex;align-items:baseline;gap:10px;padding:4px 0;border-top:1px solid var(--border);}
+  /* the rule is a separator BETWEEN rows, so it never draws against whatever sits above the
+     first one — which is the head in a rows-only card and the bar in the two that have one */
+  .ins-card-head + .ins-row,.ins-bar + .ins-row{border-top:0;}
+  .ins-row-lbl{flex:1;min-width:0;font-size:12px;color:var(--muted);font-weight:600;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ins-row-val{font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;color:var(--text);flex:none;}
+  .ins-row-val.pos{color:var(--fin-pos);}
+  .ins-row-val.neg{color:var(--fin-neg);}
+
+  #view-insights [data-ins-go]:focus-visible,
+  #view-insights .ins-chip-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  @media (max-width:760px){
+    .ins-today{grid-template-columns:repeat(2,1fr);}
+  }
+  @media (max-width:430px){
+    .ins-today{grid-template-columns:1fr;}
+    .ins-grid{grid-template-columns:1fr;}
+  }
+  /* the lift is decoration; the border/shadow change still reports hover without it */
+  @media (prefers-reduced-motion: reduce){
+    .ins-tile,.ins-card,.ins-card-go{transition:none;}
+    .ins-tile:hover,.ins-card:hover{transform:none;}
+    .ins-card:hover .ins-card-go{transform:none;}
+  }

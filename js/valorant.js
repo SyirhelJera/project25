@@ -856,14 +856,19 @@
         + '</button>'
       : '';
     const levelHtml = (id && id.level) ? '<span class="val-store-account-level">Lv '+escapeHtml(String(id.level))+'</span>' : '';
-    // What this account can actually afford, in the two currencies the shops below price in — the
+    // What this account can actually afford, in the currencies the shops below price in — the
     // whole point of a store list is deciding, and that decision needs the balance next to the
-    // price. Same coin glyphs as the tiles, so 2,150 in the header and 1,775 on a tile are
+    // price. Same currency icons as the tiles, so 2,150 in the header and 1,775 on a tile are
     // obviously the same unit. Absent on stores checked before the wallet lookup existed.
+    // Radianite buys nothing in either shop — it upgrades skins already owned — but it's the
+    // third balance fetchWallet() in scripts/valorant-lib.mjs has always returned, and it's the
+    // figure you need when a store offer is a skin line you'd want to level up. Riot's own wallet
+    // order (VP, RP, KC) is kept so the row reads the way the client does.
     const w = ds.wallet || null;
     const walletHtml = w
       ? '<span class="val-store-wallet">'
         + '<span class="val-store-item-price" title="Valorant Points">'+(w.vp||0).toLocaleString()+'</span>'
+        + '<span class="val-store-item-price rad" title="Radianite Points">'+(w.rad||0).toLocaleString()+'</span>'
         + '<span class="val-store-item-price kc" title="Kingdom Credits">'+(w.kc||0).toLocaleString()+'</span>'
         + '</span>'
       : '';

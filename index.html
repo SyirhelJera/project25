@@ -1871,10 +1871,13 @@
   <div id="scratchText" class="scratch-text" contenteditable="true" spellcheck="false"
        role="textbox" aria-multiline="true" aria-label="Scratch page"
        data-placeholder="…"></div>
+  <!-- page dots + the add/remove controls. Built by renderScratchPages(); each dot's tooltip is the
+       page's first line, derived on read so it can never go stale. -->
+  <div class="scratch-pages" id="scratchPages"></div>
   <div class="scratch-foot">
     <span id="scratchCount">0 words</span>
     <span id="scratchStatus" class="scratch-status"></span>
-    <span class="scratch-tips">type <b>[]</b> for a tick · <span class="scratch-tip-key">ctrl+K to link · </span>paste an image</span>
+    <span class="scratch-tips">type <b>[]</b> for a tick · paste an image<span class="scratch-tip-key"> · ctrl+K to link · hold <b>tab</b> + scroll to change page</span><span class="scratch-tip-touch"> · swipe to change page</span></span>
     <span class="scratch-hint">esc to exit</span>
     <button id="scratchCloseBtn" class="scratch-close" type="button" aria-label="Close scratch page">×</button>
   </div>

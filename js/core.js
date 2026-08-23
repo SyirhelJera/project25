@@ -135,14 +135,16 @@
     // Like state.jobs, this does NOT ride in the shared app_data row — it has its own resource,
     // hydrated by applyLoadedNotesState() and written by saveNotes(), both in js/notes.js.
     notes: [],  // { id, title, body, parentId, collapsed, pinned, createdAt, updatedAt }
-    // the hidden scratch page (js/scratch.js) — one free-form page, reached only by clicking the
-    // sidebar logo. HTML rather than plain text because it holds tickboxes, links and pasted
-    // images; everything read back in goes through sanitizeScratchHtml() first. Like state.jobs
+    // the hidden scratch pad (js/scratch.js) — a small stack of free-form pages, reached only by
+    // clicking the sidebar logo and paged through by swipe or tab+A/tab+D. HTML rather than plain
+    // text because pages hold tickboxes, links and pasted images; everything read back in goes
+    // through sanitizeScratchHtml() first. ensureScratchPages() guarantees there is always at
+    // least one page and that activeId points at one of them. Like state.jobs
     // and state.notes this does NOT ride in the shared app_data row — it has its own resource,
     // hydrated by applyLoadedScratchState() and written by saveScratch(). Defaulted here as well
     // as there because flushPendingScratchSave() is wired to visibilitychange and can fire before
     // a load has finished.
-    scratch: { html: '', updatedAt: 0 } };
+    scratch: { pages: [], activeId: '', updatedAt: 0 } };
   let goalFilter = 'working';
   let starredFirst = false;
   let sortMode = 'none';

@@ -1623,6 +1623,26 @@
   .scratch-uploading{color:var(--faint);font-style:italic;}
   .scratch-uperr{color:var(--danger);font-style:italic;}
   /* the only chrome, and deliberately at --faint: it should read as a margin note, never as a bar */
+  /* Page dots. background-clip:content-box is what lets the visual dot stay 8px while the button
+     itself is ~18px — a real thumb target on a phone without a row of fat circles on desktop. */
+  .scratch-pages{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;justify-content:center;gap:3px;}
+  .scratch-dot{width:8px;height:8px;padding:5px;box-sizing:content-box;border:none;border-radius:50%;background:var(--border);background-clip:content-box;cursor:pointer;transition:background .15s ease,transform .15s ease;}
+  .scratch-dot:hover{background:var(--muted);background-clip:content-box;}
+  .scratch-dot.is-active{background:var(--violet);background-clip:content-box;transform:scale(1.3);}
+  .scratch-dot:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* + and - rather than words: they pair obviously and stay out of the way */
+  .scratch-pagebtn{background:none;border:none;padding:3px 7px;margin-left:2px;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;border-radius:6px;transition:color .15s ease,background .15s ease;}
+  .scratch-pagebtn:hover{color:var(--text);background:var(--surface-alt);}
+  /* A short slide in the direction you travelled, so a page change reads as movement rather than
+     the text silently being replaced under the caret. */
+  @keyframes scratchInR{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
+  @keyframes scratchInL{from{opacity:0;transform:translateX(-20px);}to{opacity:1;transform:none;}}
+  .scratch-text.slide-r{animation:scratchInR .18s ease;}
+  .scratch-text.slide-l{animation:scratchInL .18s ease;}
+  @media (prefers-reduced-motion: reduce){
+    .scratch-text.slide-r,.scratch-text.slide-l{animation:none;}
+  }
+  .scratch-tip-touch{display:none;} /* swapped with .scratch-tip-key at the mobile breakpoint */
   .scratch-foot{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
   .scratch-status{flex:none;}
   .scratch-tips{flex:1;text-align:center;opacity:.75;}
@@ -1643,7 +1663,10 @@
     .scratch-overlay{padding-top:calc(var(--nav-h, 56px) + 10px);}
     .scratch-text{font-size:16px;} /* anything smaller and iOS zooms the page on focus */
     .scratch-hint{display:none;}   /* no Esc key to hint at — the × carries it */
-    .scratch-tip-key{display:none;}/* nor a ctrl key; the [] shorthand still works, so the tip stays */
+    .scratch-tip-key{display:none;}/* nor a ctrl or tab key; the [] shorthand still works, so that tip stays */
+    .scratch-tip-touch{display:inline;}
+    .scratch-pages{gap:5px;margin-top:12px;}
+    .scratch-dot{width:9px;height:9px;padding:7px;}
     .scratch-brand{padding:0;justify-content:center;} /* .brand centres itself in the mobile top bar */
     .scratch-text input.scratch-tick{width:17px;height:17px;} /* thumb-sized */
   }

@@ -17,7 +17,7 @@
 
      The surface is contenteditable rather than a <textarea>, because a textarea cannot hold the
      three things this page is for beyond plain text: tickboxes, links and pasted images. That buys
-     a real obligation — see the sanitizer below. Content is stored as HTML in state.scratch.html.
+     a real obligation — see the sanitizer below. Content is HTML, held per page in state.scratch.pages.
 
      Storage: its OWN resource (row id 'scratch'), the same split Jobs and Notes have, for the
      sharper version of their reason — this is a single string that debounce-saves per keystroke,
@@ -45,8 +45,8 @@
   // distinct from state.scratch.updatedAt: that one is "last edited" (and survives a reload, so a
   // cold open can say "saved · 3h ago"), this one is "last synced" and resets with the page.
   let lastScratchSavedAt = 0;
-  // the content on screen at the moment a conflict was detected, so "load theirs" is recoverable
-  let scratchPreConflictHtml = null;
+  // the whole page stack as it stood when a conflict was detected, so "load theirs" is recoverable
+  let scratchPreConflictSnap = null;
 
   /* ---------- the sanitizer ----------
      The page holds HTML now, and that HTML round-trips through an unauthenticated shared row, so
@@ -153,24 +153,91 @@
     return box;
   }
 
+  /* ---------- pages ----------
+     The napkin is a small stack of pages, not one endless sheet. They're a FLAT array and the
+     current one is addressed by ID rather than index, so a page deleted from another tab can't
+     silently leave you standing on a different page's contents. There is always at least one page:
+     deleting the last one clears it rather than leaving nothing to write on. */
+  function makeScratchPage(html){
+    return { id: uid(), html: html || '', updatedAt: Date.now() };
+  }
+  function scratchPagesArr(){ return (state.scratch && state.scratch.pages) || []; }
+  function scratchActiveIndex(){
+    const pages = scratchPagesArr();
+    if(!pages.length) return 0;
+    let i = -1;
+    for(let k=0; k<pages.length; k++) if(pages[k].id === state.scratch.activeId){ i = k; break; }
+    return i < 0 ? 0 : i;
+  }
+  function scratchActivePage(){ ensureScratchPages(); return state.scratch.pages[scratchActiveIndex()]; }
+  // The one invariant enforcer: a pages array that exists, holds at least one page, and whose
+  // activeId points at a page that's actually in it. Cheap and idempotent, so it's safe to call
+  // from anywhere that might have just changed the array.
+  function ensureScratchPages(){
+    if(!state.scratch || typeof state.scratch !== 'object') state.scratch = { pages:[], activeId:'', updatedAt:0 };
+    if(!Array.isArray(state.scratch.pages)) state.scratch.pages = [];
+    if(!state.scratch.pages.length) state.scratch.pages.push(makeScratchPage());
+    let found = false;
+    for(let i=0; i<state.scratch.pages.length; i++) if(state.scratch.pages[i].id === state.scratch.activeId){ found = true; break; }
+    if(!found) state.scratch.activeId = state.scratch.pages[0].id;
+  }
+
+  function scratchHtmlToText(html){
+    const doc = new DOMParser().parseFromString('<body>' + (html || '') + '</body>', 'text/html');
+    return doc.body.textContent || '';
+  }
+
+  /* A page's name is just its first line, derived on read — the same trick noteTags() uses, and for
+     the same reason: nothing to maintain and nothing that can go stale when the text changes.
+     It has to walk the top-level children rather than split textContent on "\n", because
+     textContent concatenates block elements with no separator ("<div>a</div><div>b</div>" is "ab"). */
+  function scratchPageTitle(p){
+    const doc = new DOMParser().parseFromString('<body>' + ((p && p.html) || '') + '</body>', 'text/html');
+    const kids = doc.body.childNodes;
+    for(let i=0; i<kids.length; i++){
+      const t = (kids[i].textContent || '').replace(/\s+/g, ' ').trim();
+      if(t) return t.length > 40 ? t.slice(0, 40) + '…' : t;
+    }
+    if(/<img\b/i.test((p && p.html) || '')) return 'Image';
+    return 'Empty page';
+  }
+
+  function scratchPageIsEmpty(p){
+    if(!p) return true;
+    const h = p.html || '';
+    if(/<(img|input)\b/i.test(h)) return false; // a page holding only a photo or a tick isn't blank
+    return !scratchHtmlToText(h).trim(); // JS trim() already treats &nbsp; as whitespace
+  }
+
   // Hydration + lazy field defaults. New fields on the scratch page go HERE, not in
   // persistence.js:applyLoadedState() — same exception to the usual convention that Jobs and
-  // Notes have.
+  // Notes have. Also the inbound sanitizer boundary, and where both older shapes are upgraded.
   function applyLoadedScratchState(parsed){
     const raw = parsed && parsed.scratch;
-    let html = '', at = 0;
+    let pages = [], activeId = '', at = 0;
     if(typeof raw === 'string'){
-      html = scratchPlainToHtml(raw);
+      pages = [ { id: uid(), html: scratchPlainToHtml(raw), updatedAt: 0 } ];
     } else if(raw && typeof raw === 'object'){
       at = raw.updatedAt || 0;
-      // `text` is the pre-rich-editor shape: the page shipped as a plain <textarea> first, so a row
-      // written by that build holds a bare string. Converted here rather than by a migration script
-      // — same in-place upgrade convention the rest of the app uses.
-      if(typeof raw.html === 'string') html = sanitizeScratchHtml(raw.html);
-      else if(typeof raw.text === 'string') html = scratchPlainToHtml(raw.text);
+      if(Array.isArray(raw.pages)){
+        for(let i=0; i<raw.pages.length; i++){
+          const p = raw.pages[i];
+          if(!p || typeof p !== 'object') continue;
+          pages.push({ id: p.id || uid(), html: sanitizeScratchHtml(typeof p.html === 'string' ? p.html : ''), updatedAt: p.updatedAt || at });
+        }
+        activeId = raw.activeId || '';
+      } else if(typeof raw.html === 'string'){
+        // the single-page build: one page's worth of HTML sitting at the top level
+        pages = [ { id: uid(), html: sanitizeScratchHtml(raw.html), updatedAt: at } ];
+      } else if(typeof raw.text === 'string'){
+        // the original plain-<textarea> build: a bare string, no markup at all
+        pages = [ { id: uid(), html: scratchPlainToHtml(raw.text), updatedAt: at } ];
+      }
     }
-    state.scratch = { html: html, updatedAt: at };
-    syncScratchSurface();
+    state.scratch = { pages: pages, activeId: activeId, updatedAt: at };
+    ensureScratchPages();
+    syncScratchSurface(true);
+    renderScratchPages();
     updateScratchFooter();
   }
 
@@ -179,11 +246,14 @@
   }
 
   /* The wire format. No omit-defaults compaction, unlike serializeNotes(): that function's ~45%
-     win comes from per-record key overhead across many small records, which one string doesn't
-     have. This exists to honour the same rule — nothing else may serialize state.scratch, always
-     go through here — and to be the outbound sanitizer boundary. */
+     win comes from per-record key overhead across many small records, and a handful of pages is
+     nowhere near that scale. This exists to honour the same rule — nothing else may serialize
+     state.scratch, always go through here — and to be the outbound sanitizer boundary.
+     activeId rides along so reopening lands you back on the page you left. */
   function serializeScratch(){
-    return { html: sanitizeScratchHtml((state.scratch && state.scratch.html) || ''), updatedAt: (state.scratch && state.scratch.updatedAt) || 0 };
+    ensureScratchPages();
+    const pages = state.scratch.pages.map(p => ({ id: p.id, html: sanitizeScratchHtml(p.html || ''), updatedAt: p.updatedAt || 0 }));
+    return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0 };
   }
 
   function cacheScratchStateLocally(){
@@ -227,22 +297,22 @@
     // Stash what's on screen BEFORE offering to replace it. Unlike the Notes equivalent, "load
     // theirs" here discards the entire page rather than one record's last few keystrokes — so the
     // discarded draft has to stay one click away.
-    scratchPreConflictHtml = (state.scratch && state.scratch.html) || '';
+    // the WHOLE stack, not one page: "load theirs" replaces every page, so the snapshot must too
+    scratchPreConflictSnap = JSON.parse(JSON.stringify(serializeScratch()));
     b.style.display = 'flex';
     b.innerHTML = '<span>Another tab or device saved a newer version of this page after this one loaded its copy. What you just typed was <b>not saved</b>, to avoid overwriting it.</span>'
       + '<button class="btn btn-sm btn-ghost" id="scratchConflictReloadBtn">Load theirs (discards what’s on screen)</button>'
       + '<button class="btn btn-sm btn-primary" id="scratchConflictForceBtn">Keep mine (overwrite theirs)</button>';
     el('scratchConflictReloadBtn').addEventListener('click', async ()=>{
-      const mine = scratchPreConflictHtml;
+      const mine = scratchPreConflictSnap;
       await loadScratchData();
       hideScratchConflictBanner();
       // nothing is lost — offer the discarded draft back, quietly
       showScratchOfflineBanner('Loaded the newer version. <button class="btn btn-sm btn-ghost" id="scratchRestoreMineBtn">Put mine back</button>');
       const restore = el('scratchRestoreMineBtn');
       if(restore) restore.addEventListener('click', ()=>{
-        state.scratch.html = mine;
+        applyLoadedScratchState({ scratch: mine });
         state.scratch.updatedAt = Date.now();
-        syncScratchSurface(true);
         hideScratchOfflineBanner();
         setScratchStatus('dirty');
         updateScratchFooter();
@@ -408,9 +478,9 @@
   /* ---------- the page itself ---------- */
 
   const SCRATCH_STATUS = { dirty:'unsaved', saved:'saved', offline:'not synced', conflict:'not saved', blocked:'not saved', uploading:'uploading image…' };
-  // A soft ceiling. Images are Storage URLs rather than bytes (see insertScratchImage), so this is
-  // really a guard against a runaway paste — but the page is ONE string re-uploaded whole on every
-  // debounce fire, so an unbounded one would turn every typing pause into a multi-megabyte write.
+  // A soft ceiling, per page. Images are Storage URLs rather than bytes (see insertScratchImage),
+  // so this is really a guard against a runaway paste — but the whole stack is re-uploaded on every
+  // debounce fire, so an unbounded page would turn every typing pause into a multi-megabyte write.
   const SCRATCH_MAX_CHARS = 300000;
   /* Match on the input TYPE, not on our own class. The sanitizer rebuilds every tickbox through
      makeScratchTick() so the class is always there in practice — but the footer's count and the
@@ -431,11 +501,12 @@
   /* The ONLY place the surface's innerHTML is assigned. No-ops when it already matches, so it can
      never fight the caret — same rule as the Notes title input: the field is live, and rewriting it
      mid-keystroke would collapse the selection and throw the cursor to the end. `force` is for the
-     conflict-recovery path, which deliberately replaces what's on screen. */
+     paths that deliberately replace what's on screen: a page switch, a load, conflict recovery. */
   function syncScratchSurface(force){
     const surf = el('scratchText');
     if(!surf) return;
-    const next = (state.scratch && state.scratch.html) || '';
+    ensureScratchPages();
+    const next = scratchActivePage().html || '';
     if(force || surf.innerHTML !== next) surf.innerHTML = next;
     markScratchEmpty();
   }
@@ -452,8 +523,7 @@
   function scratchPlainText(){
     const surf = el('scratchText');
     if(surf && scratchOpen) return surf.textContent || '';
-    const doc = new DOMParser().parseFromString('<body>' + ((state.scratch && state.scratch.html) || '') + '</body>', 'text/html');
-    return doc.body.textContent || '';
+    return scratchHtmlToText(scratchActivePage().html);
   }
 
   function scratchWordCount(s){
@@ -502,28 +572,142 @@
     return d + (d === 1 ? ' day ago' : ' days ago');
   }
 
+  // Throttled together because both read the whole page: the word/tick count and the dots' hover
+  // titles, which are derived from each page's first line and so change as you type.
   function scheduleScratchCount(){
     if(scratchCountTimer) return;
-    scratchCountTimer = setTimeout(()=>{ scratchCountTimer = null; updateScratchFooter(); }, 120);
+    scratchCountTimer = setTimeout(()=>{ scratchCountTimer = null; updateScratchFooter(); renderScratchPages(); }, 120);
   }
 
-  // Every edit path funnels through here: read the live DOM into state, mark it dirty, debounce.
-  // Never writes back to the surface — see syncScratchSurface().
+  // Every edit path funnels through here: read the live DOM into the ACTIVE page, mark it dirty,
+  // debounce. Never writes back to the surface — see syncScratchSurface().
   function onScratchInput(){
     const surf = el('scratchText');
     if(!surf) return;
     let html = surf.innerHTML;
     if(html.length > SCRATCH_MAX_CHARS){
-      html = html.slice(0, SCRATCH_MAX_CHARS);
-      surf.innerHTML = sanitizeScratchHtml(html); // truncation can cut mid-tag; re-parse to close it
+      surf.innerHTML = sanitizeScratchHtml(html.slice(0, SCRATCH_MAX_CHARS)); // truncation can cut mid-tag; re-parse to close it
       html = surf.innerHTML;
     }
-    state.scratch.html = html;
-    state.scratch.updatedAt = Date.now();
+    const page = scratchActivePage();
+    page.html = html;
+    page.updatedAt = Date.now();
+    state.scratch.updatedAt = page.updatedAt;
     setScratchStatus('dirty');
     markScratchEmpty();
     scheduleScratchCount();
     debouncedSaveScratch();
+  }
+
+  /* ---------- moving between pages ---------- */
+
+  // The surface is the live copy of whatever page is showing; anything that changes which page that
+  // is has to fold it back into the array FIRST, or the edit is lost on switch.
+  function commitScratchSurface(){
+    const surf = el('scratchText');
+    if(!surf || !scratchOpen) return;
+    scratchActivePage().html = surf.innerHTML;
+  }
+
+  function scratchGoTo(i){
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    const from = scratchActiveIndex();
+    const to = Math.max(0, Math.min(pages.length - 1, i));
+    if(to === from) return;
+    commitScratchSurface();
+    state.scratch.activeId = pages[to].id;
+    syncScratchSurface(true);
+    renderScratchPages();
+    updateScratchFooter();
+    animateScratchPage(to > from ? 1 : -1);
+    const surf = el('scratchText');
+    if(surf){ surf.focus({ preventScroll:true }); placeScratchCaretAtEnd(surf); }
+    // which page you're on is persisted, so reopening lands where you left off — that's a real
+    // state change and is saved like any other
+    setScratchStatus('dirty');
+    debouncedSaveScratch();
+  }
+  function scratchStep(delta){ scratchGoTo(scratchActiveIndex() + delta); }
+
+  function animateScratchPage(dir){
+    const surf = el('scratchText');
+    if(!surf) return;
+    surf.classList.remove('slide-l', 'slide-r');
+    void surf.offsetWidth; // force a reflow so the animation restarts on a rapid second switch
+    surf.classList.add(dir > 0 ? 'slide-r' : 'slide-l');
+  }
+
+  function addScratchPage(){
+    ensureScratchPages();
+    commitScratchSurface();
+    const page = makeScratchPage();
+    state.scratch.pages.push(page);
+    state.scratch.activeId = page.id;
+    state.scratch.updatedAt = Date.now();
+    syncScratchSurface(true);
+    renderScratchPages();
+    updateScratchFooter();
+    animateScratchPage(1);
+    setScratchStatus('dirty');
+    const surf = el('scratchText');
+    if(surf) surf.focus({ preventScroll:true });
+    debouncedSaveScratch();
+  }
+
+  function deleteScratchPage(){
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    if(pages.length < 2) return; // there is always a page to write on
+    commitScratchSurface();
+    const i = scratchActiveIndex();
+    // Only ask when there's something to lose. A blank page is swept without ceremony.
+    if(!scratchPageIsEmpty(pages[i]) && !window.confirm('Delete this page? What’s on it will be gone.')) return;
+    pages.splice(i, 1);
+    state.scratch.activeId = pages[Math.min(i, pages.length - 1)].id;
+    state.scratch.updatedAt = Date.now();
+    syncScratchSurface(true);
+    renderScratchPages();
+    updateScratchFooter();
+    setScratchStatus('dirty');
+    debouncedSaveScratch();
+  }
+
+  /* Blank pages at the END of the stack are swept on the way out, so idly paging past the last one
+     doesn't leave a pile of empties behind. Only TRAILING ones, and never the final remaining page:
+     a blank page in the MIDDLE was put there deliberately and is left alone. If you're standing on
+     one when you close, the cursor steps back a page rather than the sweep skipping it. */
+  function sweepTrailingEmptyScratchPages(){
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    let changed = false;
+    while(pages.length > 1 && scratchPageIsEmpty(pages[pages.length - 1])){
+      if(pages[pages.length - 1].id === state.scratch.activeId) state.scratch.activeId = pages[pages.length - 2].id;
+      pages.pop();
+      changed = true;
+    }
+    if(changed) ensureScratchPages();
+    return changed;
+  }
+
+  function renderScratchPages(){
+    const row = el('scratchPages');
+    if(!row) return;
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    const active = scratchActiveIndex();
+    let h = '';
+    for(let i=0; i<pages.length; i++){
+      const label = scratchPageTitle(pages[i]);
+      h += '<button type="button" class="scratch-dot' + (i === active ? ' is-active' : '') + '" data-i="' + i + '"'
+         + ' title="' + escapeHtml(label) + '"'
+         + ' aria-label="Page ' + (i + 1) + ' of ' + pages.length + ': ' + escapeHtml(label) + '"'
+         + (i === active ? ' aria-current="true"' : '') + '></button>';
+    }
+    // + and − rather than a word: they pair obviously, and the page's own name lives on its dot
+    h += '<button type="button" class="scratch-pagebtn" id="scratchAddPage" title="New page" aria-label="New page">+</button>';
+    if(pages.length > 1) h += '<button type="button" class="scratch-pagebtn" id="scratchDelPage" title="Delete this page" aria-label="Delete this page">−</button>';
+    row.innerHTML = h;
   }
 
   /* ---------- tickboxes, links, images ----------
@@ -542,7 +726,7 @@
     const slot = document.getElementById(marker);
     if(!slot) return;
     const box = makeScratchTick(done);
-    const sp = document.createTextNode(' ');
+    const sp = document.createTextNode(' ');
     slot.replaceWith(box, sp);
     const sel = window.getSelection();
     if(sel){
@@ -613,10 +797,10 @@
   }
 
   /* Pasted/dropped images go to Supabase Storage and only their URL lands in the page — never
-     base64. Two reasons, both hard rules here: CLAUDE.md's image convention, and the fact that this
-     page is re-uploaded WHOLE on every debounce fire, so an inlined photo would be re-sent every
+     base64. Two reasons, both hard rules here: CLAUDE.md's image convention, and the fact that the
+     whole stack is re-uploaded on every debounce fire, so an inlined photo would be re-sent every
      1.5 seconds for as long as you kept typing.
-     Note the deliberate gap: removing an image from the page does NOT delete it from Storage. In
+     Note the deliberate gap: removing an image from a page does NOT delete it from Storage. In
      free-form HTML there's no reliable "this was removed" signal, and an orphaned file is harmless
      (the repo already treats deleteStorageImage as best-effort elsewhere). */
   function insertScratchImage(file){
@@ -662,10 +846,10 @@
     if(scratchOpen) return;
     scratchReturnFocus = document.activeElement;
     /* Redraw the logo in place on top of the takeover. It's measured from .brand's live rect — the
-       sidebar is still laid out underneath, merely covered — so it lands exactly where the real one
-       is at both breakpoints, with nothing hardcoded. The icon's own box and the name's font-size
-       are copied too, because the mobile bar shrinks both on scroll (.sidebar.scrolled) and the
-       copy has no such ancestor to inherit from. Must be read BEFORE lockPageScroll(), which sets
+       sidebar is still laid out underneath, merely covered — so it lands exactly over the real one
+       at both breakpoints, with nothing hardcoded. The icon's own box and the name's font-size are
+       copied too, because the mobile bar shrinks both on scroll (.sidebar.scrolled) and the copy
+       has no such ancestor to inherit from. Must be read BEFORE lockPageScroll(), which sets
        body{position:fixed} and moves the sticky bar's containing block out from under it. */
     const brandBox = el('scratchBrand');
     const overlay = el('scratchOverlay');
@@ -690,7 +874,8 @@
     }
     scratchOpen = true;
     overlay.style.display = 'flex';
-    syncScratchSurface();
+    syncScratchSurface(true);
+    renderScratchPages();
     updateScratchFooter();
     lockPageScroll(); // js/goals.js — counted, iOS-safe; without it a swipe past the surface's own
                       // scroll end moves the page behind and you exit somewhere else entirely
@@ -716,8 +901,18 @@
 
   function closeScratch(){
     if(!scratchOpen) return;
+    commitScratchSurface();               // while scratchOpen is still true
+    const swept = sweepTrailingEmptyScratchPages();
     scratchOpen = false;
-    flushPendingScratchSave();
+    scratchTabHeld = false; scratchTabUsed = false;
+    if(swept){
+      // the sweep is a real edit, and there may be no pending timer to carry it
+      state.scratch.updatedAt = Date.now();
+      if(scratchSaveDebounceTimer){ clearTimeout(scratchSaveDebounceTimer); scratchSaveDebounceTimer = null; }
+      saveScratch();
+    } else {
+      flushPendingScratchSave();
+    }
     el('scratchOverlay').style.display = 'none';
     unlockPageScroll(); // also restores the exact scroll position of the tab underneath
     if(scratchReturnFocus && document.contains(scratchReturnFocus)) scratchReturnFocus.focus();
@@ -756,6 +951,15 @@
   scratchBrandBtn.addEventListener('click', closeScratch);
   scratchBrandBtn.addEventListener('keydown', e=>{
     if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); closeScratch(); }
+  });
+
+  el('scratchPages').addEventListener('click', e=>{
+    const t = e.target;
+    if(!t || !t.closest) return;
+    if(t.closest('#scratchAddPage')){ addScratchPage(); return; }
+    if(t.closest('#scratchDelPage')){ deleteScratchPage(); return; }
+    const dot = t.closest('.scratch-dot');
+    if(dot) scratchGoTo(parseInt(dot.getAttribute('data-i'), 10) || 0);
   });
 
   /* ---------- surface wiring ---------- */
@@ -838,14 +1042,78 @@
     insertScratchImage(img);
   });
 
-  // Tab stays inside the page rather than walking into the invisible tab behind it. No literal-tab
-  // insertion: this is a napkin, not a code editor, and swallowing Tab entirely would strand
-  // anyone navigating to the × by keyboard.
+  /* ---------- swipe (touch) ----------
+     Deliberately strict: a horizontal run of 60px that is also more than twice the vertical drift,
+     from a single finger, ending with nothing selected. The surface is an editable, scrollable
+     field, so a loose threshold would turn an ordinary scroll — or a drag to select a word — into a
+     page change, and losing your place mid-sentence is a far worse failure than a swipe not taking.
+     Listeners are passive and never preventDefault, so normal vertical scrolling is untouched. */
+  let scratchTouchX = 0, scratchTouchY = 0, scratchTouchOn = false;
+  scratchSurface.addEventListener('touchstart', e=>{
+    if(!e.touches || e.touches.length !== 1){ scratchTouchOn = false; return; }
+    scratchTouchOn = true;
+    scratchTouchX = e.touches[0].clientX;
+    scratchTouchY = e.touches[0].clientY;
+  }, { passive:true });
+  scratchSurface.addEventListener('touchend', e=>{
+    if(!scratchTouchOn) return;
+    scratchTouchOn = false;
+    const t = e.changedTouches && e.changedTouches[0];
+    if(!t) return;
+    const dx = t.clientX - scratchTouchX, dy = t.clientY - scratchTouchY;
+    if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
+    const sel = window.getSelection();
+    if(sel && !sel.isCollapsed) return; // that was a selection drag, not a swipe
+    scratchStep(dx < 0 ? 1 : -1);       // swipe left = forward, like every pager
+  }, { passive:true });
+
+  /* ---------- Tab + scroll (desktop) ----------
+     Hold Tab and scroll: up for the previous page, down for the next. Tab is normally a focus key,
+     so it's swallowed while this page is open and only performs its usual focus move when RELEASED
+     without having been used as a modifier — that way the chord exists without costing keyboard
+     users the ability to reach the dots, which are real buttons and can be tabbed to and pressed.
+     e.repeat is ignored so held-Tab autorepeat doesn't re-arm it every frame, and window blur
+     clears the flag, or an alt-tab away would swallow the keyup and leave the modifier stuck down
+     for good. */
+  let scratchTabHeld = false, scratchTabUsed = false, scratchWheelAt = 0;
+
   el('scratchOverlay').addEventListener('keydown', e=>{
     if(e.key !== 'Tab') return;
-    const focusables = el('scratchOverlay').querySelectorAll('[contenteditable="true"], button, #scratchBrand');
-    if(!focusables.length) return;
-    const first = focusables[0], last = focusables[focusables.length - 1];
-    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
-    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+    e.preventDefault();
+    if(!e.repeat){ scratchTabHeld = true; scratchTabUsed = false; }
   });
+
+  /* passive:false because this has to preventDefault — otherwise the surface scrolls under you
+     while you're paging. Only the SIGN of deltaY is used: the magnitude is meaningless across
+     devices (a mouse notch and a trackpad flick differ by orders of magnitude), and the cooldown is
+     what stops one flick from flying through the whole stack. */
+  el('scratchOverlay').addEventListener('wheel', e=>{
+    if(!scratchTabHeld || !e.deltaY) return;
+    e.preventDefault();
+    scratchTabUsed = true;
+    const now = Date.now();
+    if(now - scratchWheelAt < 220) return;
+    scratchWheelAt = now;
+    scratchStep(e.deltaY < 0 ? -1 : 1); // scroll up = back, down = forward
+  }, { passive:false });
+
+  el('scratchOverlay').addEventListener('keyup', e=>{
+    if(e.key !== 'Tab') return;
+    const used = scratchTabUsed;
+    scratchTabHeld = false;
+    scratchTabUsed = false;
+    if(!used) moveScratchFocus(e.shiftKey); // nothing was scrolled: a plain Tab press, after all
+  });
+
+  window.addEventListener('blur', ()=>{ scratchTabHeld = false; scratchTabUsed = false; });
+
+  // Wraps rather than escaping, so focus stays inside the takeover instead of walking into the
+  // invisible tab behind it.
+  function moveScratchFocus(back){
+    const items = el('scratchOverlay').querySelectorAll('[contenteditable="true"], button, #scratchBrand');
+    if(!items.length) return;
+    let i = -1;
+    for(let k=0; k<items.length; k++) if(items[k] === document.activeElement){ i = k; break; }
+    const n = items.length;
+    items[i < 0 ? 0 : ((i + (back ? -1 : 1)) + n) % n].focus();
+  }

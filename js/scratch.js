@@ -1206,19 +1206,30 @@
     }
   });
 
+  /* Both tapping a dot and finishing a drag are resolved HERE, on pointerup, rather than being
+     left to the click event — because once a pointer is captured, a dot's click cannot be trusted
+     to arrive at all:
+       - capture retargets the follow-up click to the CAPTURING element (the row), so a handler
+         looking for e.target.closest('.scratch-dot') finds nothing; and
+       - a reorder re-renders the row, so the dot node that was pressed no longer exists by the
+         time a click would be dispatched against it.
+     Keyboard activation has no pointer sequence at all, so it never sets the suppress flag and
+     still reaches the click handler below — which is what keeps the dots usable by keyboard. */
   function endScratchDrag(){
     if(!scratchDragId) return;
     const wasDragging = scratchDragging;
+    const landedOn = scratchDragFrom;
     scratchDragId = null; scratchDragFrom = -1; scratchDragging = false;
     el('scratchPages').classList.remove('is-reordering');
-    renderScratchPages();
+    scratchSuppressDotClick = true; // stop any retargeted click from acting a second time
+    setTimeout(()=>{ scratchSuppressDotClick = false; }, 0);
     if(wasDragging){
-      // a completed drag ends with a click event on the dot; without this it would also navigate
-      scratchSuppressDotClick = true;
-      setTimeout(()=>{ scratchSuppressDotClick = false; }, 0);
+      renderScratchPages();
       focusScratchSurface();
       setScratchStatus('dirty');
       debouncedSaveScratch();
+    } else {
+      scratchGoTo(landedOn); // a tap, not a drag: just go to that page (it re-renders itself)
     }
   }
   el('scratchPages').addEventListener('pointerup', endScratchDrag);
@@ -1241,6 +1252,8 @@
       debouncedSaveScratch();
       return;
     }
+    // Reached only by keyboard (Enter/Space on a focused dot). Pointer taps are handled in
+    // endScratchDrag() above and suppressed here — see the note on that function.
     const dot = t.closest('.scratch-dot');
     if(dot) scratchGoTo(parseInt(dot.getAttribute('data-i'), 10) || 0);
   });

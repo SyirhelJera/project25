@@ -69,9 +69,54 @@
   const SCRATCH_SAFE_IMG = /^(https?:\/\/|data:image\/(png|jpeg|jpg|gif|webp);base64,)/i;
   const SCRATCH_TAGS = {
     DIV:1, P:1, BR:1, UL:1, OL:1, LI:1, BLOCKQUOTE:1, PRE:1,
-    B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, DEL:1, CODE:1, SPAN:1,
+    B:1, STRONG:1, I:1, EM:1, U:1, S:1, STRIKE:1, DEL:1, CODE:1, SPAN:1, MARK:1, FONT:1,
     H1:1, H2:1, H3:1, A:1, IMG:1, INPUT:1
   };
+  /* ---------- the style allowlist (what the format bar emits) ----------
+     The format bar can colour, size and re-face text, so a style attribute and a <font> tag now
+     have to survive the round trip — a real widening of what used to be "keep the tag, drop every
+     attribute". It stays honest the same way everything else here does: nothing is FILTERED, it is
+     REBUILT. safeScratchStyle() walks the parsed CSSOM declaration (already normalised, and
+     already stripped of anything malformed, by the inert DOMParser document), keeps only the
+     properties named below, and re-emits each one only if its value matches that property's own
+     regex. Anything else — an unlisted property, a value with a stray character, a url(), an
+     absurd font-size — is simply never written out.
+     Every regex below is deliberately narrow enough that no value passing it can carry a "(", a
+     ";" or a ":", which is what makes reassembling them into a style string safe. */
+  const SCRATCH_COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%\/]{1,40}\)|hsla?\([\d\s.,%\/a-z]{1,40}\)|[a-z]{3,20})$/i;
+  const SCRATCH_FACE = /^[a-z0-9 ,'"\-]{1,80}$/i;
+  const SCRATCH_STYLE_OK = {
+    'color': SCRATCH_COLOR,
+    'background-color': SCRATCH_COLOR,
+    'font-family': SCRATCH_FACE,
+    'font-size': /^(\d{1,3}(\.\d+)?px|xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|-webkit-xxx-large)$/i,
+    'font-weight': /^(bold|bolder|normal|lighter|[1-9]00)$/i,
+    'font-style': /^(italic|oblique|normal)$/i,
+    'text-decoration': /^(none|((underline|line-through|overline)\s*){1,3})$/i,
+    'text-decoration-line': /^(none|((underline|line-through|overline)\s*){1,3})$/i
+  };
+  // px sizes are CLAMPED as well as validated: a pasted 400px heading would blow the 70ch column
+  // apart, and the format bar's own scale tops out well below this.
+  const SCRATCH_MAX_PX = 72;
+
+  function safeScratchStyle(node){
+    const src = node.style;
+    if(!src || !src.length) return '';
+    const out = [];
+    for(let i=0; i<src.length; i++){
+      const prop = src[i];
+      const re = SCRATCH_STYLE_OK[prop];
+      if(!re) continue;
+      const v = (src.getPropertyValue(prop) || '').trim();
+      if(!v || v.length > 80 || !re.test(v)) continue;
+      if(prop === 'font-size' && /px$/i.test(v)){
+        const n = parseFloat(v);
+        if(!(n >= 6) || n > SCRATCH_MAX_PX) continue;
+      }
+      out.push(prop + ':' + v);
+    }
+    return out.join(';');
+  }
   /* Dropped SUBTREE AND ALL, rather than unwrapped. Unwrapping is right for a merely unknown tag
      (<marquee>hi</marquee> should leave you the word "hi"), but these hold source code or widget
      innards rather than prose: unwrapping <style> would paste a stylesheet's text into the page and
@@ -121,6 +166,25 @@
         dest.appendChild(a);
         continue;
       }
+      /* <font> is the format bar's own output: styleWithCSS is held OFF (see the format bar
+         section below), so size/face/colour arrive as these three attributes rather than as inline
+         CSS. Each is re-validated on its own terms — size against the seven legacy buckets that
+         styles.css restyles to this page's scale, face against the same charset a font-family
+         value gets, colour against the shared colour regex. Nothing else on the element survives. */
+      if(tag === 'FONT'){
+        const fnt = document.createElement('font');
+        const size = (node.getAttribute('size') || '').trim();
+        if(/^[1-7]$/.test(size)) fnt.setAttribute('size', size);
+        const col = (node.getAttribute('color') || '').trim();
+        if(SCRATCH_COLOR.test(col)) fnt.setAttribute('color', col);
+        const face = (node.getAttribute('face') || '').trim();
+        if(SCRATCH_FACE.test(face)) fnt.setAttribute('face', face);
+        const fcss = safeScratchStyle(node);
+        if(fcss) fnt.setAttribute('style', fcss);
+        cleanScratchInto(node, fnt);
+        dest.appendChild(fnt);
+        continue;
+      }
       if(tag === 'IMG'){
         const src2 = (node.getAttribute('src') || '').replace(/[\s"']/g, '');
         if(!SCRATCH_SAFE_IMG.test(src2)) continue;
@@ -131,9 +195,16 @@
         dest.appendChild(img);
         continue;
       }
-      // everything else: the tag is kept, every attribute is dropped. That's what strips pasted
-      // style/class/id junk and keeps this a napkin rather than a copy of someone's stylesheet.
+      /* Everything else: the tag is kept, and the ONLY attribute that can survive is a style
+         rebuilt property-by-property by safeScratchStyle() — class, id, every event handler and
+         every other attribute are still dropped outright. That narrow opening is what lets the
+         format bar's highlight round-trip (a <span style="background-color">, the one command with
+         no <font> form), and it costs nothing else: a pasted stylesheet's worth of class/id junk
+         still doesn't come through, and the handful of properties that do are re-emitted from a
+         validated table rather than copied across. */
       const clone = document.createElement(tag.toLowerCase());
+      const css = safeScratchStyle(node);
+      if(css) clone.setAttribute('style', css);
       cleanScratchInto(node, clone);
       dest.appendChild(clone);
     }
@@ -234,9 +305,11 @@
         pages = [ { id: uid(), html: scratchPlainToHtml(raw.text), updatedAt: at } ];
       }
     }
-    // mute rides the row rather than localStorage so the preference follows you between devices,
-    // the same as which page you had open
-    state.scratch = { pages: pages, activeId: activeId, updatedAt: at, mute: !!(raw && raw.mute) };
+    /* mute and fmt ride the row rather than localStorage so the preferences follow you between
+       devices, the same as which page you had open. Both default to the QUIET value when the key
+       is absent — an older saved row, or a first ever load — so nothing about opening the napkin
+       for the first time is louder than it was before either feature existed. */
+    state.scratch = { pages: pages, activeId: activeId, updatedAt: at, mute: !!(raw && raw.mute), fmt: !!(raw && raw.fmt) };
     ensureScratchPages();
     // Re-baseline rather than diff: arriving at a different set of pages (first load, or a
     // conflict-reload of someone else's newer copy) is not this session deleting anything.
@@ -258,7 +331,7 @@
   function serializeScratch(){
     ensureScratchPages();
     const pages = state.scratch.pages.map(p => ({ id: p.id, html: sanitizeScratchHtml(p.html || ''), updatedAt: p.updatedAt || 0 }));
-    return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0, mute: !!state.scratch.mute };
+    return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0, mute: !!state.scratch.mute, fmt: !!state.scratch.fmt };
   }
 
   function cacheScratchStateLocally(){
@@ -615,6 +688,8 @@
     setScratchStatus('dirty');
     markScratchEmpty();
     scheduleScratchCount();
+    // an edit moves every offset after it, so the open hit list is re-run rather than left stale
+    if(scratchFindOn){ scratchClearHitPaint(); scheduleScratchFind(); }
     debouncedSaveScratch();
   }
 
@@ -722,7 +797,10 @@
     }catch(e){ /* a page turn is never worth throwing over */ }
   }
 
-  function scratchGoTo(i){
+  /* opts.keepFocus is for the find panel: stepping to a hit on another page must not pull the
+     caret out of the query box you are still typing in. Every other caller omits it and gets the
+     focus behaviour described below unchanged. */
+  function scratchGoTo(i, opts){
     ensureScratchPages();
     // read BEFORE the innerHTML swap below, so "were you already typing?" is answered about the
     // page you were on rather than the one you land on
@@ -742,10 +820,16 @@
        caret valid after the innerHTML swap — or if there's no soft keyboard to summon in the first
        place. Flipping between pages must never be the thing that raises it. */
     const surf = el('scratchText');
-    if(surf && (wasWriting || scratchWantsAutoFocus())){
+    if(surf && !(opts && opts.keepFocus) && (wasWriting || scratchWantsAutoFocus())){
       surf.focus({ preventScroll:true });
       placeScratchCaretAtEnd(surf);
     }
+    // the remembered Range points into the page that was just swapped out — withScratchSelection()
+    // would reject it anyway, but leaving a detached node hanging around serves nothing
+    scratchSavedRange = null;
+    updateScratchFormatState();
+    // the hits on screen belong to the page that just left; repaint against the one that arrived
+    if(scratchFindOn) scheduleScratchFind();
     // which page you're on is persisted, so reopening lands where you left off — that's a real
     // state change and is saved like any other
     setScratchStatus('dirty');
@@ -844,6 +928,19 @@
     // + and − rather than a word: they pair obviously, and the page's own name lives on its dot
     h += '<button type="button" class="scratch-pagebtn" id="scratchAddPage" title="New page" aria-label="New page">+</button>';
     if(pages.length > 1) h += '<button type="button" class="scratch-pagebtn" id="scratchDelPage" title="Delete this page" aria-label="Delete this page">−</button>';
+    /* The format bar's switch. It lives HERE, in a row that already exists, rather than in a strip
+       of its own — which is what makes "collapsed" cost literally nothing on screen. Same reason
+       the mute switch is here and not in Settings: this page is an easter egg, and every control
+       it grows has to earn its pixels twice. */
+    /* Find's switch. Unlike Aa next to it this reflects no stored preference — a query is not a
+       setting — so it's a plain button that opens the panel, and Escape or × closes it. It exists
+       at all because Ctrl+F is not reachable on a phone. */
+    h += '<button type="button" class="scratch-pagebtn scratch-findbtn" id="scratchFindBtn"'
+       + ' title="Find on all pages (Ctrl+F)" aria-label="Find on all pages">&#9906;</button>';
+    const fmtOn = !!state.scratch.fmt;
+    h += '<button type="button" class="scratch-pagebtn scratch-fmtbtn" id="scratchFmtBtn"'
+       + ' title="' + (fmtOn ? 'Hide formatting' : 'Formatting') + '"'
+       + ' aria-pressed="' + (fmtOn ? 'true' : 'false') + '" aria-label="Toggle the format bar">Aa</button>';
     // A page-turn sound you can't silence would be a menace in a room with other people, so it gets
     // a switch — here rather than in Settings, which would give the easter egg a visible entry.
     const muted = !!state.scratch.mute;
@@ -862,6 +959,622 @@
   function scratchExec(cmd, value){
     try{ document.execCommand(cmd, false, value); }catch(e){ /* nothing sensible to do */ }
   }
+
+  /* ---------- find across pages ----------
+     The browser's own Ctrl+F can only see the DOM, and six of your seven pages are not IN the DOM
+     — they are HTML strings in state.scratch.pages. So the native find is not merely worse here,
+     it is wrong: it reports "no results" for text that is demonstrably in your napkin. That is the
+     whole reason this exists and the reason Ctrl+F is taken over rather than left alone.
+
+     The hard constraint is that search must not write anything, ever. The surface's innerHTML IS
+     the saved state — onScratchInput() reads it straight into the page and debounces a save — so
+     wrapping hits in <mark> would persist the search UI into the document the moment any save
+     fired, which is the same trap the "uploading…" marker is deliberately kept out of state for.
+     Nothing below mutates the surface. Matches are tinted with the CSS Custom Highlight API
+     (ranges handed to the renderer, no nodes touched) and, where that isn't supported, the current
+     hit is merely SELECTED — which needs no DOM either. Search degrades to "jump to it", never to
+     "corrupt the page".
+
+     It is also not persisted: which page you are on is a preference, but a half-typed query is not,
+     so unlike the format bar this leaves no key in state.scratch. */
+
+  const SCRATCH_FIND_MAX = 400;      // total hits tracked; a query of "e" shouldn't build an essay
+  const SCRATCH_FIND_ROWS = 50;      // rows drawn in the panel; the rest are counted, not listed
+  // Elements that put a line break between their text and the next. Used to keep the flattened
+  // string honest — without it "<div>a</div><div>b</div>" reads as "ab" and matches "ab".
+  const SCRATCH_FIND_BLOCK = /^(DIV|P|LI|UL|OL|BLOCKQUOTE|PRE|H1|H2|H3)$/;
+
+  /* Is the Custom Highlight API here? Chrome 105+, Safari 17.2+, Firefox 140+. Feature-detected
+     rather than version-sniffed, and every use is wrapped, because the fallback is genuinely fine. */
+  const SCRATCH_HAS_HL = (function(){
+    try{ return typeof Highlight === 'function' && !!(window.CSS && CSS.highlights); }
+    catch(e){ return false; }
+  })();
+
+  let scratchFindOn = false;
+  let scratchHits = [];
+  let scratchHitAt = -1;          // -1 = nothing stepped to yet; the panel is a list, not a cursor
+  let scratchFindTimer = null;
+  const scratchFlatCache = new Map();   // page id -> { html, text }, so six pages aren't re-parsed
+                                        // on every keystroke of the query
+
+  /* ONE flattener for both sides of the search: the live surface (where a hit has to become a real
+     Range) and a stored page's HTML (where only the text matters). Using the same walk for both is
+     what guarantees the Nth hit found in a stored page is the Nth hit in the DOM once you switch to
+     it — two different text extractions would drift apart the moment a match sat across a <b>.
+     The map is only built when asked for: the cached stored pages keep strings, not nodes. */
+  function scratchFlatten(root, wantMap){
+    const parts = [], map = wantMap ? [] : null;
+    let len = 0;
+    (function walk(n){
+      for(let c = n.firstChild; c; c = c.nextSibling){
+        if(c.nodeType === 3){
+          const v = c.nodeValue || '';
+          if(!v) continue;
+          if(map) map.push({ node: c, at: len });
+          parts.push(v); len += v.length;
+        } else if(c.nodeType === 1){
+          if(c.tagName === 'BR'){ parts.push('\n'); len += 1; continue; }
+          const block = SCRATCH_FIND_BLOCK.test(c.tagName);
+          if(block && len && parts[parts.length - 1] !== '\n'){ parts.push('\n'); len += 1; }
+          walk(c);
+          if(block){ parts.push('\n'); len += 1; }
+        }
+      }
+    })(root);
+    return { text: parts.join(''), map: map };
+  }
+
+  function scratchStoredText(p){
+    const cached = scratchFlatCache.get(p.id);
+    const html = p.html || '';
+    if(cached && cached.html === html) return cached.text;
+    const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
+    const text = scratchFlatten(doc.body, false).text;
+    scratchFlatCache.set(p.id, { html: html, text: text });
+    return text;
+  }
+
+  /* Plain substring, case-insensitive, non-overlapping — not a regex. A napkin search box is a
+     place people type "(" and "?" without meaning anything by it.
+     The length guard is not paranoia: toLowerCase() is length-preserving for almost everything but
+     not quite all of Unicode (Turkish dotted I becomes two code units), and a single shifted offset
+     would land every subsequent jump on the wrong character. When folding changes the length at
+     all, fall back to an exact-case search, which is always aligned. */
+  function scratchFindAll(text, q){
+    const out = [];
+    if(!q) return out;
+    let hay = text.toLowerCase(), needle = q.toLowerCase();
+    if(hay.length !== text.length){ hay = text; needle = q; }
+    let i = hay.indexOf(needle);
+    while(i >= 0 && out.length < SCRATCH_FIND_MAX){
+      out.push(i);
+      i = hay.indexOf(needle, i + needle.length);
+    }
+    return out;
+  }
+
+  function scratchSnippet(text, start, end){
+    const lead = 34, trail = 52;
+    const from = Math.max(0, start - lead);
+    return {
+      before: (from > 0 ? '…' : '') + text.slice(from, start).replace(/\s+/g, ' '),
+      hit: text.slice(start, end).replace(/\s+/g, ' '),
+      after: text.slice(end, end + trail).replace(/\s+/g, ' ') + (end + trail < text.length ? '…' : '')
+    };
+  }
+
+  // Every hit in the whole stack, in page order. The ACTIVE page is read from the LIVE surface, not
+  // from state, so what you typed ten seconds ago and haven't saved yet is searchable too.
+  function scratchCollectHits(q){
+    ensureScratchPages();
+    const pages = state.scratch.pages, active = scratchActiveIndex(), surf = el('scratchText');
+    const hits = [];
+    for(let i = 0; i < pages.length && hits.length < SCRATCH_FIND_MAX; i++){
+      const text = (i === active && surf) ? scratchFlatten(surf, false).text : scratchStoredText(pages[i]);
+      const at = scratchFindAll(text, q);
+      const title = scratchPageTitle(pages[i]);
+      for(let k = 0; k < at.length && hits.length < SCRATCH_FIND_MAX; k++){
+        hits.push({ page: i, title: title, start: at[k], end: at[k] + q.length, snip: scratchSnippet(text, at[k], at[k] + q.length) });
+      }
+    }
+    return hits;
+  }
+
+  /* A flat offset pair becomes a Range. Both ends are resolved separately because a match can span
+     two text nodes with nothing between them — "he<b>llo</b>" is one word to a reader and to this
+     flattener, but two nodes to the DOM. A hit can never span one of the "\n" separators, since
+     those aren't in any node and a single-line query can't contain one. */
+  function scratchRangeFor(map, start, end){
+    let s = null, e = null;
+    for(let i = 0; i < map.length; i++){
+      const node = map[i].node, a = map[i].at, b = a + (node.nodeValue || '').length;
+      if(!s && start >= a && start < b) s = { node: node, offset: start - a };
+      if(!e && end > a && end <= b) e = { node: node, offset: end - a };
+      if(s && e) break;
+    }
+    if(!s || !e) return null;
+    try{
+      const r = document.createRange();
+      r.setStart(s.node, s.offset);
+      r.setEnd(e.node, e.offset);
+      return r;
+    }catch(err){ return null; }
+  }
+
+  function scratchClearHitPaint(){
+    if(!SCRATCH_HAS_HL) return;
+    try{ CSS.highlights.delete('scratch-find'); CSS.highlights.delete('scratch-find-on'); }catch(e){}
+  }
+
+  /* Tint every hit on the page you're looking at, and the stepped-to one more strongly. Ranges
+     only — nothing here touches a node, which is the whole reason this feature is allowed to exist
+     over a surface whose innerHTML is the saved document. */
+  function scratchPaintHits(){
+    const surf = el('scratchText');
+    if(!surf || !scratchFindOn){ scratchClearHitPaint(); return; }
+    const active = scratchActiveIndex();
+    const flat = scratchFlatten(surf, true);
+    const current = scratchHits[scratchHitAt];
+    let currentRange = null;
+    if(!SCRATCH_HAS_HL){
+      // No Highlight API: the best that can be done without touching the DOM is to select the
+      // stepped-to hit. Selecting is not focusing, so the query box keeps the caret.
+      if(current && current.page === active){
+        const r = scratchRangeFor(flat.map, current.start, current.end);
+        if(r){ const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); currentRange = r; }
+      }
+      return currentRange;
+    }
+    const all = [], one = [];
+    for(let i = 0; i < scratchHits.length; i++){
+      if(scratchHits[i].page !== active) continue;
+      const r = scratchRangeFor(flat.map, scratchHits[i].start, scratchHits[i].end);
+      if(!r) continue;
+      if(i === scratchHitAt){ one.push(r); currentRange = r; } else all.push(r);
+    }
+    try{
+      CSS.highlights.set('scratch-find', new Highlight(...all));
+      CSS.highlights.set('scratch-find-on', new Highlight(...one));
+    }catch(e){ /* an engine that has the names but not the constructor shape — tinting is optional */ }
+    return currentRange;
+  }
+
+  // Scrolls the stepped-to hit into the middle of the surface WITHOUT focusing it: focus belongs to
+  // the query box you are still typing in.
+  function scratchScrollToHit(range){
+    const surf = el('scratchText');
+    if(!surf || !range) return;
+    const sr = surf.getBoundingClientRect(), rr = range.getBoundingClientRect();
+    if(!rr.height && !rr.width) return;
+    let smooth = true;
+    try{ smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+    const top = surf.scrollTop + (rr.top - sr.top) - (sr.height / 2) + (rr.height / 2);
+    try{ surf.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' }); }
+    catch(e){ surf.scrollTop = Math.max(0, top); }
+  }
+
+  /* Step to hit n, switching pages if it lives on another one. Deliberately NOT called while you
+     type: auto-jumping would flip the page under you on every keystroke of a query, and each flip
+     is a real state change that saves. Typing narrows the list; Enter, the arrows and a click on a
+     row are what move you. */
+  function scratchFindGo(n){
+    if(!scratchHits.length) return;
+    const i = ((n % scratchHits.length) + scratchHits.length) % scratchHits.length;
+    scratchHitAt = i;
+    const hit = scratchHits[i];
+    // keepFocus: jumping to a hit must not pull the caret out of the query box
+    if(hit.page !== scratchActiveIndex()) scratchGoTo(hit.page, { keepFocus: true });
+    scratchScrollToHit(scratchPaintHits());
+    renderScratchFindPanel();
+  }
+
+  function renderScratchFindPanel(){
+    const panel = el('scratchSearchResults'), count = el('scratchSearchCount');
+    if(!panel || !count) return;
+    if(!scratchHits.length){
+      const q = (el('scratchSearchInput') || {}).value || '';
+      count.textContent = q ? 'no matches' : '';
+      panel.innerHTML = '';
+      panel.style.display = 'none';
+      return;
+    }
+    count.textContent = (scratchHitAt >= 0 ? (scratchHitAt + 1) + ' of ' : '') + scratchHits.length;
+    let h = '';
+    const shown = Math.min(scratchHits.length, SCRATCH_FIND_ROWS);
+    for(let i = 0; i < shown; i++){
+      const hit = scratchHits[i];
+      h += '<button type="button" class="scratch-sr' + (i === scratchHitAt ? ' is-on' : '') + '" data-hit="' + i + '">'
+         + '<span class="scratch-sr-page">' + escapeHtml(hit.title) + '</span>'
+         + '<span class="scratch-sr-text">' + escapeHtml(hit.snip.before)
+         + '<b>' + escapeHtml(hit.snip.hit) + '</b>'
+         + escapeHtml(hit.snip.after) + '</span></button>';
+    }
+    if(scratchHits.length > shown) h += '<div class="scratch-sr-more">…and ' + (scratchHits.length - shown) + ' more</div>';
+    panel.innerHTML = h;
+    panel.style.display = 'block';
+    const on = panel.querySelector('.scratch-sr.is-on');
+    if(on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  // The find-as-you-type step: rebuild the hit list, repaint the current page, redraw the panel.
+  // Keeps the stepped-to position only while it still points at something.
+  function runScratchFind(){
+    if(!scratchFindOn) return;
+    const box = el('scratchSearchInput');
+    const q = box ? box.value : '';
+    scratchHits = q ? scratchCollectHits(q) : [];
+    if(scratchHitAt >= scratchHits.length) scratchHitAt = scratchHits.length ? 0 : -1;
+    scratchPaintHits();
+    renderScratchFindPanel();
+  }
+
+  // Edits to the page while the panel is open move every offset after them, so the list is re-run
+  // rather than left to point at stale positions. Throttled because it re-reads the whole stack.
+  function scheduleScratchFind(){
+    if(scratchFindTimer) return;
+    scratchFindTimer = setTimeout(()=>{ scratchFindTimer = null; runScratchFind(); }, 200);
+  }
+
+  function openScratchFind(){
+    const wrap = el('scratchSearch'), box = el('scratchSearchInput');
+    if(!wrap || !box) return;
+    scratchFindOn = true;
+    wrap.style.display = 'block';
+    box.focus();
+    box.select();          // a second Ctrl+F re-queries rather than appending to the last query
+    runScratchFind();
+  }
+
+  /* silent: closing the whole napkin shouldn't hand focus back to a surface that is about to be
+     hidden anyway. Everything else about the teardown is the same either way — no state to save,
+     because a query was never state. */
+  function closeScratchFind(silent){
+    const wrap = el('scratchSearch');
+    scratchFindOn = false;
+    scratchHits = [];
+    scratchHitAt = -1;
+    if(scratchFindTimer){ clearTimeout(scratchFindTimer); scratchFindTimer = null; }
+    scratchClearHitPaint();
+    if(wrap) wrap.style.display = 'none';
+    const panel = el('scratchSearchResults');
+    if(panel){ panel.innerHTML = ''; panel.style.display = 'none'; }
+    if(!silent) focusScratchSurface();
+  }
+
+  /* ---------- the format bar ----------
+     Bold / italic / underline / strike, font, size, colour and highlight. The napkin has almost no
+     chrome on purpose, so this row is held at the same --faint weight as the dots and the footer,
+     sits BELOW the writing (never over it, unlike a selection popover — which would also fight the
+     native text-selection callout on a phone), and scrolls sideways rather than wrapping, because a
+     second row would shove the writing area up every time the soft keyboard opened.
+
+     Everything here goes through execCommand, for the reason the section above already records:
+     it is the only way to edit a contenteditable that keeps the browser's own undo stack intact.
+
+     The non-obvious decision is that styleWithCSS is deliberately held OFF, so the commands emit
+     the LEGACY <font size|face|color> form rather than inline CSS. Three things that buys:
+       - The size scale is OURS. <font size> is seven named buckets, restyled in styles.css to this
+         page's own px scale, so "L" is a value this page chose rather than the browser's idea of
+         what "x-large" means.
+       - The sanitizer's job stays small: three attributes with three tight regexes, instead of
+         having to trust a CSS parser for the common case.
+       - It round-trips identically everywhere. With styleWithCSS ON, Chrome writes
+         "-webkit-xxx-large" where Firefox writes "xx-large" for the very same command, so a page
+         written on one browser would come out a different size on the other.
+     Highlight is the one exception — there is no <font> form of a background — so the flag is
+     flipped on for exactly that one call and straight back off; safeScratchStyle() is what covers
+     the <span style="background-color"> it leaves behind. */
+
+  // Font faces are unquoted on purpose: the value goes into a face="" attribute, and the charset
+  // SCRATCH_FACE allows has no quotes to balance and no way out of the attribute.
+  const SCRATCH_FONTS = [
+    { label: 'Sans',  face: 'Inter, sans-serif' },
+    { label: 'Serif', face: 'Georgia, Times New Roman, serif' },
+    { label: 'Mono',  face: 'ui-monospace, Consolas, Menlo, monospace' },
+    { label: 'Wide',  face: 'Trebuchet MS, Segoe UI, sans-serif' },
+    { label: 'Hand',  face: 'Segoe Script, Bradley Hand, cursive' }
+  ];
+  // The legacy buckets, minus 4 — 3 and 4 are a hair apart and a picker wants distinguishable
+  // steps more than it wants completeness. All seven are still styled, so a pasted 4 renders.
+  const SCRATCH_SIZES = [
+    { label: 'XS', v: '1' }, { label: 'S', v: '2' }, { label: 'M', v: '3' },
+    { label: 'L', v: '5' }, { label: 'XL', v: '6' }, { label: 'XXL', v: '7' }
+  ];
+  /* An ACTION menu, not a setting: it snaps back to reading "Highlight" after each use rather than
+     reflecting what's under the caret. Reading it back would mean mapping a computed rgb() — and
+     the "no highlight" case, which is rgba(0,0,0,0) in one engine and "transparent" in another —
+     onto this list, for a control whose whole job is one-shot. Font and size DO reflect the caret,
+     because queryCommandValue answers those exactly. */
+  /* TRANSLUCENT, not the flat pastels a highlighter usually is, and that is the whole point: the
+     app has four themes and the ink under a highlight stays whatever --text currently is. A solid
+     #FDE68A reads perfectly on the light themes and puts near-white text on near-white yellow on
+     the dark ones. At these alphas the swatch composites against whatever is behind it, so it
+     comes out pale on a light page and a deep muted tint on a dark one, with the text legible on
+     both — and no CSS rule has to reach in and override the foreground colour the user picked. */
+  const SCRATCH_HILITES = [
+    { label: 'Highlight', v: '' },
+    { label: 'Yellow', v: 'rgba(250, 204, 21, 0.42)' },
+    { label: 'Green',  v: 'rgba(74, 222, 128, 0.38)' },
+    { label: 'Blue',   v: 'rgba(96, 165, 250, 0.38)' },
+    { label: 'Pink',   v: 'rgba(244, 114, 182, 0.35)' },
+    { label: 'Orange', v: 'rgba(251, 146, 60, 0.38)' },
+    { label: 'Grey',   v: 'rgba(148, 163, 184, 0.35)' },
+    { label: 'None',   v: 'transparent' }
+  ];
+
+  /* execCommand only acts on a selection that is genuinely inside THIS editable — the same trap
+     insertScratchTick() documents, where the browser quietly appends at the end instead. Pressing
+     a toolbar control moves focus out of it, so every control goes through withScratchSelection().
+     The buttons cancel their own mousedown, so focus never leaves and there is nothing to restore;
+     the <select>s and the colour well CANNOT do that without breaking the native picker, so the
+     last in-surface Range is remembered on selectionchange and put back before the command runs. */
+  let scratchSavedRange = null;
+
+  function rememberScratchRange(){
+    const surf = el('scratchText');
+    const sel = window.getSelection();
+    if(!surf || !sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    if(surf.contains(r.commonAncestorContainer)) scratchSavedRange = r.cloneRange();
+  }
+
+  function withScratchSelection(fn){
+    const surf = el('scratchText');
+    if(!surf) return;
+    const sel = window.getSelection();
+    const inside = sel && sel.rangeCount && surf.contains(sel.getRangeAt(0).commonAncestorContainer);
+    if(!inside){
+      surf.focus({ preventScroll: true });
+      if(scratchSavedRange && surf.contains(scratchSavedRange.commonAncestorContainer)){
+        const s2 = window.getSelection();
+        s2.removeAllRanges();
+        s2.addRange(scratchSavedRange);
+      } else {
+        // nothing was ever selected here: put the caret somewhere real so the command isn't
+        // silently applied to the end of the page
+        placeScratchCaretAtEnd(surf);
+      }
+    }
+    fn();
+    rememberScratchRange();
+    onScratchInput();          // execCommand fires 'input' too, but not on every path in every
+                               // engine, and onScratchInput is idempotent
+    updateScratchFormatState();
+  }
+
+  /* Re-asserted immediately before each command rather than trusted from openScratch(): it is a
+     DOCUMENT-wide flag, so anything that ever ran execCommand elsewhere on the page could have
+     moved it, and the whole <font> design above depends on it being off. One boolean; not worth
+     being clever about. */
+  function scratchLegacyMode(){ scratchExec('styleWithCSS', 'false'); }
+
+  /* Collapsed is the DEFAULT, and that is the point. The napkin's whole design is a page with
+     nothing on it; a permanent row of controls under every blank page is precisely the chrome this
+     thing exists in order not to have. Hiding it costs a mouse user one click on the Aa switch and
+     a keyboard user nothing at all — Ctrl+B / Ctrl+I / Ctrl+U are the browser's own and keep
+     working whether the bar is up or not.
+     Nothing is destroyed on collapse: the bar keeps its listeners and its filled <select>s, so
+     this is one style property rather than a teardown, and the state it shows is refreshed on the
+     way back up rather than tracked while it's invisible. */
+  function applyScratchFormatBar(){
+    const bar = el('scratchFormat');
+    if(!bar) return;
+    const on = !!(state.scratch && state.scratch.fmt);
+    bar.style.display = on ? 'flex' : 'none';
+    if(on) updateScratchFormatState();
+  }
+
+  function scratchFmtCmd(cmd){ withScratchSelection(()=>{ scratchLegacyMode(); scratchExec(cmd); }); }
+  function applyScratchFont(face){ withScratchSelection(()=>{ scratchLegacyMode(); scratchExec('fontName', face); }); }
+  function applyScratchSize(v){ withScratchSelection(()=>{ scratchLegacyMode(); scratchExec('fontSize', v); }); }
+  function applyScratchColor(c){ withScratchSelection(()=>{ scratchLegacyMode(); scratchExec('foreColor', c); }); }
+
+  // The only command with no <font> form, so it's also the only one that needs CSS mode. backColor
+  // is Firefox's spelling of the same thing (hiliteColor returns false there); trying one and
+  // falling back is cheaper and more durable than sniffing the engine. The flag goes straight back
+  // off so nothing else starts emitting inline CSS behind our backs.
+  function applyScratchHilite(c){
+    withScratchSelection(()=>{
+      scratchExec('styleWithCSS', 'true');
+      let ok = false;
+      try{ ok = document.execCommand('hiliteColor', false, c); }catch(e){ ok = false; }
+      if(!ok) scratchExec('backColor', c);
+      scratchLegacyMode();
+    });
+  }
+
+  /* Clear formatting. removeFormat handles the tags and the <font> attributes, but leaves a
+     background behind in several engines — it treats it as a property of the span rather than
+     formatting — so the highlight is explicitly cleared afterwards. Deliberately does NOT unlink:
+     a link is content here, not styling. */
+  function clearScratchFormat(){
+    withScratchSelection(()=>{
+      scratchLegacyMode();
+      scratchExec('removeFormat');
+      scratchExec('styleWithCSS', 'true');
+      let ok = false;
+      try{ ok = document.execCommand('hiliteColor', false, 'transparent'); }catch(e){ ok = false; }
+      if(!ok) scratchExec('backColor', 'transparent');
+      scratchLegacyMode();
+    });
+  }
+
+  /* What the bar shows about the caret. Cheap, but selectionchange fires on every arrow key, so
+     it's coalesced onto a frame. queryCommandState/Value throw in some engines when there is no
+     editable context at all (nothing focused yet), hence the try/catch around each. */
+  let scratchFmtFrame = 0;
+  function scheduleScratchFormatState(){
+    if(scratchFmtFrame) return;
+    scratchFmtFrame = requestAnimationFrame(()=>{ scratchFmtFrame = 0; updateScratchFormatState(); });
+  }
+
+  function updateScratchFormatState(){
+    const bar = el('scratchFormat');
+    // nothing to update while it's collapsed, and selectionchange fires on every arrow key
+    if(!bar || !scratchOpen || !(state.scratch && state.scratch.fmt)) return;
+    const btns = bar.querySelectorAll('.scratch-fmt[data-cmd]');
+    for(let i=0; i<btns.length; i++){
+      let on = false;
+      try{ on = document.queryCommandState(btns[i].getAttribute('data-cmd')); }catch(e){ on = false; }
+      btns[i].classList.toggle('is-on', !!on);
+      btns[i].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    const at = scratchFontAtCaret();
+    const sizeSel = el('scratchSizeSel');
+    if(sizeSel){
+      let idx = -1;
+      for(let i=0; i<SCRATCH_SIZES.length; i++) if(SCRATCH_SIZES[i].v === at.size){ idx = i; break; }
+      sizeSel.selectedIndex = idx < 0 ? 2 : idx; // unset, or a bucket we don't offer: show M
+    }
+    const fontSel = el('scratchFontSel');
+    if(fontSel){
+      // match on the FIRST family only: that is what identifies a stack, and it survives a page
+      // written before a stack in the list was edited
+      const first = at.face.replace(/["']/g, '').split(',')[0].trim().toLowerCase();
+      let idx = 0;
+      for(let i=0; i<SCRATCH_FONTS.length; i++){
+        if(SCRATCH_FONTS[i].face.split(',')[0].trim().toLowerCase() === first){ idx = i; break; }
+      }
+      fontSel.selectedIndex = idx;
+    }
+  }
+
+  /* Size and face are read out of the MARKUP, not from queryCommandValue — the one place the two
+     selects differ from the on/off buttons above, which queryCommandState answers correctly.
+     queryCommandValue('fontSize') does not report the size attribute that is actually there: it
+     reports whichever legacy bucket the browser's own px table puts the COMPUTED size in. Since
+     styles.css deliberately restyles those buckets to this page's scale (that being the whole
+     point of the <font> design), the two tables disagree — a 26px "XL" came back as "L", and the
+     select would silently drift one step every time you looked at it. The attribute is exact and
+     is right there.
+     Size and face are collected independently on the way up because execCommand nests one <font>
+     inside another, so a run that is both Serif and XL has them on two different elements. */
+  function scratchFontAtCaret(){
+    const out = { size: '', face: '' };
+    const surf = el('scratchText');
+    const sel = window.getSelection();
+    if(!surf || !sel || !sel.rangeCount) return out;
+    const r = sel.getRangeAt(0);
+    if(!surf.contains(r.startContainer)) return out;
+    /* Resolve the range's START POINT to a real leaf. A collapsed caret already sits in a text
+       node, but a range covering whole elements has an ELEMENT container plus an offset — and
+       walking up from that element would step straight past the <font> the selection is made of,
+       since it sits below the boundary rather than above it. So descend to the first leaf first. */
+    let n = r.startContainer;
+    if(n.nodeType === 1) n = n.childNodes[r.startOffset] || n;
+    while(n && n.nodeType === 1 && n.firstChild) n = n.firstChild;
+    if(n && n.nodeType === 3) n = n.parentNode;
+    while(n && n !== surf && n.nodeType === 1){
+      if(n.tagName === 'FONT'){
+        if(!out.size && n.hasAttribute('size')) out.size = n.getAttribute('size');
+        if(!out.face && n.hasAttribute('face')) out.face = n.getAttribute('face');
+      }
+      n = n.parentNode;
+    }
+    return out;
+  }
+
+  // Options live in the arrays above, never in index.html, so the labels and the values they apply
+  // can't drift apart. Called once at load; the bar is static markup after that.
+  function initScratchFormatBar(){
+    const opts = (list, i) => '<option value="' + i + '">' + escapeHtml(list[i].label) + '</option>';
+    const fill = (node, list) => {
+      if(!node) return;
+      let h = '';
+      for(let i=0; i<list.length; i++) h += opts(list, i);
+      node.innerHTML = h;
+    };
+    fill(el('scratchFontSel'), SCRATCH_FONTS);
+    fill(el('scratchSizeSel'), SCRATCH_SIZES);
+    fill(el('scratchHiliteSel'), SCRATCH_HILITES);
+    const sizeSel = el('scratchSizeSel');
+    if(sizeSel) sizeSel.selectedIndex = 2; // M
+    const colorIn = el('scratchColorInput');
+    const swatch = el('scratchColorSwatch');
+    if(colorIn && swatch) swatch.style.background = colorIn.value;
+
+    const bar = el('scratchFormat');
+    if(!bar) return;
+    /* Cancelling mousedown is what keeps the caret where it is: without it the press focuses the
+       button, the surface loses its selection, and the command lands on nothing. Scoped to the
+       buttons — cancelling it on a <select> or the colour well would stop the native picker from
+       opening at all, which is why those two restore the remembered Range instead. */
+    bar.addEventListener('mousedown', e=>{
+      if(e.target && e.target.closest && e.target.closest('.scratch-fmt')) e.preventDefault();
+    });
+    bar.addEventListener('click', e=>{
+      const b = e.target && e.target.closest && e.target.closest('.scratch-fmt');
+      if(!b) return;
+      if(b.getAttribute('data-act') === 'clear'){ clearScratchFormat(); return; }
+      const cmd = b.getAttribute('data-cmd');
+      if(cmd) scratchFmtCmd(cmd);
+    });
+    if(el('scratchFontSel')) el('scratchFontSel').addEventListener('change', e=>{
+      const item = SCRATCH_FONTS[e.target.selectedIndex];
+      if(item) applyScratchFont(item.face);
+    });
+    if(sizeSel) sizeSel.addEventListener('change', e=>{
+      const item = SCRATCH_SIZES[e.target.selectedIndex];
+      if(item) applyScratchSize(item.v);
+    });
+    if(el('scratchHiliteSel')) el('scratchHiliteSel').addEventListener('change', e=>{
+      const item = SCRATCH_HILITES[e.target.selectedIndex];
+      e.target.selectedIndex = 0;            // an action menu — back to reading "Highlight"
+      if(item && item.v) applyScratchHilite(item.v);
+    });
+    // 'change', not 'input': Chrome streams 'input' for every pixel dragged inside the picker,
+    // which would put a hundred undo entries on the stack for one colour choice.
+    if(colorIn) colorIn.addEventListener('change', e=>{
+      if(swatch) swatch.style.background = e.target.value;
+      applyScratchColor(e.target.value);
+    });
+  }
+
+  /* selectionchange is document-wide and fires constantly, so it bails immediately unless this page
+     is open. It does two jobs: keeping scratchSavedRange fresh for the controls that lose focus,
+     and keeping the bar's own on/off state honest as the caret moves. */
+  document.addEventListener('selectionchange', ()=>{
+    if(!scratchOpen) return;
+    rememberScratchRange();
+    scheduleScratchFormatState();
+  });
+
+  initScratchFormatBar();
+
+  /* ---------- find: wiring ---------- */
+  (function(){
+    const box = el('scratchSearchInput'), wrap = el('scratchSearch');
+    if(!box || !wrap) return;
+    box.addEventListener('input', runScratchFind);
+    box.addEventListener('keydown', e=>{
+      if(e.key === 'Enter'){ e.preventDefault(); scratchFindGo(scratchHitAt + (e.shiftKey ? -1 : 1)); return; }
+      if(e.key === 'ArrowDown'){ e.preventDefault(); scratchFindGo(scratchHitAt + 1); return; }
+      if(e.key === 'ArrowUp'){ e.preventDefault(); scratchFindGo(scratchHitAt - 1); return; }
+      // Escape is handled by the document-level capture guard, so it peels off exactly one layer
+    });
+    wrap.addEventListener('click', e=>{
+      const t = e.target;
+      if(!t || !t.closest) return;
+      if(t.closest('#scratchSearchNext')){ scratchFindGo(scratchHitAt + 1); return; }
+      if(t.closest('#scratchSearchPrev')){ scratchFindGo(scratchHitAt - 1); return; }
+      if(t.closest('#scratchSearchClose')){ closeScratchFind(); return; }
+      const row = t.closest('.scratch-sr');
+      if(row) scratchFindGo(parseInt(row.getAttribute('data-hit'), 10) || 0);
+    });
+    /* Ctrl+F is TAKEN OVER, at capture, document-level. Not a landgrab: the browser's find can only
+       search the DOM, and every page except the one on screen is a string in state — so the native
+       one confidently reports "no results" for text that is plainly in your napkin. Document-level
+       rather than on the overlay because on touch nothing inside it may be focused at all. */
+    document.addEventListener('keydown', e=>{
+      if(!scratchOpen || e.altKey) return;
+      if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f'){
+        e.preventDefault();
+        e.stopPropagation();
+        openScratchFind();
+      }
+    }, true);
+  })();
 
   function insertScratchTick(done){
     const surf = el('scratchText');
@@ -1090,9 +1803,15 @@
     }
     scratchOpen = true;
     overlay.style.display = 'flex';
+    /* Pin the legacy output mode for this session. It's a document-wide flag and nothing else in
+       the app touches it (js/board.js only ever runs 'copy'), but a browser's default differs by
+       engine and version — and if it were ever left ON, fontSize would start writing
+       "-webkit-xxx-large" spans instead of the <font size> buckets styles.css restyles. */
+    scratchExec('styleWithCSS', 'false');
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
+    applyScratchFormatBar();
     lockPageScroll(); // js/goals.js — counted, iOS-safe; without it a swipe past the surface's own
                       // scroll end moves the page behind and you exit somewhere else entirely
     /* Touch devices are deliberately left unfocused — see scratchWantsAutoFocus(). Tap the writing
@@ -1121,11 +1840,13 @@
 
   function closeScratch(){
     if(!scratchOpen) return;
+    if(scratchFindOn) closeScratchFind(true); // silent: don't focus a surface that's about to hide
     commitScratchSurface();               // while scratchOpen is still true
     const swept = sweepTrailingEmptyScratchPages();
     sweepDeletedScratchImages();          // after the commit, so the last edit counts
     scratchOpen = false;
-    scratchTabHeld = false; scratchTabUsed = false; scratchWheelAcc = 0; scratchWheelDir = 0; scratchWheelStepAt = 0;
+    scratchTabHeld = false; scratchTabUsed = false; scratchTabTapAt = 0;
+    scratchWheelAcc = 0; scratchWheelDir = 0; scratchWheelStepAt = 0;
     if(swept){
       // the sweep is a real edit, and there may be no pending timer to carry it
       state.scratch.updatedAt = Date.now();
@@ -1162,6 +1883,10 @@
   document.addEventListener('keydown', e=>{
     if(e.key !== 'Escape' || !scratchOpen) return;
     e.stopPropagation();
+    // Find is a layer INSIDE the page, so Escape peels that off first and the napkin stays open —
+    // the same one-layer-per-press rule this capture guard exists to enforce against the app's
+    // other overlays.
+    if(scratchFindOn){ closeScratchFind(); return; }
     closeScratch();
   }, true);
 
@@ -1273,6 +1998,21 @@
     if(!t || !t.closest) return;
     if(t.closest('#scratchAddPage')){ addScratchPage(); return; }
     if(t.closest('#scratchDelPage')){ deleteScratchPage(); return; }
+    if(t.closest('#scratchFindBtn')){
+      if(scratchFindOn) closeScratchFind(); else openScratchFind();
+      return;
+    }
+    if(t.closest('#scratchFmtBtn')){
+      state.scratch.fmt = !state.scratch.fmt;
+      renderScratchPages();
+      applyScratchFormatBar();
+      // renderScratchPages() just replaced the button that was clicked — and on touch,
+      // focusScratchSurface() deliberately declines, so showing the bar never raises the keyboard
+      focusScratchSurface();
+      setScratchStatus('dirty');
+      debouncedSaveScratch();
+      return;
+    }
     if(t.closest('#scratchMuteBtn')){
       state.scratch.mute = !state.scratch.mute;
       renderScratchPages();
@@ -1418,12 +2158,29 @@
      clears the flag, or an alt-tab away would swallow the keyup and leave the modifier stuck down
      for good. */
   let scratchTabHeld = false, scratchTabUsed = false;
+  /* Tab, tab -> find. This is Tab's THIRD job on this page (focus move, scroll modifier, and now
+     this), so the arming rule is what keeps the three from tripping over each other: a tap only
+     arms the gesture when it was pressed while the WRITING had focus. Once you have tabbed into
+     the dots, every further Tab is a plain focus move again and can never open the panel — so the
+     keyboard route to the dots survives, apart from the one case the gesture is defined as.
+     The honest cost, since there is no way to have both: two FAST taps starting from the writing
+     now open find instead of stepping focus twice. A second tap after the window still steps.
+     Deliberately not solved by delaying the first tap's focus move until the window expires — that
+     buys the collision back at the price of making every Tab feel broken. */
+  const SCRATCH_TAB_DOUBLE = 450;   // ms; a double-CLICK is ~500, and this is the same gesture
+  let scratchTabTapAt = 0, scratchTabFromSurface = false;
   let scratchWheelAt = 0, scratchWheelAcc = 0, scratchWheelDir = 0, scratchWheelStepAt = 0;
 
   el('scratchOverlay').addEventListener('keydown', e=>{
     if(e.key !== 'Tab') return;
     e.preventDefault();
-    if(!e.repeat){ scratchTabHeld = true; scratchTabUsed = false; }
+    if(!e.repeat){
+      scratchTabHeld = true;
+      scratchTabUsed = false;
+      // read on the way DOWN: by keyup the focus has already moved, so this is the only moment
+      // that can answer "did this tap start in the writing?"
+      scratchTabFromSurface = (document.activeElement === el('scratchText'));
+    }
   });
 
   /* passive:false because this has to preventDefault — otherwise the surface scrolls under you
@@ -1499,17 +2256,41 @@
   el('scratchOverlay').addEventListener('keyup', e=>{
     if(e.key !== 'Tab') return;
     const used = scratchTabUsed;
+    const fromSurface = scratchTabFromSurface;
     scratchTabHeld = false;
     scratchTabUsed = false;
-    if(!used) moveScratchFocus(e.shiftKey); // nothing was scrolled: a plain Tab press, after all
+    // that Tab was the scroll modifier, not a tap — it must not count towards a double
+    if(used){ scratchTabTapAt = 0; return; }
+    const now = Date.now();
+    if(scratchTabTapAt && now - scratchTabTapAt <= SCRATCH_TAB_DOUBLE){
+      scratchTabTapAt = 0;
+      // and NOT another focus move: the second tap is the gesture, not a step
+      openScratchFind();
+      return;
+    }
+    // only a tap that started in the writing arms the gesture — see SCRATCH_TAB_DOUBLE above
+    scratchTabTapAt = fromSurface ? now : 0;
+    moveScratchFocus(e.shiftKey);           // nothing was scrolled: a plain Tab press, after all
   });
 
-  window.addEventListener('blur', ()=>{ scratchTabHeld = false; scratchTabUsed = false; });
+  window.addEventListener('blur', ()=>{
+    scratchTabHeld = false; scratchTabUsed = false; scratchTabTapAt = 0;
+  });
 
   // Wraps rather than escaping, so focus stays inside the takeover instead of walking into the
   // invisible tab behind it.
   function moveScratchFocus(back){
-    const items = el('scratchOverlay').querySelectorAll('[contenteditable="true"], button, #scratchBrand');
+    /* HIDDEN controls have to be filtered out, not merely collected and skipped by luck. Two of the
+       things this selector matches are hidden most of the time — the format bar is collapsed by
+       default, and the find row only exists while you're searching — and .focus() on a display:none
+       element is a silent no-op that leaves activeElement on <body>. The cycle would then appear to
+       swallow a Tab and restart from the top on the next one.
+       getClientRects().length is the "is this actually rendered" test rather than offsetParent,
+       which has its own rules about positioned ancestors and would need to know that
+       .scratch-overlay is position:fixed to be read correctly. */
+    const all = el('scratchOverlay').querySelectorAll('[contenteditable="true"], button, select, input[type="color"], .scratch-search-input, #scratchBrand');
+    const items = [];
+    for(let k=0; k<all.length; k++) if(all[k].getClientRects().length) items.push(all[k]);
     if(!items.length) return;
     let i = -1;
     for(let k=0; k<items.length; k++) if(items[k] === document.activeElement){ i = k; break; }

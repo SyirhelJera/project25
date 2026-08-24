@@ -1615,6 +1615,25 @@
   .scratch-text blockquote{margin:6px 0;padding-left:12px;border-left:2px solid var(--border);color:var(--muted);}
   .scratch-text code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--surface-alt);border-radius:4px;padding:1px 4px;}
   .scratch-text ul,.scratch-text ol{margin:4px 0;padding-left:22px;}
+  /* Rich text (the format bar in js/scratch.js). The sizes are the legacy <font size> buckets
+     execCommand emits, restyled here to this page's own scale rather than the browser's — which is
+     the whole reason styleWithCSS is held off over there. Absolute px, never em: em would compound
+     the moment one sized run ended up nested inside another, so "L" inside "L" would be XXL.
+     All seven are styled even though the picker offers six, because a 4 can still arrive in a
+     paste. --sc-fs is what makes "M" mean "the surface's own size" at both breakpoints. */
+  .scratch-text{--sc-fs:15.5px;}
+  .scratch-text font[size="1"]{font-size:11px;}
+  .scratch-text font[size="2"]{font-size:13px;}
+  .scratch-text font[size="3"]{font-size:var(--sc-fs);}
+  .scratch-text font[size="4"]{font-size:17px;}
+  .scratch-text font[size="5"]{font-size:21px;}
+  .scratch-text font[size="6"]{font-size:26px;}
+  .scratch-text font[size="7"]{font-size:32px;}
+  /* <mark> only ever arrives from a paste — the highlight control writes a background-color span,
+     since execCommand has no <mark> form — but it should look like the same feature when it does,
+     which means the same translucent yellow and the page's own ink rather than the browser's
+     black-on-yellow default (unreadable the moment a dark theme is on). */
+  .scratch-text mark{background:rgba(250,204,21,.42);color:inherit;border-radius:3px;padding:0 2px;}
   /* the tickbox: sized up from the browser default because this gets tapped on a phone, and
      vertical-align keeps it sitting on the text baseline rather than riding above it */
   .scratch-text input.scratch-tick{width:15px;height:15px;margin:0 7px 0 0;vertical-align:-2px;accent-color:var(--violet);cursor:pointer;flex:none;}
@@ -1646,6 +1665,13 @@
   /* the page-turn sound switch: same weight as + and -, just dimmed and struck through when off */
   .scratch-mute{font-size:12px;}
   .scratch-mute.is-off{opacity:.45;text-decoration:line-through;}
+  /* The format bar's switch. Violet when the bar is up rather than struck through when it isn't:
+     the mute switch is silencing something, so the strike reads correctly there, while this one is
+     simply showing a panel — and violet-when-on is the same signal .scratch-fmt.is-on uses inside
+     the bar itself, so the row and the bar agree about what "on" looks like. */
+  .scratch-fmtbtn{font-size:10.5px;font-weight:700;letter-spacing:.2px;}
+  .scratch-fmtbtn[aria-pressed="true"]{color:var(--violet);}
+  .scratch-fmtbtn[aria-pressed="true"]:hover{color:var(--violet);background:var(--surface-alt);}
   /* A short slide in the direction you travelled, so a page change reads as movement rather than
      the text silently being replaced under the caret. */
   @keyframes scratchInR{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
@@ -1655,6 +1681,93 @@
   @media (prefers-reduced-motion: reduce){
     .scratch-text.slide-r,.scratch-text.slide-l{animation:none;}
   }
+  /* ---------- find (js/scratch.js) ----------
+     A search row that is only on screen while you're searching, so the resting page keeps its
+     nothing-on-it look. Framed like the format bar's inputs, for the same reason: it's a field. */
+  .scratch-search{flex:none;position:relative;z-index:3;width:100%;max-width:70ch;margin:8px auto 0;}
+  .scratch-search-row{display:flex;align-items:center;gap:4px;background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;padding:3px 6px;}
+  .scratch-search-icon{flex:none;padding:0 2px;color:var(--faint);font-size:13px;line-height:1;}
+  .scratch-search-input{flex:1;min-width:0;padding:5px 2px;background:none;border:none;outline:none;color:var(--text);font-family:inherit;font-size:12.5px;}
+  .scratch-search-input::placeholder{color:var(--faint);}
+  .scratch-search-count{flex:none;padding:0 4px;color:var(--faint);font-size:10.5px;white-space:nowrap;}
+  .scratch-search-nav{flex:none;background:none;border:none;padding:4px 6px;border-radius:6px;color:var(--faint);font-size:12px;line-height:1;cursor:pointer;transition:color .15s ease,background .15s ease;}
+  .scratch-search-nav:hover{color:var(--text);background:var(--surface);}
+  .scratch-search-nav:focus-visible,.scratch-search-input:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* Grows UPWARD (bottom:100%) rather than pushing the page down. The results appear as you type,
+     and a panel that reflowed the layout on every keystroke would shift the very text you're
+     scanning. Capped and scrollable, so a query of "e" can't fill the screen. */
+  .scratch-sr-panel{position:absolute;left:0;right:0;bottom:100%;margin-bottom:6px;max-height:min(46vh,320px);overflow-y:auto;
+    background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:4px;box-shadow:0 10px 30px rgba(15,18,40,.14);}
+  .scratch-sr{display:block;width:100%;padding:6px 8px;text-align:left;background:none;border:none;border-radius:8px;font-family:inherit;cursor:pointer;transition:background .12s ease;}
+  .scratch-sr:hover{background:var(--surface-alt);}
+  .scratch-sr.is-on{background:var(--violet-pale);}
+  /* the page a hit is on, in the same key as a section label — you're scanning for WHERE first */
+  .scratch-sr-page{display:block;margin-bottom:1px;color:var(--faint);font-size:9.5px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scratch-sr-text{display:block;color:var(--muted);font-size:11.5px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scratch-sr-text b{color:var(--text);font-weight:700;background:rgba(250,204,21,.42);border-radius:2px;}
+  .scratch-sr-more{padding:6px 8px;color:var(--faint);font-size:10.5px;}
+  /* The matches in the writing itself. ::highlight() paints ranges the renderer already holds — no
+     element, no attribute, nothing that could ever be serialised into the saved page, which is the
+     only reason a find feature is allowed to draw on this surface at all. */
+  ::highlight(scratch-find){background:rgba(250,204,21,.38);}
+  ::highlight(scratch-find-on){background:var(--violet);color:#fff;}
+  .scratch-findbtn{font-size:13px;}
+
+  /* The format bar. Same --faint weight as the dots and the footer: present, never a toolbar
+     shouting over a blank page. overflow-x rather than flex-wrap because a second row would push
+     the writing area up every time the soft keyboard opened; the scrollbar itself is hidden since
+     the row is the only thing that scrolls sideways on this page and a bar under it would read as
+     chrome on chrome. */
+  .scratch-format{flex:none;width:100%;max-width:70ch;margin:8px auto 0;display:flex;align-items:center;gap:2px;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none;}
+  .scratch-format::-webkit-scrollbar{display:none;}
+  .scratch-fmt{flex:none;background:none;border:none;padding:4px 8px;border-radius:7px;color:var(--faint);font-size:12.5px;font-family:inherit;line-height:1;cursor:pointer;transition:color .15s ease,background .15s ease;}
+  .scratch-fmt:hover{color:var(--text);background:var(--surface-alt);}
+  /* what's ON under the caret — driven by queryCommandState, so it follows the cursor rather than
+     the last button pressed */
+  .scratch-fmt.is-on{color:var(--violet);background:var(--surface-alt);}
+  .scratch-fmt:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  .scratch-fmt-sep{flex:none;width:1px;height:15px;background:var(--border);margin:0 5px;}
+  /* The two pickers and the colour well are INPUTS, so they're framed the way every other select
+     in the app is (--surface-alt on a --border hairline, cf. .tier-select / .sort-select) while
+     the B/I/U/S toggles stay bare. That split is the usual toolbar convention — a control you
+     choose a value in should look like a field; a control you switch on and off shouldn't — and
+     it's also what stops the row reading as one undifferentiated line of grey glyphs. */
+  .scratch-fmt-pick{flex:none;position:relative;display:inline-flex;align-items:center;}
+  /* Our own chevron. appearance:none below removes the native one, which is drawn by the OS in the
+     OS's colours and so ignores all four themes; ::after cannot be placed on a <select>, which is
+     what the wrapper span is for. A rotated corner rather than a glyph, because ▾ renders at a
+     different size and baseline in every font on every platform. */
+  .scratch-fmt-pick::after{content:'';position:absolute;right:8px;top:50%;width:5px;height:5px;
+    border-right:1.5px solid var(--faint);border-bottom:1.5px solid var(--faint);
+    transform:translateY(-72%) rotate(45deg);pointer-events:none;transition:border-color .15s ease;}
+  .scratch-fmt-pick:hover::after{border-color:var(--text);}
+  /* A transparent BORDER rather than none, so the box doesn't shift by a pixel on hover. The fill
+     stays even at rest because it is not decoration: the platform draws the OPEN list from the
+     select's own background, and a transparent select gets a white list with black text on the
+     dark themes. Softening the resting state to fill-only is as quiet as this can get and still
+     have a legible dropdown. */
+  .scratch-fmt-sel{appearance:none;-webkit-appearance:none;-moz-appearance:none;
+    flex:none;background:var(--surface-alt);border:1px solid transparent;border-radius:7px;
+    padding:4px 21px 4px 9px;color:var(--text);font-size:11.5px;font-family:inherit;line-height:1.35;
+    cursor:pointer;outline:none;transition:border-color .15s ease,background .15s ease;}
+  .scratch-fmt-sel:hover{border-color:var(--border);}
+  .scratch-fmt-sel:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* The open list is drawn by the platform from the select's OWN background and colour. Leave it
+     transparent and Chrome falls back to a white list with black text — fine on the light themes,
+     a flashbang on the dark ones. The option rule is what Firefox and Windows need on top. */
+  .scratch-fmt-sel option{background:var(--surface);color:var(--text);}
+  /* The colour well. Framed like the pickers above, since it's the same kind of control. The
+     native input is stretched over the whole label at opacity 0 rather than hidden, so the OS
+     picker opens from a tap anywhere on it and the control still sits in the keyboard tab order;
+     the A and the bar under it are what's actually seen. */
+  .scratch-fmt-color{flex:none;position:relative;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    background:var(--surface-alt);border:1px solid transparent;border-radius:7px;padding:3px 8px;
+    color:var(--text);font-size:11.5px;line-height:1.2;cursor:pointer;transition:border-color .15s ease;}
+  .scratch-fmt-color:hover{border-color:var(--border);}
+  .scratch-fmt-color:focus-within{outline:2px solid var(--violet);outline-offset:-1px;}
+  .scratch-fmt-color input[type="color"]{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:none;background:none;opacity:0;cursor:pointer;}
+  .scratch-fmt-swatch{width:13px;height:3px;border-radius:2px;background:var(--violet);}
   .scratch-tip-touch{display:none;} /* swapped with .scratch-tip-key at the mobile breakpoint */
   .scratch-foot{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
   .scratch-status{flex:none;}
@@ -1674,7 +1787,20 @@
        it. It's used only to keep the top strip, where .brand was and where #scratchBrandHit now
        is, clear of the text, so a tap meant for the logo can't land mid-paragraph. */
     .scratch-overlay{padding-top:calc(var(--nav-h, 56px) + 10px);}
-    .scratch-text{font-size:16px;} /* anything smaller and iOS zooms the page on focus */
+    .scratch-text{font-size:16px;--sc-fs:16px;} /* anything smaller and iOS zooms the page on focus */
+    /* thumb-sized, and the selects get 16px too or iOS zooms the page when one is opened */
+    .scratch-search{margin-top:6px;}
+    .scratch-search-input{font-size:16px;} /* 16px or iOS zooms the page when it takes focus */
+    .scratch-search-nav{padding:6px 8px;font-size:13px;}
+    .scratch-sr-panel{max-height:42vh;}
+    .scratch-format{margin-top:6px;gap:1px;}
+    .scratch-fmt{padding:7px 9px;font-size:13.5px;}
+    /* 16px or iOS zooms the whole page when the list is opened — the same reason .scratch-text
+       is bumped above. The padding grows with it so the chevron doesn't crowd the label. */
+    .scratch-fmt-sel{font-size:16px;padding:6px 24px 6px 10px;}
+    .scratch-fmt-pick::after{right:9px;}
+    .scratch-fmt-color{padding:5px 9px;font-size:13px;}
+    .scratch-fmt-sep{margin:0 3px;}
     .scratch-hint{display:none;}   /* no Esc key to hint at — the × carries it */
     .scratch-tip-key{display:none;}/* nor a ctrl or tab key; the [] shorthand still works, so that tip stays */
     .scratch-tip-touch{display:inline;}

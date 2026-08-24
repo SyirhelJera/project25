@@ -1871,13 +1871,71 @@
   <div id="scratchText" class="scratch-text" contenteditable="true" spellcheck="false"
        role="textbox" aria-multiline="true" aria-label="Scratch page"
        data-placeholder="…"></div>
+  <!-- FIND — a search across ALL pages, which the browser's own Ctrl+F cannot do here: every page
+       except the one on screen is a string in state.scratch.pages rather than DOM, so the native
+       find confidently reports "no results" for text that is plainly in the napkin. That's why
+       Ctrl+F is taken over while this page is open.
+       Read-only by construction. The surface's innerHTML IS the saved document, so nothing here may
+       write to it — matches are tinted with the CSS Custom Highlight API (ranges handed to the
+       renderer, no nodes touched) and the panel lives outside the writing area entirely. See the
+       "find across pages" section in js/scratch.js for why that rule is absolute.
+       The results panel is absolutely positioned and grows UPWARD, so appearing and re-filtering on
+       every keystroke never reflows the text you're reading. -->
+  <div class="scratch-search" id="scratchSearch" style="display:none;">
+    <!-- not role=listbox: the rows are real <button>s (they navigate, they do not select a value),
+         and buttons inside a listbox is an invalid tree that reads worse than no role at all -->
+    <div class="scratch-sr-panel" id="scratchSearchResults" style="display:none;" aria-label="Search results"></div>
+    <div class="scratch-search-row">
+      <span class="scratch-search-icon" aria-hidden="true">&#9906;</span>
+      <input type="text" id="scratchSearchInput" class="scratch-search-input" placeholder="Find on all pages…"
+             aria-label="Find on all pages" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <span class="scratch-search-count" id="scratchSearchCount" aria-live="polite"></span>
+      <button type="button" class="scratch-search-nav" id="scratchSearchPrev" title="Previous match (Shift+Enter)" aria-label="Previous match">&#8593;</button>
+      <button type="button" class="scratch-search-nav" id="scratchSearchNext" title="Next match (Enter)" aria-label="Next match">&#8595;</button>
+      <button type="button" class="scratch-search-nav" id="scratchSearchClose" title="Close find (Esc)" aria-label="Close find">&times;</button>
+    </div>
+  </div>
+  <!-- FORMAT BAR — the napkin's one piece of chrome, and held at the same faint weight as the
+       footer so it reads as a margin note rather than a toolbar. It sits BELOW the writing (never
+       over it, unlike a selection popover, which would also fight the native selection callout on
+       a phone) and scrolls sideways rather than wrapping.
+       Everything on it runs through document.execCommand (js/scratch.js) so the browser's own undo
+       stack survives, with styleWithCSS deliberately OFF — the markup that comes back is
+       <b>/<i>/<u>/<s>, <font size|face|color> and, for the highlight alone, a
+       <span style="background-color">. That is exactly the set sanitizeScratchHtml() re-validates
+       on the way in and out, so adding a control here means adding its output to that allowlist.
+       The <select> options are filled by initScratchFormatBar() rather than written here, so a
+       label and the value it applies can't drift apart. -->
+  <div class="scratch-format" id="scratchFormat" role="toolbar" aria-label="Text formatting" style="display:none;">
+    <button type="button" class="scratch-fmt" data-cmd="bold" title="Bold (Ctrl+B)" aria-label="Bold" aria-pressed="false"><b>B</b></button>
+    <button type="button" class="scratch-fmt" data-cmd="italic" title="Italic (Ctrl+I)" aria-label="Italic" aria-pressed="false"><i>I</i></button>
+    <button type="button" class="scratch-fmt" data-cmd="underline" title="Underline (Ctrl+U)" aria-label="Underline" aria-pressed="false"><u>U</u></button>
+    <button type="button" class="scratch-fmt" data-cmd="strikeThrough" title="Strikethrough" aria-label="Strikethrough" aria-pressed="false"><s>S</s></button>
+    <span class="scratch-fmt-sep" aria-hidden="true"></span>
+    <!-- the wrapper exists only to carry the chevron: ::after can't be placed on a <select>,
+         and the native arrow is drawn in the OS's own colours and ignores every theme here. -->
+    <span class="scratch-fmt-pick"><select class="scratch-fmt-sel" id="scratchFontSel" title="Font" aria-label="Font"></select></span>
+    <span class="scratch-fmt-pick"><select class="scratch-fmt-sel" id="scratchSizeSel" title="Text size" aria-label="Text size"></select></span>
+    <span class="scratch-fmt-sep" aria-hidden="true"></span>
+    <!-- the colour well: a native <input type="color"> shrunk to a swatch, so every colour is
+         reachable and a phone gets the OS picker. It can't have its mousedown cancelled the way
+         the buttons do, so js/scratch.js restores the remembered selection instead. -->
+    <label class="scratch-fmt-color" title="Text colour">
+      <span aria-hidden="true">A</span>
+      <span class="scratch-fmt-swatch" id="scratchColorSwatch" aria-hidden="true"></span>
+      <input type="color" id="scratchColorInput" value="#7C3AED" aria-label="Text colour">
+    </label>
+    <span class="scratch-fmt-pick"><select class="scratch-fmt-sel" id="scratchHiliteSel" title="Highlight" aria-label="Highlight"></select></span>
+    <span class="scratch-fmt-sep" aria-hidden="true"></span>
+    <button type="button" class="scratch-fmt" data-act="clear" title="Clear formatting" aria-label="Clear formatting">⌫</button>
+  </div>
   <!-- page dots + the add/remove controls. Built by renderScratchPages(); each dot's tooltip is the
        page's first line, derived on read so it can never go stale. -->
   <div class="scratch-pages" id="scratchPages"></div>
   <div class="scratch-foot">
     <span id="scratchCount">0 words</span>
     <span id="scratchStatus" class="scratch-status"></span>
-    <span class="scratch-tips">type <b>[]</b> for a tick · paste an image · drag a dot to reorder<span class="scratch-tip-key"> · ctrl+K to link · hold <b>tab</b> + scroll to change page</span><span class="scratch-tip-touch"> · swipe to change page</span></span>
+    <span class="scratch-tips">type <b>[]</b> for a tick · paste an image · drag a dot to reorder<span class="scratch-tip-key"> · ctrl+K to link · <b>tab</b> <b>tab</b> to find · hold <b>tab</b> + scroll to page</span><span class="scratch-tip-touch"> · swipe to change page</span></span>
     <span class="scratch-hint">esc to exit</span>
     <button id="scratchCloseBtn" class="scratch-close" type="button" aria-label="Close scratch page">×</button>
   </div>

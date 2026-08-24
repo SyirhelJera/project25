@@ -1610,7 +1610,46 @@
   /* contenteditable has no ::placeholder and is almost never truly :empty (browsers leave a stray
      <br> behind), so markScratchEmpty() sets this class instead */
   .scratch-text.is-empty::before{content:attr(data-placeholder);color:var(--faint);pointer-events:none;}
-  .scratch-text img{max-width:100%;height:auto;border-radius:10px;margin:6px 0;display:block;}
+  /* height:auto is what preserves the aspect ratio when js/scratch.js writes a width ATTRIBUTE,
+     and max-width:100% is what keeps a width set on a wide screen from overflowing the column on a
+     narrow one — the stored number survives, only the display is clamped. zoom-in says the click
+     does something, since it opens the lightbox rather than placing a caret. */
+  .scratch-text img{max-width:100%;height:auto;border-radius:10px;margin:6px 0;display:block;cursor:zoom-in;}
+  /* The resize box: an outline over the image with a grip at its corner. pointer-events:none on the
+     frame so it can sit over the writing without swallowing clicks meant for the text underneath —
+     only the grip itself takes the pointer. z-index 2 puts it above the writing but below the find
+     panel (3), which may legitimately cover it.
+     The outline is a black/white/black SANDWICH rather than one coloured line, for the same reason
+     the grip is fixed white-on-black: it is drawn on top of an arbitrary photograph, and any single
+     colour disappears somewhere — a white edge against a pale sky, a dark one against a shadow. A
+     hairline of each means one of the three always has contrast, whatever is underneath. The two
+     black rings come from box-shadow (one spread outwards, one inset) so they cost no layout and
+     the box still measures exactly the image's rect. */
+  .scratch-imgbox{position:absolute;z-index:2;pointer-events:none;border-radius:10px;
+    border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.85), inset 0 0 0 1px rgba(0,0,0,.85);}
+  /* Deliberately NOT theme tokens. This grip sits on top of arbitrary photograph, not on the
+     page's own background, so a --surface fill would vanish against a light image and a --text
+     arrow against a dark one. Fixed white-on-black with a small drop shadow reads on both, which
+     is why every image editor's handles look like this. Inverts on hover so it's obvious which
+     one you're about to grab when several images are near each other. */
+  .scratch-imgbox-grip{position:absolute;right:-10px;bottom:-10px;width:20px;height:20px;padding:0;
+    display:flex;align-items:center;justify-content:center;
+    background:#fff;color:#111;border:1.5px solid #111;border-radius:50%;
+    box-shadow:0 1px 3px rgba(0,0,0,.4);
+    pointer-events:auto;cursor:nwse-resize;touch-action:none;transition:background .12s ease,color .12s ease;}
+  .scratch-imgbox-grip svg{width:12px;height:12px;display:block;pointer-events:none;}
+  .scratch-imgbox-grip:hover{background:#111;color:#fff;}
+  .scratch-imgbox-grip:focus-visible{outline:2px solid var(--violet);outline-offset:3px;}
+  /* The lightbox. 1000 is the app's modal tier (.struggle-overlay, .play-overlay, .mosaic-overlay),
+     which is correct: the scratch page is a MODE at 950 and a modal beats a mode. */
+  .scratch-imgview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
+    background:rgba(8,10,22,.9);padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));}
+  .scratch-imgview img{max-width:96vw;max-height:92vh;width:auto;height:auto;object-fit:contain;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+  .scratch-imgview-close{position:absolute;top:max(14px,env(safe-area-inset-top));right:18px;
+    width:38px;height:38px;padding:0;background:rgba(255,255,255,.12);border:none;border-radius:50%;
+    color:#fff;font-size:22px;line-height:1;cursor:pointer;transition:background .15s ease;}
+  .scratch-imgview-close:hover{background:rgba(255,255,255,.24);}
+  .scratch-imgview-close:focus-visible{outline:2px solid #fff;outline-offset:2px;}
   .scratch-text a{color:var(--violet);text-decoration:underline;text-underline-offset:2px;cursor:pointer;}
   .scratch-text blockquote{margin:6px 0;padding-left:12px;border-left:2px solid var(--border);color:var(--muted);}
   .scratch-text code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.92em;background:var(--surface-alt);border-radius:4px;padding:1px 4px;}
@@ -1644,8 +1683,23 @@
   /* the only chrome, and deliberately at --faint: it should read as a margin note, never as a bar */
   /* Page dots. background-clip:content-box is what lets the visual dot stay 8px while the button
      itself is ~18px — a real thumb target on a phone without a row of fat circles on desktop. */
-  .scratch-pages{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;justify-content:center;gap:3px;}
-  .scratch-dot{width:8px;height:8px;padding:5px;box-sizing:content-box;border:none;border-radius:50%;background:var(--border);background-clip:content-box;cursor:pointer;transition:background .15s ease,transform .15s ease;}
+  /* WRAPS rather than overflowing, and nothing in it may shrink.
+     Both halves of that are load-bearing. A .scratch-dot is a fixed 8px box inside 5px of padding,
+     and a flex item's default flex-shrink:1 shrinks the CONTENT box first — so on a narrow screen
+     with a long stack the dots were squeezed to zero width while keeping their padding, and since
+     background-clip is content-box the visible dot simply disappeared. A row of invisible 10px
+     gaps is a worse failure than a taller row, hence flex:none on everything here.
+     Wrapping rather than overflow-x:auto because the dots carry touch-action:none for the reorder
+     drag — a sideways scroll would have to START on the row's background, and the dots cover
+     nearly all of it, so a scrolling row would be unreachable by thumb on exactly the screens that
+     need it. Wrapping keeps every dot visible AND full-size as a touch target. The row is flex:none
+     in a column where .scratch-text is flex:1 with min-height:0, so extra rows come out of the
+     writing area's height rather than pushing the footer off screen.
+     safe center: a centred flex line that overflows its container becomes unreachable at the start
+     in some engines. Browsers that don't know the keyword ignore the second declaration and keep
+     plain centring, which is correct whenever it fits. */
+  .scratch-pages{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;justify-content:safe center;gap:3px;}
+  .scratch-dot{flex:none;width:8px;height:8px;padding:5px;box-sizing:content-box;border:none;border-radius:50%;background:var(--border);background-clip:content-box;cursor:pointer;transition:background .15s ease,transform .15s ease;}
   .scratch-dot:hover{background:var(--muted);background-clip:content-box;}
   .scratch-dot.is-active{background:var(--violet);background-clip:content-box;transform:scale(1.3);}
   .scratch-dot:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
@@ -1660,7 +1714,7 @@
     .scratch-dot{transition:none;}
   }
   /* + and - rather than words: they pair obviously and stay out of the way */
-  .scratch-pagebtn{background:none;border:none;padding:3px 7px;margin-left:2px;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;border-radius:6px;transition:color .15s ease,background .15s ease;}
+  .scratch-pagebtn{flex:none;background:none;border:none;padding:3px 7px;margin-left:2px;color:var(--faint);font-size:14px;line-height:1;cursor:pointer;border-radius:6px;transition:color .15s ease,background .15s ease;}
   .scratch-pagebtn:hover{color:var(--text);background:var(--surface-alt);}
   /* the page-turn sound switch: same weight as + and -, just dimmed and struck through when off */
   .scratch-mute{font-size:12px;}
@@ -1676,8 +1730,13 @@
      the text silently being replaced under the caret. */
   @keyframes scratchInR{from{opacity:0;transform:translateX(20px);}to{opacity:1;transform:none;}}
   @keyframes scratchInL{from{opacity:0;transform:translateX(-20px);}to{opacity:1;transform:none;}}
-  .scratch-text.slide-r{animation:scratchInR .18s ease;}
-  .scratch-text.slide-l{animation:scratchInL .18s ease;}
+  /* will-change only while the class is on — js/scratch.js drops it on animationend, so this is a
+     hint for the 180ms it applies to rather than a permanent layer on a big scrolling element.
+     The animation is transform+opacity precisely so it can run off the main thread; the page turn
+     sets innerHTML immediately before it starts, so the frame it begins on is already paying for a
+     parse, a layout and a paint of the incoming page. */
+  .scratch-text.slide-r{animation:scratchInR .18s ease;will-change:transform,opacity;}
+  .scratch-text.slide-l{animation:scratchInL .18s ease;will-change:transform,opacity;}
   @media (prefers-reduced-motion: reduce){
     .scratch-text.slide-r,.scratch-text.slide-l{animation:none;}
   }
@@ -1808,6 +1867,9 @@
     .scratch-dot{width:9px;height:9px;padding:7px;}
     .scratch-brand{padding:0;justify-content:center;} /* .brand centres itself in the mobile top bar */
     .scratch-text input.scratch-tick{width:17px;height:17px;} /* thumb-sized */
+    /* the grip is dragged with a thumb here, and it's reached by pressing and holding the image */
+    .scratch-imgbox-grip{right:-15px;bottom:-15px;width:30px;height:30px;}
+    .scratch-imgbox-grip svg{width:17px;height:17px;}
   }
 
   /* the switcher only exists on mobile; !important beats the inline display:flex nav.js sets on

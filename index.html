@@ -1871,6 +1871,19 @@
   <div id="scratchText" class="scratch-text" contenteditable="true" spellcheck="false"
        role="textbox" aria-multiline="true" aria-label="Scratch page"
        data-placeholder="…"></div>
+  <!-- IMAGE RESIZE BOX — the outline and its corner grip, drawn around whichever image the pointer
+       is on. Lives HERE, outside #scratchText, not inside it: the surface's innerHTML is the saved
+       document, so a handle element or a selection class placed on the image would be content. The
+       only thing a resize writes into the document is the image's own width attribute, which is
+       exactly what should persist. Positioned from the image's bounding rect by js/scratch.js. -->
+  <div class="scratch-imgbox" id="scratchImgBox" style="display:none;">
+    <!-- A diagonal double arrow, drawn rather than typed: the ⤡ character renders at a different
+         size and baseline in every font on every platform, the same reason the picker chevrons in
+         the format bar are CSS corners. stroke=currentColor so the button's :hover can invert the
+         whole thing from one property, and pointer-events:none in the CSS so the drag handlers
+         always see the BUTTON as the target rather than a path inside it. -->
+    <button type="button" class="scratch-imgbox-grip" id="scratchImgGrip" title="Drag to resize · arrow keys to nudge" aria-label="Resize image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 11V6h5"/><path d="M18 13v5h-5"/><path d="M6.6 6.6 17.4 17.4"/></svg></button>
+  </div>
   <!-- FIND — a search across ALL pages, which the browser's own Ctrl+F cannot do here: every page
        except the one on screen is a string in state.scratch.pages rather than DOM, so the native
        find confidently reports "no results" for text that is plainly in the napkin. That's why
@@ -1950,6 +1963,16 @@
     <div class="brand-icon"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6.3 9.8 12 4.6l5.7 5.2"/><path d="M6.3 15.9 12 10.7l5.7 5.2"/><path d="M6.3 20.6h11.4"/></svg></div>
     <div class="brand-name">Project 25</div>
   </div>
+</div>
+
+<!-- IMAGE LIGHTBOX — clicking an image in the scratch page opens it here at full size.
+     BODY LEVEL, deliberately not inside #scratchOverlay: that element carries z-index 950 and so
+     creates its own stacking context, and a child of it could never outrank the app's 1000-tier
+     modals no matter what z-index it was given. Out here it sits in the 1000 tier properly, which
+     is the same reason #valItemPreviewOverlay lives outside #view-games. -->
+<div id="scratchImgOverlay" class="scratch-imgview" style="display:none;" role="dialog" aria-modal="true" aria-label="Image">
+  <img id="scratchImgViewImg" alt="">
+  <button type="button" id="scratchImgViewClose" class="scratch-imgview-close" aria-label="Close image">&times;</button>
 </div>
 
 <!-- MOBILE TAB SWITCHER — press and hold the button, slide onto a tab, release to open it.

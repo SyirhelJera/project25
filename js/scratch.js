@@ -98,6 +98,14 @@
   // px sizes are CLAMPED as well as validated: a pasted 400px heading would blow the 70ch column
   // apart, and the format bar's own scale tops out well below this.
   const SCRATCH_MAX_PX = 72;
+  /* A resized image stores its width as the <img width> ATTRIBUTE, not as inline CSS — the same
+     call as <font size> over in the format bar, and for the same reason: one integer with one tiny
+     regex beats trusting a CSS parser. Height is never written, because styles.css keeps
+     height:auto on these, which is what preserves the aspect ratio for free. max-width:100% still
+     clamps the DISPLAY on a narrow screen, so a width wider than the column is remembered rather
+     than lost — resize on a laptop, open on a phone, and it is still right when you go back. */
+  const SCRATCH_IMG_MIN = 40;
+  const SCRATCH_IMG_MAX = 2000;
 
   function safeScratchStyle(node){
     const src = node.style;
@@ -128,10 +136,64 @@
     SVG:1, MATH:1, TEXTAREA:1, SELECT:1, OPTION:1, OPTGROUP:1, DATALIST:1
   };
 
-  function sanitizeScratchHtml(html){
+  // one rebuild path, two callers: the storage boundaries take the string, paste takes the
+  // container so it can normalise whitespace before serialising (see below)
+  function rebuildScratchHtml(html){
     const doc = new DOMParser().parseFromString('<body>' + (html || '') + '</body>', 'text/html');
     const out = document.createElement('div');
     cleanScratchInto(doc.body, out);
+    return out;
+  }
+
+  function sanitizeScratchHtml(html){
+    return rebuildScratchHtml(html).innerHTML;
+  }
+
+  /* PASTE ONLY, and the distinction is the whole point.
+
+     .scratch-text is white-space:pre-wrap, because a napkin has to keep the runs of spaces and the
+     blank lines you deliberately typed. The sanitizer re-creates every text node verbatim — it has
+     to, that's what makes it a faithful rebuild — so pasted markup arrives carrying the newlines
+     and indentation the source document was pretty-printed with. Normal HTML collapses that to
+     nothing; pre-wrap renders every character of it. That is where a paste's "why is this pushed
+     in from the edges" comes from: it isn't a margin, it is literal source indentation.
+
+     So the collapsing browsers would have done anyway is applied HERE, on the way in, and nowhere
+     else. Doing it inside sanitizeScratchHtml() would be a disaster: that runs on every load and
+     every save, and it would quietly eat the user's OWN spacing on the round trip.
+
+     Two things are deliberately left alone: <pre>, where whitespace is the content, and &nbsp;,
+     which is a chosen character rather than formatting — which is also why insertScratchTick()
+     writes one. */
+  const SCRATCH_WS_BLOCK = /^(DIV|P|LI|UL|OL|BLOCKQUOTE|PRE|H1|H2|H3|BR|IMG)$/;
+
+  function sanitizePastedScratchHtml(html){
+    const out = rebuildScratchHtml(html);
+    const walk = document.createTreeWalker(out, NodeFilter.SHOW_TEXT, null);
+    const doomed = [];
+    let n;
+    while((n = walk.nextNode())){
+      // inside <pre> the whitespace IS the content
+      if(n.parentNode && n.parentNode.closest && n.parentNode.closest('pre')) continue;
+      // note the character class: tab/newline/return/space, NOT \s — \s also matches U+00A0, and a
+      // non-breaking space is a character somebody meant rather than layout to be tidied away
+      let v = (n.nodeValue || '').replace(/[\t\n\r ]+/g, ' ');
+      /* Whether this run sits against a LINE BOUNDARY, which is exactly where HTML drops a space
+         and pre-wrap instead paints it as a one-character indent (or a trailing gap).
+         The no-sibling case has to consult the PARENT rather than assume a boundary: the first text
+         node of a <p> is at the start of a line, but the first text node of a <b> in the middle of
+         a sentence is not, and eating that space would run two words together. */
+      const prev = n.previousSibling, next = n.nextSibling, up = n.parentNode;
+      const upBlock = !!(up && up.nodeType === 1 && SCRATCH_WS_BLOCK.test(up.tagName));
+      const atStart = prev ? (prev.nodeType === 1 && SCRATCH_WS_BLOCK.test(prev.tagName)) : upBlock;
+      const atEnd   = next ? (next.nodeType === 1 && SCRATCH_WS_BLOCK.test(next.tagName)) : upBlock;
+      if(atStart) v = v.replace(/^ /, '');
+      if(atEnd) v = v.replace(/ $/, '');
+      if(v !== n.nodeValue) n.nodeValue = v;
+      // all that was left of a run that was nothing but the pretty-printer's line break
+      if(!v) doomed.push(n);
+    }
+    for(let i = 0; i < doomed.length; i++) if(doomed[i].parentNode) doomed[i].parentNode.removeChild(doomed[i]);
     return out.innerHTML;
   }
 
@@ -192,6 +254,11 @@
         img.setAttribute('src', src2);
         const alt = node.getAttribute('alt');
         if(alt) img.setAttribute('alt', alt);
+        const w = (node.getAttribute('width') || '').trim();
+        if(/^\d{1,4}$/.test(w)){
+          const n = parseInt(w, 10);
+          if(n >= SCRATCH_IMG_MIN && n <= SCRATCH_IMG_MAX) img.setAttribute('width', String(n));
+        }
         dest.appendChild(img);
         continue;
       }
@@ -253,6 +320,53 @@
     if(!found) state.scratch.activeId = state.scratch.pages[0].id;
   }
 
+  /* The stack always ends in a blank page, the way a notebook always has a next sheet: a new note
+     is reached by swiping or scrolling past the last one, not by hunting for a button.
+
+     Deliberately NOT folded into ensureScratchPages(), despite being the same kind of invariant.
+     That one is called from READ paths too — scratchActivePage(), serializeScratch(), the search
+     index — and a read that silently grew the array would leave the dot row describing a stack that
+     no longer exists, or append a page in the middle of serialising one. This is called only from
+     the places that just changed the pages or are about to redraw them. Cheap and idempotent all
+     the same, so calling it twice costs one emptiness check. */
+  function ensureTrailingBlankScratchPage(){
+    ensureScratchPages();
+    const pages = state.scratch.pages;
+    if(scratchPageIsEmpty(pages[pages.length - 1])) return false;
+    pages.push(makeScratchPage());
+    return true;
+  }
+
+  /* ---------- derived-page cache ----------
+     Everything in here is a pure function of ONE page's exact html string, so a mismatch on that
+     string is the only invalidation needed and an entry cannot go quietly stale.
+
+     It exists for a measured reason. A Tab+scroll flick turns pages several times a second, and
+     each turn ran renderScratchPages() (a DOMParser parse per page, for the dot tooltips) and armed
+     a save whose serializeScratch() does a parse-and-rebuild per page for the outbound sanitiser.
+     On a seven-page stack that is well over a dozen full HTML parses per page turn, every one of
+     them recomputing an answer that had not changed — and the typing path was no better, since
+     scheduleScratchCount() re-renders the same row every 120ms.
+     Note what is NOT cached: the ACTIVE page's text for search, which is read from the live surface
+     precisely because it may differ from the stored string. */
+  const scratchPageCache = new Map();
+
+  function scratchCacheFor(p){
+    const html = (p && p.html) || '';
+    let c = scratchPageCache.get(p.id);
+    if(!c || c.html !== html){ c = { html: html }; scratchPageCache.set(p.id, c); }
+    return c;
+  }
+
+  // pages come and go; without this the map keeps every id the stack has ever held
+  function pruneScratchPageCache(){
+    if(scratchPageCache.size < 64) return;
+    const live = new Set();
+    const pages = (state.scratch && state.scratch.pages) || [];
+    for(let i=0; i<pages.length; i++) live.add(pages[i].id);
+    scratchPageCache.forEach((v, k)=>{ if(!live.has(k)) scratchPageCache.delete(k); });
+  }
+
   function scratchHtmlToText(html){
     const doc = new DOMParser().parseFromString('<body>' + (html || '') + '</body>', 'text/html');
     return doc.body.textContent || '';
@@ -263,6 +377,15 @@
      It has to walk the top-level children rather than split textContent on "\n", because
      textContent concatenates block elements with no separator ("<div>a</div><div>b</div>" is "ab"). */
   function scratchPageTitle(p){
+    if(p && p.id){
+      const c = scratchCacheFor(p);
+      if(c.title === undefined) c.title = computeScratchPageTitle(p);
+      return c.title;
+    }
+    return computeScratchPageTitle(p);
+  }
+
+  function computeScratchPageTitle(p){
     const doc = new DOMParser().parseFromString('<body>' + ((p && p.html) || '') + '</body>', 'text/html');
     const kids = doc.body.childNodes;
     for(let i=0; i<kids.length; i++){
@@ -311,6 +434,9 @@
        for the first time is louder than it was before either feature existed. */
     state.scratch = { pages: pages, activeId: activeId, updatedAt: at, mute: !!(raw && raw.mute), fmt: !!(raw && raw.fmt) };
     ensureScratchPages();
+    // Deliberately does NOT mark dirty or save: merely loading the app shouldn't write. The sheet
+    // exists in memory now, and the next genuine edit persists it along with whatever it changed.
+    ensureTrailingBlankScratchPage();
     // Re-baseline rather than diff: arriving at a different set of pages (first load, or a
     // conflict-reload of someone else's newer copy) is not this session deleting anything.
     noteScratchImages();
@@ -330,7 +456,16 @@
      activeId rides along so reopening lands you back on the page you left. */
   function serializeScratch(){
     ensureScratchPages();
-    const pages = state.scratch.pages.map(p => ({ id: p.id, html: sanitizeScratchHtml(p.html || ''), updatedAt: p.updatedAt || 0 }));
+    pruneScratchPageCache();
+    /* Still every page through sanitizeScratchHtml() — this is the outbound boundary and skipping a
+       page would be a hole in it. The cache only skips re-deriving output for a page whose html is
+       byte-identical to the one that produced the output already held, which is the overwhelmingly
+       common case: one page was edited, the other six were not. */
+    const pages = state.scratch.pages.map(p => {
+      const c = scratchCacheFor(p);
+      if(c.out === undefined) c.out = sanitizeScratchHtml(c.html);
+      return { id: p.id, html: c.out, updatedAt: p.updatedAt || 0 };
+    });
     return { pages: pages, activeId: state.scratch.activeId, updatedAt: state.scratch.updatedAt || 0, mute: !!state.scratch.mute, fmt: !!state.scratch.fmt };
   }
 
@@ -605,11 +740,17 @@
 
   // contenteditable has no ::placeholder, and it's almost never truly :empty (browsers leave a <br>
   // or an empty <div> behind), so the empty state is a class we set ourselves.
+  /* Blankness read from the LIVE surface instead of by re-parsing the stored HTML. Both callers
+     sit on the keystroke path, and scratchPageIsEmpty() spins up a DOMParser every time it is
+     asked — fine for the handful of pages a sweep looks at, wasteful once per character typed. */
+  function scratchSurfaceIsBlank(surf){
+    return !surf.textContent.trim() && !surf.querySelector('img, input, a');
+  }
+
   function markScratchEmpty(){
     const surf = el('scratchText');
     if(!surf) return;
-    const blank = !surf.textContent.trim() && !surf.querySelector('img, input, a');
-    surf.classList.toggle('is-empty', blank);
+    surf.classList.toggle('is-empty', scratchSurfaceIsBlank(surf));
   }
 
   function scratchPlainText(){
@@ -687,6 +828,14 @@
     state.scratch.updatedAt = page.updatedAt;
     setScratchStatus('dirty');
     markScratchEmpty();
+    /* The moment you write on the LAST page, another blank appears behind it — that is what makes
+       "start a new note" a swipe rather than a button press. Gated on the cheap surface test first,
+       so the DOMParser inside ensureTrailingBlankScratchPage() runs once per new sheet rather than
+       once per keystroke: after it appends, the active page is no longer the last and the gate
+       stops matching. */
+    if(!scratchSurfaceIsBlank(surf) && scratchActiveIndex() === state.scratch.pages.length - 1){
+      if(ensureTrailingBlankScratchPage()) renderScratchPages();
+    }
     scheduleScratchCount();
     // an edit moves every offset after it, so the open hit list is re-run rather than left stale
     if(scratchFindOn){ scratchClearHitPaint(); scheduleScratchFind(); }
@@ -813,7 +962,10 @@
     state.scratch.activeId = pages[to].id;
     syncScratchSurface(true);
     renderScratchPages();
-    updateScratchFooter();
+    // Throttled, not immediate: updateScratchFooter() walks the whole page's textContent for the
+    // word count, and during a flick that ran once per turn. scheduleScratchCount() coalesces it
+    // onto the same 120ms tick typing already uses — the dots above are what needs to move now.
+    scheduleScratchCount();
     animateScratchPage(to > from ? 1 : -1);
     playScratchPageTick(to > from ? 1 : -1);
     /* Take focus only if we already had it — keeping a keyboard that's already up, and keeping the
@@ -827,6 +979,7 @@
     // the remembered Range points into the page that was just swapped out — withScratchSelection()
     // would reject it anyway, but leaving a detached node hanging around serves nothing
     scratchSavedRange = null;
+    hideScratchImgBox();   // it was drawn around an image on the page that just left
     updateScratchFormatState();
     // the hits on screen belong to the page that just left; repaint against the one that arrived
     if(scratchFindOn) scheduleScratchFind();
@@ -856,6 +1009,19 @@
   function addScratchPage(){
     ensureScratchPages();
     commitScratchSurface();
+    /* The stack already ends in a blank sheet, so "+" now usually means "take me to it" rather than
+       "make another" — appending a second empty page would only leave a duplicate dot for the sweep
+       to clear on the way out. It genuinely adds one only when the last page has something on it,
+       which is the case where the invariant hasn't caught up yet. Either way you end up on a blank
+       page with the caret in it, which is all the button ever promised. */
+    const pages0 = state.scratch.pages;
+    const lastIdx = pages0.length - 1;
+    if(scratchPageIsEmpty(pages0[lastIdx])){
+      if(scratchActiveIndex() !== lastIdx) scratchGoTo(lastIdx);
+      const waiting = el('scratchText');
+      if(waiting) waiting.focus({ preventScroll:true });
+      return;
+    }
     const page = makeScratchPage();
     state.scratch.pages.push(page);
     state.scratch.activeId = page.id;
@@ -884,6 +1050,9 @@
     if(!scratchPageIsEmpty(pages[i]) && !window.confirm('Delete this page? What’s on it will be gone.')) return;
     pages.splice(i, 1);
     state.scratch.activeId = pages[Math.min(i, pages.length - 1)].id;
+    // deleting the trailing blank regrows it, so "-" on the fresh sheet reads as "close this one"
+    // and steps you back to what you wrote, rather than as a page that refuses to go
+    ensureTrailingBlankScratchPage();
     state.scratch.updatedAt = Date.now();
     syncScratchSurface(true);
     renderScratchPages();
@@ -894,19 +1063,32 @@
     debouncedSaveScratch();
   }
 
-  /* Blank pages at the END of the stack are swept on the way out, so idly paging past the last one
-     doesn't leave a pile of empties behind. Only TRAILING ones, and never the final remaining page:
-     a blank page in the MIDDLE was put there deliberately and is left alone. If you're standing on
-     one when you close, the cursor steps back a page rather than the sweep skipping it. */
+  /* Blank pages at the END are swept on the way out so idly paging past the last one doesn't leave
+     a pile of empties behind — but EXACTLY ONE is kept now, because the stack is supposed to end in
+     a fresh sheet (see ensureTrailingBlankScratchPage). Hence the two-at-a-time test: pop the last
+     blank only while the one before it is blank too, which halts with a single trailing empty.
+     A blank page in the MIDDLE was still put there deliberately and is still left alone.
+     Extra blanks are only cleared HERE, on the way out, never while you type: the dot row shifting
+     under a gesture you're in the middle of is worse than a spare dot for the rest of a session. */
   function sweepTrailingEmptyScratchPages(){
     ensureScratchPages();
     const pages = state.scratch.pages;
     let changed = false;
-    while(pages.length > 1 && scratchPageIsEmpty(pages[pages.length - 1])){
+    while(pages.length > 1
+          && scratchPageIsEmpty(pages[pages.length - 1])
+          && scratchPageIsEmpty(pages[pages.length - 2])){
       if(pages[pages.length - 1].id === state.scratch.activeId) state.scratch.activeId = pages[pages.length - 2].id;
       pages.pop();
       changed = true;
     }
+    /* Reopening should land on something you wrote rather than on the fresh sheet — the same intent
+       the old sweep had when it simply deleted the page you were idling on. */
+    if(pages.length > 1 && pages[pages.length - 1].id === state.scratch.activeId
+       && scratchPageIsEmpty(pages[pages.length - 1])){
+      state.scratch.activeId = pages[pages.length - 2].id;
+      changed = true;
+    }
+    if(ensureTrailingBlankScratchPage()) changed = true;  // and it must still END in one
     if(changed) ensureScratchPages();
     return changed;
   }
@@ -960,6 +1142,158 @@
     try{ document.execCommand(cmd, false, value); }catch(e){ /* nothing sensible to do */ }
   }
 
+  /* ---------- images: resize, and open full ----------
+     Two gestures on one element, so they are deliberately given separate triggers rather than
+     being made to share a click:
+       - CLICK opens the image full-size in a lightbox. That is the common act, so it gets the
+         common gesture.
+       - The RESIZE grip appears on hover (fine pointer) or after a long press (touch), and is
+         dragged. It is never on screen except while you are pointing at that image.
+
+     The hard rule, same as everywhere else on this page: none of this may write UI into the
+     content. The surface's innerHTML IS the saved document, so there is no selection class on the
+     image and no handle element inside the editable. The outline and its grip are ONE element that
+     lives in the overlay, outside .scratch-text entirely, positioned over the image from its
+     bounding rect. The only thing a resize ever changes in the document is the image's own width
+     attribute — which is exactly what we want persisted. */
+
+  let scratchImgFor = null;        // the <img> the box is currently drawn around
+  let scratchImgDrag = null;
+  let scratchImgHideTimer = null;
+  let scratchImgViewOn = false;
+  let scratchImgPressTimer = null;
+  let scratchImgPressAt = 0;       // when a long press last fired, so its tap can be swallowed
+  const scratchImgFinePointer = (function(){
+    try{ return window.matchMedia('(pointer: fine)'); }catch(e){ return null; }
+  })();
+  function scratchImgHoverable(){ return !!(scratchImgFinePointer && scratchImgFinePointer.matches); }
+
+  function placeScratchImgBox(){
+    const box = el('scratchImgBox'), surf = el('scratchText'), ov = el('scratchOverlay');
+    if(!box || !surf || !ov) return;
+    // the image may have been typed away, or the page switched out from under it
+    if(!scratchImgFor || !surf.contains(scratchImgFor)){ hideScratchImgBox(); return; }
+    const r = scratchImgFor.getBoundingClientRect();
+    const sr = surf.getBoundingClientRect();
+    // scrolled out of the writing area: don't float a grip over the footer or the format bar
+    if(r.bottom <= sr.top + 6 || r.top >= sr.bottom - 6){ box.style.display = 'none'; return; }
+    const or = ov.getBoundingClientRect();
+    /* Compared before assigning. This runs every frame while an image is hovered (see
+       trackScratchImgBox), and an unconditional write invalidates style even when the value is
+       identical — which is most frames, including all of the ones during a page-turn animation
+       where the extra work is least affordable. */
+    const st = box.style;
+    const left = (r.left - or.left) + 'px', top = (r.top - or.top) + 'px';
+    const w = r.width + 'px', h = r.height + 'px';
+    if(st.display !== 'block') st.display = 'block';
+    if(st.left !== left) st.left = left;
+    if(st.top !== top) st.top = top;
+    if(st.width !== w) st.width = w;
+    if(st.height !== h) st.height = h;
+  }
+
+  /* The box FOLLOWS its image every frame while it's up, rather than being repositioned on a list
+     of events. Discrete hooks are the wrong shape for this and got it wrong in a way that stuck:
+     animateScratchPage() runs a 180ms translateX on .scratch-text for a page turn, so an image's
+     bounding rect mid-slide is 20px away from where it will finally sit. Hover onto an image
+     while that animation is running — which is exactly what happens when you page with Tab+scroll
+     and the cursor is already sitting where the incoming image lands — and the outline was drawn
+     at the transformed position, then STAYED there, because a CSS animation ending fires no scroll
+     and no resize. Nothing corrected it short of moving the mouse off and back.
+     A frame loop covers that, inertial and smooth scrolling (where the compositor keeps moving
+     after the scroll event), and any reflow, with one mechanism and no event list to keep complete.
+     It only runs while an image is actually hovered, and stops itself the moment the box goes. */
+  let scratchImgFrame = 0;
+
+  function trackScratchImgBox(){
+    if(scratchImgFrame) return;
+    const tick = ()=>{
+      scratchImgFrame = 0;
+      if(!scratchImgFor) return;
+      placeScratchImgBox();
+      // re-checked AFTER placing: placeScratchImgBox() hides the box outright if the image has been
+      // typed away, and that clears scratchImgFor from under us
+      if(scratchImgFor) scratchImgFrame = requestAnimationFrame(tick);
+    };
+    scratchImgFrame = requestAnimationFrame(tick);
+  }
+
+  function showScratchImgBox(img){
+    if(scratchImgHideTimer){ clearTimeout(scratchImgHideTimer); scratchImgHideTimer = null; }
+    scratchImgFor = img;
+    placeScratchImgBox();
+    trackScratchImgBox();
+  }
+
+  function hideScratchImgBox(){
+    if(scratchImgHideTimer){ clearTimeout(scratchImgHideTimer); scratchImgHideTimer = null; }
+    if(scratchImgFrame){ cancelAnimationFrame(scratchImgFrame); scratchImgFrame = 0; }
+    scratchImgFor = null;
+    const box = el('scratchImgBox');
+    if(box) box.style.display = 'none';
+  }
+
+  /* Leaving the image doesn't hide the box immediately: the grip sits OUTSIDE .scratch-text (it has
+     to — see above), so the pointer necessarily leaves the image to reach it. A short grace period
+     is simpler and steadier than trying to reason about relatedTarget across two element trees. */
+  function hideScratchImgBoxSoon(){
+    if(scratchImgDrag) return;
+    if(scratchImgHideTimer) clearTimeout(scratchImgHideTimer);
+    scratchImgHideTimer = setTimeout(()=>{ scratchImgHideTimer = null; hideScratchImgBox(); }, 140);
+  }
+
+  function scratchImgWidthNow(img){
+    const attr = parseInt(img.getAttribute('width') || '', 10);
+    if(attr >= SCRATCH_IMG_MIN) return attr;
+    return Math.round(img.getBoundingClientRect().width) || SCRATCH_IMG_MIN;
+  }
+
+  /* The ceiling is the natural width where we know it, so an image can't be dragged past its own
+     resolution into a blurry mess; SCRATCH_IMG_MAX is the backstop for one that hasn't loaded yet.
+     The floor keeps a photo from being dragged down to an unclickable speck it can't come back from. */
+  function setScratchImgWidth(img, w){
+    const cap = Math.min(SCRATCH_IMG_MAX, img.naturalWidth || SCRATCH_IMG_MAX);
+    const n = Math.round(Math.max(SCRATCH_IMG_MIN, Math.min(cap, w)));
+    img.setAttribute('width', String(n));
+    placeScratchImgBox();
+    return n;
+  }
+
+  function endScratchImgDrag(){
+    if(!scratchImgDrag) return;
+    scratchImgDrag = null;
+    // ONE save for the whole gesture rather than one per pixel — the width is already in the live
+    // DOM, this is what folds it into state and debounces the write
+    onScratchInput();
+    placeScratchImgBox();
+  }
+
+  /* ---- the lightbox ---- */
+
+  function openScratchImgView(img){
+    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg');
+    if(!ov || !big || !img) return;
+    hideScratchImgBox();
+    // natural size, capped by CSS to the viewport — the point is to see it bigger than the column
+    big.src = img.getAttribute('src') || '';
+    big.alt = img.getAttribute('alt') || '';
+    ov.style.display = 'flex';
+    scratchImgViewOn = true;
+    const close = el('scratchImgViewClose');
+    if(close) close.focus({ preventScroll:true });
+  }
+
+  function closeScratchImgView(){
+    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg');
+    if(!ov) return;
+    ov.style.display = 'none';
+    scratchImgViewOn = false;
+    // drop the decoded bitmap rather than leaving a full-resolution photo held open behind a
+    // display:none — these come from Storage and can be several megabytes
+    if(big) big.removeAttribute('src');
+    focusScratchSurface();
+  }
+
   /* ---------- find across pages ----------
      The browser's own Ctrl+F can only see the DOM, and six of your seven pages are not IN the DOM
      — they are HTML strings in state.scratch.pages. So the native find is not merely worse here,
@@ -995,8 +1329,6 @@
   let scratchHits = [];
   let scratchHitAt = -1;          // -1 = nothing stepped to yet; the panel is a list, not a cursor
   let scratchFindTimer = null;
-  const scratchFlatCache = new Map();   // page id -> { html, text }, so six pages aren't re-parsed
-                                        // on every keystroke of the query
 
   /* ONE flattener for both sides of the search: the live surface (where a hit has to become a real
      Range) and a stored page's HTML (where only the text matters). Using the same walk for both is
@@ -1026,13 +1358,12 @@
   }
 
   function scratchStoredText(p){
-    const cached = scratchFlatCache.get(p.id);
-    const html = p.html || '';
-    if(cached && cached.html === html) return cached.text;
-    const doc = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
-    const text = scratchFlatten(doc.body, false).text;
-    scratchFlatCache.set(p.id, { html: html, text: text });
-    return text;
+    const c = scratchCacheFor(p);
+    if(c.text === undefined){
+      const doc = new DOMParser().parseFromString('<body>' + c.html + '</body>', 'text/html');
+      c.text = scratchFlatten(doc.body, false).text;
+    }
+    return c.text;
   }
 
   /* Plain substring, case-insensitive, non-overlapping — not a regex. A napkin search box is a
@@ -1142,31 +1473,68 @@
 
   // Scrolls the stepped-to hit into the middle of the surface WITHOUT focusing it: focus belongs to
   // the query box you are still typing in.
-  function scratchScrollToHit(range){
+  /* instant: skip the smooth animation. Used straight after a page change, where the surface's
+     scrollTop was just reset to 0 by the innerHTML swap — smoothly travelling that whole distance
+     while the page-turn animation plays on top reads as a lurch, and the two fight each other. */
+  function scratchScrollToHit(range, instant){
     const surf = el('scratchText');
     if(!surf || !range) return;
     const sr = surf.getBoundingClientRect(), rr = range.getBoundingClientRect();
     if(!rr.height && !rr.width) return;
-    let smooth = true;
-    try{ smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(e){}
+    let smooth = !instant;
+    try{ if(window.matchMedia('(prefers-reduced-motion: reduce)').matches) smooth = false; }catch(e){}
     const top = surf.scrollTop + (rr.top - sr.top) - (sr.height / 2) + (rr.height / 2);
     try{ surf.scrollTo({ top: Math.max(0, top), behavior: smooth ? 'smooth' : 'auto' }); }
     catch(e){ surf.scrollTop = Math.max(0, top); }
   }
 
+  /* Puts the caret AT the match, collapsed to its start rather than selecting it. Selecting would
+     be the conventional find-bar behaviour, but this is a results list you clicked to be taken
+     somewhere: focus has just moved into the writing, and a selected match means the next character
+     typed REPLACES the thing you went looking for. The match stays obvious either way, because
+     scratchPaintHits() tints it.
+     Touch is left unfocused, the same rule the rest of this file follows — "take me there" is a
+     reading action and must not throw up the keyboard over the thing you asked to see. */
+  function placeScratchCaretAtHit(range){
+    const surf = el('scratchText');
+    if(!surf || !range || !scratchWantsAutoFocus()) return;
+    try{
+      const caret = range.cloneRange();
+      caret.collapse(true);
+      surf.focus({ preventScroll: true });   // preventScroll: the reveal above already positioned it
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(caret);
+    }catch(e){ /* a range that no longer resolves — the scroll already did the useful part */ }
+  }
+
   /* Step to hit n, switching pages if it lives on another one. Deliberately NOT called while you
      type: auto-jumping would flip the page under you on every keystroke of a query, and each flip
      is a real state change that saves. Typing narrows the list; Enter, the arrows and a click on a
-     row are what move you. */
-  function scratchFindGo(n){
+     row are what move you.
+     opts.focus is the difference between the two ways of getting here. Enter and the arrows STEP
+     through matches, so focus stays in the query box you are still typing in. Clicking a row is
+     "take me there", so the caret lands at the match and the writing takes focus. */
+  function scratchFindGo(n, opts){
     if(!scratchHits.length) return;
     const i = ((n % scratchHits.length) + scratchHits.length) % scratchHits.length;
     scratchHitAt = i;
     const hit = scratchHits[i];
+    const moved = hit.page !== scratchActiveIndex();
     // keepFocus: jumping to a hit must not pull the caret out of the query box
-    if(hit.page !== scratchActiveIndex()) scratchGoTo(hit.page, { keepFocus: true });
-    scratchScrollToHit(scratchPaintHits());
-    renderScratchFindPanel();
+    if(moved) scratchGoTo(hit.page, { keepFocus: true });
+    const land = ()=>{
+      const range = scratchPaintHits();
+      scratchScrollToHit(range, moved);
+      if(opts && opts.focus) placeScratchCaretAtHit(range);
+      renderScratchFindPanel();
+    };
+    /* After a page change the reveal waits one frame. scratchGoTo() has just replaced the surface's
+       innerHTML — which resets scrollTop to 0 — and started the 180ms page-turn animation, in this
+       same tick. Measuring and scrolling before the browser has settled that layout is why landing
+       on a match on ANOTHER page sometimes didn't move at all: the scroll was computed against a
+       stale box and then overrun by the animation. One frame later everything is real. */
+    if(moved) requestAnimationFrame(land); else land();
   }
 
   function renderScratchFindPanel(){
@@ -1542,6 +1910,87 @@
 
   initScratchFormatBar();
 
+  /* ---------- images: wiring ---------- */
+  (function(){
+    const surf = el('scratchText'), box = el('scratchImgBox'), grip = el('scratchImgGrip');
+    if(!surf || !box || !grip) return;
+
+    // hover reveals the grip on a fine pointer; there is no hover on touch, hence the long press
+    surf.addEventListener('mouseover', e=>{
+      if(!scratchImgHoverable() || scratchImgDrag) return;
+      const im = e.target && e.target.closest && e.target.closest('img');
+      if(im) showScratchImgBox(im);
+    });
+    surf.addEventListener('mouseout', e=>{
+      if(!scratchImgHoverable()) return;
+      const im = e.target && e.target.closest && e.target.closest('img');
+      if(im) hideScratchImgBoxSoon();
+    });
+    box.addEventListener('mouseenter', ()=>{
+      if(scratchImgHideTimer){ clearTimeout(scratchImgHideTimer); scratchImgHideTimer = null; }
+    });
+    box.addEventListener('mouseleave', hideScratchImgBoxSoon);
+
+    /* Touch: press and hold an image to bring up the grip. The tap that armed it must NOT also open
+       the lightbox, so the moment is remembered and the click that follows is swallowed. */
+    surf.addEventListener('pointerdown', e=>{
+      if(e.pointerType === 'mouse') return;
+      const im = e.target && e.target.closest && e.target.closest('img');
+      if(!im) return;
+      if(scratchImgPressTimer) clearTimeout(scratchImgPressTimer);
+      scratchImgPressTimer = setTimeout(()=>{
+        scratchImgPressTimer = null;
+        scratchImgPressAt = Date.now();
+        showScratchImgBox(im);
+      }, 500);
+    });
+    const cancelPress = ()=>{ if(scratchImgPressTimer){ clearTimeout(scratchImgPressTimer); scratchImgPressTimer = null; } };
+    surf.addEventListener('pointerup', cancelPress);
+    surf.addEventListener('pointercancel', cancelPress);
+    surf.addEventListener('pointermove', e=>{ if(scratchImgPressTimer && e.pointerType !== 'mouse') cancelPress(); });
+    /* Only while a long press has just fired. Suppressing it always would take right-click "save
+       image" away from desktop, which this feature has no business doing. */
+    surf.addEventListener('contextmenu', e=>{
+      if(Date.now() - scratchImgPressAt < 900 && e.target && e.target.closest && e.target.closest('img')) e.preventDefault();
+    });
+
+    /* Pointer capture on the GRIP here, unlike the page dots where it must go on the row. The rule
+       there exists because reordering re-renders the row's innerHTML on every crossing, so the
+       captured node is destroyed mid-gesture. Nothing re-renders during an image drag — only the
+       image's width attribute changes — so the grip survives its own drag. */
+    grip.addEventListener('pointerdown', e=>{
+      if(!scratchImgFor) return;
+      e.preventDefault();
+      e.stopPropagation();
+      scratchImgDrag = { x: e.clientX, w: scratchImgWidthNow(scratchImgFor) };
+      try{ grip.setPointerCapture(e.pointerId); }catch(err){}
+    });
+    grip.addEventListener('pointermove', e=>{
+      if(!scratchImgDrag || !scratchImgFor) return;
+      setScratchImgWidth(scratchImgFor, scratchImgDrag.w + (e.clientX - scratchImgDrag.x));
+    });
+    grip.addEventListener('pointerup', endScratchImgDrag);
+    grip.addEventListener('pointercancel', endScratchImgDrag);
+    // the grip is a real button, so the whole thing is reachable without a pointer at all
+    grip.addEventListener('keydown', e=>{
+      if(!scratchImgFor) return;
+      const step = e.shiftKey ? 4 : 24;
+      if(e.key === 'ArrowRight' || e.key === 'ArrowUp'){ e.preventDefault(); setScratchImgWidth(scratchImgFor, scratchImgWidthNow(scratchImgFor) + step); onScratchInput(); }
+      else if(e.key === 'ArrowLeft' || e.key === 'ArrowDown'){ e.preventDefault(); setScratchImgWidth(scratchImgFor, scratchImgWidthNow(scratchImgFor) - step); onScratchInput(); }
+      else if(e.key === 'Escape'){ hideScratchImgBox(); focusScratchSurface(); }
+    });
+
+    // no scroll/resize hooks here: trackScratchImgBox() already re-reads the rect every frame,
+    // which covers those two and the cases they missed
+
+    const ov = el('scratchImgOverlay');
+    if(ov) ov.addEventListener('click', e=>{
+      // the backdrop and the × both close; a click on the photo itself does not
+      if(e.target === el('scratchImgViewImg')) return;
+      closeScratchImgView();
+    });
+  })();
+
   /* ---------- find: wiring ---------- */
   (function(){
     const box = el('scratchSearchInput'), wrap = el('scratchSearch');
@@ -1560,7 +2009,8 @@
       if(t.closest('#scratchSearchPrev')){ scratchFindGo(scratchHitAt - 1); return; }
       if(t.closest('#scratchSearchClose')){ closeScratchFind(); return; }
       const row = t.closest('.scratch-sr');
-      if(row) scratchFindGo(parseInt(row.getAttribute('data-hit'), 10) || 0);
+      // a click on a row is "take me there", so unlike the arrows it lands the caret in the writing
+      if(row) scratchFindGo(parseInt(row.getAttribute('data-hit'), 10) || 0, { focus: true });
     });
     /* Ctrl+F is TAKEN OVER, at capture, document-level. Not a landgrab: the browser's find can only
        search the DOM, and every page except the one on screen is a string in state — so the native
@@ -1808,6 +2258,11 @@
        engine and version — and if it were ever left ON, fontSize would start writing
        "-webkit-xxx-large" spans instead of the <font size> buckets styles.css restyles. */
     scratchExec('styleWithCSS', 'false');
+    /* Firefox turns on its own image resize handles inside a contenteditable by default, which
+       would sit on top of ours and fight the same drag. Ours is the one that writes a validated
+       width attribute the sanitizer keeps, so theirs is the one that goes. */
+    scratchExec('enableObjectResizing', 'false');
+    ensureTrailingBlankScratchPage();   // covers a stack that arrived from anywhere but a load
     syncScratchSurface(true);
     renderScratchPages();
     updateScratchFooter();
@@ -1840,6 +2295,8 @@
 
   function closeScratch(){
     if(!scratchOpen) return;
+    if(scratchImgViewOn) closeScratchImgView();
+    hideScratchImgBox();
     if(scratchFindOn) closeScratchFind(true); // silent: don't focus a surface that's about to hide
     commitScratchSurface();               // while scratchOpen is still true
     const swept = sweepTrailingEmptyScratchPages();
@@ -1886,6 +2343,8 @@
     // Find is a layer INSIDE the page, so Escape peels that off first and the napkin stays open —
     // the same one-layer-per-press rule this capture guard exists to enforce against the app's
     // other overlays.
+    // innermost layer first: the lightbox, then find, then the page itself
+    if(scratchImgViewOn){ closeScratchImgView(); return; }
     if(scratchFindOn){ closeScratchFind(); return; }
     closeScratch();
   }, true);
@@ -1925,12 +2384,19 @@
     return true;
   }
 
-  // which slot the pointer is currently over, by dot centres in their CURRENT on-screen order
-  function scratchDotIndexAt(x){
+  /* Which slot the pointer is over, by dot centres in their CURRENT on-screen order.
+     Reads in two dimensions because the row WRAPS on a narrow screen (see styles.css): with more
+     than one line, x alone puts the drop target on whichever line the maths happened to reach, so
+     dragging a dot down to the second row would reorder against the first. The comparison is
+     therefore reading order — anything on a lower line is unconditionally "after", and only within
+     the same line does x decide. Collapses to the old single-line behaviour when nothing wraps,
+     because then every dot shares one band of y. */
+  function scratchDotIndexAt(x, y){
     const dots = el('scratchPages').querySelectorAll('.scratch-dot');
     for(let i=0; i<dots.length; i++){
       const r = dots[i].getBoundingClientRect();
-      if(x < r.left + r.width / 2) return i;
+      if(y < r.top) return i;                                  // pointer is above this line entirely
+      if(y <= r.bottom && x < r.left + r.width / 2) return i;   // same line, left of this centre
     }
     return dots.length - 1;
   }
@@ -1955,7 +2421,7 @@
       el('scratchPages').classList.add('is-reordering');
       renderScratchPages(); // paint the lifted dot
     }
-    const to = scratchDotIndexAt(e.clientX);
+    const to = scratchDotIndexAt(e.clientX, e.clientY);
     if(to !== scratchDragFrom && moveScratchPage(scratchDragFrom, to)){
       scratchDragFrom = to;
       renderScratchPages();
@@ -1981,6 +2447,8 @@
     scratchSuppressDotClick = true; // stop any retargeted click from acting a second time
     setTimeout(()=>{ scratchSuppressDotClick = false; }, 0);
     if(wasDragging){
+      // a written page dragged to the end must not become the last sheet
+      ensureTrailingBlankScratchPage();
       renderScratchPages();
       focusScratchSurface();
       setScratchStatus('dirty');
@@ -2036,6 +2504,15 @@
 
   scratchSurface.addEventListener('input', onScratchInput);
 
+  /* The slide class is otherwise left on until the NEXT page turn removes it, which would leave the
+     will-change hint (styles.css) permanently promoting a large scrolling element long after there
+     was anything to promote. Removing it on completion keeps the hint scoped to the 180ms it is
+     actually for. animateScratchPage() still removes both classes and forces a reflow before
+     re-adding, so a rapid second turn restarts the animation exactly as before. */
+  scratchSurface.addEventListener('animationend', e=>{
+    if(e.target === scratchSurface) scratchSurface.classList.remove('slide-l', 'slide-r');
+  });
+
   // The single place a tickbox's attribute is brought back in line with its live checkedness.
   function syncScratchTick(box){
     if(box.checked) box.setAttribute('checked', ''); else box.removeAttribute('checked');
@@ -2080,6 +2557,14 @@
       syncScratchTick(box);
       return;
     }
+    const im = t.closest('img');
+    if(im){
+      // the tap that raised the resize grip must not also open the lightbox
+      if(Date.now() - scratchImgPressAt < 900){ scratchImgPressAt = 0; return; }
+      e.preventDefault();
+      openScratchImgView(im);
+      return;
+    }
     const a = t.closest('a');
     if(a && a.getAttribute('href')){
       // in a contenteditable a click normally just places the caret; make links actually open
@@ -2099,7 +2584,7 @@
     const html = dt.getData('text/html');
     const text = dt.getData('text/plain');
     if(html){
-      scratchExec('insertHTML', sanitizeScratchHtml(html));
+      scratchExec('insertHTML', sanitizePastedScratchHtml(html));
     } else if(text){
       const one = text.trim();
       const sel = window.getSelection();

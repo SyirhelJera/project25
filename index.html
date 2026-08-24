@@ -1949,6 +1949,11 @@
     <span id="scratchCount">0 words</span>
     <span id="scratchStatus" class="scratch-status"></span>
     <span class="scratch-tips">type <b>[]</b> for a tick · paste an image · drag a dot to reorder<span class="scratch-tip-key"> · ctrl+K to link · <b>tab</b> <b>tab</b> to find · hold <b>tab</b> + scroll to page</span><span class="scratch-tip-touch"> · swipe to change page</span></span>
+    <!-- Built by renderScratchTools(). These used to sit in the dot row; on a phone that row was
+         both the page indicator and the toolbar, and with a handful of pages it overflowed and
+         wrapped. Here they share the footer strip with the word count, and #scratchPages is left to
+         do the one job its name says. -->
+    <div class="scratch-tools" id="scratchTools"></div>
     <span class="scratch-hint">esc to exit</span>
     <button id="scratchCloseBtn" class="scratch-close" type="button" aria-label="Close scratch page">×</button>
   </div>

@@ -750,7 +750,15 @@
   function markScratchEmpty(){
     const surf = el('scratchText');
     if(!surf) return;
-    surf.classList.toggle('is-empty', scratchSurfaceIsBlank(surf));
+    const blank = scratchSurfaceIsBlank(surf);
+    surf.classList.toggle('is-empty', blank);
+    /* The same fact, mirrored onto the overlay so the FOOTER can see it. On a phone the tip line
+       wrapped to three lines of text that a returning user has long since read, which was most of
+       the clutter down there — so it now behaves like onboarding: shown while the page is blank
+       (exactly when someone needs to know that "[]" makes a tickbox), gone the moment there is
+       anything to read instead. Desktop keeps them always, where there is room. */
+    const ov = el('scratchOverlay');
+    if(ov) ov.classList.toggle('scratch-blank', blank);
   }
 
   function scratchPlainText(){
@@ -1093,6 +1101,16 @@
     return changed;
   }
 
+  /* The dots and the tools were one row, and on a phone that row was doing two unrelated jobs at
+     once: it is the page INDICATOR and it was also the toolbar. With eight pages the dots alone are
+     ~185px and the five buttons another ~160px, which overflows a 360px screen — so the row wrapped
+     and the bottom of the napkin turned into a block of scattered circles and glyphs.
+     They are separated now. #scratchPages holds nothing but dots, so it reads as one clean line of
+     position at any page count, and the tools sit in the footer strip that already existed next to
+     the word count. Same structure at both breakpoints: the desktop layout was quietly crowded too,
+     and one arrangement is far easier to keep honest than two.
+     The reorder drag is unaffected — its handlers live on #scratchPages and only ever cared about
+     .scratch-dot, which now has that container to itself. */
   function renderScratchPages(){
     const row = el('scratchPages');
     if(!row) return;
@@ -1107,6 +1125,14 @@
          + ' aria-label="Page ' + (i + 1) + ' of ' + pages.length + ': ' + escapeHtml(label) + '"'
          + (i === active ? ' aria-current="true"' : '') + '></button>';
     }
+    row.innerHTML = h;
+    renderScratchTools(pages);
+  }
+
+  function renderScratchTools(pages){
+    const bar = el('scratchTools');
+    if(!bar) return;
+    let h = '';
     // + and − rather than a word: they pair obviously, and the page's own name lives on its dot
     h += '<button type="button" class="scratch-pagebtn" id="scratchAddPage" title="New page" aria-label="New page">+</button>';
     if(pages.length > 1) h += '<button type="button" class="scratch-pagebtn" id="scratchDelPage" title="Delete this page" aria-label="Delete this page">−</button>';
@@ -1129,7 +1155,7 @@
     h += '<button type="button" class="scratch-pagebtn scratch-mute' + (muted ? ' is-off' : '') + '" id="scratchMuteBtn"'
        + ' title="' + (muted ? 'Page-turn sound off' : 'Page-turn sound on') + '"'
        + ' aria-pressed="' + (muted ? 'true' : 'false') + '" aria-label="Toggle page-turn sound">♪</button>';
-    row.innerHTML = h;
+    bar.innerHTML = h;
   }
 
   /* ---------- tickboxes, links, images ----------
@@ -2460,7 +2486,10 @@
   el('scratchPages').addEventListener('pointerup', endScratchDrag);
   el('scratchPages').addEventListener('pointercancel', endScratchDrag);
 
-  el('scratchPages').addEventListener('click', e=>{
+  /* Shared by the dot row and the tool bar. The dots keep their own container's pointer handlers
+     for the reorder drag; this only cares about which control was hit, and both rows contain
+     controls, so one listener is bound to each rather than duplicating the ladder. */
+  function onScratchRowClick(e){
     if(scratchSuppressDotClick) return; // that click was the tail of a reorder, not a choice
     const t = e.target;
     if(!t || !t.closest) return;
@@ -2496,7 +2525,9 @@
     // endScratchDrag() above and suppressed here — see the note on that function.
     const dot = t.closest('.scratch-dot');
     if(dot) scratchGoTo(parseInt(dot.getAttribute('data-i'), 10) || 0);
-  });
+  }
+  el('scratchPages').addEventListener('click', onScratchRowClick);
+  el('scratchTools').addEventListener('click', onScratchRowClick);
 
   /* ---------- surface wiring ---------- */
 

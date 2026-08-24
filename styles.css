@@ -1829,6 +1829,9 @@
   .scratch-fmt-swatch{width:13px;height:3px;border-radius:2px;background:var(--violet);}
   .scratch-tip-touch{display:none;} /* swapped with .scratch-tip-key at the mobile breakpoint */
   .scratch-foot{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
+  /* The tool bar, sharing the footer strip with the word count. flex:none so it never compresses
+     its buttons the way the dot row used to compress its dots. */
+  .scratch-tools{flex:none;display:flex;align-items:center;gap:1px;}
   .scratch-status{flex:none;}
   .scratch-tips{flex:1;text-align:center;opacity:.75;}
   .scratch-tips b{font-weight:700;}
@@ -1865,6 +1868,15 @@
     .scratch-tip-touch{display:inline;}
     .scratch-pages{gap:5px;margin-top:12px;}
     .scratch-dot{width:9px;height:9px;padding:7px;}
+    /* Two clean rows at the bottom instead of a wrapped jumble: dots on their own, then one strip
+       of count + tools + close. The tips only appear on a blank page (see markScratchEmpty), which
+       is what frees the room for the tools to sit here at all. */
+    .scratch-foot{gap:8px;}
+    .scratch-tools{margin-left:auto;}
+    .scratch-tools .scratch-pagebtn{padding:5px 8px;margin-left:0;}
+    .scratch-tips{display:none;}
+    .scratch-overlay.scratch-blank .scratch-tips{display:block;flex:1 0 100%;order:-1;text-align:center;margin-bottom:2px;}
+    .scratch-overlay.scratch-blank .scratch-foot{flex-wrap:wrap;}
     .scratch-brand{padding:0;justify-content:center;} /* .brand centres itself in the mobile top bar */
     .scratch-text input.scratch-tick{width:17px;height:17px;} /* thumb-sized */
     /* the grip is dragged with a thumb here, and it's reached by pressing and holding the image */

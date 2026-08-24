@@ -1944,7 +1944,15 @@
   </div>
   <!-- page dots + the add/remove controls. Built by renderScratchPages(); each dot's tooltip is the
        page's first line, derived on read so it can never go stale. -->
-  <div class="scratch-pages" id="scratchPages"></div>
+  <div class="scratch-pagesrow">
+    <!-- The page list. Only reachable past the dot threshold, where dots stop being a navigator:
+         twenty identical circles tell you nothing about WHICH page each one is, and a tooltip needs
+         a hover that a phone doesn't have. This shows the names instead — derived on read from each
+         page's first line, so they can never go stale — and carries the reorder drag that the dots
+         own in dot mode. Built by renderScratchPageSheet(). -->
+    <div class="scratch-sheet" id="scratchPageSheet" style="display:none;" aria-label="Pages"></div>
+    <div class="scratch-pages" id="scratchPages"></div>
+  </div>
   <div class="scratch-foot">
     <span id="scratchCount">0 words</span>
     <span id="scratchStatus" class="scratch-status"></span>

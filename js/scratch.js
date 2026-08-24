@@ -1111,12 +1111,44 @@
      and one arrangement is far easier to keep honest than two.
      The reorder drag is unaffected — its handlers live on #scratchPages and only ever cared about
      .scratch-dot, which now has that container to itself. */
+  /* ---------- how many dots are still worth drawing ----------
+     Dots are an excellent indicator up to a point and useless past it. Twenty identical circles
+     don't tell you which page is which, the row wraps into a block on a phone, and a thumb can't
+     hit one reliably anyway. So past the threshold the row becomes a pager — "‹ 4 / 23 ›" — and
+     the job the dots were failing at moves to a named list behind the counter.
+     Two thresholds, because the constraint really is width: a 70ch desktop column carries twice
+     what a 360px phone does, and dropping a perfectly good affordance on desktop to match the
+     phone would be the wrong trade. matchMedia is held rather than re-queried because .matches is
+     live, and the same query drives the CSS breakpoint. */
+  const SCRATCH_DOTS_MAX_NARROW = 12;
+  const SCRATCH_DOTS_MAX_WIDE = 24;
+  const scratchNarrow = (function(){
+    try{ return window.matchMedia('(max-width:760px)'); }catch(e){ return null; }
+  })();
+  function scratchDotsFit(n){
+    return n <= ((scratchNarrow && scratchNarrow.matches) ? SCRATCH_DOTS_MAX_NARROW : SCRATCH_DOTS_MAX_WIDE);
+  }
+
   function renderScratchPages(){
     const row = el('scratchPages');
     if(!row) return;
     ensureScratchPages();
     const pages = state.scratch.pages;
     const active = scratchActiveIndex();
+    if(!scratchDotsFit(pages.length)){
+      row.classList.add('is-pager');
+      row.innerHTML =
+          '<button type="button" class="scratch-pagenav" id="scratchPrevPage" title="Previous page" aria-label="Previous page">&lsaquo;</button>'
+        + '<button type="button" class="scratch-pagecount" id="scratchPageListBtn" aria-haspopup="true"'
+        + ' aria-expanded="' + (scratchSheetOn ? 'true' : 'false') + '" title="All pages">'
+        + (active + 1) + ' <span>/</span> ' + pages.length + '</button>'
+        + '<button type="button" class="scratch-pagenav" id="scratchNextPage" title="Next page" aria-label="Next page">&rsaquo;</button>';
+      renderScratchPageSheet();
+      renderScratchTools(pages);
+      return;
+    }
+    row.classList.remove('is-pager');
+    if(scratchSheetOn) closeScratchPageSheet();
     let h = '';
     for(let i=0; i<pages.length; i++){
       const label = scratchPageTitle(pages[i]);
@@ -1156,6 +1188,60 @@
        + ' title="' + (muted ? 'Page-turn sound off' : 'Page-turn sound on') + '"'
        + ' aria-pressed="' + (muted ? 'true' : 'false') + '" aria-label="Toggle page-turn sound">♪</button>';
     bar.innerHTML = h;
+  }
+
+  /* ---------- the page list ----------
+     Same visual language as the find results panel deliberately: it is the same kind of object (a
+     scrollable list of pages you can jump to), it grows upward over the writing for the same reason,
+     and reusing the pattern is most of why this costs so little.
+     Reordering lives here in pager mode, on a per-row GRIP rather than the row itself. That is not
+     decoration: the sheet scrolls vertically and the drag is vertical, so touch-action:none on the
+     whole row would make the list unscrollable by thumb — the same collision the dot row has with
+     horizontal scrolling, resolved the way a list can afford to resolve it. */
+  let scratchSheetOn = false;
+  let scratchSheetDragId = null, scratchSheetFrom = -1, scratchSheetMoved = false;
+
+  function renderScratchPageSheet(){
+    const sheet = el('scratchPageSheet');
+    if(!sheet) return;
+    if(!scratchSheetOn){ sheet.style.display = 'none'; sheet.innerHTML = ''; return; }
+    ensureScratchPages();
+    const pages = state.scratch.pages, active = scratchActiveIndex();
+    let h = '';
+    for(let i=0; i<pages.length; i++){
+      // titles come from the per-page cache, so this is a string lookup rather than a parse per row
+      const label = scratchPageTitle(pages[i]);
+      h += '<div class="scratch-sheet-row' + (i === active ? ' is-on' : '')
+         + (pages[i].id === scratchSheetDragId ? ' is-dragging' : '') + '" data-i="' + i + '">'
+         + '<span class="scratch-sheet-grip" title="Drag to reorder" aria-hidden="true"></span>'
+         + '<button type="button" class="scratch-sheet-go" data-i="' + i + '"'
+         + (i === active ? ' aria-current="true"' : '') + '>'
+         + '<span class="scratch-sheet-n">' + (i + 1) + '</span>'
+         + '<span class="scratch-sheet-t">' + escapeHtml(label) + '</span></button></div>';
+    }
+    sheet.innerHTML = h;
+    sheet.style.display = 'block';
+    /* Only when NOT dragging. Every crossing re-renders this list, and scrolling back to the
+       CURRENT page each time would drag the list out from under the row you are holding. */
+    if(scratchSheetDragId) return;
+    const on = sheet.querySelector('.scratch-sheet-row.is-on');
+    if(on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
+  }
+
+  function openScratchPageSheet(){
+    scratchSheetOn = true;
+    renderScratchPageSheet();
+    const btn = el('scratchPageListBtn');
+    if(btn) btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeScratchPageSheet(){
+    scratchSheetOn = false;
+    scratchSheetDragId = null; scratchSheetFrom = -1; scratchSheetMoved = false;
+    const sheet = el('scratchPageSheet');
+    if(sheet){ sheet.style.display = 'none'; sheet.innerHTML = ''; }
+    const btn = el('scratchPageListBtn');
+    if(btn) btn.setAttribute('aria-expanded', 'false');
   }
 
   /* ---------- tickboxes, links, images ----------
@@ -2322,6 +2408,7 @@
   function closeScratch(){
     if(!scratchOpen) return;
     if(scratchImgViewOn) closeScratchImgView();
+    if(scratchSheetOn) closeScratchPageSheet();
     hideScratchImgBox();
     if(scratchFindOn) closeScratchFind(true); // silent: don't focus a surface that's about to hide
     commitScratchSurface();               // while scratchOpen is still true
@@ -2371,6 +2458,7 @@
     // other overlays.
     // innermost layer first: the lightbox, then find, then the page itself
     if(scratchImgViewOn){ closeScratchImgView(); return; }
+    if(scratchSheetOn){ closeScratchPageSheet(); focusScratchSurface(); return; }
     if(scratchFindOn){ closeScratchFind(); return; }
     closeScratch();
   }, true);
@@ -2493,6 +2581,12 @@
     if(scratchSuppressDotClick) return; // that click was the tail of a reorder, not a choice
     const t = e.target;
     if(!t || !t.closest) return;
+    if(t.closest('#scratchPrevPage')){ scratchStep(-1); return; }
+    if(t.closest('#scratchNextPage')){ scratchStep(1); return; }
+    if(t.closest('#scratchPageListBtn')){
+      if(scratchSheetOn) closeScratchPageSheet(); else openScratchPageSheet();
+      return;
+    }
     if(t.closest('#scratchAddPage')){ addScratchPage(); return; }
     if(t.closest('#scratchDelPage')){ deleteScratchPage(); return; }
     if(t.closest('#scratchFindBtn')){
@@ -2528,6 +2622,84 @@
   }
   el('scratchPages').addEventListener('click', onScratchRowClick);
   el('scratchTools').addEventListener('click', onScratchRowClick);
+
+  /* ---------- the page list: pick and reorder ---------- */
+  (function(){
+    const sheet = el('scratchPageSheet');
+    if(!sheet) return;
+
+    sheet.addEventListener('click', e=>{
+      if(scratchSheetMoved) return;           // that click was the tail of a drag, not a choice
+      const go = e.target && e.target.closest && e.target.closest('.scratch-sheet-go');
+      if(!go) return;
+      const i = parseInt(go.getAttribute('data-i'), 10);
+      closeScratchPageSheet();
+      if(!isNaN(i)) scratchGoTo(i);
+    });
+
+    // which slot the pointer is over, by row centres — the vertical twin of scratchDotIndexAt()
+    function sheetIndexAt(y){
+      const rows = sheet.querySelectorAll('.scratch-sheet-row');
+      for(let i=0; i<rows.length; i++){
+        const r = rows[i].getBoundingClientRect();
+        if(y < r.top + r.height / 2) return i;
+      }
+      return rows.length - 1;
+    }
+
+    /* Capture on the SHEET, never on the grip — the same rule the dot row records, and for the same
+       reason: every crossing re-renders the list's innerHTML, so a captured grip would be destroyed
+       mid-gesture and the drag would die after one step. The sheet element survives every render. */
+    sheet.addEventListener('pointerdown', e=>{
+      const grip = e.target && e.target.closest && e.target.closest('.scratch-sheet-grip');
+      if(!grip) return;
+      const row = grip.closest('.scratch-sheet-row');
+      if(!row || state.scratch.pages.length < 2) return;
+      e.preventDefault();
+      scratchSheetFrom = parseInt(row.getAttribute('data-i'), 10);
+      if(isNaN(scratchSheetFrom)){ scratchSheetFrom = -1; return; }
+      scratchSheetDragId = state.scratch.pages[scratchSheetFrom].id;
+      scratchSheetMoved = false;
+      try{ sheet.setPointerCapture(e.pointerId); }catch(err){}
+      renderScratchPageSheet();
+    });
+
+    sheet.addEventListener('pointermove', e=>{
+      if(!scratchSheetDragId) return;
+      const to = sheetIndexAt(e.clientY);
+      if(to !== scratchSheetFrom && moveScratchPage(scratchSheetFrom, to)){
+        scratchSheetFrom = to;
+        scratchSheetMoved = true;
+        // renderScratchPages() redraws the sheet too in pager mode, and moves the "4 / 23" counter
+        // along with the page you're holding — calling both would render the list twice per crossing
+        renderScratchPages();
+        playScratchPageTick(1);
+      }
+    });
+
+    function endSheetDrag(){
+      if(!scratchSheetDragId) return;
+      const moved = scratchSheetMoved;
+      scratchSheetDragId = null; scratchSheetFrom = -1;
+      renderScratchPageSheet();
+      if(moved){
+        setScratchStatus('dirty');
+        debouncedSaveScratch();
+        // a click is dispatched after pointerup; swallow the one that ends a drag
+        setTimeout(()=>{ scratchSheetMoved = false; }, 0);
+      } else {
+        scratchSheetMoved = false;
+      }
+    }
+    sheet.addEventListener('pointerup', endSheetDrag);
+    sheet.addEventListener('pointercancel', endSheetDrag);
+  })();
+
+  /* Crossing the breakpoint changes which mode the row should be in, and a resize alone fires
+     nothing else that would redraw it. */
+  if(scratchNarrow && scratchNarrow.addEventListener){
+    scratchNarrow.addEventListener('change', ()=>{ if(scratchOpen) renderScratchPages(); });
+  }
 
   /* ---------- surface wiring ---------- */
 

@@ -1698,7 +1698,40 @@
      safe center: a centred flex line that overflows its container becomes unreachable at the start
      in some engines. Browsers that don't know the keyword ignore the second declaration and keep
      plain centring, which is correct whenever it fits. */
-  .scratch-pages{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;flex-wrap:wrap;align-items:center;justify-content:center;justify-content:safe center;gap:3px;}
+  /* The wrapper exists to be the positioned ancestor for the page list, which grows upward out of
+     this row. It carries the width and margin the dot row used to own. */
+  .scratch-pagesrow{position:relative;flex:none;width:100%;max-width:70ch;margin:10px auto 0;}
+  .scratch-pages{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;justify-content:safe center;gap:3px;}
+  /* Pager mode, past the dot threshold: "‹ 4 / 23 ›". One line at any page count, and the counter
+     is a button that opens the named list — which is the thing that actually navigates once dots
+     have stopped meaning anything. */
+  .scratch-pages.is-pager{gap:2px;}
+  .scratch-pagenav{flex:none;background:none;border:none;padding:3px 9px;border-radius:7px;color:var(--faint);font-size:16px;line-height:1;cursor:pointer;transition:color .15s ease,background .15s ease;}
+  .scratch-pagenav:hover{color:var(--text);background:var(--surface-alt);}
+  .scratch-pagecount{flex:none;background:none;border:none;padding:4px 10px;border-radius:7px;color:var(--muted);font-family:inherit;font-size:11.5px;font-weight:700;font-variant-numeric:tabular-nums;cursor:pointer;transition:color .15s ease,background .15s ease;}
+  .scratch-pagecount span{color:var(--faint);font-weight:400;margin:0 1px;}
+  .scratch-pagecount:hover{color:var(--text);background:var(--surface-alt);}
+  .scratch-pagenav:focus-visible,.scratch-pagecount:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* The page list. Same shape as the find panel on purpose — same kind of object, same reason for
+     growing upward rather than pushing the writing around. */
+  .scratch-sheet{position:absolute;left:0;right:0;bottom:100%;margin-bottom:8px;z-index:4;
+    max-height:min(50vh,340px);overflow-y:auto;
+    background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:4px;box-shadow:0 10px 30px rgba(15,18,40,.14);}
+  .scratch-sheet-row{display:flex;align-items:center;gap:2px;border-radius:8px;transition:background .12s ease;}
+  .scratch-sheet-row:hover{background:var(--surface-alt);}
+  .scratch-sheet-row.is-on{background:var(--violet-pale);}
+  .scratch-sheet-row.is-dragging{background:var(--surface-alt);opacity:.55;}
+  /* touch-action:none on the GRIP alone. The sheet scrolls vertically and so does the drag, so
+     putting it on the whole row would make the list unscrollable by thumb. */
+  .scratch-sheet-grip{flex:none;width:22px;height:30px;cursor:grab;touch-action:none;
+    background-image:radial-gradient(circle,var(--faint) 1px,transparent 1px);
+    background-size:4px 5px;background-position:center;background-repeat:repeat-y;opacity:.8;}
+  .scratch-sheet-grip:active{cursor:grabbing;}
+  .scratch-sheet-go{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:7px 8px 7px 2px;
+    text-align:left;background:none;border:none;font-family:inherit;cursor:pointer;}
+  .scratch-sheet-go:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;border-radius:7px;}
+  .scratch-sheet-n{flex:none;min-width:17px;text-align:right;color:var(--faint);font-size:10px;font-weight:700;font-variant-numeric:tabular-nums;}
+  .scratch-sheet-t{flex:1;min-width:0;color:var(--text);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .scratch-dot{flex:none;width:8px;height:8px;padding:5px;box-sizing:content-box;border:none;border-radius:50%;background:var(--border);background-clip:content-box;cursor:pointer;transition:background .15s ease,transform .15s ease;}
   .scratch-dot:hover{background:var(--muted);background-clip:content-box;}
   .scratch-dot.is-active{background:var(--violet);background-clip:content-box;transform:scale(1.3);}
@@ -1866,7 +1899,13 @@
     .scratch-hint{display:none;}   /* no Esc key to hint at — the × carries it */
     .scratch-tip-key{display:none;}/* nor a ctrl or tab key; the [] shorthand still works, so that tip stays */
     .scratch-tip-touch{display:inline;}
-    .scratch-pages{gap:5px;margin-top:12px;}
+    .scratch-pagesrow{margin-top:12px;}
+    .scratch-pages{gap:5px;}
+    .scratch-sheet{max-height:46vh;}
+    .scratch-sheet-grip{width:26px;height:36px;}   /* thumb-sized, like every other touch target */
+    .scratch-sheet-go{padding:9px 8px 9px 2px;}
+    .scratch-sheet-t{font-size:13.5px;}
+    .scratch-pagenav{padding:5px 11px;}
     .scratch-dot{width:9px;height:9px;padding:7px;}
     /* Two clean rows at the bottom instead of a wrapped jumble: dots on their own, then one strip
        of count + tools + close. The tips only appear on a blank page (see markScratchEmpty), which

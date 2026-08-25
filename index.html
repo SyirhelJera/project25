@@ -1251,6 +1251,25 @@
     <div class="finance-subnav time-subnav">
       <button class="finance-subnav-btn active" data-timetab="clock" type="button">🕐 Clock</button>
       <button class="finance-subnav-btn" data-timetab="countdowns" type="button">⏳ Countdowns</button>
+      <button class="finance-subnav-btn" data-timetab="calendar" type="button">📅 Calendar</button>
+    </div>
+
+    <!-- CALENDAR — read-only agenda from Google Calendar via the google-calendar Edge Function.
+         The events are never stored in state (see js/calendar.js's header), so this pane is empty
+         until a fetch lands and shows nothing at all offline. -->
+    <div class="timetab" id="timetab-calendar" style="display:none;">
+      <div class="view-sub" style="margin-top:-4px;">What's coming up, straight from Google Calendar. Read-only — nothing here can change a real event.</div>
+      <div class="view-sub" id="calUnavailable" style="display:none;">The calendar needs the Supabase-hosted deployment (it reads Google through an Edge Function) and isn't available in this mode.</div>
+      <div class="cal-controls" id="calControls">
+        <button class="btn btn-sm btn-ghost" id="calRefreshBtn" type="button">↻ Refresh</button>
+        <div class="cal-status" id="calStatus"></div>
+      </div>
+      <!-- .cal-chip, NOT .finance-subnav-btn, even though it looks like one: showTimeSubTab() owns
+           every '#view-time .finance-subnav-btn' and strips .active off all of them, which would
+           blank these chips on every sub-tab switch. -->
+      <div class="cal-picker" id="calPicker" style="display:none;"></div>
+      <div id="calAgenda"></div>
+      <div class="empty" id="calEmpty" style="display:none;">Nothing on the calendar for the next couple of weeks.</div>
     </div>
 
     <div class="timetab" id="timetab-countdowns" style="display:none;">
@@ -1713,6 +1732,15 @@
           <select id="settingsNetWorthCurrency"></select>
         </div>
       </div>
+
+      <div class="set-card">
+        <div class="set-card-h">Calendar reminder</div>
+        <div class="set-card-sub">A bubble in the top corner when something on your Google Calendar is starting soon. It appears once each time you open the app, and only for timed events — all-day ones aren't something to be warned about an hour ahead. Click it to jump to the Calendar pane, or ✕ to dismiss that event for good. Turning this off also stops the app reading your calendar on load.</div>
+        <div class="unit-toggle" id="calBubbleToggle">
+          <button data-calbubble="on" type="button">Reminder on</button>
+          <button data-calbubble="off" type="button">Reminder off</button>
+        </div>
+      </div>
     </div>
 
     <!-- ---- Valorant ---- -->
@@ -2019,6 +2047,27 @@
   <div class="tab-switcher-hint" id="tabSwitcherHint">Slide onto a tab, then let go</div>
 </div>
 
+<!-- CALENDAR "COMING UP" BUBBLE — opened once per page load by maybeShowCalendarBubble() in
+     js/calendar.js when a Google Calendar event starts within the lead time.
+     BODY LEVEL, deliberately not inside #view-time: .view{display:none} would hide it whenever the
+     Time tab wasn't the active one, and the whole point is that it reaches you on whatever tab you
+     opened the app to — the same reason #valItemPreviewOverlay sits outside #view-games.
+     Not a modal: it never traps focus and never blocks the page (see .cal-bubble's z-index note).
+     The whole card is the click target (there's no View button) — tabindex/title/keydown are what
+     keep that reachable without a mouse, since cursor:pointer alone announces nothing. role=status
+     is kept over role=button on purpose: this thing's first job is to be ANNOUNCED when it arrives,
+     and a button role would silence that. The ✕ inside stops propagation so dismissing it can't
+     also navigate. -->
+<div id="calBubble" class="cal-bubble" style="display:none;" role="status" aria-live="polite"
+     tabindex="0" title="Open the Calendar tab">
+  <div class="cal-bubble-icon" aria-hidden="true">📅</div>
+  <div class="cal-bubble-body">
+    <div class="cal-bubble-title" id="calBubbleTitle"></div>
+    <div class="cal-bubble-when" id="calBubbleWhen"></div>
+  </div>
+  <button class="cal-bubble-close" id="calBubbleClose" type="button" aria-label="Dismiss">&times;</button>
+</div>
+
 <!-- LEVEL UP — celebration popup, filled and opened by showLevelUp() in js/goals.js when total
      exp crosses into a new level. Lives at body level, not inside a view, because exp comes from
      two tabs (finishing a goal, ticking a checklist item) and it also has to sit ABOVE an open
@@ -2062,6 +2111,8 @@
 <script src="js/fitness.js"></script>
 <script src="js/valorant.js"></script>
 <script src="js/clock.js"></script>
+<!-- the Time tab's third pane, kept next to clock.js; showTimeSubTab() in countdowns.js reveals it -->
+<script src="js/calendar.js"></script>
 <!-- after valorant.js: showGameSubTab() calls renderValorant() and syncValLivePolling() -->
 <script src="js/tft.js"></script>
 <!-- after notes.js: the History pane renders saved answers through renderMarkdown() -->

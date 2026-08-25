@@ -10,6 +10,9 @@
     showGameSubTab(state.games.active);
     shuffleMotivationImages(); openToPinnedMotivationCategory(); renderMotivation();
     maybeSyncPinterestCategories(); // no-op unless a Pinterest category hasn't refreshed today yet
+    // no-op unless something starts within the lead time; fires once per page load, and its fetch
+    // is async so it never delays first paint or hideLoadScreen()
+    maybeShowCalendarBubble();
     renderInsights(); // no-op unless the Insights tab is the one on screen (see its guard)
   }
 

@@ -275,6 +275,24 @@
       }
     }
 
+    /* Settings > Tracking > Calendar reminder. Same wire-once/re-sync shape as the toggles above.
+       Switching it off also hides a bubble that happens to be on screen right now — leaving one up
+       after you just turned the feature off would read as the switch not having worked. */
+    const calBubbleToggle = el('calBubbleToggle');
+    if(calBubbleToggle && !calBubbleToggle.dataset.wired){
+      calBubbleToggle.dataset.wired = '1';
+      calBubbleToggle.addEventListener('click', e=>{
+        const btn = e.target.closest('[data-calbubble]');
+        if(!btn) return;
+        state.calendar.bubbleEnabled = btn.dataset.calbubble === 'on';
+        if(!state.calendar.bubbleEnabled && typeof hideCalBubble === 'function') hideCalBubble();
+        save(); renderSettings();
+      });
+    }
+    document.querySelectorAll('#calBubbleToggle [data-calbubble]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.calbubble === 'on') === (state.calendar.bubbleEnabled !== false));
+    });
+
     const perfectGlowToggle = el('perfectGlowToggle');
     if(perfectGlowToggle && !perfectGlowToggle.dataset.wired){
       perfectGlowToggle.dataset.wired = '1';

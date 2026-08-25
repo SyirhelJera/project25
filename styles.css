@@ -4357,3 +4357,129 @@
     .ins-tile:hover,.ins-card:hover{transform:none;}
     .ins-card:hover .ins-card-go{transform:none;}
   }
+
+  /* ================= GOOGLE CALENDAR ================= */
+  /* Third pane of the Time tab (js/calendar.js). Every colour is a token, so all four themes
+     come free — there is nothing hardcoded here the way the clock dial deliberately is. */
+  .cal-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px;}
+  .cal-status{font-size:12px;color:var(--muted);}
+  .cal-status.cal-status-error{color:var(--danger);}
+
+  /* Looks like a .finance-subnav strip but is deliberately NOT one — showTimeSubTab() owns every
+     '#view-time .finance-subnav-btn' and would strip .active off these on each sub-tab switch. So
+     the scroll-strip rules are restated here rather than borrowed. --cal-ink is the calendar's own
+     colour out of Google, falling back to the theme violet when it has none. */
+  .cal-picker{display:flex;gap:6px;margin-bottom:14px;flex-wrap:nowrap;overflow-x:auto;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
+  .cal-picker::-webkit-scrollbar{display:none;}
+  .cal-chip{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
+    border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;
+    font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:38px;
+    transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
+  .cal-chip:hover{color:var(--text);border-color:var(--cal-ink,var(--violet));}
+  .cal-chip.active{background:var(--cal-ink,var(--violet));border-color:var(--cal-ink,var(--violet));color:#fff;}
+  .cal-chip.active:hover{color:#fff;}
+  .cal-chip:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  .cal-day{margin-bottom:18px;}
+  .cal-day-head{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid var(--border);}
+  .cal-day-head.is-today{color:var(--violet);}
+
+  .cal-row{background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:11px 14px;margin-bottom:7px;display:flex;align-items:flex-start;gap:13px;}
+  /* fixed-width time column so the titles line up down the day regardless of "9:00 AM" vs "11:30 AM" */
+  .cal-row-time{flex:0 0 74px;font-size:12px;font-weight:700;color:var(--violet);padding-top:1px;}
+  .cal-row.is-allday .cal-row-time{color:var(--muted);font-weight:600;}
+  /* min-width:0 so a long unbroken title wraps inside the card instead of widening the row */
+  .cal-row-main{flex:1 1 auto;min-width:0;}
+  .cal-row-title{font-size:13.5px;font-weight:600;color:var(--text);overflow-wrap:anywhere;}
+  .cal-row-loc{font-size:11.5px;color:var(--muted);margin-top:3px;overflow-wrap:anywhere;}
+  /* an event that already started stays listed (it's still today) but stops competing for attention */
+  .cal-row.is-past{opacity:.55;}
+  .cal-row-open{flex:none;color:var(--faint);text-decoration:none;font-size:14px;padding:2px 4px;border-radius:6px;line-height:1;}
+  .cal-row-open:hover{color:var(--violet);background:var(--surface-alt);}
+  .cal-row-open:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  /* ---- the "coming up" bubble ----
+     Top right, tucked under the navbar. The offset is driven by --nav-h, published by js/nav.js as
+     the measured height of the sticky top bar — which is exactly 0 above the mobile breakpoint,
+     where the nav is a left sidebar and the top right corner is already clear. So one rule serves
+     both layouts, and because --nav-h is kept live by a ResizeObserver the bubble follows the bar
+     as it shrinks on scroll instead of drifting over it. (Same property .g-sheet and
+     .scratch-overlay use, and it already includes env(safe-area-inset-top) — it's an offsetHeight
+     of a bar whose padding grows by the inset in an installed PWA, so adding the inset again here
+     would double-count it.)
+
+     z-index 920 is picked against the existing ladder: above the mobile sticky sidebar (40), so a
+     bar mid-shrink can't clip it; below the scratch page's 950, because that's a full-bleed
+     takeover and a stray notification over a blank napkin defeats the point of it; and below the
+     1000 modal tier (.struggle-overlay, .play-overlay, .scratch-imgview), because a notification
+     must never cover a dialog. Note this element sits LATER in the DOM than #scratchOverlay, so
+     the number is what keeps it under — a tie would put it on top. */
+  /* --cal-accent drives the border, the rings, the icon chip, the countdown line and the View
+     button. These two are only the FALLBACK: showCalBubble() overwrites both inline with the
+     colour of the Google calendar the event came from (see applyCalBubbleAccent() in
+     js/calendar.js, which also fixes up contrast). The fallback resolves through --success, which
+     every theme defines (#16A34A / #34D399 / #34C759 / #30D158), so an event with no colour still
+     tracks light, dark and both iOS themes instead of being one hardcoded hex. */
+  .cal-bubble{--cal-accent:var(--success);--cal-accent-ink:var(--success);
+    position:fixed;z-index:920;right:18px;top:calc(var(--nav-h, 0px) + 16px);
+    max-width:min(360px,calc(100vw - 36px));display:flex;align-items:center;gap:11px;
+    background:var(--surface);border:1px solid var(--cal-accent);border-radius:14px;
+    padding:12px 13px;box-shadow:0 16px 40px rgba(0,0,0,.30);
+    animation:cal-bubble-in .3s cubic-bezier(.16,1,.3,1);
+    /* the whole card is the click target now that the View button is gone */
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+    transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;}
+  /* the only affordance a mouse gets, so it has to be legible: lifts and tightens its shadow.
+     :active covers touch, where there is no hover to report anything at all. */
+  .cal-bubble:hover{transform:translateY(-2px);box-shadow:0 20px 46px rgba(0,0,0,.34);}
+  .cal-bubble:active{transform:translateY(0);}
+  /* Slides in from the right — starting outboard of its resting place and travelling left into it,
+     which is the direction that reads as "arriving from the edge it's pinned to". The start offset
+     puts it briefly past the viewport edge; that's safe and deliberately not clamped, because a
+     position:fixed box never contributes to the document's scrollable overflow, so it cannot
+     produce a horizontal scrollbar the way an absolutely positioned one would. */
+  @keyframes cal-bubble-in{from{opacity:0;transform:translateX(34px);}to{opacity:1;transform:none;}}
+  /* Two expanding rings on arrival, then gone — the thing that actually catches a glance on a page
+     you're already reading. A pseudo-element rather than an animated box-shadow so it can use
+     var(--cal-accent) and track all four themes; .cal-bubble is position:fixed, so it's already the
+     containing block this needs. pointer-events:none keeps it off the buttons underneath. */
+  .cal-bubble::after{content:'';position:absolute;inset:-1px;border-radius:inherit;
+    border:2px solid var(--cal-accent);opacity:0;pointer-events:none;
+    animation:cal-bubble-ping 1.5s ease-out .2s 2;}
+  @keyframes cal-bubble-ping{from{opacity:.8;transform:scale(1);}to{opacity:0;transform:scale(1.07);}}
+  /* a filled chip, not a bare emoji — it's the first thing the eye lands on and it reads as an
+     app notification rather than as a stray character in the text */
+  .cal-bubble-icon{flex:none;font-size:15px;line-height:1;width:30px;height:30px;border-radius:9px;
+    background:var(--cal-accent);display:flex;align-items:center;justify-content:center;}
+  .cal-bubble-body{flex:1 1 auto;min-width:0;}
+  .cal-bubble-title{font-size:13.5px;font-weight:700;color:var(--text);overflow-wrap:anywhere;}
+  /* the countdown is the urgent half of the message, so it gets the accent rather than muted grey */
+  /* --cal-accent-ink, not --cal-accent: this is the one place the accent becomes small TEXT on
+     the card, so it uses the contrast-corrected variant. The border, rings and chip keep the
+     calendar's real colour, which is what makes two calendars tell apart at a glance. */
+  .cal-bubble-when{font-size:11.5px;font-weight:700;color:var(--cal-accent-ink);margin-top:2px;}
+  .cal-bubble-close{flex:none;background:none;border:none;color:var(--faint);font-size:18px;
+    line-height:1;padding:2px 4px;border-radius:6px;cursor:pointer;font-family:inherit;}
+  .cal-bubble-close:hover{color:var(--text);background:var(--surface-alt);}
+  .cal-bubble:focus-visible,.cal-bubble-close:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  @media (max-width:760px){
+    /* Still a card pinned to the right, not a full-width band — a strip spanning the screen reads
+       as a system banner or an error, which is the wrong register for "your next thing is soon".
+       calc(100vw - 28px) is only the ceiling for a very narrow phone; normally it's 300px.
+       The --nav-h fallback is 56px here, not 0: if the bubble somehow rendered before nav.js had
+       measured, falling back to 0 would tuck it UNDER the bar, where it can't be read or dismissed.
+       Same defensive fallback .scratch-overlay uses. */
+    .cal-bubble{right:14px;max-width:min(300px,calc(100vw - 28px));top:calc(var(--nav-h, 56px) + 10px);
+      gap:9px;padding:11px 12px;}
+    .cal-row-time{flex-basis:64px;}
+  }
+  /* the entry and the rings are decoration; the bubble still arrives and still reads without them */
+  @media (prefers-reduced-motion: reduce){
+    .cal-bubble{animation:none;transition:none;}
+    .cal-bubble:hover{transform:none;}
+    .cal-bubble::after{animation:none;}
+  }

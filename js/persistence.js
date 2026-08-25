@@ -367,6 +367,16 @@
     if(!Array.isArray(state.clock.blocks)) state.clock.blocks = [];
     state.clock.blocks.forEach(b=>{ if(b.color===undefined) b.color = ''; if(b.emoji===undefined) b.emoji = ''; });
 
+    // Google Calendar — preferences only; the events themselves are memory-only and deliberately
+    // never persisted (see js/calendar.js's header for why).
+    state.calendar = parsed.calendar || {};
+    if(!Array.isArray(state.calendar.calendarIds)) state.calendar.calendarIds = [];
+    if(!state.calendar.lookaheadDays) state.calendar.lookaheadDays = 14;
+    if(!state.calendar.bubbleMinutes) state.calendar.bubbleMinutes = 60;
+    if(state.calendar.bubbleEnabled === undefined) state.calendar.bubbleEnabled = true;
+    if(state.calendar.bubbleSound === undefined) state.calendar.bubbleSound = true;
+    if(!Array.isArray(state.calendar.dismissed)) state.calendar.dismissed = [];
+
     state.wishlist = parsed.wishlist || [];
     state.wishlist.forEach(w=>{
       if(w.imageUrl===undefined) w.imageUrl = '';

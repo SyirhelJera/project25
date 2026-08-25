@@ -17,7 +17,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Checklists** | Reusable checklists with configurable auto-reset (daily/weekly/monthly/yearly), subgroups, a pomodoro-style "Play" mode that walks through items one at a time with a per-item timer (optionally with background music from a YouTube Music / YouTube playlist — see "Session music"), and miss-streak exemptions for reset periods that overlap a protected day (Settings). |
 | **Notes** | A Workflowy-style outliner — every note is one row and can hold sub-notes, nested as deep as you like, with collapsible branches, a one-line title plus an optional longer body, keyboard-first editing (Enter for a new note, Tab/Shift+Tab to nest and un-nest, Shift+Enter for the body, Backspace on an empty row to remove it), **checkboxes** (turn any note into a task with ☑; parents show a done/total chip for their task children), **#tags** typed inline in a title and surfaced as a clickable filter bar, **markdown** note bodies (headings, bold/italic/strikethrough, inline + fenced code, links, lists, quotes, rules — rendered when you're not editing, raw textarea when you are), search that keeps a match's ancestor path visible, pinned notes in a strip at the top, and drag-to-reorder/reparent a whole subtree by grabbing the row itself — no handle (◀▶▲▼ buttons stand in on touch, where HTML5 drag events don't fire). A note you never typed anything into isn't kept: it's discarded as soon as focus leaves it, so an abandoned row never becomes a permanent blank line. A blank note that has picked up a body or children counts as content and stays. |
 | **Jobs** | Job-application tracker — one card per application (company/role profile, company photo, salary, source, links, key contacts, resume version + optional Drive-hosted PDF), a status pipeline (prospect → applied → interviewing → offer / rejected / ghosted) with counts, filtering, sorting and free-text search (company/contact/title/location/source), free-text subcategories shown as a color-customizable pill on the card, starring/favoriting (starred applications pin to the top of the default order, plus a "★ Starred only" toolbar toggle that narrows whatever the chips/search already selected), per-application notes, auto-ghosting of applications with no news after 30 days, and a separate store of job-site logins ("🔑 Accounts", each with an optional site photo). Persists to its own storage resource, see "Persistence" below. |
-| **Time** | Two panes behind a toggle. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. |
+| **Time** | Three panes behind a toggle. *Clock*: a live analog dial mapped to the current 12-hour half, with an optional fasting eating-window ring and custom time blocks (Sleep, Work, Gym…) drawn as colored wedges; the sidebar carries a chip for the block you're in right now. *Countdowns*: days-remaining widgets for arbitrary dates; one can be pinned to show on the Goals page. *Calendar*: a read-only agenda of your real Google Calendar, grouped by day — see "Google Calendar" below. |
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
 | **Board** | A personal board of advisers — a roster of AI personas (Truth-Teller, Pragmatist, Visionary, Health Anchor, Outsider, plus eight more to hire and any number you write yourself), a prompt maker that turns a decision into one block of markdown, and a log of past consults with the answer pasted back. Nothing here calls a model: it builds the prompt and hands it to whichever AI tool you already use. See "Board of Advisers" below. |
 | **Insights** | The one cross-tracker view — every other tab answers "how is *this* going", this one answers "how am I doing". Four sections of summary cards: *Today* (level/XP, habits done, dailies done, and a "needs you" count), *Trends* (net worth, weight, habit consistency and daily activity, each a headline figure with a ▲▼ delta and a 90-day sparkline), *Pipelines* (goal completion, money goals/debts/subscriptions, the job funnel, the next countdowns) and *Games* (Valorant RR — with a chip row to pick which tracked account the card reads, defaulting to whichever one the Valorant tab has selected — and TFT LP with progress toward your goal rank). Every card is a doorway: it summarises, then links into the tab that owns the data, where the real chart lives. Nothing here is a new number — each figure is read through the owning tab's own helper, so the two can never disagree. Read-only; it never writes to `state`. |
@@ -33,7 +33,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
 countdowns.js → settings.js → backups.js → mantras.js → motivation.js → music.js →
 checklists.js → notes.js → scratch.js → finance.js → wishlist.js → jobs.js → fitness.js →
-valorant.js → clock.js → tft.js → board.js → insights.js → main.js
+valorant.js → clock.js → calendar.js → tft.js → board.js → insights.js → main.js
 ```
 
 `tft.js` sits after `valorant.js` on purpose: it owns `showGameSubTab()`, which calls `renderValorant()` and `syncValLivePolling()`. The same list is precached by hand in `sw.js` — a name missing there installs fine and then boots offline with that tab's render function undefined, so the two must be edited together (and `SHELL_CACHE` bumped).
@@ -45,7 +45,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `scratch.js`, `countdowns.js`, `mantras.js`, `backups.js`, `settings.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `scratch.js`, `countdowns.js`, `calendar.js`, `mantras.js`, `backups.js`, `settings.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`insights.js`** — the Insights tab, and the one file that reads across all the others. It loads last for that reason. Read-only: it never mutates `state` and never calls `save()`.
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
@@ -71,6 +71,12 @@ state = {
                                        // date covered by state.protectedDays below as excused —
                                        // it doesn't break a streak, but doesn't inflate it either
   countdowns: [ { id, label, date, pinned, createdAt } ],
+  calendar: {                          // Google Calendar (js/calendar.js) — PREFERENCES ONLY.
+    calendarIds: [], lookaheadDays, bubbleMinutes, bubbleEnabled,
+    dismissed: [ {id,startMs} ]        // “coming up” bubbles already waved off; pruned to future
+  },                                   // The fetched EVENTS are never stored — they'd ride in this
+                                       // blob on every save from every tab, and they're stale
+                                       // within the hour. Same ruling as valorant.live below.
   mantras: [ { id, text } ],
   board: {                             // Board of Advisers (js/board.js) — AI personas + consults
     advisers: [ { id, presetKey, emoji, name, lens, color, hired, createdAt } ],
@@ -378,12 +384,14 @@ Key mechanics in this layer:
 
 ### Supabase backend
 
-Five Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
+Six Edge Functions (`supabase/functions/`), called via `supabase.functions.invoke(...)` so secrets never reach the browser:
 
 - **`manage-backups`** — lets the client list/restore daily backups from a private Storage bucket (`backups`) without ever exposing the `service_role` key to the browser. Read-only from the client's perspective.
 - **`suggest-subtasks`** — proxies "suggest subtasks for this goal" to the Anthropic API (`claude-haiku-4-5`) using a server-side `ANTHROPIC_API_KEY` secret, with a shared daily call cap (`ai_usage` table, 30/day) and a 300-token cap per call.
 - **`upload-fitness-photo`** — uploads a Fitness tab progress photo straight to a Google Drive folder on the app owner's behalf. Uses a one-time-obtained Google OAuth refresh token (server secret) to mint a fresh access token per call, so uploads are fully automatic — no per-upload consent prompt. Only the returned Drive file id/link are saved into app state; the image bytes themselves live only in Drive.
 - **`upload-resume`** — same pattern as `upload-fitness-photo`, for the Jobs tab's per-application resume PDF attachment: uploads straight to a Google Drive folder named "Uploaded Resumes" (auto-created on first use if it doesn't exist, or pinned to a specific folder via the optional `GOOGLE_DRIVE_RESUMES_FOLDER_ID` secret), reusing the same `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN` secrets as the fitness-photo function — no separate Google OAuth setup needed if that's already configured. Only the Drive file id/link are saved into app state; the PDF bytes live only in Drive.
+
+- **`google-calendar`** — reads the app owner's Google Calendar for the Time tab's Calendar pane. Same server-side-refresh-token pattern as the two Drive functions, but with its **own** secret `GOOGLE_CALENDAR_REFRESH_TOKEN` rather than reusing `GOOGLE_REFRESH_TOKEN`: that one carries only `drive.file`, so making it work here would mean re-consenting it into a combined token that Fitness photos and resume uploads both already depend on. Scope is `calendar.readonly`, so nothing on either side of this wire can create, edit or delete a real event. Two actions — `{action:'calendars'}` returns the account's calendar list for the picker, `{action:'events', calendarIds}` returns the merged agenda. Calendar ids are validated against `CAL_ID_RE` before being interpolated into the API path, which is the whole SSRF guard (same role `USERNAME_RE` plays in `pinterest-feed`), and the fan-out is capped at 10 calendars / 250 events / a 60-day window. Events are **trimmed server-side** to `{id, calendarId, summary, location, htmlLink, allDay, startIso, endIso, startMs}` — Google's raw item also carries attendee email addresses, descriptions and conference join links, and this app's browser context is an unauthenticated shared row, so none of that crosses the wire.
 
 - **`pinterest-feed`** — reads a Pinterest profile's public RSS feeds and returns its pins as JSON. No secret is involved — it exists purely because Pinterest serves no CORS headers, so the browser can't read those files itself. The Motivation tab uses it for **Pinterest collections**: a category with `source: 'pinterest'` replaces its images with 25 random pins the first time the app is opened on a new day (`cat.lastSync` holds the day key), so the slideshow shows something different every morning. Images stay as `i.pinimg.com` URLs — nothing is copied into Storage, so a refresh leaves nothing behind. The 📌 on a thumbnail copies that pin into an ordinary category called **Saved Pins**, which the daily refresh never touches. The username is validated against `^[A-Za-z0-9_][A-Za-z0-9_-]{0,58}$` server-side — it's interpolated into the fetched URLs' paths, so that check is the whole SSRF guard.
 
@@ -505,6 +513,92 @@ Three things worth knowing:
 
 `sw.js` lists `api.metatft.com` in `LIVE_DATA_HOSTS` so rank data always hits the network — without that, its cache-first branch would serve a stale rank forever. `raw.communitydragon.org` (the rank crests) is deliberately *not* listed: that art is immutable and worth having offline.
 
+### Google Calendar
+
+The Time tab's third pane (`js/calendar.js`) is a **read-only** agenda of your real Google Calendar,
+grouped by day — Today / Tomorrow / weekday — with all-day items floated to the top of their day. A
+chip row picks which calendars to merge; an empty selection means "just the account's own calendar",
+which is what it shows before you've ever touched the picker. Everything comes from the
+`google-calendar` Edge Function above, so no Google credential, consent popup or access token ever
+exists in the browser. The scope is `calendar.readonly`: this app has no way to change a real event,
+by design and not merely by omission.
+
+**The fetched events are never persisted anywhere** — they live in a module-level `calEvents` and
+nothing else. This is the same ruling as the Live Match panel: `doSave()`'s rest-destructure carries
+any top-level `state` key into the shared blob, and that blob is re-serialized and re-uploaded *in
+full* on every save from every tab, so a fortnight of events would be re-sent every time you ticked
+an unrelated habit — for data that's stale within the hour and one button away. `state.calendar`
+therefore holds preferences only (`calendarIds`, `lookaheadDays`, `bubbleMinutes`, `bubbleEnabled`,
+`dismissed`). The cost, stated rather than papered over: **there is no offline agenda.** Open with no
+network and the pane shows its error line, and no bubble appears.
+
+**`singleEvents=true` is load-bearing** on the server's events call. Without it a weekly standup
+comes back *once*, as a master event carrying an `RRULE`, and this app would have to implement
+recurrence expansion itself; with it Google returns the concrete instances that fall in the window.
+`orderBy=startTime` is only legal alongside it, which is the other half of the reason. The other
+Google quirk is handled server-side too: an all-day event carries `start.date` (`"2026-08-25"`, no
+zone) where a timed one carries `start.dateTime`, and parsing that bare date reads it as **UTC**
+midnight — which lands on the wrong local day either side of Greenwich. Both ends append `T00:00:00`
+to make it local midnight instead, which is why the day grouping agrees with what Google shows you.
+
+**The "coming up" bubble** fires once per page load, from `maybeShowCalendarBubble()` in
+`renderAll()` — the same "no-op unless conditions are met" slot `maybeSyncPinterestCategories()`
+occupies, and `renderAll()` runs at the end of `load()`, which is exactly "when I first open the
+app". Its fetch is async on purpose, so it never delays first paint or `hideLoadScreen()`; the bubble
+simply appears when the function returns. It shows the soonest *timed* event starting within
+`bubbleMinutes` (all-day events are skipped — "starts at local midnight" isn't something to be warned
+about 40 minutes ahead of), auto-hides after 12s, and ✕ records a `{id, startMs}` dismissal so a
+reload doesn't bring the same one back. That list is pruned to future events on every open, so it
+can't grow.
+
+`bubbleEnabled` is the one preference here with a UI: **Settings → Tracking → Calendar
+reminder**, a `.unit-toggle` wired in `renderSettings()` like the others. Switching it off also hides
+a bubble that is on screen at that moment, and stops the app reading your calendar on load at
+all — the early return in `maybeShowCalendarBubble()` happens before the fetch, so the Edge
+Function isn't called. The pane is unaffected either way, since it fetches on its own.
+`bubbleSound`, `bubbleMinutes` and `lookaheadDays` stay console-only knobs.
+
+**The bubble is coloured by the calendar the event is on.** The per-calendar `backgroundColor` is
+resolved server-side and attached to every event, rather than being correlated on the page — the
+client's calendar list is only fetched when the Calendar pane is opened, and the bubble fires on
+load, before that has ever happened. The `"primary"` alias needs its own entry in that map, since
+`calendarList` reports the account's own calendar under its email address with `primary:true`, so a
+request for the literal string `primary` — what an untouched picker sends — would match nothing.
+
+Client side, `calAccentFor()` turns that hex into **two** values, because one can't do both jobs.
+`--cal-accent` is the calendar's colour untouched, painting the border, rings and icon chip —
+decorative shapes where fidelity is what makes two calendars tell apart. `--cal-accent-ink` is that
+same colour dragged toward the theme until it clears WCAG AA against `--surface`, and is used *only*
+for the countdown text. Correcting one shared value for both instead would crush "Banana" to a dark
+olive just so eleven words of 11.5px text could sit on white. The surface luminance is read live off
+`--surface` rather than hardcoded per theme, and the nudge loop tests the *rounded* colour, since
+rounding to whole channels is exactly what turns a 4.50 into a failing 4.49.
+
+Three placement rules it depends on. The bubble is a **body-level sibling of `.main`**, never inside
+`#view-time` — `.view{display:none}` would hide it whenever the Time tab wasn't the active one, and
+reaching you on whatever tab you opened is the entire point (the same reason `#valItemPreviewOverlay`
+sits outside `#view-games`). It sits **top right, tucked under the navbar**, offset by
+`--nav-h` — the sticky bar's measured height, published by `js/nav.js` and kept live by a
+`ResizeObserver`, so the bubble follows the bar as it shrinks on scroll. That property is exactly
+`0` above the mobile breakpoint, where the nav is a left sidebar and the corner is already clear, so
+one rule serves both layouts; it also already includes `env(safe-area-inset-top)`, so adding the
+inset again would double-count it. Its `z-index:920` is picked against the ladder: above the mobile
+sticky sidebar (40) so a bar mid-shrink can't clip it, below the scratch page (950) and below the
+1000 modal tier, because a notification must never sit on top of a dialog — and it appears *later*
+in the DOM than `#scratchOverlay`, so the number is what keeps it under rather than the source order. And
+**the whole card is the click target** — there is no View button — and it **reuses nav.js's own
+click ladder** (`item.click()`, then `showTimeSubTab('calendar')` *after* it, never instead of it),
+exactly as `insGoTo()` does: the ladder itself calls `showTimeSubTab('clock')`, so a sub-tab set
+first is immediately overwritten. The ✕ inside calls `stopPropagation()`, or dismissing would also
+navigate. It keeps `role="status"` rather than becoming a `role="button"` — being *announced* on
+arrival is its first job, and a button role would silence that — so `tabindex`, a `title` and an
+Enter/Space handler are what carry the keyboard path, since `cursor:pointer` announces nothing.
+
+One smaller trap worth knowing: the calendar picker's chips are `.cal-chip`, deliberately **not**
+`.finance-subnav-btn` even though they look like one. `showTimeSubTab()` owns every
+`#view-time .finance-subnav-btn` and strips `.active` off all of them, which would blank the chips on
+every sub-tab switch.
+
 ### Board of Advisers
 
 A standing panel of perspectives to run a decision past. It is a **prompt workshop, not an AI client** — nothing in the tab calls a model, and it has no API key, no Edge Function, no rate limit and no bill. It assembles a prompt; you take that prompt to whichever tool you already pay for.
@@ -540,6 +634,7 @@ Consults ride in the shared `app_data` row, which is why they are capped at 25 r
 | Pinterest pin pages + `v*.pinimg.com` (via the `pinterest-feed` function's `resolve` action) | Finding which of the 25 picked pins are videos, and their mp4 URL — the clip itself then streams from the CDN to the browser, not through the function | None (public pin pages) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
 | Google Drive API (via `upload-fitness-photo`/`upload-resume` functions) | Auto-storing fitness progress photos and Jobs-tab resume PDFs | Server-side OAuth refresh token only |
+| Google Calendar API (via the `google-calendar` function) | The Time tab’s read-only agenda and the “coming up” bubble | Server-side OAuth refresh token only (`calendar.readonly`) |
 | Riot internal client API (`auth.riotgames.com`, `pd.*.a.pvp.net`, via `scripts/valorant-check-store.mjs`) | Daily personal store rotation + weekly accessory shop + (via the Local Helper's "Check Owned Skins") owned-skin entitlements | Local session cookie only, never leaves your machine — see "Setup" |
 | Riot internal client API (`glz-{region}-1.{shard}.a.pvp.net` + `pd.*.a.pvp.net`, via `scripts/valorant-live.mjs`) | The live lobby: roster, every player's rank/peak/season record, parties, and competitive agent win rates | Local session cookie only, never leaves your machine — see "Live Match" above |
 | YouTube IFrame Player API (`www.youtube.com/iframe_api`) | Background music during a checklist Play session, from a YouTube / YouTube Music playlist | None — public playlists only, no key |
@@ -555,7 +650,7 @@ Consults ride in the shared `app_data` row, which is why they are capped at 25 r
 2. **If deploying outside Claude** (e.g. GitHub Pages), create a Supabase project and:
    - Run the SQL in the comment at the top of `js/persistence.js` to create the `app_data` table + open RLS policy.
    - Replace `SUPABASE_URL` / `SUPABASE_ANON_KEY` in `js/persistence.js`.
-   - Deploy the four Edge Functions in `supabase/functions/` (`manage-backups`, `suggest-subtasks`, `upload-fitness-photo`, `upload-resume`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google Drive secrets below).
+   - Deploy the five Edge Functions in `supabase/functions/` (`manage-backups`, `suggest-subtasks`, `upload-fitness-photo`, `upload-resume`, `google-calendar`) and set their secrets (`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, and the Google secrets below).
    - Create the private `backups` Storage bucket and the `ai_usage` table (`day text primary key, count int`) if you want backups / AI subtask limits to work.
    - For scheduled backups, set the `SUPABASE_SERVICE_ROLE_KEY` GitHub Actions secret so `.github/workflows/backup-supabase.yml` can run.
    - **For goal/finance icon uploads and the daily Valorant store check's writes** — run `supabase/setup-egress-fix.sql` once in the SQL editor. It creates the public `icons` Storage bucket + policies (goal/finance images upload here instead of being embedded as base64 in `app_data`) and the three Postgres functions (`valorant_set_daily_store`, `valorant_set_daily_store_error`, `valorant_delete_daily_store`) `scripts/valorant-lib.mjs` calls instead of reading/writing the whole row. Skipping this doesn't break anything — icon uploads fall back to base64 and the Valorant scripts fall back to erroring per-account — it just means you're not getting the egress savings.
@@ -566,6 +661,12 @@ Consults ride in the shared `app_data` row, which is why they are capped at 25 r
      4. Set the Supabase Edge Function secrets `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`, and optionally `GOOGLE_DRIVE_FOLDER_ID`.
      5. Note: to power the in-app photo carousel without proxying image bytes through Supabase, the function sets each uploaded photo's Drive sharing to "anyone with the link can view" and points the carousel's `<img>` tags straight at Drive. Anyone who obtains a photo's (long, unguessable) file ID could view it — turn this off by removing the `permissions` call in `upload-fitness-photo/index.ts` if that's not an acceptable trade-off for you.
    - **For Jobs-tab resume PDF attachments** (needed for `upload-resume`) — reuses the exact same `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`/`GOOGLE_REFRESH_TOKEN` secrets set up above for Fitness photos, so if those are already set there's nothing new to configure: the function finds (or creates, on first upload) a Drive folder literally named "Uploaded Resumes" on its own. Set the optional secret `GOOGLE_DRIVE_RESUMES_FOLDER_ID` only if you'd rather pin uploads to a specific existing folder instead of the by-name lookup. Same link-viewable sharing trade-off as progress photos applies to the "View in Drive" links.
+   - **For the Time tab's Calendar pane** (one-time setup, needed for `google-calendar`). Quickest route: `node scripts/google-calendar-token.mjs`, which runs the whole loopback OAuth flow locally and prints the refresh token plus the `secrets set` lines to paste — it works with either OAuth client type and passes `prompt=consent`, so it re-issues a refresh token on every run instead of only the first. The manual equivalent, if you'd rather not run a script:
+     1. In the same [Google Cloud Console](https://console.cloud.google.com) project, enable the **Google Calendar API**.
+     2. Complete an OAuth consent once with scope `https://www.googleapis.com/auth/calendar.readonly` (same OAuth Playground route as above, own client ID/secret under the settings gear) and copy the resulting **refresh token**.
+     3. Set the Supabase Edge Function secret `GOOGLE_CALENDAR_REFRESH_TOKEN` to it. Deliberately a **separate secret** from `GOOGLE_REFRESH_TOKEN` — see that function's bullet above for why.
+     4. **If you had to make a new OAuth client for this** — likely, since the Playground needs a *Web application* client with `https://developers.google.com/oauthplayground` as a redirect URI, and the Drive setup above suggests a *Desktop app* one — also set `GOOGLE_CALENDAR_CLIENT_ID` and `GOOGLE_CALENDAR_CLIENT_SECRET` to that new client's pair. A refresh token is bound to the client that issued it, and handing it to a different one fails with `invalid_client`, which names nothing useful. Leave both unset if one client covers everything.
+     5. Note: if that Cloud project's OAuth consent screen is still in **Testing** publishing status, Google expires refresh tokens after 7 days. If the calendar starts failing weekly and nothing else changed, that's why — publish the consent screen.
    - **For the daily Valorant store check** — this one runs **locally on your own machine**, not as an Edge Function (see "Daily Valorant store check" above for why) — recurring, not one-time. Supports tracking more than one Riot account's store side by side, each saved under a label you choose. No `npm install` needed anywhere in `scripts/` — it's plain Node built-ins end to end:
      1. In your own normal browser, log into `https://playvalorant.com`. Open DevTools (F12) → Application tab → Cookies → `https://auth.riotgames.com` → copy the values of **both** the `ssid` and the `clid` cookie (see "A session is two cookies" above — `ssid` alone is refused as though it had expired). Note DevTools only lists cookies for origins the current page touched, so if `auth.riotgames.com` isn't in the list, open a tab straight at `https://auth.riotgames.com/` first.
         - **Or skip steps 1-2 entirely**: `node scripts/valorant-login-window.mjs [label]` — or double-click `scripts\valorant-login-window.cmd` — opens a small, signed-out window of your default browser on Riot's login page, waits for you to sign in there, and saves the session under that label by itself. Nothing else needs to be running: not the local helper, not the app. Omit the label to refresh the account you already have saved (it asks which, if you track more than one). The Valorant tab's **🌐 Log in with browser** button runs the same thing through the local helper, for when the tab is already open. It's the manual copy automated, not the login — see "Log in with browser" above for exactly where that line sits and why nothing in it may ever try to disguise the window.
@@ -629,8 +730,10 @@ supabase/functions/
   suggest-subtasks/                 AI goal-subtask suggestions (Anthropic, rate-limited)
   upload-fitness-photo/             uploads a Fitness progress photo to Google Drive
   upload-resume/                    uploads a Jobs-tab resume PDF to Google Drive ("Uploaded Resumes" folder)
+  google-calendar/                  read-only Google Calendar agenda for the Time tab (server-side OAuth refresh token)
   pinterest-feed/                   merges a Pinterest profile's public RSS feeds — profile + every board (CORS proxy for Motivation's Pinterest collections); also resolves mp4 URLs for video pins
 scripts/serve.mjs                   `node scripts/serve.mjs` → serves the app at http://localhost:8025 (loopback, no install); needed for session music, which YouTube won't embed into a file:// page
+scripts/google-calendar-token.mjs   run LOCALLY once → the calendar.readonly refresh token (loopback OAuth, no install)
 scripts/backup-supabase.sh          daily snapshot → Supabase Storage
 scripts/valorant-lib.mjs            shared, dependency-free helpers (sessions, Supabase writes, the storefront + owned-skins fetch)
 scripts/valorant-login.mjs          run LOCALLY to save a pasted Riot session cookie under a labeled account

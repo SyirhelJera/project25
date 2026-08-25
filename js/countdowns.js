@@ -168,6 +168,10 @@
     document.querySelectorAll('.timetab').forEach(t=>t.style.display = (t.id==='timetab-'+key) ? '' : 'none');
     if(key==='countdowns') renderCountdowns();
     if(key==='clock') renderClock();
+    // Calendar goes through enterCalendarPane() rather than renderCalendar() directly: it's the
+    // only pane here whose data comes off the network, so entering it may need a fetch first.
+    // Both of its fetches are self-limiting, so re-entry is free (see js/calendar.js).
+    if(key==='calendar') enterCalendarPane();
   }
   document.querySelectorAll('#view-time .finance-subnav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=> showTimeSubTab(btn.dataset.timetab));

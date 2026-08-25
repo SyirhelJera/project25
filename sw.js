@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v29';
+const SHELL_CACHE = 'p25-shell-v30';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -39,6 +39,7 @@ const SHELL_ASSETS = [
   './js/fitness.js',
   './js/valorant.js',
   './js/clock.js',
+  './js/calendar.js',
   './js/tft.js',
   './js/board.js',
   './js/insights.js',

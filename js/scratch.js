@@ -3096,6 +3096,14 @@
   scratchSurface.addEventListener('click', e=>{
     const t = e.target;
     if(!t || !t.closest) return;
+    /* Clicking into the writing puts find away. Reaching for the page is how you say you are done
+       searching — the panel has already done its job by the time you go to type, and leaving it up
+       means it sits over the very text you just jumped to.
+       Silent, because the click is itself the focus: closeScratchFind()'s own focusScratchSurface()
+       would be a redundant second focus in the middle of the browser's own caret placement. Placed
+       above every branch below so it happens whatever was clicked — the panel is just as much in
+       the way when the thing you reached for was an image or a tickbox. */
+    if(scratchFindOn) closeScratchFind(true);
     const box = t.closest(SCRATCH_TICK_SEL);
     if(box){
       /* Let the browser's own activation do the toggling, and mirror the result into the

@@ -74,6 +74,11 @@
       // it directly — no local helper and no Edge Function, unlike the Valorant tooling.
       sync: { region:'sg2', riotId:'', auto:true, lastSyncedAt:null, lastError:'', cutoffs:null } },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
+    // Google Calendar (js/calendar.js) — PREFERENCES ONLY, the same rule as valorant.live above.
+    // The fetched events are never stored anywhere: they'd ride in the shared blob on every save
+    // from every tab, and they're stale within the hour. calendarIds:[] means "just the account's
+    // own calendar". dismissed:[{id,startMs}] is which "coming up" bubbles you've already waved off.
+    calendar: { calendarIds: [], lookaheadDays: 14, bubbleMinutes: 60, bubbleEnabled: true, bubbleSound: true, dismissed: [] },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,
               //   title, postingUrl, salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,

@@ -215,6 +215,32 @@
   // back to an inline base64 data URL when Supabase isn't configured/reachable (e.g. running
   // inside Claude, or the upload itself fails), so an upload never just silently breaks — it
   // just costs more egress than usual until Storage is reachable again.
+  /* ---------- alpha-aware output ----------
+     Every upload used to be re-encoded as JPEG unconditionally. That is right for a photograph and
+     wrong for a cut-out: JPEG has no alpha channel, so a transparent PNG came back with its
+     transparency flattened onto the canvas's own (black) backdrop — barely noticeable on a dark
+     theme, a black slab on a light one, and unmistakable the moment two images overlap, which is
+     exactly what the scratch page's free-floating images do.
+     So the OUTPUT FORMAT follows the pixels rather than the caller: an image whose source type can
+     carry alpha at all is scanned once, and only if some pixel is actually less than fully opaque
+     is it re-encoded as PNG (lossless, alpha kept). Everything else takes the JPEG path byte for
+     byte as before — which matters more than it looks: nearly every pasted screenshot arrives as
+     image/png and is fully opaque, and encoding those losslessly would multiply what Storage holds
+     for no visible gain at all. */
+  const ALPHA_SOURCE_TYPE = /^image\/(png|webp|gif|avif|svg\+xml)$/i;
+
+  /* Scanned on the ALREADY DOWNSCALED canvas and early-exiting on the first transparent pixel, so
+     the full-buffer walk only ever happens for an opaque PNG. getImageData cannot taint here (the
+     source is an object URL for a local File, same-origin by construction), but it is wrapped
+     anyway and a failure simply means "assume opaque" — i.e. the old behaviour. */
+  function canvasHasAlpha(ctx, w, h){
+    try{
+      const data = ctx.getImageData(0, 0, w, h).data;
+      for(let i = 3; i < data.length; i += 4) if(data[i] < 255) return true;
+    }catch(e){}
+    return false;
+  }
+
   function compressImageFile(file, maxDim, quality){
     return new Promise((resolve, reject)=>{
       const objUrl = URL.createObjectURL(file);
@@ -228,7 +254,11 @@
         canvas.width = w; canvas.height = h;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, w, h);
-        canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Could not encode image')), 'image/jpeg', quality);
+        const done = blob => blob ? resolve(blob) : reject(new Error('Could not encode image'));
+        // note the missing quality argument on the PNG branch: PNG is lossless, and passing one
+        // there is meaningless rather than merely ignored
+        if(ALPHA_SOURCE_TYPE.test(file.type || '') && canvasHasAlpha(ctx, w, h)) canvas.toBlob(done, 'image/png');
+        else canvas.toBlob(done, 'image/jpeg', quality);
       };
       img.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('Could not decode image')); };
       img.src = objUrl;
@@ -251,12 +281,18 @@
   function uploadCompressedImage(file, maxDim, quality, folder){
     return compressImageFile(file, maxDim, quality).then(blob=>{
       if(!supabaseConfigured || usingClaudeStorage || !supa) return blobToDataUrl(blob);
-      const path = folder + '/' + uid() + '.jpg';
+      /* The extension and the content type have to FOLLOW THE ENCODING, not the caller's
+         assumption: compressImageFile() now emits PNG for anything that turned out to carry
+         transparency, and serving those bytes from a .jpg path labelled image/jpeg is how the
+         alpha would get thrown away again one step later. Anything that isn't PNG is JPEG,
+         including the raw-File fallback above. */
+      const type = /^image\/png$/i.test(blob.type || '') ? 'image/png' : 'image/jpeg';
+      const path = folder + '/' + uid() + (type === 'image/png' ? '.png' : '.jpg');
       // cacheControl is a full year: each path is unique (uid()) and never overwritten, so the
       // browser can cache a fetched image indefinitely instead of re-pulling it from Storage
       // (and burning egress) every time its default 1-hour cache would otherwise expire — e.g.
       // on every slideshow rotation or tab revisit past that hour.
-      return supa.storage.from(ICONS_BUCKET).upload(path, blob, { contentType: 'image/jpeg', cacheControl: '31536000' })
+      return supa.storage.from(ICONS_BUCKET).upload(path, blob, { contentType: type, cacheControl: '31536000' })
         .then(({ error })=>{
           if(error) throw error;
           return supa.storage.from(ICONS_BUCKET).getPublicUrl(path).data.publicUrl;

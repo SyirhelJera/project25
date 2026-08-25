@@ -106,6 +106,26 @@
      than lost — resize on a laptop, open on a phone, and it is still right when you go back. */
   const SCRATCH_IMG_MIN = 40;
   const SCRATCH_IMG_MAX = 2000;
+  /* ---------- free-floating images ----------
+     A photo can be lifted OUT of the text flow and dropped anywhere on the sheet, overlapping the
+     writing and overlapping other photos. That position rides on the image as three data
+     attributes, for exactly the reason the width does: three small integers with three tiny
+     regexes, checked here, beat widening the style allowlist with `position`/`left`/`top` — which
+     would let anything arriving from the shared row absolutely position itself over the page.
+     The attributes are the truth; the inline left/top/z-index the browser actually lays out from
+     are written by layoutScratchFloats() and are deliberately NOT in SCRATCH_STYLE_OK, so they are
+     stripped on the way out and re-derived on the way in. Presence of data-x IS what makes an
+     image a float (the CSS selector is img[data-x]), so the two X/Y attributes are kept or dropped
+     together — half a coordinate pair is not a position.
+
+     x is a PERCENTAGE of the sheet's width and y is PIXELS from the top of the content, which is
+     the same asymmetry the width attribute already commits to: the column is 70ch and reflows
+     between a laptop and a phone, so a horizontal position has to scale with it, while the
+     vertical one has to stay pinned to the paragraph it was put beside. */
+  const SCRATCH_FLOAT_X = /^\d{1,3}(\.\d{1,2})?$/;   // 0–100, percent of the sheet width
+  const SCRATCH_FLOAT_Y = /^\d{1,6}$/;                // px down the sheet
+  const SCRATCH_FLOAT_Z = /^\d{1,3}$/;                // stacking order among the floats
+  const SCRATCH_FLOAT_ZMAX = 999;
 
   function safeScratchStyle(node){
     const src = node.style;
@@ -258,6 +278,19 @@
         if(/^\d{1,4}$/.test(w)){
           const n = parseInt(w, 10);
           if(n >= SCRATCH_IMG_MIN && n <= SCRATCH_IMG_MAX) img.setAttribute('width', String(n));
+        }
+        /* The float position. Both coordinates or neither: data-x alone is what the CSS keys off,
+           so letting a valid x through beside a malformed y would take the image out of the flow
+           and then pin it to the top of the sheet, which is worse than leaving it in the text. */
+        const fx = (node.getAttribute('data-x') || '').trim();
+        const fy = (node.getAttribute('data-y') || '').trim();
+        if(SCRATCH_FLOAT_X.test(fx) && parseFloat(fx) <= 100 && SCRATCH_FLOAT_Y.test(fy)){
+          img.setAttribute('data-x', fx);
+          img.setAttribute('data-y', fy);
+          const fz = (node.getAttribute('data-z') || '').trim();
+          // z is optional and merely an ordering, so a bad one falls back to the bottom of the
+          // stack rather than disqualifying the position
+          if(SCRATCH_FLOAT_Z.test(fz) && parseInt(fz, 10) <= SCRATCH_FLOAT_ZMAX) img.setAttribute('data-z', fz);
         }
         dest.appendChild(img);
         continue;
@@ -736,6 +769,11 @@
     const next = scratchActivePage().html || '';
     if(force || surf.innerHTML !== next) surf.innerHTML = next;
     markScratchEmpty();
+    /* Free-floating images carry their position as data-x/data-y percentages+pixels, never as the
+       inline left/top the browser lays out from (that pair is stripped by the sanitizer on the way
+       out, deliberately). So every replacement of the sheet has to turn the attributes back into
+       geometry, or a page switch would drop every photo to the top-left corner. */
+    layoutScratchFloats();
   }
 
   // contenteditable has no ::placeholder, and it's almost never truly :empty (browsers leave a <br>
@@ -828,6 +866,9 @@
     let html = surf.innerHTML;
     if(html.length > SCRATCH_MAX_CHARS){
       surf.innerHTML = sanitizeScratchHtml(html.slice(0, SCRATCH_MAX_CHARS)); // truncation can cut mid-tag; re-parse to close it
+      // the only path here that rewrites the surface, so the only one that has to put the floats
+      // back: the sanitizer keeps data-x/data-y and drops the geometry they are turned into
+      layoutScratchFloats();
       html = surf.innerHTML;
     }
     const page = scratchActivePage();
@@ -1111,53 +1152,30 @@
      and one arrangement is far easier to keep honest than two.
      The reorder drag is unaffected — its handlers live on #scratchPages and only ever cared about
      .scratch-dot, which now has that container to itself. */
-  /* ---------- how many dots are still worth drawing ----------
-     Dots are an excellent indicator up to a point and useless past it. Twenty identical circles
-     don't tell you which page is which, the row wraps into a block on a phone, and a thumb can't
-     hit one reliably anyway. So past the threshold the row becomes a pager — "‹ 4 / 23 ›" — and
-     the job the dots were failing at moves to a named list behind the counter.
-     Two thresholds, because the constraint really is width: a 70ch desktop column carries twice
-     what a 360px phone does, and dropping a perfectly good affordance on desktop to match the
-     phone would be the wrong trade. matchMedia is held rather than re-queried because .matches is
-     live, and the same query drives the CSS breakpoint. */
-  const SCRATCH_DOTS_MAX_NARROW = 12;
-  const SCRATCH_DOTS_MAX_WIDE = 24;
-  const scratchNarrow = (function(){
-    try{ return window.matchMedia('(max-width:760px)'); }catch(e){ return null; }
-  })();
-  function scratchDotsFit(n){
-    return n <= ((scratchNarrow && scratchNarrow.matches) ? SCRATCH_DOTS_MAX_NARROW : SCRATCH_DOTS_MAX_WIDE);
-  }
+  /* ---------- the page row ----------
+     A pager — "‹ 4 / 23 ›" — at every page count, and the counter opens the named list.
 
+     This used to be a row of dots. They were charming at five pages and actively unhelpful past
+     about twelve: identical circles tell you nothing about WHICH page each one is, the tooltip that
+     did needs a hover a phone hasn't got, the row wrapped into a block, and a thumb couldn't hit
+     one reliably. Keeping both and switching at a threshold meant two navigators, two reorder
+     mechanisms and two sets of edge cases for one job — so the dots are gone rather than demoted.
+     What replaced them is strictly more capable at every size: the counter always fits on one line,
+     the list behind it shows page NAMES, and reordering happens there on rows you can read instead
+     of on circles you can't tell apart. */
   function renderScratchPages(){
     const row = el('scratchPages');
     if(!row) return;
     ensureScratchPages();
     const pages = state.scratch.pages;
     const active = scratchActiveIndex();
-    if(!scratchDotsFit(pages.length)){
-      row.classList.add('is-pager');
-      row.innerHTML =
-          '<button type="button" class="scratch-pagenav" id="scratchPrevPage" title="Previous page" aria-label="Previous page">&lsaquo;</button>'
-        + '<button type="button" class="scratch-pagecount" id="scratchPageListBtn" aria-haspopup="true"'
-        + ' aria-expanded="' + (scratchSheetOn ? 'true' : 'false') + '" title="All pages">'
-        + (active + 1) + ' <span>/</span> ' + pages.length + '</button>'
-        + '<button type="button" class="scratch-pagenav" id="scratchNextPage" title="Next page" aria-label="Next page">&rsaquo;</button>';
-      renderScratchPageSheet();
-      renderScratchTools(pages);
-      return;
-    }
-    row.classList.remove('is-pager');
-    if(scratchSheetOn) closeScratchPageSheet();
-    let h = '';
-    for(let i=0; i<pages.length; i++){
-      const label = scratchPageTitle(pages[i]);
-      h += '<button type="button" class="scratch-dot' + (i === active ? ' is-active' : '') + (pages[i].id === scratchDragId ? ' is-dragging' : '') + '" data-i="' + i + '"'
-         + ' title="' + escapeHtml(label) + '"'
-         + ' aria-label="Page ' + (i + 1) + ' of ' + pages.length + ': ' + escapeHtml(label) + '"'
-         + (i === active ? ' aria-current="true"' : '') + '></button>';
-    }
-    row.innerHTML = h;
+    row.innerHTML =
+        '<button type="button" class="scratch-pagenav" id="scratchPrevPage" title="Previous page" aria-label="Previous page">&lsaquo;</button>'
+      + '<button type="button" class="scratch-pagecount" id="scratchPageListBtn" aria-haspopup="true"'
+      + ' aria-expanded="' + (scratchSheetOn ? 'true' : 'false') + '" title="All pages">'
+      + (active + 1) + ' <span>/</span> ' + pages.length + '</button>'
+      + '<button type="button" class="scratch-pagenav" id="scratchNextPage" title="Next page" aria-label="Next page">&rsaquo;</button>';
+    renderScratchPageSheet();
     renderScratchTools(pages);
   }
 
@@ -1165,7 +1183,7 @@
     const bar = el('scratchTools');
     if(!bar) return;
     let h = '';
-    // + and − rather than a word: they pair obviously, and the page's own name lives on its dot
+    // + and − rather than a word: they pair obviously, and the page's own name lives in the list
     h += '<button type="button" class="scratch-pagebtn" id="scratchAddPage" title="New page" aria-label="New page">+</button>';
     if(pages.length > 1) h += '<button type="button" class="scratch-pagebtn" id="scratchDelPage" title="Delete this page" aria-label="Delete this page">−</button>';
     /* The format bar's switch. It lives HERE, in a row that already exists, rather than in a strip
@@ -1187,7 +1205,71 @@
     h += '<button type="button" class="scratch-pagebtn scratch-mute' + (muted ? ' is-off' : '') + '" id="scratchMuteBtn"'
        + ' title="' + (muted ? 'Page-turn sound off' : 'Page-turn sound on') + '"'
        + ' aria-pressed="' + (muted ? 'true' : 'false') + '" aria-label="Toggle page-turn sound">♪</button>';
+    // last in the row, where a help affordance belongs, and the only one of these that opens
+    // something purely informational
+    h += '<button type="button" class="scratch-pagebtn scratch-helpbtn" id="scratchHelpBtn" aria-haspopup="true"'
+       + ' aria-expanded="' + (scratchHelpOn ? 'true' : 'false') + '" title="Shortcuts" aria-label="Shortcuts">?</button>';
     bar.innerHTML = h;
+  }
+
+  /* ---------- the shortcuts panel ----------
+     One table rather than one sentence. The footer used to carry every hint as a single run-on
+     line, which cost a permanent strip of unreadable micro-type on every screen and still could
+     not fit the whole truth — and being prose, it drifted out of date silently the moment the
+     dots stopped being the reorder handle.
+
+     Rows are tagged so the same table serves both input models: a `key` row is dropped on a touch
+     layout and a `touch` row on a pointer one, which is the same swap the old .scratch-tip-key /
+     .scratch-tip-touch pair did, moved onto whole rows so the two columns stay aligned. The
+     untagged rows are true either way. Nothing here is derived from state and nothing is
+     user-typed, so it is a static table; keep it that way, because the value of the panel is that
+     there is exactly one place to correct when a gesture changes. */
+  const SCRATCH_HELP_ROWS = [
+    ['',      'type <b>[]</b> then space',       'a tickbox'],
+    ['key',   '<kbd>ctrl</kbd> + <kbd>K</kbd>',  'link the selection'],
+    ['key',   '<kbd>tab</kbd> <kbd>tab</kbd>',   'find on every page'],
+    ['key',   'hold <kbd>tab</kbd> + scroll',    'turn the page'],
+    ['touch', 'swipe left or right',             'turn the page'],
+    ['key',   'drag an image',                   'lift it out of the text'],
+    ['touch', 'press and hold an image',         'lift it out of the text'],
+    ['',      'drag an image’s corner',          'resize it'],
+    ['',      'click the page count',            'every page, drag to reorder']
+    // no `esc` row: the footer says "esc to exit" permanently, and only on the same screens where
+    // these keyboard rows are shown at all
+  ];
+
+  function renderScratchHelp(){
+    const panel = el('scratchHelp');
+    if(!panel) return;
+    if(!scratchHelpOn){ panel.style.display = 'none'; panel.innerHTML = ''; return; }
+    let h = '<div class="scratch-help-t">Shortcuts</div>';
+    for(let i = 0; i < SCRATCH_HELP_ROWS.length; i++){
+      const r = SCRATCH_HELP_ROWS[i];
+      h += '<div class="scratch-help-row' + (r[0] ? ' is-' + r[0] : '') + '">'
+         + '<span class="scratch-help-k">' + r[1] + '</span>'
+         + '<span class="scratch-help-d">' + r[2] + '</span></div>';
+    }
+    panel.innerHTML = h;
+    panel.style.display = 'grid';
+  }
+
+  /* Only one panel may be up at a time. All three grow upward from the same corner of the footer,
+     so a second one opening behind the first would simply be invisible. */
+  function openScratchHelp(){
+    closeScratchFind(true);   // silent: focus belongs to the ? that was just pressed, not the sheet
+    closeScratchPageSheet();
+    scratchHelpOn = true;
+    renderScratchHelp();
+    const btn = el('scratchHelpBtn');
+    if(btn) btn.setAttribute('aria-expanded', 'true');
+  }
+
+  function closeScratchHelp(){
+    if(!scratchHelpOn) return;
+    scratchHelpOn = false;
+    renderScratchHelp();
+    const btn = el('scratchHelpBtn');
+    if(btn) btn.setAttribute('aria-expanded', 'false');
   }
 
   /* ---------- the page list ----------
@@ -1200,6 +1282,9 @@
      horizontal scrolling, resolved the way a list can afford to resolve it. */
   let scratchSheetOn = false;
   let scratchSheetDragId = null, scratchSheetFrom = -1, scratchSheetMoved = false;
+  // like scratchFindOn, and for the same reason: which panel is up is not a setting, so it is
+  // session state and never reaches state.scratch
+  let scratchHelpOn = false;
 
   function renderScratchPageSheet(){
     const sheet = el('scratchPageSheet');
@@ -1229,6 +1314,7 @@
   }
 
   function openScratchPageSheet(){
+    closeScratchHelp();   // one panel at a time; they share the same corner of the footer
     scratchSheetOn = true;
     renderScratchPageSheet();
     const btn = el('scratchPageListBtn');
@@ -1335,6 +1421,7 @@
     scratchImgFor = img;
     placeScratchImgBox();
     trackScratchImgBox();
+    syncScratchImgBoxButtons();
   }
 
   function hideScratchImgBox(){
@@ -1349,7 +1436,8 @@
      to — see above), so the pointer necessarily leaves the image to reach it. A short grace period
      is simpler and steadier than trying to reason about relatedTarget across two element trees. */
   function hideScratchImgBoxSoon(){
-    if(scratchImgDrag) return;
+    // …and neither gesture may lose its own outline: a move drags the pointer clean off the image
+    if(scratchImgDrag || scratchImgMove) return;
     if(scratchImgHideTimer) clearTimeout(scratchImgHideTimer);
     scratchImgHideTimer = setTimeout(()=>{ scratchImgHideTimer = null; hideScratchImgBox(); }, 140);
   }
@@ -1378,6 +1466,244 @@
     // DOM, this is what folds it into state and debounces the write
     onScratchInput();
     placeScratchImgBox();
+  }
+
+  /* ---------- free-floating images ----------
+     An image normally sits IN the writing, as a block in the flow. Lifted, it comes out of the
+     flow and sits ON the sheet instead: it can be dragged anywhere, it can overlap the text, and
+     it can overlap other images — which is the whole point, and is why the CSS gives a float no
+     background and no corner rounding. A cut-out PNG has to composite against whatever is
+     underneath it, not against a rectangle of page colour, and a border-radius would clip the
+     corners of artwork that was never rectangular to begin with. (The other half of that promise
+     is upstream, in core.js: an upload only stays a JPEG if it has no transparency to lose.)
+
+     Three rules hold this together.
+
+     The POSITION LIVES IN THE ATTRIBUTES, never in the inline style. data-x/data-y/data-z are what
+     the sanitizer validates and what round-trips through storage; the left/top/z-index the browser
+     lays out from are written here and are deliberately absent from SCRATCH_STYLE_OK, so they are
+     stripped on the way out and re-derived by layoutScratchFloats() on the way back in. That is
+     what keeps `position:absolute` out of the style allowlist — an opening wide enough for
+     anything arriving from the shared unauthenticated row to cover the page with itself.
+
+     A float is a CHILD OF THE SURFACE, not of the paragraph it was lifted from. Its coordinates
+     don't change when it moves (`.scratch-text` is the containing block either way), but its fate
+     does: left inside a line, deleting that line would take the photo with it, and a picture you
+     positioned by hand should not be collateral damage of editing a sentence.
+
+     And LIFTING PINS THE WIDTH. In the flow an unsized image is clamped by the column's
+     max-width; out of it that clamp still applies, but the number it was being seen at is now a
+     thing you can drag, so it is written down at the moment of the lift rather than left implicit. */
+
+  function scratchImgIsFloat(img){ return !!(img && img.hasAttribute && img.hasAttribute('data-x')); }
+
+  function scratchFloats(surf){ return surf ? surf.querySelectorAll('img[data-x]') : []; }
+
+  function scratchFloatZ(img){ return parseInt(img.getAttribute('data-z') || '0', 10) || 0; }
+
+  function scratchTopZ(surf){
+    const list = scratchFloats(surf);
+    let top = 0;
+    for(let i = 0; i < list.length; i++){ const z = scratchFloatZ(list[i]); if(z > top) top = z; }
+    return top;
+  }
+
+  /* Squashes the stack back down to 1..n in its current order. Only ever needed because data-z is
+     capped at three digits by the sanitizer's own regex — bumping to the front is otherwise free,
+     and after a thousand of them the ceiling would silently turn "bring to front" into a no-op. */
+  function renumberScratchFloats(surf){
+    const list = Array.prototype.slice.call(scratchFloats(surf));
+    list.sort((a, b)=> scratchFloatZ(a) - scratchFloatZ(b));
+    for(let i = 0; i < list.length; i++) list[i].setAttribute('data-z', String(Math.min(SCRATCH_FLOAT_ZMAX, i + 1)));
+  }
+
+  /* No-ops when nothing is above it already, which matters more than it sounds: every drag calls
+     this, and a bump that changed nothing visible would still rewrite data-z, which is a diff, a
+     dirty page and a save on a gesture that only moved a photo two pixels. */
+  function bringScratchImgFront(img){
+    const surf = el('scratchText');
+    if(!surf || !scratchImgIsFloat(img)) return;
+    const list = scratchFloats(surf), mine = scratchFloatZ(img);
+    let top = 0, buried = false;
+    for(let i = 0; i < list.length; i++){
+      const z = scratchFloatZ(list[i]);
+      if(z > top) top = z;
+      // >= rather than >: a tie is decided by document order, so an equal z is still "above me"
+      if(list[i] !== img && z >= mine) buried = true;
+    }
+    if(!buried) return;
+    if(top >= SCRATCH_FLOAT_ZMAX){ renumberScratchFloats(surf); top = scratchTopZ(surf); }
+    img.setAttribute('data-z', String(Math.min(SCRATCH_FLOAT_ZMAX, top + 1)));
+    layoutScratchFloats();
+  }
+
+  /* Renumbering FIRST is what makes zero mean the bottom: everything else is then 1..n, so a second
+     "send to back" on a different image can't tie with the first. */
+  function sendScratchImgBack(img){
+    const surf = el('scratchText');
+    if(!surf || !scratchImgIsFloat(img)) return;
+    renumberScratchFloats(surf);
+    img.setAttribute('data-z', '0');
+    layoutScratchFloats();
+  }
+
+  // the one writer of the inline geometry, so the attribute-to-style direction exists in one place
+  function applyScratchFloat(img, left, top){
+    const st = img.style;
+    const l = Math.round(left) + 'px', t = Math.round(top) + 'px', z = String(scratchFloatZ(img));
+    if(st.left !== l) st.left = l;
+    if(st.top !== t) st.top = t;
+    if(st.zIndex !== z) st.zIndex = z;
+  }
+
+  /* Horizontal is clamped so a float can never stick out past the sheet: `.scratch-text` scrolls
+     vertically, which makes its overflow-x compute to auto, so one image nudged off the right edge
+     would give the whole page a horizontal scrollbar. Vertical is only floored — dragging a photo
+     below the last line is a legitimate thing to want, and an absolutely positioned child of the
+     scroll container extends its scrollable area, so the sheet simply gets longer. */
+  function setScratchFloatAt(img, left, top){
+    const surf = el('scratchText');
+    if(!surf) return;
+    const w = surf.clientWidth || 1;
+    const l = Math.max(0, Math.min(left, Math.max(0, w - (img.offsetWidth || 0))));
+    const t = Math.max(0, top);
+    img.setAttribute('data-x', String(Math.round((l / w) * 10000) / 100));
+    img.setAttribute('data-y', String(Math.round(t)));
+    applyScratchFloat(img, l, t);
+  }
+
+  /* Attributes back into layout. Runs after anything that replaces or re-measures the sheet — a
+     page switch, a load, a window resize, an image finishing its download — because data-x is a
+     PERCENTAGE and the pixel it lands on depends on how wide the column currently is. Idempotent
+     and comparison-guarded, so calling it more often than strictly necessary costs nothing. */
+  function layoutScratchFloats(){
+    const surf = el('scratchText');
+    if(!surf) return;
+    const w = surf.clientWidth || 1;
+    const list = scratchFloats(surf);
+    for(let i = 0; i < list.length; i++){
+      const img = list[i];
+      const pct = parseFloat(img.getAttribute('data-x')), y = parseFloat(img.getAttribute('data-y'));
+      if(!isFinite(pct) || !isFinite(y)) continue;
+      const room = Math.max(0, w - (img.offsetWidth || 0));
+      applyScratchFloat(img, Math.max(0, Math.min((pct / 100) * w, room)), Math.max(0, y));
+    }
+  }
+
+  /* Out of the flow, staying exactly where it visually is. `at` is for a file dropped at a point,
+     where there is no "where it already was" to preserve. */
+  function liftScratchImg(img, at){
+    const surf = el('scratchText');
+    if(!surf || !img || scratchImgIsFloat(img)) return;
+    let left, top;
+    if(at){
+      left = at.left; top = at.top;
+    } else {
+      const r = img.getBoundingClientRect(), sr = surf.getBoundingClientRect();
+      left = r.left - sr.left + surf.scrollLeft;
+      top = r.top - sr.top + surf.scrollTop;
+      if(!img.getAttribute('width') && r.width) setScratchImgWidth(img, Math.round(r.width));
+    }
+    img.setAttribute('data-z', String(Math.min(SCRATCH_FLOAT_ZMAX, scratchTopZ(surf) + 1)));
+    setScratchFloatAt(img, left, top);
+    // onto the sheet itself; see the "child of the surface" rule above
+    if(img.parentNode !== surf) surf.appendChild(img);
+  }
+
+  /* Back into the writing. It re-enters wherever it currently sits in the DOM, which for anything
+     that has been floated is the end of the sheet — there is no record of the paragraph it came
+     out of, and inventing one would be guessing. */
+  function dropScratchImg(img){
+    if(!scratchImgIsFloat(img)) return;
+    img.removeAttribute('data-x');
+    img.removeAttribute('data-y');
+    img.removeAttribute('data-z');
+    img.style.left = img.style.top = img.style.zIndex = '';
+    if(!img.getAttribute('style')) img.removeAttribute('style');
+  }
+
+  function toggleScratchImgFloat(img){
+    if(!img) return;
+    if(scratchImgIsFloat(img)) dropScratchImg(img); else liftScratchImg(img);
+    syncScratchImgBoxButtons();
+    placeScratchImgBox();
+    onScratchInput();
+  }
+
+  // the lift button is a toggle, so it has to say which way round it currently is
+  function syncScratchImgBoxButtons(){
+    const lift = el('scratchImgLift');
+    if(!lift) return;
+    const on = scratchImgIsFloat(scratchImgFor);
+    lift.setAttribute('aria-pressed', on ? 'true' : 'false');
+    lift.classList.toggle('is-on', on);
+    lift.title = on ? 'Back into the text · arrow keys to move · [ and ] for layer'
+                    : 'Float this image · then drag it anywhere';
+    lift.setAttribute('aria-label', on ? 'Return image to the text' : 'Free-float this image');
+  }
+
+  /* ---- dragging one around ----
+     Deliberately the SAME gesture whether the image is already floating or not: a drag on an
+     inline image lifts it first and then moves it, so "put this photo over there" is one motion
+     rather than a mode switch followed by a motion. The lift button exists for discoverability and
+     for the way back, not as a prerequisite.
+     `live` is the slop gate. Until the pointer has actually travelled, nothing has happened and the
+     gesture is still free to turn out to be a plain click — which on an image opens the lightbox. */
+  let scratchImgMove = null;
+  let scratchImgMoveAt = 0;     // when a move last ENDED, so the click trailing it can be swallowed
+  const SCRATCH_MOVE_SLOP = 4;
+
+  function beginScratchImgMove(m, cx, cy){
+    const surf = el('scratchText');
+    if(!surf) return;
+    m.live = true;
+    /* Grabbed by the point you actually took hold of, measured BEFORE the lift so the photo does
+       not jump under the cursor at the moment it leaves the flow. */
+    const r = m.img.getBoundingClientRect();
+    m.gx = cx - r.left;
+    m.gy = cy - r.top;
+    liftScratchImg(m.img);
+    bringScratchImgFront(m.img);
+    /* Capture is taken HERE rather than on pointerdown, and that timing is the whole reason a
+       plain click still works. Explicit capture retargets the compatibility mouse events to the
+       capturing element, so `click` would then be dispatched at the surface instead of at the
+       image — and the click handler finds the image with closest('img'). Capturing only once the
+       gesture has committed to being a drag leaves the click path untouched. */
+    try{ surf.setPointerCapture(m.id); }catch(e){}
+    const ov = el('scratchOverlay');
+    if(ov) ov.classList.add('img-moving');
+    showScratchImgBox(m.img);
+    syncScratchImgBoxButtons();
+  }
+
+  function scratchImgMoveTo(m, cx, cy){
+    const surf = el('scratchText');
+    if(!surf) return;
+    const sr = surf.getBoundingClientRect();
+    setScratchFloatAt(m.img, cx - m.gx - sr.left + surf.scrollLeft, cy - m.gy - sr.top + surf.scrollTop);
+  }
+
+  function endScratchImgMove(){
+    const m = scratchImgMove;
+    if(!m) return;
+    scratchImgMove = null;
+    const surf = el('scratchText');
+    try{ if(surf) surf.releasePointerCapture(m.id); }catch(e){}
+    const ov = el('scratchOverlay');
+    if(ov) ov.classList.remove('img-moving');
+    if(!m.live) return;   // it was a click after all; leave it to the click handler
+    scratchImgMoveAt = Date.now();
+    // one save for the whole gesture, exactly like endScratchImgDrag()
+    onScratchInput();
+    placeScratchImgBox();
+  }
+
+  // shared by both buttons on the box, so the layer keys work from whichever one has focus
+  function scratchImgLayerKey(e){
+    if(!scratchImgFor || !scratchImgIsFloat(scratchImgFor)) return false;
+    if(e.key === ']'){ e.preventDefault(); bringScratchImgFront(scratchImgFor); onScratchInput(); return true; }
+    if(e.key === '['){ e.preventDefault(); sendScratchImgBack(scratchImgFor); onScratchInput(); return true; }
+    return false;
   }
 
   /* ---- the lightbox ---- */
@@ -1699,6 +2025,7 @@
   function openScratchFind(){
     const wrap = el('scratchSearch'), box = el('scratchSearchInput');
     if(!wrap || !box) return;
+    closeScratchHelp();   // one panel at a time; they share the same corner of the footer
     scratchFindOn = true;
     wrap.style.display = 'block';
     box.focus();
@@ -2025,11 +2352,14 @@
   /* ---------- images: wiring ---------- */
   (function(){
     const surf = el('scratchText'), box = el('scratchImgBox'), grip = el('scratchImgGrip');
+    const lift = el('scratchImgLift');
     if(!surf || !box || !grip) return;
 
     // hover reveals the grip on a fine pointer; there is no hover on touch, hence the long press
     surf.addEventListener('mouseover', e=>{
-      if(!scratchImgHoverable() || scratchImgDrag) return;
+      // mid-gesture the box belongs to the image being worked on, not to whatever the pointer
+      // happens to be passing over — a move in particular sweeps the cursor across the whole sheet
+      if(!scratchImgHoverable() || scratchImgDrag || scratchImgMove) return;
       const im = e.target && e.target.closest && e.target.closest('img');
       if(im) showScratchImgBox(im);
     });
@@ -2043,23 +2373,76 @@
     });
     box.addEventListener('mouseleave', hideScratchImgBoxSoon);
 
-    /* Touch: press and hold an image to bring up the grip. The tap that armed it must NOT also open
-       the lightbox, so the moment is remembered and the click that follows is swallowed. */
+    /* Mouse: pressing an image arms a move. Nothing has happened yet — the slop gate in
+       beginScratchImgMove's caller is what decides whether this turns into a drag or stays a
+       click — but the press is claimed here so the browser can't act on it first.
+       preventDefault does two jobs: it stops the native HTML5 image drag (which would otherwise
+       hand this same surface a `drop` carrying no file and fight us for the gesture), and it
+       stops the caret being placed, which a press on a photo never wanted anyway.
+
+       Touch: press and hold an image to bring up the grip AND pick it up, which is the same
+       "long-press then move" every phone uses for rearranging things. The tap that armed it must
+       NOT also open the lightbox, so the moment is remembered and the click that follows is
+       swallowed. */
     surf.addEventListener('pointerdown', e=>{
-      if(e.pointerType === 'mouse') return;
       const im = e.target && e.target.closest && e.target.closest('img');
       if(!im) return;
+      if(e.pointerType === 'mouse'){
+        if(e.button !== 0) return;
+        e.preventDefault();
+        scratchImgMove = { img: im, id: e.pointerId, sx: e.clientX, sy: e.clientY, live: false };
+        showScratchImgBox(im);
+        return;
+      }
       if(scratchImgPressTimer) clearTimeout(scratchImgPressTimer);
+      const id = e.pointerId, sx = e.clientX, sy = e.clientY;
       scratchImgPressTimer = setTimeout(()=>{
         scratchImgPressTimer = null;
         scratchImgPressAt = Date.now();
         showScratchImgBox(im);
+        // armed, not live: the finger still has to travel before anything is lifted, so a
+        // long-press that ends without moving leaves the image exactly where it was
+        scratchImgMove = { img: im, id: id, sx: sx, sy: sy, live: false };
       }, 500);
     });
     const cancelPress = ()=>{ if(scratchImgPressTimer){ clearTimeout(scratchImgPressTimer); scratchImgPressTimer = null; } };
     surf.addEventListener('pointerup', cancelPress);
     surf.addEventListener('pointercancel', cancelPress);
-    surf.addEventListener('pointermove', e=>{ if(scratchImgPressTimer && e.pointerType !== 'mouse') cancelPress(); });
+    surf.addEventListener('pointermove', e=>{
+      if(scratchImgPressTimer && e.pointerType !== 'mouse') cancelPress();
+      const m = scratchImgMove;
+      if(!m || e.pointerId !== m.id) return;
+      if(!m.live){
+        if(Math.abs(e.clientX - m.sx) < SCRATCH_MOVE_SLOP && Math.abs(e.clientY - m.sy) < SCRATCH_MOVE_SLOP) return;
+        beginScratchImgMove(m, e.clientX, e.clientY);
+      }
+      scratchImgMoveTo(m, e.clientX, e.clientY);
+    });
+    /* On touch the pointer stream alone isn't enough to stop the sheet scrolling under the finger,
+       so the touch gesture is cancelled outright for as long as a move is armed. Non-passive on
+       purpose — a passive listener may not preventDefault, which is the entire job here. It only
+       ever fires after a 500ms stationary press, so an ordinary scroll or page-swipe that started
+       on a photo is never touched. */
+    surf.addEventListener('touchmove', e=>{ if(scratchImgMove) e.preventDefault(); }, { passive:false });
+    // the capture taken in beginScratchImgMove routes these back here even off the surface, and
+    // the window pair catches the armed-but-never-captured case that ends somewhere else
+    surf.addEventListener('pointerup', endScratchImgMove);
+    surf.addEventListener('pointercancel', endScratchImgMove);
+    window.addEventListener('pointerup', endScratchImgMove);
+    window.addEventListener('pointercancel', endScratchImgMove);
+    // belt and braces against the native image drag, for the browsers that start one anyway
+    surf.addEventListener('dragstart', e=>{
+      if(e.target && e.target.tagName === 'IMG') e.preventDefault();
+    });
+    /* data-x is a PERCENTAGE of the sheet's width, so every float has to be re-placed when that
+       width changes — a window resize, a phone rotating, or the mobile browser's URL bar
+       collapsing. Cheap, idempotent and comparison-guarded, hence no debounce. */
+    window.addEventListener('resize', ()=>{ if(scratchOpen) layoutScratchFloats(); });
+    /* An image that hasn't downloaded yet measures zero wide, so its horizontal clamp is computed
+       against nothing. `load` doesn't bubble, hence the capture phase. */
+    surf.addEventListener('load', e=>{
+      if(e.target && e.target.tagName === 'IMG') layoutScratchFloats();
+    }, true);
     /* Only while a long press has just fired. Suppressing it always would take right-click "save
        image" away from desktop, which this feature has no business doing. */
     surf.addEventListener('contextmenu', e=>{
@@ -2086,11 +2469,43 @@
     // the grip is a real button, so the whole thing is reachable without a pointer at all
     grip.addEventListener('keydown', e=>{
       if(!scratchImgFor) return;
+      if(scratchImgLayerKey(e)) return;
       const step = e.shiftKey ? 4 : 24;
       if(e.key === 'ArrowRight' || e.key === 'ArrowUp'){ e.preventDefault(); setScratchImgWidth(scratchImgFor, scratchImgWidthNow(scratchImgFor) + step); onScratchInput(); }
       else if(e.key === 'ArrowLeft' || e.key === 'ArrowDown'){ e.preventDefault(); setScratchImgWidth(scratchImgFor, scratchImgWidthNow(scratchImgFor) - step); onScratchInput(); }
       else if(e.key === 'Escape'){ hideScratchImgBox(); focusScratchSurface(); }
     });
+
+    /* The lift toggle. It is the discoverable way in and the only way back: dragging an inline
+       image floats it, but nothing about dragging says "and this is how you undo that". */
+    if(lift){
+      // the box is pointer-events:none so it can sit over the writing; both its buttons opt back in
+      lift.addEventListener('pointerdown', e=>{ e.preventDefault(); e.stopPropagation(); });
+      lift.addEventListener('click', e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        if(scratchImgFor) toggleScratchImgFloat(scratchImgFor);
+      });
+      /* Arrow keys MOVE here, where they RESIZE on the grip — one button per verb, so neither
+         needs a modifier. Only meaningful once the image is a float, which is also the only state
+         in which the layer keys do anything. */
+      lift.addEventListener('keydown', e=>{
+        if(!scratchImgFor) return;
+        if(scratchImgLayerKey(e)) return;
+        if(e.key === 'Escape'){ hideScratchImgBox(); focusScratchSurface(); return; }
+        if(!scratchImgIsFloat(scratchImgFor)) return;
+        const d = { ArrowLeft:[-1,0], ArrowRight:[1,0], ArrowUp:[0,-1], ArrowDown:[0,1] }[e.key];
+        if(!d) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 1 : 8;
+        const w = surf.clientWidth || 1;
+        const left = (parseFloat(scratchImgFor.getAttribute('data-x')) || 0) / 100 * w;
+        const top = parseFloat(scratchImgFor.getAttribute('data-y')) || 0;
+        setScratchFloatAt(scratchImgFor, left + d[0] * step, top + d[1] * step);
+        placeScratchImgBox();
+        onScratchInput();
+      });
+    }
 
     // no scroll/resize hooks here: trackScratchImgBox() already re-reads the rect every frame,
     // which covers those two and the cases they missed
@@ -2242,7 +2657,11 @@
      Note the deliberate gap: removing an image from a page does NOT delete it from Storage. In
      free-form HTML there's no reliable "this was removed" signal, and an orphaned file is harmless
      (the repo already treats deleteStorageImage as best-effort elsewhere). */
-  function insertScratchImage(file){
+  /* `at` (sheet coordinates) turns the arrival into a free-floating image dropped exactly where
+     you let go of it, which is what a file dragged onto the page obviously meant. A PASTE has no
+     such point — the clipboard says nothing about where — so it still lands inline at the caret,
+     and you drag it out afterwards if that is what you wanted. */
+  function insertScratchImage(file, at){
     const marker = 'sc' + uid();
     scratchExec('insertHTML', '<span id="' + marker + '" class="scratch-uploading">uploading image…</span>');
     setScratchStatus('uploading');
@@ -2252,6 +2671,9 @@
       img.src = url;
       if(slot) slot.replaceWith(img);
       else el('scratchText').appendChild(img);
+      // it has no width yet — the file hasn't been fetched back — so this lands the top-left
+      // corner and the surface's own load listener re-clamps it against the sheet once it can
+      if(at) liftScratchImg(img, at);
       scratchKnownImages.add(url); // so pasting then deleting in one sitting still reclaims the file
       setScratchStatus('dirty');
       onScratchInput();
@@ -2409,6 +2831,7 @@
     if(!scratchOpen) return;
     if(scratchImgViewOn) closeScratchImgView();
     if(scratchSheetOn) closeScratchPageSheet();
+    closeScratchHelp();   // a panel left up would be waiting there on the next open
     hideScratchImgBox();
     if(scratchFindOn) closeScratchFind(true); // silent: don't focus a surface that's about to hide
     commitScratchSurface();               // while scratchOpen is still true
@@ -2458,10 +2881,23 @@
     // other overlays.
     // innermost layer first: the lightbox, then find, then the page itself
     if(scratchImgViewOn){ closeScratchImgView(); return; }
+    if(scratchHelpOn){ closeScratchHelp(); focusScratchSurface(); return; }
     if(scratchSheetOn){ closeScratchPageSheet(); focusScratchSurface(); return; }
     if(scratchFindOn){ closeScratchFind(); return; }
     closeScratch();
   }, true);
+
+  /* Anywhere else dismisses the shortcuts panel. It carries no controls and nothing to lose, so a
+     click that clearly wasn't meant for it should put it away rather than leave it covering the
+     writing — the page list and the find panel both hold state and so are deliberately not treated
+     this way. Bubble phase and scoped to the overlay, so it can't interfere with anything outside
+     the pad, and the ? itself is excluded or the toggle would fire twice and cancel itself out. */
+  el('scratchOverlay').addEventListener('click', e=>{
+    if(!scratchHelpOn) return;
+    const t = e.target;
+    if(t && t.closest && (t.closest('#scratchHelp') || t.closest('#scratchHelpBtn'))) return;
+    closeScratchHelp();
+  });
 
   el('scratchCloseBtn').addEventListener('click', closeScratch);
 
@@ -2473,19 +2909,11 @@
   });
 
   /* ---------- reordering ----------
-     Drag a dot to move its page. The dots ARE the pages, so they're the honest handle; there is no
-     separate list to open and nothing new on screen when you aren't reordering.
-
-     Pointer events rather than HTML5 drag-and-drop (which notes.js uses): that API doesn't fire on
-     touch at all, and this page is used on a phone. Pointer events cover mouse, touch and pen from
-     one path.
-
-     The subtle part is WHERE the pointer is captured. Capture goes on the ROW, not on the dot being
-     dragged, because reordering re-renders the row's innerHTML on every crossing — capturing the
-     dot would release the moment that node was replaced and the drag would die after one step. The
-     row element itself survives every re-render, so the gesture doesn't. */
-  let scratchDragId = null, scratchDragFrom = -1, scratchDragX = 0, scratchDragging = false;
-  let scratchSuppressDotClick = false;
+     Lives entirely in the page list now (see "the page list" below): drag a row by its grip. The
+     dots used to be the handle, on the reasoning that they WERE the pages and so needed nothing new
+     on screen — but that only held while you could tell one from another, and it stopped holding
+     somewhere around a dozen pages.
+     moveScratchPage() is the shared primitive and is unchanged; only the thing you grab moved. */
 
   function moveScratchPage(from, to){
     ensureScratchPages();
@@ -2493,92 +2921,14 @@
     if(from === to || from < 0 || to < 0 || from >= pages.length || to >= pages.length) return false;
     pages.splice(to, 0, pages.splice(from, 1)[0]);
     // activeId is an id, not an index, so whichever page you were on is still the page you're on —
-    // it simply sits somewhere else in the row now
+    // it simply sits somewhere else in the list now
     state.scratch.updatedAt = Date.now();
     return true;
   }
 
-  /* Which slot the pointer is over, by dot centres in their CURRENT on-screen order.
-     Reads in two dimensions because the row WRAPS on a narrow screen (see styles.css): with more
-     than one line, x alone puts the drop target on whichever line the maths happened to reach, so
-     dragging a dot down to the second row would reorder against the first. The comparison is
-     therefore reading order — anything on a lower line is unconditionally "after", and only within
-     the same line does x decide. Collapses to the old single-line behaviour when nothing wraps,
-     because then every dot shares one band of y. */
-  function scratchDotIndexAt(x, y){
-    const dots = el('scratchPages').querySelectorAll('.scratch-dot');
-    for(let i=0; i<dots.length; i++){
-      const r = dots[i].getBoundingClientRect();
-      if(y < r.top) return i;                                  // pointer is above this line entirely
-      if(y <= r.bottom && x < r.left + r.width / 2) return i;   // same line, left of this centre
-    }
-    return dots.length - 1;
-  }
-
-  el('scratchPages').addEventListener('pointerdown', e=>{
-    const dot = e.target && e.target.closest && e.target.closest('.scratch-dot');
-    if(!dot || state.scratch.pages.length < 2) return;
-    scratchDragFrom = parseInt(dot.getAttribute('data-i'), 10);
-    if(isNaN(scratchDragFrom)) return;
-    scratchDragId = state.scratch.pages[scratchDragFrom].id;
-    scratchDragX = e.clientX;
-    scratchDragging = false; // not a drag until it actually travels — a tap must still select
-    try{ el('scratchPages').setPointerCapture(e.pointerId); }catch(err){}
-  });
-
-  el('scratchPages').addEventListener('pointermove', e=>{
-    if(!scratchDragId) return;
-    // 6px of travel before this counts as a drag, so a slightly imprecise tap still just switches
-    if(!scratchDragging && Math.abs(e.clientX - scratchDragX) < 6) return;
-    if(!scratchDragging){
-      scratchDragging = true;
-      el('scratchPages').classList.add('is-reordering');
-      renderScratchPages(); // paint the lifted dot
-    }
-    const to = scratchDotIndexAt(e.clientX, e.clientY);
-    if(to !== scratchDragFrom && moveScratchPage(scratchDragFrom, to)){
-      scratchDragFrom = to;
-      renderScratchPages();
-      playScratchPageTick(1); // one thock per slot crossed — the whole point is that it feels physical
-    }
-  });
-
-  /* Both tapping a dot and finishing a drag are resolved HERE, on pointerup, rather than being
-     left to the click event — because once a pointer is captured, a dot's click cannot be trusted
-     to arrive at all:
-       - capture retargets the follow-up click to the CAPTURING element (the row), so a handler
-         looking for e.target.closest('.scratch-dot') finds nothing; and
-       - a reorder re-renders the row, so the dot node that was pressed no longer exists by the
-         time a click would be dispatched against it.
-     Keyboard activation has no pointer sequence at all, so it never sets the suppress flag and
-     still reaches the click handler below — which is what keeps the dots usable by keyboard. */
-  function endScratchDrag(){
-    if(!scratchDragId) return;
-    const wasDragging = scratchDragging;
-    const landedOn = scratchDragFrom;
-    scratchDragId = null; scratchDragFrom = -1; scratchDragging = false;
-    el('scratchPages').classList.remove('is-reordering');
-    scratchSuppressDotClick = true; // stop any retargeted click from acting a second time
-    setTimeout(()=>{ scratchSuppressDotClick = false; }, 0);
-    if(wasDragging){
-      // a written page dragged to the end must not become the last sheet
-      ensureTrailingBlankScratchPage();
-      renderScratchPages();
-      focusScratchSurface();
-      setScratchStatus('dirty');
-      debouncedSaveScratch();
-    } else {
-      scratchGoTo(landedOn); // a tap, not a drag: just go to that page (it re-renders itself)
-    }
-  }
-  el('scratchPages').addEventListener('pointerup', endScratchDrag);
-  el('scratchPages').addEventListener('pointercancel', endScratchDrag);
-
-  /* Shared by the dot row and the tool bar. The dots keep their own container's pointer handlers
-     for the reorder drag; this only cares about which control was hit, and both rows contain
-     controls, so one listener is bound to each rather than duplicating the ladder. */
+  /* Shared by the page row and the tool bar: it only cares about which control was hit, and both
+     rows hold controls, so one listener is bound to each rather than duplicating the ladder. */
   function onScratchRowClick(e){
-    if(scratchSuppressDotClick) return; // that click was the tail of a reorder, not a choice
     const t = e.target;
     if(!t || !t.closest) return;
     if(t.closest('#scratchPrevPage')){ scratchStep(-1); return; }
@@ -2591,6 +2941,12 @@
     if(t.closest('#scratchDelPage')){ deleteScratchPage(); return; }
     if(t.closest('#scratchFindBtn')){
       if(scratchFindOn) closeScratchFind(); else openScratchFind();
+      return;
+    }
+    if(t.closest('#scratchHelpBtn')){
+      // renderScratchTools() does NOT run here, so the pressed button survives the toggle and keeps
+      // focus — unlike Aa and ♪ below, which repaint themselves and have to hand focus back
+      if(scratchHelpOn) closeScratchHelp(); else openScratchHelp();
       return;
     }
     if(t.closest('#scratchFmtBtn')){
@@ -2615,10 +2971,6 @@
       debouncedSaveScratch();
       return;
     }
-    // Reached only by keyboard (Enter/Space on a focused dot). Pointer taps are handled in
-    // endScratchDrag() above and suppressed here — see the note on that function.
-    const dot = t.closest('.scratch-dot');
-    if(dot) scratchGoTo(parseInt(dot.getAttribute('data-i'), 10) || 0);
   }
   el('scratchPages').addEventListener('click', onScratchRowClick);
   el('scratchTools').addEventListener('click', onScratchRowClick);
@@ -2681,7 +3033,9 @@
       if(!scratchSheetDragId) return;
       const moved = scratchSheetMoved;
       scratchSheetDragId = null; scratchSheetFrom = -1;
-      renderScratchPageSheet();
+      // a written page dragged to the end must not become the last sheet
+      if(moved) ensureTrailingBlankScratchPage();
+      renderScratchPages();
       if(moved){
         setScratchStatus('dirty');
         debouncedSaveScratch();
@@ -2695,11 +3049,6 @@
     sheet.addEventListener('pointercancel', endSheetDrag);
   })();
 
-  /* Crossing the breakpoint changes which mode the row should be in, and a resize alone fires
-     nothing else that would redraw it. */
-  if(scratchNarrow && scratchNarrow.addEventListener){
-    scratchNarrow.addEventListener('change', ()=>{ if(scratchOpen) renderScratchPages(); });
-  }
 
   /* ---------- surface wiring ---------- */
 
@@ -2764,6 +3113,8 @@
     if(im){
       // the tap that raised the resize grip must not also open the lightbox
       if(Date.now() - scratchImgPressAt < 900){ scratchImgPressAt = 0; return; }
+      // …and neither must the click that trails the end of a drag-to-move
+      if(Date.now() - scratchImgMoveAt < 400) return;
       e.preventDefault();
       openScratchImgView(im);
       return;
@@ -2809,7 +3160,12 @@
     const img = scratchImageFrom(e.dataTransfer);
     if(!img) return;
     e.preventDefault();
-    insertScratchImage(img);
+    // where you let go of it, in the sheet's own coordinates rather than the viewport's
+    const sr = scratchSurface.getBoundingClientRect();
+    insertScratchImage(img, {
+      left: e.clientX - sr.left + scratchSurface.scrollLeft,
+      top: e.clientY - sr.top + scratchSurface.scrollTop
+    });
   });
 
   /* ---------- swipe (touch) ----------
@@ -2830,6 +3186,11 @@
     scratchTouchOn = false;
     const t = e.changedTouches && e.changedTouches[0];
     if(!t) return;
+    /* Dragging a photo across the sheet clears every threshold below — it is a long horizontal
+       run of a single finger ending with nothing selected — so without this a move to the left
+       would also turn the page out from under the image you just placed. pointerup fires before
+       touchend, so by now the move is over and only its timestamp is left to check. */
+    if(scratchImgMove || Date.now() - scratchImgMoveAt < 500) return;
     const dx = t.clientX - scratchTouchX, dy = t.clientY - scratchTouchY;
     if(Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return;
     const sel = window.getSelection();

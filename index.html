@@ -1877,6 +1877,13 @@
        only thing a resize writes into the document is the image's own width attribute, which is
        exactly what should persist. Positioned from the image's bounding rect by js/scratch.js. -->
   <div class="scratch-imgbox" id="scratchImgBox" style="display:none;">
+    <!-- LIFT — takes the image out of the text flow so it can be dragged anywhere on the sheet and
+         overlap the writing and the other photos, and puts it back again. A toggle, so it carries
+         aria-pressed rather than swapping its icon: the four-way move arrow describes the button's
+         subject either way, and a label that flipped between two glyphs reads as two buttons.
+         Dragging an inline image does the same lift implicitly (js/scratch.js) — this is the
+         discoverable way in, and the only way back out. -->
+    <button type="button" class="scratch-imgbox-lift" id="scratchImgLift" aria-pressed="false" title="Float this image · then drag it anywhere" aria-label="Free-float this image"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4.5v15M4.5 12h15"/><path d="m9.4 7.1 2.6-2.6 2.6 2.6M9.4 16.9l2.6 2.6 2.6-2.6M7.1 9.4 4.5 12l2.6 2.6M16.9 9.4 19.5 12l-2.6 2.6"/></svg></button>
     <!-- A diagonal double arrow, drawn rather than typed: the ⤡ character renders at a different
          size and baseline in every font on every platform, the same reason the picker chevrons in
          the format bar are CSS corners. stroke=currentColor so the button's :hover can invert the
@@ -1956,7 +1963,20 @@
   <div class="scratch-foot">
     <span id="scratchCount">0 words</span>
     <span id="scratchStatus" class="scratch-status"></span>
-    <span class="scratch-tips">type <b>[]</b> for a tick · paste an image · drag a dot to reorder<span class="scratch-tip-key"> · ctrl+K to link · <b>tab</b> <b>tab</b> to find · hold <b>tab</b> + scroll to page</span><span class="scratch-tip-touch"> · swipe to change page</span></span>
+    <!-- SHORTCUTS — built by renderScratchHelp(), opened by the ? in the tool bar. This used to be
+         one run-on line of six clauses living in the footer permanently, which on desktop read as a
+         wall of grey micro-type squeezed between the word count and the tools, and went stale
+         quietly (it was still telling people to "drag a dot to reorder" long after the dots became
+         a pager). A panel is the right shape for it: an aligned key→action table, on screen only
+         when asked for, and one list to keep true instead of a sentence to keep short.
+         Grows upward from the footer like the page list and the find results — same object, same
+         visual language, same z-index tier. -->
+    <div class="scratch-help" id="scratchHelp" style="display:none;" role="dialog" aria-label="Shortcuts"></div>
+    <!-- What's left of the old tip line: the two things a first-timer cannot guess, shown only
+         while the sheet is blank (markScratchEmpty toggles .scratch-blank) and gone the moment
+         there is anything to read instead. That gating used to be mobile-only; the footer is no
+         less crowded on a laptop, and the ? is a better home for everything else. -->
+    <span class="scratch-tips">type <b>[]</b> for a tick · paste an image, then drag it anywhere</span>
     <!-- Built by renderScratchTools(). These used to sit in the dot row; on a phone that row was
          both the page indicator and the toolbar, and with a handful of pages it overflowed and
          wrapped. Here they share the footer strip with the word count, and #scratchPages is left to

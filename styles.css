@@ -1606,7 +1606,16 @@
      comfortable prose measure; 1.75 line-height because this gets written in paragraphs.
      overflow-y here rather than on the overlay so the footer and the logo stay put while the
      writing scrolls under them. */
-  .scratch-text{flex:1;width:100%;max-width:70ch;margin:0 auto;min-height:0;overflow-y:auto;background:transparent;border:none;outline:none;padding:0;color:var(--text);font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.75;caret-color:var(--violet);white-space:pre-wrap;overflow-wrap:break-word;}
+  /* position:relative is load-bearing, not decoration: it makes the sheet the containing block for
+     free-floating images (js/scratch.js), so their left/top are measured from the top-left of the
+     CONTENT and they scroll with the writing rather than sitting still over it. It also makes them
+     extend the sheet's scrollable area, which is what lets a photo be dragged below the last line.
+     isolation:isolate goes with it and is not optional: position:relative alone leaves z-index:auto,
+     so the floats' own stacking numbers (0–999, see js/scratch.js) would compete directly with the
+     overlay's other layers — a photo stacked at 3 would then paint over the resize outline (2) and
+     the find panel (3). Isolating makes those numbers private to the sheet, which is what they
+     always meant: an order among the photos, not a claim on the page. */
+  .scratch-text{position:relative;isolation:isolate;flex:1;width:100%;max-width:70ch;margin:0 auto;min-height:0;overflow-y:auto;background:transparent;border:none;outline:none;padding:0;color:var(--text);font-family:'Inter',sans-serif;font-size:15.5px;line-height:1.75;caret-color:var(--violet);white-space:pre-wrap;overflow-wrap:break-word;}
   /* contenteditable has no ::placeholder and is almost never truly :empty (browsers leave a stray
      <br> behind), so markScratchEmpty() sets this class instead */
   .scratch-text.is-empty::before{content:attr(data-placeholder);color:var(--faint);pointer-events:none;}
@@ -1615,6 +1624,23 @@
      narrow one — the stored number survives, only the display is clamped. zoom-in says the click
      does something, since it opens the lightbox rather than placing a caret. */
   .scratch-text img{max-width:100%;height:auto;border-radius:10px;margin:6px 0;display:block;cursor:zoom-in;}
+  /* FREE-FLOATING: out of the text flow, positioned from data-x/data-y by js/scratch.js, stacked by
+     data-z. Selecting on the attribute rather than a class is deliberate — a class on the image
+     would be content (the surface's innerHTML IS the saved document) and the sanitizer strips
+     class outright, so the float would come back inline on the next reload.
+     background and border-radius are BOTH cleared, and both for transparency's sake. A cut-out PNG
+     dropped on top of another photo has to composite against what is actually underneath it, so
+     nothing may paint a rectangle of page colour behind it; and rounded corners would clip artwork
+     that was never rectangular in the first place. The other half of that promise is in js/core.js,
+     which stops re-encoding an image with alpha as a JPEG.
+     margin:0 because a float's position is exact — 6px of inherited flow spacing would offset every
+     photo from where it was dropped. */
+  .scratch-text img[data-x]{position:absolute;margin:0;border-radius:0;background:transparent;cursor:grab;}
+  /* Classes on the OVERLAY, never on the image, for the reason above. The pointer has usually left
+     the photo by the time the drag is moving fast, so the grabbing cursor and the selection block
+     both have to apply to the whole sheet rather than to the thing being dragged. */
+  .scratch-overlay.img-moving .scratch-text{user-select:none;-webkit-user-select:none;cursor:grabbing;}
+  .scratch-overlay.img-moving .scratch-text img{cursor:grabbing;}
   /* The resize box: an outline over the image with a grip at its corner. pointer-events:none on the
      frame so it can sit over the writing without swallowing clicks meant for the text underneath —
      only the grip itself takes the pointer. z-index 2 puts it above the writing but below the find
@@ -1632,14 +1658,21 @@
      arrow against a dark one. Fixed white-on-black with a small drop shadow reads on both, which
      is why every image editor's handles look like this. Inverts on hover so it's obvious which
      one you're about to grab when several images are near each other. */
-  .scratch-imgbox-grip{position:absolute;right:-10px;bottom:-10px;width:20px;height:20px;padding:0;
+  .scratch-imgbox-grip,.scratch-imgbox-lift{position:absolute;width:20px;height:20px;padding:0;
     display:flex;align-items:center;justify-content:center;
     background:#fff;color:#111;border:1.5px solid #111;border-radius:50%;
     box-shadow:0 1px 3px rgba(0,0,0,.4);
-    pointer-events:auto;cursor:nwse-resize;touch-action:none;transition:background .12s ease,color .12s ease;}
-  .scratch-imgbox-grip svg{width:12px;height:12px;display:block;pointer-events:none;}
-  .scratch-imgbox-grip:hover{background:#111;color:#fff;}
-  .scratch-imgbox-grip:focus-visible{outline:2px solid var(--violet);outline-offset:3px;}
+    pointer-events:auto;touch-action:none;transition:background .12s ease,color .12s ease;}
+  .scratch-imgbox-grip{right:-10px;bottom:-10px;cursor:nwse-resize;}
+  /* Opposite corner from the grip, so the two are never confused by feel and neither covers the
+     other on a small image. */
+  .scratch-imgbox-lift{left:-10px;top:-10px;cursor:pointer;}
+  .scratch-imgbox-grip svg,.scratch-imgbox-lift svg{width:12px;height:12px;display:block;pointer-events:none;}
+  .scratch-imgbox-grip:hover,.scratch-imgbox-lift:hover{background:#111;color:#fff;}
+  /* Pressed = this image is already floating. Violet rather than the inverted black the hover
+     uses, so "on" and "about to be clicked" stay distinguishable from each other. */
+  .scratch-imgbox-lift.is-on{background:var(--violet);color:#fff;border-color:#111;}
+  .scratch-imgbox-grip:focus-visible,.scratch-imgbox-lift:focus-visible{outline:2px solid var(--violet);outline-offset:3px;}
   /* The lightbox. 1000 is the app's modal tier (.struggle-overlay, .play-overlay, .mosaic-overlay),
      which is correct: the scratch page is a MODE at 950 and a modal beats a mode. */
   .scratch-imgview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
@@ -1805,6 +1838,12 @@
   ::highlight(scratch-find){background:rgba(250,204,21,.38);}
   ::highlight(scratch-find-on){background:var(--violet);color:#fff;}
   .scratch-findbtn{font-size:13px;}
+  /* A question mark is a tall thin glyph next to ♪ and Aa, so it gets a touch more weight to hold
+     the same optical size. Violet while its panel is up, matching Aa's pressed state — the two are
+     the only tool buttons that toggle something visible. */
+  .scratch-helpbtn{font-size:12px;font-weight:700;}
+  .scratch-helpbtn[aria-expanded="true"]{color:var(--violet);}
+  .scratch-helpbtn[aria-expanded="true"]:hover{color:var(--violet);background:var(--surface-alt);}
 
   /* The format bar. Same --faint weight as the dots and the footer: present, never a toolbar
      shouting over a blank page. overflow-x rather than flex-wrap because a second row would push
@@ -1860,14 +1899,45 @@
   .scratch-fmt-color:focus-within{outline:2px solid var(--violet);outline-offset:-1px;}
   .scratch-fmt-color input[type="color"]{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:none;background:none;opacity:0;cursor:pointer;}
   .scratch-fmt-swatch{width:13px;height:3px;border-radius:2px;background:var(--violet);}
-  .scratch-tip-touch{display:none;} /* swapped with .scratch-tip-key at the mobile breakpoint */
-  .scratch-foot{flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
+  /* position:relative anchors the shortcuts panel, which grows upward out of this strip the same
+     way the page list and the find results do. */
+  .scratch-foot{position:relative;flex:none;width:100%;max-width:70ch;margin:10px auto 0;display:flex;align-items:center;gap:12px;font-size:10.5px;color:var(--faint);}
   /* The tool bar, sharing the footer strip with the word count. flex:none so it never compresses
-     its buttons the way the dot row used to compress its dots. */
-  .scratch-tools{flex:none;display:flex;align-items:center;gap:1px;}
+     its buttons the way the dot row used to compress its dots. margin-left:auto holds it against
+     the right edge now that the tips no longer sit permanently in between taking up the slack. */
+  .scratch-tools{flex:none;margin-left:auto;display:flex;align-items:center;gap:1px;}
   .scratch-status{flex:none;}
-  .scratch-tips{flex:1;text-align:center;opacity:.75;}
+  /* Onboarding only — hidden until the sheet is blank. This gating used to be mobile-only; the
+     line is gone from the desktop footer for the same reason it was gone from the phone's, and
+     what it used to carry lives in the ? panel below. */
+  .scratch-tips{display:none;}
+  .scratch-overlay.scratch-blank .scratch-tips{display:block;flex:1;text-align:center;opacity:.75;}
   .scratch-tips b{font-weight:700;}
+  /* ---- the shortcuts panel ----
+     Same card as .scratch-sheet and .scratch-sr-panel: it is the same kind of object (something
+     that grows upward over the writing until dismissed) and reusing the pattern is most of why it
+     costs so little. Anchored right rather than stretched, because it is a short table and a
+     full-width one would read as a dialog.
+     A grid with the ROWS set to display:contents, so every key column lines up with every other —
+     which is the entire reason this beats the sentence it replaced. */
+  .scratch-help{position:absolute;right:0;bottom:100%;margin-bottom:8px;z-index:4;
+    width:max-content;max-width:min(360px,100%);
+    grid-template-columns:max-content 1fr;gap:6px 14px;align-items:baseline;
+    background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:12px 14px;
+    box-shadow:0 10px 30px rgba(15,18,40,.14);text-align:left;}
+  .scratch-help-t{grid-column:1/-1;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;margin-bottom:1px;}
+  .scratch-help-row{display:contents;}
+  /* The old .scratch-tip-key / .scratch-tip-touch swap, moved onto whole rows so the two columns
+     stay aligned. display:none on a display:contents element hides its children with it. */
+  .scratch-help-row.is-touch{display:none;}
+  .scratch-help-k{color:var(--text);font-size:11px;white-space:nowrap;}
+  .scratch-help-k b{font-weight:700;}
+  .scratch-help-d{color:var(--faint);font-size:11px;}
+  /* Keys look like keys. Small, quiet and monospaced — enough to read as a keycap without turning
+     the panel into a diagram. */
+  .scratch-help kbd{display:inline-block;min-width:15px;padding:1px 5px;text-align:center;
+    background:var(--surface-alt);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;
+    color:var(--text);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10px;line-height:1.5;}
   .scratch-close{flex:none;background:none;border:none;padding:4px 6px;margin:-4px -6px;color:var(--faint);font-size:17px;line-height:1;cursor:pointer;}
   /* The logo, redrawn over the takeover and doubling as the close button. Absolutely positioned
      from .brand's measured rect (js/scratch.js), so the padding here has to match .brand's own or
@@ -1897,8 +1967,13 @@
     .scratch-fmt-color{padding:5px 9px;font-size:13px;}
     .scratch-fmt-sep{margin:0 3px;}
     .scratch-hint{display:none;}   /* no Esc key to hint at — the × carries it */
-    .scratch-tip-key{display:none;}/* nor a ctrl or tab key; the [] shorthand still works, so that tip stays */
-    .scratch-tip-touch{display:inline;}
+    /* The other half of the swap: gesture rows appear, keyboard rows go. Nothing here has a ctrl
+       or a tab key to press, and a panel that listed them would be describing someone else's
+       device. display:contents restores the row to the grid rather than making it a block. */
+    .scratch-help-row.is-key{display:none;}
+    .scratch-help-row.is-touch{display:contents;}
+    /* full width down here: 360px leaves no room for a card floated against one edge */
+    .scratch-help{left:0;right:0;width:auto;max-width:none;}
     .scratch-pagesrow{margin-top:12px;}
     .scratch-pages{gap:5px;}
     .scratch-sheet{max-height:46vh;}
@@ -1911,16 +1986,18 @@
        of count + tools + close. The tips only appear on a blank page (see markScratchEmpty), which
        is what frees the room for the tools to sit here at all. */
     .scratch-foot{gap:8px;}
-    .scratch-tools{margin-left:auto;}
     .scratch-tools .scratch-pagebtn{padding:5px 8px;margin-left:0;}
-    .scratch-tips{display:none;}
-    .scratch-overlay.scratch-blank .scratch-tips{display:block;flex:1 0 100%;order:-1;text-align:center;margin-bottom:2px;}
+    /* the tip line gets its own row above the strip rather than competing with the tools for a
+       360px line — the base rule already hides it once anything is written */
+    .scratch-overlay.scratch-blank .scratch-tips{flex:1 0 100%;order:-1;margin-bottom:2px;}
     .scratch-overlay.scratch-blank .scratch-foot{flex-wrap:wrap;}
     .scratch-brand{padding:0;justify-content:center;} /* .brand centres itself in the mobile top bar */
     .scratch-text input.scratch-tick{width:17px;height:17px;} /* thumb-sized */
     /* the grip is dragged with a thumb here, and it's reached by pressing and holding the image */
-    .scratch-imgbox-grip{right:-15px;bottom:-15px;width:30px;height:30px;}
-    .scratch-imgbox-grip svg{width:17px;height:17px;}
+    .scratch-imgbox-grip,.scratch-imgbox-lift{width:30px;height:30px;}
+    .scratch-imgbox-grip{right:-15px;bottom:-15px;}
+    .scratch-imgbox-lift{left:-15px;top:-15px;}
+    .scratch-imgbox-grip svg,.scratch-imgbox-lift svg{width:17px;height:17px;}
   }
 
   /* the switcher only exists on mobile; !important beats the inline display:flex nav.js sets on

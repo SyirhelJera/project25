@@ -218,18 +218,23 @@
     const hist = (state.finance.netWorthHistory || []).slice().sort((a,b)=> a.date.localeCompare(b.date));
     if(!hist.length) return '';
     const ccy = (state.profile && state.profile.netWorthCurrency) || 'USD';
-    const cur = getNetWorthNum();                       // USD, like every stored snapshot
+    // Every figure here is put into the display currency UP FRONT rather than at format time,
+    // because the live total and a stored snapshot convert by different rules — the live one at
+    // today's rate, a stored one at the rate it was recorded under (convertHistValue(), goals.js).
+    // Mixing them is what made a rate fetch step this card, the profile chip and the Finance chart
+    // all at once; comparing two already-converted figures keeps the delta honest.
+    const cur = convertAmt(getNetWorthNum(), 'USD', ccy);
     const map = {};
-    hist.forEach(h=>{ map[h.date] = h.value; });
+    hist.forEach(h=>{ map[h.date] = convertHistValue(h, ccy); });
     const keys = insDayKeys(INS_TREND_DAYS);
     const series = insCarryForward(map, keys);
-    const prev = insPrevReading(hist.map(h=>({ key:h.date, value:h.value })));
+    const prev = insPrevReading(hist.map(h=>({ key:h.date, value: convertHistValue(h, ccy) })));
     const prevV = prev ? prev.value : null;
     const tone = prevV === null ? '' : (cur >= prevV ? 'pos' : 'neg');
     return insCard({
       title:'Net worth', tab:'finance', sub:'accounts',
-      body:'<div class="ins-big">' + fmtMoney(convertAmt(cur, 'USD', ccy), ccy) + '</div>'
-        + insDelta(cur, prevV, true, v=> fmtMoney(convertAmt(v, 'USD', ccy), ccy), insSince(prev))
+      body:'<div class="ins-big">' + fmtMoney(cur, ccy) + '</div>'
+        + insDelta(cur, prevV, true, v=> fmtMoney(v, ccy), insSince(prev))
         + insSparkline(series, tone)
     });
   }

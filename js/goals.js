@@ -39,6 +39,25 @@
     const usd = (parseFloat(amount)||0) / rateFor(from||'USD');
     return usd * rateFor(to||'USD');
   }
+  /* A net-worth history point holds a USD figure that was converted with the rates in effect on
+     the day it was written (snapshotNetWorth() in finance.js), so re-expressing it with TODAY's
+     rate multiplies one vintage by another. That was a real bug: fetching rates rewrites only
+     today's point — save() calls snapshotNetWorth() — while the whole back-history keeps the old
+     rate, so the chart stepped up several percent with not a cent moved. Converting with the
+     point's OWN rates makes the two cancel, which is what keeps a single-currency portfolio a flat
+     line in its own currency, and leaves a USD view showing FX drift as the gradual thing it is
+     (rateFor('USD') is always 1, so a USD read returns the stored figure untouched).
+     Points written before snapshots carried rates have no vintage to honour and fall back to the
+     current ones — the old behaviour, rather than retroactively rewriting history that was never
+     recorded. Anything reading netWorthHistory for display must go through this, or that tab will
+     disagree with the chart about the same day. */
+  function histRateFor(entry, ccy){
+    const r = entry && entry.rates && entry.rates[ccy || 'USD'];
+    return (typeof r === 'number' && r > 0) ? r : rateFor(ccy || 'USD');
+  }
+  function convertHistValue(entry, to){
+    return (parseFloat(entry && entry.value)||0) * histRateFor(entry, to || 'USD');
+  }
   function ccySymbol(ccy){ return CURRENCY_SYMBOLS[ccy] || (ccy+' '); }
   function fmtMoney(amount, ccy){
     const sym = ccySymbol(ccy||'USD');
@@ -1699,7 +1718,10 @@
         }
         // a window reaching further back than the history still compares against something
         if(!prev && cutoff && hist.length) prev = hist[0];
-        const deltaDisp = prev ? convertAmt(nwNow - prev.value, 'USD', nwCcy) : 0;
+        // converted separately, then subtracted: nwNow is live so it takes today's rate, while the
+        // stored point takes its own (convertHistValue) — subtracting first would put both on one
+        // rate and reintroduce the step a rate fetch used to produce here
+        const deltaDisp = prev ? convertAmt(nwNow, 'USD', nwCcy) - convertHistValue(prev, nwCcy) : 0;
         trendEl.innerHTML = (prev && Math.abs(deltaDisp) >= 1)
           ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp > 0,
               (deltaDisp > 0 ? 'Up ' : 'Down ') + ccySymbol(nwCcy) + Math.abs(Math.round(deltaDisp)).toLocaleString()

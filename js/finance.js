@@ -3,13 +3,20 @@
 
   // captures one net-worth data point per calendar day, updating today's point in place if
   // save() runs more than once that day — same per-day dedupe idiom as recomputeDailyActivity()
+  //
+  // `value` is USD, but a USD figure is only meaningful alongside the rates that produced it, so
+  // each point carries its own copy of them. Nothing may read `value` back for display without
+  // going through convertHistValue() in goals.js — see the comment there for what the mismatch
+  // cost. The copy is a snapshot, not a reference: state.finance.rates is mutated in place by the
+  // converter's inputs and the Fetch button, which would otherwise rewrite every point's vintage.
   function snapshotNetWorth(){
     const hist = state.finance.netWorthHistory || (state.finance.netWorthHistory = []);
     const today = localDateStr(new Date());
     const value = getNetWorthNum();
+    const rates = Object.assign({}, state.finance.rates);
     const last = hist[hist.length-1];
-    if(last && last.date === today) last.value = value;
-    else hist.push({ date: today, value });
+    if(last && last.date === today){ last.value = value; last.rates = rates; }
+    else hist.push({ date: today, value, rates });
   }
 
   // Writes a money figure into a .fin-stat-num and tints it only when it is non-zero, so an empty
@@ -158,7 +165,9 @@
       return;
     }
 
-    const vals = points.map(p => convertAmt(p.value, 'USD', nwCcy));
+    // each point converted with the rates IT was recorded under, never today's — see
+    // convertHistValue() in goals.js. The headline figure above is live, so it stays on convertAmt.
+    const vals = points.map(p => convertHistValue(p, nwCcy));
 
     // headline change across the visible window — the arrow repeats what the colour says so the
     // direction survives greyscale printing and colour blindness
@@ -1452,7 +1461,11 @@
       if(data && data.result === 'success' && data.rates){
         CURRENCIES.forEach(c=>{ if(typeof data.rates[c] === 'number') state.finance.rates[c] = data.rates[c]; });
         state.finance.rates.USD = 1;
-        save(); renderFinanceConverter();
+        // new rates re-value every foreign balance, so the totals and the chart are stale the
+        // instant this lands — save() has already rewritten today's snapshot via
+        // snapshotNetWorth(), and rendering only the converter left the rest of the app showing
+        // pre-fetch figures until some unrelated edit happened to redraw them
+        save(); renderFinance(); renderGoals();
         btn.textContent = '✓ Rates updated';
       } else {
         btn.textContent = 'Fetch failed — try again';

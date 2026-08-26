@@ -77,8 +77,8 @@
     // Google Calendar (js/calendar.js) — PREFERENCES ONLY, the same rule as valorant.live above.
     // The fetched events are never stored anywhere: they'd ride in the shared blob on every save
     // from every tab, and they're stale within the hour. calendarIds:[] means "just the account's
-    // own calendar". dismissed:[{id,startMs}] is which "coming up" bubbles you've already waved off.
-    calendar: { calendarIds: [], lookaheadDays: 14, bubbleMinutes: 60, bubbleEnabled: true, bubbleSound: true, dismissed: [] },
+    // own calendar". ✕ on a bubble is session-only and records nothing — see js/calendar.js.
+    calendar: { calendarIds: [], lookaheadDays: 14, bubbleDays: 7, bubbleCount: 1, bubbleEnabled: true, bubbleSound: true, bubbleCountdowns: true },
     wishlist: [], // { id, name, cost, contributions:[{id,amount,createdAt}], imageUrl, favorite, bought, createdAt }
     jobs: [], // { id, createdAt, updatedAt, company, group, logoUrl, workModel, hqLocation, companySiteUrl,
               //   title, postingUrl, salaryRange, resumeVersion, resumeFileId, resumeFileName, resumeViewLink,

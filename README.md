@@ -72,11 +72,12 @@ state = {
                                        // it doesn't break a streak, but doesn't inflate it either
   countdowns: [ { id, label, date, pinned, createdAt } ],
   calendar: {                          // Google Calendar (js/calendar.js) — PREFERENCES ONLY.
-    calendarIds: [], lookaheadDays, bubbleMinutes, bubbleEnabled,
-    dismissed: [ {id,startMs} ]        // “coming up” bubbles already waved off; pruned to future
-  },                                   // The fetched EVENTS are never stored — they'd ride in this
-                                       // blob on every save from every tab, and they're stale
-                                       // within the hour. Same ruling as valorant.live below.
+    calendarIds: [], lookaheadDays, bubbleDays, bubbleCount, bubbleEnabled, bubbleSound,
+    bubbleCountdowns                   // fold state.countdowns into the bubble stack too
+  },                                   // ✕ on a bubble is session-only and records nothing.
+                                       // The fetched EVENTS are never stored either — they'd ride
+                                       // in this blob on every save from every tab, and they're
+                                       // stale within the hour. Same ruling as valorant.live below.
   mantras: [ { id, text } ],
   board: {                             // Board of Advisers (js/board.js) — AI personas + consults
     advisers: [ { id, presetKey, emoji, name, lens, color, hired, createdAt } ],
@@ -528,8 +529,8 @@ nothing else. This is the same ruling as the Live Match panel: `doSave()`'s rest
 any top-level `state` key into the shared blob, and that blob is re-serialized and re-uploaded *in
 full* on every save from every tab, so a fortnight of events would be re-sent every time you ticked
 an unrelated habit — for data that's stale within the hour and one button away. `state.calendar`
-therefore holds preferences only (`calendarIds`, `lookaheadDays`, `bubbleMinutes`, `bubbleEnabled`,
-`dismissed`). The cost, stated rather than papered over: **there is no offline agenda.** Open with no
+therefore holds preferences only (`calendarIds`, `lookaheadDays`, `bubbleDays`, `bubbleCount`,
+`bubbleEnabled`, `bubbleSound`). The cost, stated rather than papered over: **there is no offline agenda.** Open with no
 network and the pane shows its error line, and no bubble appears.
 
 **`singleEvents=true` is load-bearing** on the server's events call. Without it a weekly standup
@@ -545,18 +546,83 @@ to make it local midnight instead, which is why the day grouping agrees with wha
 `renderAll()` — the same "no-op unless conditions are met" slot `maybeSyncPinterestCategories()`
 occupies, and `renderAll()` runs at the end of `load()`, which is exactly "when I first open the
 app". Its fetch is async on purpose, so it never delays first paint or `hideLoadScreen()`; the bubble
-simply appears when the function returns. It shows the soonest *timed* event starting within
-`bubbleMinutes` (all-day events are skipped — "starts at local midnight" isn't something to be warned
-about 40 minutes ahead of), auto-hides after 12s, and ✕ records a `{id, startMs}` dismissal so a
-reload doesn't bring the same one back. That list is pruned to future events on every open, so it
-can't grow.
+simply appears when the function returns. It shows the **next `bubbleCount` events on the calendar,
+whatever they are** — as long as they land within `bubbleDays` (default 7) — as a stack of cards.
+`#calBubbleStack` is the fixed, always-present `aria-live` container (a live region has to exist
+*before* the content it announces is put into it) and owns the positioning; the cards inside it are
+ordinary flow items, so a second or third just extends the column downward. It carries
+`pointer-events:none` with `auto` on the cards, or it would swallow clicks aimed at the app in the
+gaps between them and whenever it is empty. Cards are rebuilt on every show, so the click and
+keydown handlers are **delegated from the stack** rather than attached per card. The ding fires once
+for the batch, not once per card. It auto-hides after 12s, ✕ clears one card, and a
+click anywhere outside the stack clears all of them — all three play the card back out the way it
+came in, faster than it arrived, since an exit that lingers reads as sluggish where an entrance that
+lingers reads as deliberate — getting on with something else takes a
+notification down, rather than leaving you to dismiss it card by card first. Removal is driven by a **timer**, not an `animationend` listener: the animation is switched off
+under `prefers-reduced-motion`, that event would then never fire, and the card would sit on screen
+forever — the removal must not depend on the decoration happening. For the same reason the
+reduced-motion path detaches immediately rather than waiting out a delay that animates nothing.
+`hideCalBubbles()` animates; `clearCalBubbles()` is the synchronous twin used by
+`showCalBubbles()`'s reset, which can't animate because the next batch is appended on the very next
+line and cards on their way out would still be in the stack. That outside-click
+listener is registered only while the stack is up and removed with it, and it runs in the **capture**
+phase on purpose: in the bubble phase it would fire after the stack's own handler, which removes the
+card on ✕, so the button would already be detached, `closest('#calBubbleStack')` would find nothing,
+and dismissing one card would read as a click outside and take the whole stack with it.
+All of it lasts for **this app open only**, recording nothing anywhere.
+
+That last part was a deliberate retreat. Dismissals used to persist as `{id, startMs}` in state
+until the event started, which was right while this only looked an hour ahead — waving off "Dentist
+in 40 minutes" shouldn't have it return on every reload for the rest of the hour. Over a seven-day
+horizon the same rule silenced an event for a *week*, and since ✕ is the obvious way to clear a card
+off the screen, tidying up quietly burned the next few days of reminders with no way back short of
+the console. Nothing replaces it because nothing needs to: the stack is built once per page load and
+auto-hides, so removing the card already *is* "gone for this session" — a session-scoped list would
+have been state no second reader ever consults. It also retires a bug it carried, where the prune
+dropped any entry whose `startMs` was past, so dismissing an all-day event happening *today* (whose
+`startMs` is midnight) never stuck in the first place.
+
+All-day events count. They were excluded while this only looked an hour ahead — "starts at local
+midnight" is not something to warn about 40 minutes in advance — but over a week's horizon a holiday
+or a birthday is exactly what "what's next" means. Today's all-day event is matched on its *day*
+rather than on `startMs`, which sits at midnight and would otherwise test as already past.
+
+The horizon is measured in **calendar days** via countdowns.js's `daysLeft()`, not as `now + N×24h`,
+because a millisecond horizon cuts off partway through the seventh day: a 10am meeting a week out
+was excluded at 08:24 and included at 11:00, while the bubble called it "in 7 days" either way. It's
+also clamped to `lookaheadDays`, since the bubble can only ever see events the agenda actually
+fetched. `calRelative()` speaks the same unit — a duration inside today ("in 2h 10m"), a day count
+past it ("tomorrow", "in 5 days"), with the one exception that something under 12 hours away but
+after midnight still reads as a duration. The bubble spells the date out only when the phrase
+doesn't already imply it, so "tomorrow · 9:00 AM" but "in 5 days · Mon, Aug 31 9:00 AM".
 
 `bubbleEnabled` is the one preference here with a UI: **Settings → Tracking → Calendar
 reminder**, a `.unit-toggle` wired in `renderSettings()` like the others. Switching it off also hides
 a bubble that is on screen at that moment, and stops the app reading your calendar on load at
 all — the early return in `maybeShowCalendarBubble()` happens before the fetch, so the Edge
 Function isn't called. The pane is unaffected either way, since it fetches on its own.
-`bubbleSound`, `bubbleMinutes` and `lookaheadDays` stay console-only knobs.
+`bubbleCount` (1–5), `bubbleDays` (1–60) and `bubbleCountdowns` sit under it as **How many to
+show** / **How far ahead to look** / **Include countdowns**, all hidden together while the reminder
+is off. `bubbleSound` and `lookaheadDays` stay console-only knobs.
+
+**Countdowns can ride in the same stack** (`bubbleCountdowns`, on by default, Settings → Tracking).
+A countdown is already shaped like an all-day event — a label and a date — so `countdownBubbleEvents()`
+maps one onto the same record the rest of the file consumes rather than giving it a parallel path
+through the card builder, the sorting and the wording; `calBubbleCandidates()` merges both sources
+and re-sorts, so a birthday and a standup interleave by date rather than by origin. The date string
+gets the same `T00:00:00` treatment as an all-day `start.date`, for the same UTC reason. A countdown
+card shows ⏳ rather than 📅, takes the app's own `var(--violet)` instead of a Google colour (which
+needs no contrast correction, being a themed token the app already uses for text), carries no time
+at all — `calEventTime()` would render the literal word "all-day", which is true of the record and
+meaningless on a card counting down to a birthday — and **deep-links to the Countdowns pane**, since
+sending you to an agenda that doesn't contain what you just clicked would be a dead end.
+
+Two consequences worth knowing. The bubble now works with **no Supabase at all** — countdowns are
+local, so `maybeShowCalendarBubble()` skips the fetch and still fills the stack in `window.storage`
+mode or off `file://`. And the agenda's fetch window is `calAgendaDays()` = `max(lookaheadDays,
+bubbleDays)` rather than `lookaheadDays` alone: without that, choosing "next 30 days" would quietly
+show countdowns that far out while calendar events stopped at day 14, because day 14 is all that was
+ever fetched.
 
 **The bubble is coloured by the calendar the event is on.** The per-calendar `backgroundColor` is
 resolved server-side and attached to every event, rather than being correlated on the page — the

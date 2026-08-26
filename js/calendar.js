@@ -9,7 +9,7 @@
      re-uploaded IN FULL on every save from every tab. A fortnight of events re-sent on every
      unrelated habit tick is exactly what the Jobs/Notes/Scratch split exists to prevent — for data
      that is stale within the hour and one refresh away. `state.calendar` therefore holds
-     PREFERENCES ONLY (which calendars, how far ahead, the bubble's lead time, what you dismissed),
+     PREFERENCES ONLY (which calendars, how far ahead, the bubble's horizon, how many cards),
      which is small enough to ride in the shared blob like every other setting.
 
      The cost of that, stated plainly rather than worked around: there is no offline agenda. Open
@@ -19,7 +19,8 @@
   const CAL_LOOKAHEAD_MAX_DAYS = 60;   // the Edge Function clamps to this too; kept in step by hand
   const CAL_REFETCH_AFTER_MS = 5*60*1000; // entering the pane inside this window reuses what we have
   const CAL_BUBBLE_AUTOHIDE_MS = 12000;
-  const CAL_DISMISSED_MAX = 50;
+  const CAL_BUBBLE_DEFAULT_DAYS = 7;
+  const CAL_BUBBLE_MAX_COUNT = 5;
 
   // Memory only — see the header above. calFetchedAt doubles as "have we ever fetched".
   let calEvents = [];
@@ -39,6 +40,12 @@
     const n = Math.floor(state.calendar.lookaheadDays);
     if(!isFinite(n) || n < 1) return 14;
     return Math.min(n, CAL_LOOKAHEAD_MAX_DAYS);
+  }
+  // How far the agenda actually fetches. It has to cover the BUBBLE's horizon as well as the pane's
+  // own preference, or picking "next 30 days" in Settings would quietly show countdowns that far out
+  // (they're local) while calendar events stopped at day 14 (they're all that was fetched).
+  function calAgendaDays(){
+    return Math.min(Math.max(calLookaheadDays(), calBubbleDays()), CAL_LOOKAHEAD_MAX_DAYS);
   }
 
   /* ---------- fetching ---------- */
@@ -73,7 +80,7 @@
       // From local midnight, not from now: an event that started an hour ago is still the thing
       // you're in, and dropping it mid-morning would make today's agenda look wrong.
       const from = new Date(now); from.setHours(0,0,0,0);
-      const to = new Date(from.getTime() + calLookaheadDays()*86400000);
+      const to = new Date(from.getTime() + calAgendaDays()*86400000);
       const data = await calInvoke({
         action: 'events',
         calendarIds: state.calendar.calendarIds,
@@ -141,12 +148,22 @@
     return fmtTime12(String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'));
   }
 
-  // "in 25m" / "in 2h 10m" / "now" — reuses clock.js's fmtDurationMinutes() for the units, so the
-  // bubble counts down in the same words the Clock pane one button away uses.
+  // "now" / "in 25m" / "in 2h 10m" / "tomorrow" / "in 5 days". Anything inside today is a duration,
+  // because that's the number you act on; past that a duration stops being readable ("in 168h") and
+  // a day count is what you actually want.
+  //
+  // Days come from countdowns.js's daysLeft(), so they're CALENDAR days rather than 24h chunks —
+  // an 8am meeting is "tomorrow" whether it's now 9pm or 2am, which is the whole difference between
+  // this reading right and reading nonsense late at night. The one exception is an event inside the
+  // next 12 hours that happens to fall after midnight: "in 3h 20m" beats "tomorrow" there.
   function calRelative(ms){
     const mins = Math.round((ms - Date.now())/60000);
     if(mins <= 0) return 'now';
-    return 'in ' + fmtDurationMinutes(mins);
+    const days = daysLeft(new Date(ms));
+    if(days <= 0) return 'in ' + fmtDurationMinutes(mins);      // still today, however far off
+    if(days === 1 && mins < 12*60) return 'in ' + fmtDurationMinutes(mins);
+    if(days === 1) return 'tomorrow';
+    return 'in ' + days + ' days';
   }
 
   /* ---------- the pane ---------- */
@@ -167,7 +184,7 @@
     const status = el('calStatus');
     if(calError) status.textContent = calError;
     else if(calFetching) status.textContent = 'Reading your calendar…';
-    else if(calFetchedAt) status.textContent = 'Last checked ' + new Date(calFetchedAt).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) + ' · next ' + calLookaheadDays() + ' days';
+    else if(calFetchedAt) status.textContent = 'Last checked ' + new Date(calFetchedAt).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}) + ' · next ' + calAgendaDays() + ' days';
     else status.textContent = '';
     status.classList.toggle('cal-status-error', !!calError);
 
@@ -253,29 +270,90 @@
   }
 
   /* ---------- the "coming up" bubble ----------
-     Fires once per page load, from renderAll(), when something starts within bubbleMinutes. It is a
-     body-level sibling of .main (never inside a .view) so it can show from any tab — the same
+     Fires once per page load, from renderAll(), stacking the next bubbleCount events that fall
+     within bubbleDays. It is a body-level sibling of .main (never inside a .view) so it can show from any tab — the same
      reason #valItemPreviewOverlay and #scratchOverlay sit outside theirs.
   --------------------------------------------- */
 
-  // Drops dismissals for events that have already started — they can never fire again, so keeping
-  // them would grow a list that rides in the shared blob forever.
-  function pruneCalDismissed(){
-    const now = Date.now();
-    state.calendar.dismissed = (state.calendar.dismissed || [])
-      .filter(d => d && typeof d.startMs === 'number' && d.startMs > now)
-      .slice(-CAL_DISMISSED_MAX);
-  }
-  function calIsDismissed(ev){
-    return (state.calendar.dismissed || []).some(d => d.id === ev.id && d.startMs === ev.startMs);
+  /* ✕ dismisses a card for THIS APP OPEN only, and there is deliberately no record of it anywhere.
+     Dismissals used to persist as {id,startMs} in state until the event started, which made sense
+     while this only looked an hour ahead — waving off "Dentist in 40 minutes" shouldn't have it
+     return on every reload for the rest of the hour. Over a seven-day horizon that same rule
+     silenced an event for a WEEK, and since ✕ is the obvious way to clear a card off the screen,
+     tidying up quietly burned the next few days of reminders with no way back short of the console.
+
+     Nothing replaces it, because nothing needs to: the stack is built once per page load
+     (calBubbleShownThisSession) and auto-hides after CAL_BUBBLE_AUTOHIDE_MS, so removing the card
+     IS "gone for this session". A session-scoped dismissal list would have been state that no
+     second reader ever consults. That also retires a bug it carried — the prune dropped any entry
+     whose startMs was past, and an all-day event's startMs is midnight, so dismissing today's
+     all-day event never stuck in the first place. */
+
+  // Horizon in days, clamped to the window actually fetched — asking the bubble to look 30 days out
+  // while the agenda only pulls 14 would just mean it silently sees nothing past day 14.
+  function calBubbleDays(){
+    const n = Math.floor(state.calendar.bubbleDays);
+    const want = (!isFinite(n) || n < 1) ? CAL_BUBBLE_DEFAULT_DAYS : n;
+    return Math.min(want, CAL_LOOKAHEAD_MAX_DAYS);
   }
 
-  // The soonest timed event starting inside the lead time and not already dismissed. All-day events
-  // are skipped: "starts at local midnight" is not a thing to be warned about minutes ahead of.
-  function nextCalBubbleEvent(){
+  /* Countdowns as bubble candidates. A countdown is already shaped like an all-day event — a label
+     and a date — so it's mapped onto the same record the rest of this file consumes rather than
+     given a parallel code path through the card builder, the sorting and the wording.
+
+     `T00:00:00` for the same reason the Edge Function appends it to an all-day start.date: parsing
+     the bare "2026-12-25" reads as UTC and lands on the wrong local day either side of Greenwich.
+     `source` is what makes the card show ⏳ instead of 📅 and deep-link to Countdowns rather than
+     Calendar; the id is prefixed so it can never collide with a Google event id. */
+  function countdownBubbleEvents(){
+    if(state.calendar.bubbleCountdowns === false) return [];
+    return (state.countdowns || []).map(c=>{
+      const startMs = Date.parse(String(c.date || '') + 'T00:00:00');
+      if(!isFinite(startMs)) return null;
+      return { id:'cd:'+c.id, summary:c.label || '(untitled)', startMs, allDay:true,
+               location:'', htmlLink:'', color:'', source:'countdown' };
+    }).filter(Boolean);
+  }
+
+  // Both sources in one start-ordered list, which is what lets nextCalBubbleEvents() stay a simple
+  // walk from the front and lets a countdown and a meeting interleave by date rather than by origin.
+  function calBubbleCandidates(){
+    return calEvents.concat(countdownBubbleEvents()).sort((a,b)=> a.startMs - b.startMs);
+  }
+
+  // How many cards to stack, 1..CAL_BUBBLE_MAX_COUNT (Settings → Tracking → Calendar reminder).
+  function calBubbleCount(){
+    const n = Math.floor(state.calendar.bubbleCount);
+    if(!isFinite(n) || n < 1) return 1;
+    return Math.min(n, CAL_BUBBLE_MAX_COUNT);
+  }
+
+  // The next N things coming up — calendar events and, if enabled, countdowns — however far off,
+  // as long as they land inside the horizon. calBubbleCandidates() hands them over start-ordered,
+  // so this is a walk from the front, and the horizon test can BREAK rather than continue since
+  // nothing later could qualify either.
+  //
+  // All-day events count. They were excluded when this only looked an hour ahead — "starts at local
+  // midnight" is not something to warn about 40 minutes in advance — but over a week's horizon a
+  // holiday or a birthday is exactly the kind of thing "what's next" means, and "in 3 days" reads
+  // just as well for one. Today's all-day event is still current rather than past, so it's matched
+  // on its DAY rather than on startMs, which sits at midnight and would otherwise test as gone.
+  function nextCalBubbleEvents(){
     const now = Date.now();
-    const until = now + Math.max(1, Math.floor(state.calendar.bubbleMinutes || 60))*60000;
-    return calEvents.find(ev => !ev.allDay && ev.startMs >= now && ev.startMs <= until && !calIsDismissed(ev)) || null;
+    const horizon = calBubbleDays();
+    const want = calBubbleCount();
+    const out = [];
+    for(const ev of calBubbleCandidates()){
+      if(out.length >= want) break;
+      // Calendar days, not now+N*24h — the same unit calRelative() speaks in, and the only reading
+      // that matches "7 days away". A millisecond horizon cuts off partway through the seventh day,
+      // so a 10am meeting a week out was excluded at 08:24 and included at 11:00, while the bubble
+      // would have called it "in 7 days" either way.
+      const days = daysLeft(new Date(ev.startMs));
+      if(days > horizon) break;
+      if(ev.allDay ? days >= 0 : ev.startMs >= now) out.push(ev);
+    }
+    return out;
   }
 
   // Called from renderAll(), beside maybeSyncPinterestCategories() — the function already there
@@ -284,15 +362,14 @@
   // so a Backups restore (which calls renderAll() again) can't re-pop it.
   function maybeShowCalendarBubble(){
     if(calBubbleShownThisSession) return;
-    if(calUnavailable() || !state.calendar.bubbleEnabled) return;
+    if(!state.calendar.bubbleEnabled) return;
     calBubbleShownThisSession = true;
-    pruneCalDismissed();
-    // Async on purpose: the bubble appears when the function returns, never blocking first paint
+    // No calendar to read (Claude storage, or no Supabase configured) doesn't mean nothing to show:
+    // countdowns are local, so the stack still works in those modes when they're switched on.
+    if(calUnavailable()){ showCalBubbles(nextCalBubbleEvents()); return; }
+    // Async on purpose: the bubbles appear when the function returns, never blocking first paint
     // or hideLoadScreen(). Errors are already captured into calError for the pane to show.
-    fetchCalendarAgenda(false).then(()=>{
-      const ev = nextCalBubbleEvent();
-      if(ev) showCalBubble(ev);
-    });
+    fetchCalendarAgenda(false).then(()=> showCalBubbles(nextCalBubbleEvents()));
   }
 
   /* ---- the bubble's colour comes from the calendar the event is on ----
@@ -408,8 +485,8 @@
       const armed = ()=>{
         window.removeEventListener('pointerdown', armed);
         window.removeEventListener('keydown', armed);
-        const box = el('calBubble');
-        if(box && box.style.display !== 'none' && sfxOutput() && sfxCtx.state === 'running') emit();
+        const stack = el('calBubbleStack');
+        if(stack && stack.children.length && sfxOutput() && sfxCtx.state === 'running') emit();
       };
       window.addEventListener('pointerdown', armed, { once:true });
       window.addEventListener('keydown', armed, { once:true });
@@ -418,54 +495,177 @@
     emit();
   }
 
-  function showCalBubble(ev){
-    const box = el('calBubble'); if(!box) return;
-    el('calBubbleTitle').textContent = ev.summary || '(no title)';
-    el('calBubbleWhen').textContent = calRelative(ev.startMs) + ' · ' + calEventTime(ev);
-    applyCalBubbleAccent(box, ev.color);
-    box.style.display = 'flex';
-    box.dataset.eventId = ev.id;
-    box.dataset.startMs = String(ev.startMs);
+  // One card per event. Built as elements with textContent rather than interpolated markup: the
+  // summary comes from Google and is arbitrary user text, and escapeHtml() does not escape double
+  // quotes, so it must never reach an attribute.
+  function calBubbleCard(ev, index){
+    const box = document.createElement('div');
+    box.className = 'cal-bubble';
+    box.tabIndex = 0;
+    // A countdown deep-links to the Countdowns pane, not the Calendar one — sending you to an
+    // agenda that doesn't contain the thing you just clicked would be a dead end.
+    const isCd = ev.source === 'countdown';
+    box.dataset.subtab = isCd ? 'countdowns' : 'calendar';
+    box.title = isCd ? 'Open the Countdowns tab' : 'Open the Calendar tab';
+    // Staggered entry, so a stack of three reads as arriving rather than as one block appearing.
+    // The CSS pairs this with animation-fill-mode:both — without it a delayed card would sit at its
+    // FINAL state through the delay and then jump back to the start.
+    box.style.animationDelay = (index * 0.07) + 's';
+    // A countdown has no Google calendar behind it to take a colour from, so it gets the app's own
+    // accent — which also makes the two kinds of card tell apart at a glance, alongside the icon.
+    // var(--violet) rather than a resolved hex: it is already a themed token the app uses for body
+    // text elsewhere, so it needs none of applyCalBubbleAccent()'s contrast correction.
+    if(isCd){
+      box.style.setProperty('--cal-accent', 'var(--violet)');
+      box.style.setProperty('--cal-accent-ink', 'var(--violet)');
+    } else {
+      applyCalBubbleAccent(box, ev.color);
+    }
+
+    const icon = document.createElement('div');
+    icon.className = 'cal-bubble-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = isCd ? '⏳' : '📅';
+
+    const body = document.createElement('div');
+    body.className = 'cal-bubble-body';
+    const title = document.createElement('div');
+    title.className = 'cal-bubble-title';
+    title.textContent = ev.summary || '(no title)';
+    const when = document.createElement('div');
+    when.className = 'cal-bubble-when';
+    // The date is only spelled out when the relative phrase doesn't already imply it: "in 25m ·
+    // 9:00 AM" and "tomorrow · 9:00 AM" need no date, but "in 5 days · 9:00 AM" is useless without
+    // one. calDayLabel() is reused so the bubble names a day exactly as the agenda behind it does.
+    const label = calDayLabel(localDateStr(new Date(ev.startMs)));
+    const dated = (label === 'Today' || label === 'Tomorrow') ? '' : label;
+    // A countdown gets no time at all. It is stored as a date with no clock time, so calEventTime()
+    // would render the literal word "all-day" — true of the underlying record, and meaningless as a
+    // thing to read on a card counting down to a birthday.
+    const timePart = isCd ? '' : calEventTime(ev);
+    when.textContent = [calRelative(ev.startMs), [dated, timePart].filter(Boolean).join(' ')]
+      .filter(Boolean).join(' · ');
+    body.appendChild(title); body.appendChild(when);
+
+    const close = document.createElement('button');
+    close.className = 'cal-bubble-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Dismiss');
+    close.textContent = '×';
+
+    box.appendChild(icon); box.appendChild(body); box.appendChild(close);
+    return box;
+  }
+
+  function showCalBubbles(events){
+    const stack = el('calBubbleStack'); if(!stack) return;
+    // Reset through clearCalBubbles() rather than just blanking the stack, so a previous batch's
+    // auto-hide timer and outside-click listener go with it — including on the empty early return
+    // below, which would otherwise leave the listener registered against nothing.
+    clearCalBubbles();
+    if(!events || !events.length) return;
+    events.forEach((ev, i)=> stack.appendChild(calBubbleCard(ev, i)));
+    // Once for the batch, not once per card — three dings on top of each other is a noise, not a
+    // notification.
     playCalBubbleDing();
     clearTimeout(calBubbleTimer);
-    calBubbleTimer = setTimeout(hideCalBubble, CAL_BUBBLE_AUTOHIDE_MS);
+    calBubbleTimer = setTimeout(hideCalBubbles, CAL_BUBBLE_AUTOHIDE_MS);
+    // Registered only while the stack is actually up, and removed again by hideCalBubbles(), rather
+    // than left sitting on the document for the whole session doing nothing.
+    document.addEventListener('click', onCalOutsideClick, true);
   }
-  function hideCalBubble(){
-    const box = el('calBubble'); if(!box) return;
+  // Everything that ends a stack's life goes through here first: the auto-hide timer, an outside
+  // click, and navigating away from a card. Detaching the listener and killing the timer happen
+  // immediately; only the cards themselves wait for their animation.
+  function hideCalBubbles(){
+    const stack = el('calBubbleStack');
     clearTimeout(calBubbleTimer);
-    box.style.display = 'none';
+    document.removeEventListener('click', onCalOutsideClick, true);
+    if(!stack) return;
+    Array.from(stack.children).forEach((card, i)=> leaveCalCard(card, i*0.04));
   }
 
-  // stopPropagation: the whole card is the click target now, so without this, dismissing would
-  // also navigate to the Calendar pane — the exact opposite of what ✕ means.
-  el('calBubbleClose').addEventListener('click', e=>{
-    e.stopPropagation();
-    const box = el('calBubble');
-    const id = box.dataset.eventId, startMs = Number(box.dataset.startMs);
-    if(id && isFinite(startMs)){
-      state.calendar.dismissed.push({ id, startMs });
-      pruneCalDismissed();
-      save();
-    }
-    hideCalBubble();
-  });
+  // The synchronous version, for showCalBubbles()'s reset. It can't animate: the next batch of
+  // cards is appended on the very next line, and cards on their way out would still be in the
+  // stack, so a refresh would briefly show both.
+  function clearCalBubbles(){
+    const stack = el('calBubbleStack');
+    clearTimeout(calBubbleTimer);
+    document.removeEventListener('click', onCalOutsideClick, true);
+    if(stack) stack.innerHTML = '';
+  }
 
-  function openCalBubbleTarget(){
-    hideCalBubble();
+  /* Plays a card out and then detaches it. A timer rather than an `animationend` listener, because
+     the animation is switched off under prefers-reduced-motion and that event would then never
+     fire, leaving the card on screen forever — the removal must not depend on the decoration
+     happening. For the same reason the reduced-motion case detaches straight away instead of
+     sitting through a delay that animates nothing. */
+  const CAL_BUBBLE_OUT_MS = 220;
+  function calReducedMotion(){
+    try{ return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; }
+  }
+  function leaveCalCard(card, delaySec){
+    if(!card || card.classList.contains('is-leaving')) return;
+    if(calReducedMotion()){ card.remove(); return; }
+    const delay = delaySec || 0;
+    card.style.animationDelay = delay + 's';
+    card.classList.add('is-leaving');
+    setTimeout(()=> card.remove(), CAL_BUBBLE_OUT_MS + delay*1000);
+  }
+
+  /* Getting on with anything else takes the stack down — it's a notification, not something to
+     dismiss card by card before you can carry on.
+     CAPTURE phase, deliberately. In the bubble phase this runs after the stack's own handler, and
+     that handler REMOVES the card when ✕ is hit — so by the time the event reached here the button
+     would already be detached from the document, closest('#calBubbleStack') would find nothing, and
+     dismissing one card would read as a click outside and take the whole stack with it. Capture
+     runs before any of that, while the target is still where it was clicked. */
+  function onCalOutsideClick(e){
+    if(e.target && e.target.closest && e.target.closest('#calBubbleStack')) return;
+    hideCalBubbles();
+  }
+
+  function openCalBubbleTarget(subtab){
+    hideCalBubbles();
     // Reuses nav.js's own click ladder rather than reimplementing it, exactly as insGoTo() does —
     // the ladder runs every tab's teardown (stopping the Live Match poll, resetting goalFilter, …).
     // The sub-tab is applied AFTER that click, never instead of it: the ladder itself calls
     // showTimeSubTab('clock'), so anything set first is immediately overwritten.
     const item = document.querySelector('.nav-item[data-tab="time"]');
     if(item) item.click();
-    showTimeSubTab('calendar');
+    showTimeSubTab(subtab === 'countdowns' ? 'countdowns' : 'calendar');
     window.scrollTo({ top:0 });
   }
-  el('calBubble').addEventListener('click', openCalBubbleTarget);
-  // The card is a div, so it gets none of a button's keyboard behaviour for free. Space is
-  // preventDefault'd as well as Enter, or activating it also scrolls the page behind.
-  el('calBubble').addEventListener('keydown', e=>{
-    if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); openCalBubbleTarget(); }
+
+  /* Delegated from the stack, because the cards are rebuilt on every show — per-card listeners
+     would have to be re-attached each time, and the old ones would leak. */
+  el('calBubbleStack').addEventListener('click', e=>{
+    const card = e.target.closest('.cal-bubble');
+    if(!card) return;
+    // The ✕ sits INSIDE the card, and the card itself is the click target, so dismissing has to
+    // stop here or it would also navigate — the exact opposite of what ✕ means. Nothing is recorded
+    // and nothing is saved: see the note above nextCalBubbleEvents() for why ✕ is session-only.
+    if(e.target.closest('.cal-bubble-close')){
+      leaveCalCard(card);
+      // Counts the cards NOT already on their way out — the dismissed one lingers in the DOM for
+      // the length of its animation, so children.length would still include it and the last card
+      // dismissed would never clear the timer.
+      if(!el('calBubbleStack').querySelector('.cal-bubble:not(.is-leaving)')){
+        clearTimeout(calBubbleTimer);
+        document.removeEventListener('click', onCalOutsideClick, true);
+      }
+      return;
+    }
+    openCalBubbleTarget(card.dataset.subtab);
+  });
+  // The cards are divs, so they get none of a button's keyboard behaviour for free. Space is
+  // preventDefault'd alongside Enter, or activating one also scrolls the page behind.
+  el('calBubbleStack').addEventListener('keydown', e=>{
+    if(e.key !== 'Enter' && e.key !== ' ') return;
+    if(!e.target.closest('.cal-bubble')) return;
+    e.preventDefault();
+    if(e.target.closest('.cal-bubble-close')) e.target.click();
+    else openCalBubbleTarget(e.target.closest('.cal-bubble').dataset.subtab);
   });
 
   // What showTimeSubTab('calendar') calls. Both fetches are self-limiting — the agenda one skips

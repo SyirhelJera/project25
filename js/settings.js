@@ -285,13 +285,36 @@
         const btn = e.target.closest('[data-calbubble]');
         if(!btn) return;
         state.calendar.bubbleEnabled = btn.dataset.calbubble === 'on';
-        if(!state.calendar.bubbleEnabled && typeof hideCalBubble === 'function') hideCalBubble();
+        if(!state.calendar.bubbleEnabled && typeof hideCalBubbles === 'function') hideCalBubbles();
         save(); renderSettings();
       });
     }
     document.querySelectorAll('#calBubbleToggle [data-calbubble]').forEach(b=>{
       b.classList.toggle('active', (b.dataset.calbubble === 'on') === (state.calendar.bubbleEnabled !== false));
     });
+
+    /* The three reminder options. All wired the same way — wire once, then re-sync the value on
+       every render — and all hidden together while the reminder is off, the same
+       show/hide-a-dependent-field pattern renderMosaicColorInputs() uses for the perfect-day
+       options. Each writes state and saves; none needs a re-render, since the stack is only built
+       at app open and will read the new value then. */
+    [
+      ['calBubbleCountSelect', v => { state.calendar.bubbleCount = parseInt(v,10) || 1; },
+        () => String(state.calendar.bubbleCount || 1)],
+      ['calBubbleDaysSelect', v => { state.calendar.bubbleDays = parseInt(v,10) || 7; },
+        () => String(state.calendar.bubbleDays || 7)],
+      ['calBubbleCountdownsSelect', v => { state.calendar.bubbleCountdowns = v === 'yes'; },
+        () => state.calendar.bubbleCountdowns === false ? 'no' : 'yes']
+    ].forEach(([id, write, read])=>{
+      const sel = el(id); if(!sel) return;
+      if(!sel.dataset.wired){
+        sel.dataset.wired = '1';
+        sel.addEventListener('change', ()=>{ write(sel.value); save(); });
+      }
+      sel.value = read();
+    });
+    const calBubbleOptions = el('calBubbleOptions');
+    if(calBubbleOptions) calBubbleOptions.style.display = (state.calendar.bubbleEnabled !== false) ? '' : 'none';
 
     const perfectGlowToggle = el('perfectGlowToggle');
     if(perfectGlowToggle && !perfectGlowToggle.dataset.wired){

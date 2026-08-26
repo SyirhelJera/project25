@@ -372,10 +372,17 @@
     state.calendar = parsed.calendar || {};
     if(!Array.isArray(state.calendar.calendarIds)) state.calendar.calendarIds = [];
     if(!state.calendar.lookaheadDays) state.calendar.lookaheadDays = 14;
-    if(!state.calendar.bubbleMinutes) state.calendar.bubbleMinutes = 60;
+    if(!state.calendar.bubbleDays) state.calendar.bubbleDays = 7;
+    if(!state.calendar.bubbleCount) state.calendar.bubbleCount = 1;
+    if(state.calendar.bubbleCountdowns === undefined) state.calendar.bubbleCountdowns = true;
+    // bubbleMinutes was the old hour-ahead lead time, replaced by the day horizon above.
+    // Dropped rather than left to ride along, since the shared blob is re-uploaded whole.
+    delete state.calendar.bubbleMinutes;
     if(state.calendar.bubbleEnabled === undefined) state.calendar.bubbleEnabled = true;
     if(state.calendar.bubbleSound === undefined) state.calendar.bubbleSound = true;
-    if(!Array.isArray(state.calendar.dismissed)) state.calendar.dismissed = [];
+    // `dismissed` held bubbles waved off until their event started; ✕ is session-only now and
+    // records nothing, so the key is swept rather than left riding in the blob forever.
+    delete state.calendar.dismissed;
 
     state.wishlist = parsed.wishlist || [];
     state.wishlist.forEach(w=>{

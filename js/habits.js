@@ -84,10 +84,111 @@
     return priorStreak > 0 ? yStr : null;
   }
 
+  /* ---- card stats -------------------------------------------------------------------------
+     Everything the expanded card's stats strip shows is derived here rather than inline in
+     renderHabits(), so anything else reading these numbers (Insights) calls the same helper
+     instead of re-deriving them. All of them count *completions*, never streaks: a day marked
+     done counts forever, even once the streak it belonged to has been broken. */
+  function habitDoneDates(h){
+    const c = h.completions || {};
+    return Object.keys(c).filter(ds=>c[ds]).sort();
+  }
+  // completions in [fromStr,toStr] inclusive — plain string compare, safe because localDateStr()
+  // is zero-padded ISO
+  function habitDoneBetween(h, fromStr, toStr){
+    return habitDoneDates(h).filter(ds => ds>=fromStr && ds<=toStr).length;
+  }
+  // Longest run ever recorded. A gap made up entirely of protected days is bridged, exactly as
+  // countBackwardStreak() does for the live streak — otherwise a holiday would retroactively
+  // split a run the current-streak maths still considers whole. The walk terminates on the first
+  // unprotected day, so a multi-year gap costs one check, not one per day.
+  function habitBestStreak(h){
+    const dates = habitDoneDates(h);
+    let best = 0, run = 0, prev = null;
+    dates.forEach(ds => {
+      if(prev){
+        const cur = new Date(prev+'T00:00:00');
+        cur.setDate(cur.getDate()+1);
+        let bridged = true;
+        while(localDateStr(cur) < ds){
+          if(!isDateProtected(localDateStr(cur))){ bridged = false; break; }
+          cur.setDate(cur.getDate()+1);
+        }
+        run = bridged ? run+1 : 1;
+      } else run = 1;
+      if(run > best) best = run;
+      prev = ds;
+    });
+    return best;
+  }
+  // Share of eligible days completed since the habit's first ever completion, or null if it has
+  // never been done. Uncompleted protected days are left out of the denominator — they're excused,
+  // not missed, which is the same reading streaks give them.
+  function habitConsistency(h){
+    const dates = habitDoneDates(h);
+    if(!dates.length) return null;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todayStr = localDateStr(today);
+    if(dates[0] > todayStr) return null; // only ever marked ahead of today
+    let eligible = 0;
+    const cur = new Date(dates[0]+'T00:00:00');
+    while(localDateStr(cur) <= todayStr){
+      const ds = localDateStr(cur);
+      if(h.completions[ds] || !isDateProtected(ds)) eligible++;
+      cur.setDate(cur.getDate()+1);
+    }
+    if(!eligible) return null;
+    // days marked ahead of today are excluded, or the rate could read over 100%
+    return Math.min(100, Math.round(habitDoneBetween(h, dates[0], todayStr) / eligible * 100));
+  }
+  const habitShortDate = ds => new Date(ds+'T00:00:00').toLocaleDateString(undefined,{day:'numeric',month:'short'});
+
+  /* ---- sorting ------------------------------------------------------------------------------
+     A sort is a *view* over state.habits and never rewrites it — the array's own order stays the
+     manual drag order, so switching back to Manual restores exactly what was arranged. That's also
+     why dragging is switched off while a sort is active: a drop reorders the underlying array by a
+     card's position in a list that isn't showing that array's order, landing the habit somewhere
+     other than where it was aimed. Every key comes from a helper above, so a sorted list and the
+     stats strip on the card can't disagree about the same number. */
+  const HABIT_SORT_KEYS = {
+    streak:      x => calcStreak(x),
+    best:        x => habitBestStreak(x),
+    consistency: x => { const c = habitConsistency(x); return c===null ? -1 : c; },
+    total:       x => habitDoneDates(x).length,
+    month:       x => { const t = habitToday(); return habitDoneBetween(x, localDateStr(new Date(t.getFullYear(), t.getMonth(), 1)), localDateStr(t)); },
+    last:        x => { const last = habitDoneDates(x).filter(ds => ds <= localDateStr(habitToday())).pop(); return last ? new Date(last+'T00:00:00').getTime() : 0; },
+    pending:     x => habitIsUnresolved(x) ? 1 : 0,
+    name:        x => (x.name || '').toLowerCase()
+  };
+  // Name reads backwards under the shared 'desc' default, so a mode may name the direction to land
+  // on when it is picked; the arrow button flips it from there as usual.
+  const HABIT_SORT_DEFAULT_DIR = { name:'asc' };
+  function habitToday(){ const d = new Date(); d.setHours(0,0,0,0); return d; }
+  function habitSortActive(){ return !!HABIT_SORT_KEYS[state.habitSort.mode]; }
+  function sortedHabits(){
+    const keyOf = HABIT_SORT_KEYS[state.habitSort.mode];
+    if(!keyOf) return state.habits;
+    const factor = state.habitSort.dir === 'asc' ? 1 : -1;
+    // decorate–sort–undecorate: habitBestStreak()/habitConsistency() walk every day since a habit's
+    // first completion, so each key is computed once per habit rather than once per comparison
+    return state.habits.map(x => ({ x, k: keyOf(x) }))
+      // Array#sort is stable, so equal keys fall back to the manual order on their own
+      .sort((a,b) => (typeof a.k === 'string' ? a.k.localeCompare(b.k) : a.k - b.k) * factor)
+      .map(d => d.x);
+  }
+  function renderHabitSortBar(){
+    el('habitToolbar').style.display = state.habits.length ? '' : 'none';
+    el('habitSortSelect').value = state.habitSort.mode;
+    const dirBtn = el('habitSortDirBtn');
+    dirBtn.textContent = state.habitSort.dir === 'asc' ? '↑' : '↓';
+    dirBtn.disabled = !habitSortActive();
+  }
+
   /* drag-to-reorder habits — registered once, delegated over #habitList */
   let draggedHabitId = null;
   const habitListEl = el('habitList');
   habitListEl.addEventListener('dragstart', e=>{
+    if(habitSortActive()) return; // the list on screen isn't state.habits' own order — see sortedHabits()
     const handle = e.target.closest('.drag-handle');
     if(!handle) return;
     const card = handle.closest('.habit-card');
@@ -134,6 +235,7 @@
     const list = el('habitList'); list.innerHTML = '';
     el('habitEmpty').style.display = state.habits.length===0 ? 'block':'none';
     updateHabitReminder();
+    renderHabitSortBar();
 
     const dailiesUndoneCt = buildDailiesQueue().length;
     const playDailiesBtn = el('playDailiesBtn');
@@ -142,7 +244,7 @@
     const today = new Date(); today.setHours(0,0,0,0);
     const weekStart = new Date(today); const wd=(weekStart.getDay()+6)%7; weekStart.setDate(weekStart.getDate()-wd);
 
-    state.habits.forEach(h => {
+    sortedHabits().forEach(h => {
       if(!h.completions) h.completions = {};
       if(!h.streakRestores) h.streakRestores = {};
       const weekDates = [];
@@ -165,7 +267,8 @@
       // A collapsed card stays status-only — done mark, name, streak. The restores badge, checklist
       // links, streak restore, rename and delete are rendered solely when the card is expanded.
       const top = document.createElement('div'); top.className='habit-top';
-      top.innerHTML = '<span class="drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
+      const sorted = habitSortActive();
+      top.innerHTML = '<span class="drag-handle'+(sorted?' drag-disabled':'')+'" draggable="'+(sorted?'false':'true')+'" title="'+(sorted?'Switch to Manual order to drag habits':'Drag to reorder')+'">⠿</span>'
         + '<button class="habit-collapse-btn" data-act="collapse" title="'+(h.collapsed?'Expand':'Minimize')+'">'+(h.collapsed?'▶':'▼')+'</button>'
         + (doneToday ? '<span class="habit-status-mark done" title="Completed today">✓</span>' : '')
         + '<div class="habit-name">'+escapeHtml(h.name)+'</div>'
@@ -238,6 +341,38 @@
       card.appendChild(top);
 
       if(!h.collapsed){
+        // Stats strip — total days done and the rest of the counts, shown only on an expanded card
+        // (the collapsed row stays status-only). These are deliberately independent of the streak
+        // badge above: breaking a streak resets that, never these.
+        const todayStr = localDateStr(today);
+        const doneDates = habitDoneDates(h);
+        const monthDone = habitDoneBetween(h, localDateStr(new Date(today.getFullYear(), today.getMonth(), 1)), todayStr);
+        const weekDone = habitDoneBetween(h, localDateStr(weekStart), todayStr);
+        const weekElapsed = Math.min(7, Math.round((today - weekStart)/86400000) + 1);
+        const best = habitBestStreak(h);
+        const consistency = habitConsistency(h);
+        const lastDone = doneDates.filter(ds=>ds<=todayStr).pop() || null;
+        let lastVal = '—', lastSub = 'never';
+        if(lastDone){
+          const ago = Math.round((today - new Date(lastDone+'T00:00:00'))/86400000);
+          lastVal = ago===0 ? 'Today' : ago===1 ? 'Yesterday' : ago+'d ago';
+          lastSub = habitShortDate(lastDone);
+        }
+        const statTile = (val, sub, lbl, title) =>
+          '<div class="habit-stat" title="'+title+'">'
+          + '<div class="habit-stat-val">'+val+'</div>'
+          + '<div class="habit-stat-sub">'+(sub || '&nbsp;')+'</div>'
+          + '<div class="habit-stat-lbl">'+lbl+'</div></div>';
+        const stats = document.createElement('div'); stats.className='habit-stats';
+        stats.innerHTML =
+            statTile(doneDates.length, 'all time', 'days done', 'Every day ever marked done, whether or not the streak it belonged to survived.')
+          + statTile(monthDone, 'of '+today.getDate(), 'this month', 'Days done so far this calendar month, out of the days elapsed.')
+          + statTile(weekDone, 'of '+weekElapsed, 'this week', 'Days done since Monday, out of the days elapsed this week.')
+          + statTile(best || '—', (best && best===streak) ? 'at your best' : (best ? 'in a row' : ''), 'best streak', 'Longest run ever recorded. Protected days bridge a gap, just as they do for the current streak.')
+          + statTile(consistency===null ? '—' : consistency+'%', doneDates.length ? 'since '+habitShortDate(doneDates[0]) : 'no data', 'consistency', 'Share of days completed since the first one. Protected days you skipped are excused, so they are left out of the maths.')
+          + statTile(lastVal, lastSub, 'last done', 'The most recent day marked done.');
+        card.appendChild(stats);
+
         const wgrid = document.createElement('div'); wgrid.className='week-grid';
         weekDates.forEach((d,i)=>{
           const ds = localDateStr(d);
@@ -308,6 +443,17 @@
   el('addHabitBtn').addEventListener('click', addHabit);
   el('newHabitInput').addEventListener('keydown', e=>{ if(e.key==='Enter') addHabit(); });
   el('playDailiesBtn').addEventListener('click', ()=> startDailiesPlaySession());
+
+  el('habitSortSelect').addEventListener('change', e=>{
+    state.habitSort.mode = e.target.value;
+    state.habitSort.dir = HABIT_SORT_DEFAULT_DIR[state.habitSort.mode] || 'desc';
+    save(); renderHabits();
+  });
+  el('habitSortDirBtn').addEventListener('click', ()=>{
+    if(!habitSortActive()) return;
+    state.habitSort.dir = state.habitSort.dir === 'asc' ? 'desc' : 'asc';
+    save(); renderHabits();
+  });
 
   el('habitTierLegendToggle').addEventListener('click', ()=>{
     const body = el('habitTierLegendBody');

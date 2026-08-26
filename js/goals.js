@@ -169,7 +169,8 @@
     body.scrollTo({ top: Math.max(0, cardTop - barH - 8), behavior: wcReducedMotion ? 'auto' : 'smooth' });
   }
 
-  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':70,'S+':120,'Mythical':200};
+  // S and up are 0 here on purpose — those tiers pay in LEVELS instead, see TIER_LEVELS below.
+  const TIER_EXP = {'':5,'F':10,'B':20,'A':40,'S':0,'S+':0,'Mythical':0};
   // Checklist items give a small trickle of exp — enough to feel rewarding day-to-day, but far
   // less than actually finishing a goal, which is the real accomplishment. This is tracked as a
   // running total (state.checklistExp) rather than recomputed from which items are *currently*
@@ -184,6 +185,43 @@
     let level = 1, need = 100, floor = 0;
     while(exp >= floor + need){ floor += need; level++; need = Math.round(need*1.25); }
     return { level, into: exp-floor, need };
+  }
+
+  /* The top tiers pay in LEVELS rather than exp — a Mythical goal is worth two levels, an S+ one,
+     an S half a one, whatever the bar happens to read at the time. Two things follow from that.
+     Their TIER_EXP entries are 0: paying twice, in exp *and* levels, would shove the bar along, and
+     leaving the bar alone is exactly what lets the progress already made carry straight across the
+     jump (Lv. 9 on 120 XP finishing a Mythical goal becomes Lv. 11 on 120 XP). And the ladder stops
+     at S — A and below still pay exp, so the bar goes on meaning something for everyday goals
+     instead of being left to the checklist trickle.
+     Like every other figure here the bonus is DERIVED from the goals rather than banked in state,
+     so reopening or deleting one of these takes its levels straight back, exactly as it already
+     takes an ordinary goal's exp back. */
+  const TIER_LEVELS = {'S':0.5, 'S+':1, 'Mythical':2};
+  function tierLevelBonus(){
+    return state.goals.reduce((sum,g)=> sum + (goalProgress(g)===100 ? (TIER_LEVELS[g.tier||'']||0) : 0), 0);
+  }
+
+  /* The level the app SHOWS: the exp curve's level, plus the whole levels that bonus is worth, with
+     any leftover HALF spent as exp on the bar the user is standing on — so a lone S goal visibly
+     fills half the bar rather than appearing to do nothing until a second one pairs up with it.
+     The half is measured against that bar's own `need` and the total then re-walked through
+     levelInfo(), which is what rolls an overflow into the next level properly instead of drawing a
+     bar past its own end. Every grant is a half or a whole, so the sum is exact in binary and
+     Math.floor() needs no epsilon. Nothing here is stored — the same goals always give the same
+     number, on every device.
+     Everything user-facing (profile chip, avatar emblem, Insights tile, the level-up popup) reads
+     this; levelInfo() and levelFloorExp() stay the pure inverse pair for the 100 / x1.25 curve, so
+     don't fold the bonus into either of them. `base` is the raw curve level the bar belongs to, for
+     the callers that walk the curve itself. */
+  function currentLevelInfo(){
+    const bonus = tierLevelBonus();
+    const whole = Math.floor(bonus);
+    const frac  = bonus - whole;
+    const exp   = totalExp();
+    const bar   = levelInfo(exp);
+    const info  = frac ? levelInfo(exp + Math.round(frac * bar.need)) : bar;
+    return { level: info.level + whole, base: info.level, into: info.into, need: info.need };
   }
 
   /* Level tiers — the bronze/silver/gold/platinum/diamond progression the profile avatar's chest
@@ -203,8 +241,7 @@
   }
 
   function updateExpUI(){
-    const exp = totalExp();
-    const { level, into, need } = levelInfo(exp);
+    const { level, into, need } = currentLevelInfo();
     el('pfLevel').textContent = 'Lv. ' + level;
     el('pfExpNum').textContent = into + ' / ' + need + ' XP';
     el('pfExpFill').style.width = Math.round((into/need)*100) + '%';
@@ -256,7 +293,7 @@
     el('levelUpNum').textContent = to;
     el('levelUpHeading').textContent = 'You reached Level ' + to;
     const jumped = to - from;
-    // finishing a Mythical goal is worth 200 exp, so more than one level at a time is possible
+    // the top tiers are worth whole levels outright, so more than one level at a time is possible
     el('levelUpJump').textContent = 'Lv. ' + from + '  →  Lv. ' + to + (jumped > 1 ? '   (+' + jumped + ' levels)' : '');
     // a tier only changes on the level that crosses into it — worth calling out, it's the rarer event
     const tierChanged = levelTier(from).label !== tier.label;
@@ -287,11 +324,12 @@
      made-up sample. It goes through showLevelUp() like any other — which writes nothing to state
      — so a preview can never consume the real celebration or move state.lastLevelSeen. */
   function previewLevelUp(){
-    const current = levelInfo(totalExp()).level;
-    const next = current + 1;
-    // levelInfo() of the exp total the next level STARTS at: into = 0, need = that level's bar
-    const at = levelInfo(levelFloorExp(next));
-    showLevelUp(current, next, at.into, at.need);
+    const cur = currentLevelInfo();
+    // levelInfo() of the exp total the next level STARTS at: into = 0, need = that level's bar.
+    // It's the next level on the RAW curve that's looked up — the Mythical bonus shifts the number
+    // shown, not which rung of the exp curve comes next
+    const at = levelInfo(levelFloorExp(cur.base + 1));
+    showLevelUp(cur.level, cur.level + 1, at.into, at.need);
   }
   // The exp total a level begins at — the inverse of levelInfo()'s loop, and the only other place
   // the 100 / x1.25 curve is written down. Keep the two in step.

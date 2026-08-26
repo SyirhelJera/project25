@@ -159,8 +159,7 @@
     const tiles = [];
 
     if(!insTabHidden('goals')){
-      const exp = totalExp();
-      const lv = levelInfo(exp);
+      const lv = currentLevelInfo();
       const tier = levelTier(lv.level);
       tiles.push(insTile({
         tab:'goals', lbl:'Level · ' + tier.label, num:'Lv. ' + lv.level,

@@ -136,6 +136,10 @@
   function applyLoadedState(parsed){
     state.goals = parsed.goals || [];
     state.habits = parsed.habits || [];
+    // habit list sort is a saved preference; 'none' is the manual drag order (js/habits.js)
+    state.habitSort = parsed.habitSort || { mode:'none', dir:'desc' };
+    if(!state.habitSort.mode) state.habitSort.mode = 'none';
+    if(!state.habitSort.dir) state.habitSort.dir = 'desc';
     state.countdowns = parsed.countdowns || [];
     state.countdowns.forEach(c=>{ if(c.pinned===undefined) c.pinned=false; if(c.createdAt===undefined) c.createdAt=Date.now(); });
     state.mantras = parsed.mantras || [];

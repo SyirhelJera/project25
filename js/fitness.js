@@ -101,7 +101,7 @@
     const fitTier = getFitnessTier();
 
     const ap = avatarAgeProfile(parseFloat(state.profile.age));
-    const { level } = levelInfo(totalExp());
+    const { level } = currentLevelInfo();  // the shown level, Mythical bonus included
     const emblemColor = avatarLevelColor(level);
     const worthTier = avatarWorthTier(getNetWorthNum());
     const skin = '#F2C79E';

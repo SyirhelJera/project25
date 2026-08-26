@@ -163,7 +163,23 @@
       <button class="btn btn-primary" id="addHabitBtn">+ Add Habit</button>
     </div>
     <div class="habit-tier-legend">
-      <button class="habit-tier-legend-toggle" id="habitTierLegendToggle">🔥 Streak tiers <span id="habitTierLegendArrow">▾</span></button>
+      <div class="habit-legend-row">
+        <button class="habit-tier-legend-toggle" id="habitTierLegendToggle">🔥 Streak tiers <span id="habitTierLegendArrow">▾</span></button>
+        <div class="habit-sort-group" id="habitToolbar" style="display:none;">
+          <select class="sort-select" id="habitSortSelect" aria-label="Sort habits">
+            <option value="none">Manual order</option>
+            <option value="pending">Sort: Not done today</option>
+            <option value="streak">Sort: Current streak</option>
+            <option value="best">Sort: Best streak</option>
+            <option value="consistency">Sort: Consistency</option>
+            <option value="total">Sort: Days done</option>
+            <option value="month">Sort: Done this month</option>
+            <option value="last">Sort: Last done</option>
+            <option value="name">Sort: Name</option>
+          </select>
+          <button class="sort-dir-btn" id="habitSortDirBtn" type="button" title="Toggle ascending/descending" aria-label="Toggle ascending or descending">↓</button>
+        </div>
+      </div>
       <div class="habit-tier-legend-body" id="habitTierLegendBody" style="display:none;">
         <div class="habit-badge habit-streak streak-t1">3+ days</div>
         <div class="habit-badge habit-streak streak-t2">7+ days</div>

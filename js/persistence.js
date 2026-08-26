@@ -327,6 +327,10 @@
       // have no srcKey, so a sync can never overwrite or duplicate one.
       if(e.src === undefined) e.src = '';
       if(e.srcKey === undefined) e.srcKey = '';
+      // which MetaTFT account the row was imported from (tftAccountKey() in js/tft.js). '' is a row
+      // imported before the stamp existed — tftMergeSynced() reads that as another account's and
+      // re-imports it, since the current account's rows come back out of the same fetch anyway.
+      if(e.acct === undefined) e.acct = '';
     });
     if(!state.tft.target || typeof state.tft.target !== 'object') state.tft.target = {};
     // '' tier means no target set. For Master/Grandmaster/Challenger, `lp` is the current ladder

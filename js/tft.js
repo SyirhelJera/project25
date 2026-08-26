@@ -268,6 +268,14 @@
     return { name: s.slice(0, i), tag: s.slice(i+1) };
   }
 
+  /* Which account an imported row came from. Riot IDs look up case-insensitively and the region
+     codes are lowercase already, so normalise both — otherwise re-typing your own name with
+     different capitalisation would read as a different account and throw the history away. */
+  function tftAccountKey(region, id){
+    return String(region||'').toLowerCase() + '/'
+      + String(id.name||'').trim().toLowerCase() + '#' + String(id.tag||'').trim().toLowerCase();
+  }
+
   let tftSyncInFlight = false;
   let tftSyncNote = ''; // last sync's outcome line; session-only, not worth persisting
   async function tftSync(){
@@ -304,14 +312,20 @@
       }
       if(!profRes.ok) throw new Error('profile lookup failed (' + profRes.status + ')');
       const prof = await profRes.json();
-      const rc = rcRes.ok ? ((await rcRes.json()).rating_changes || []) : [];
+      // null, not [], when the call failed: tftMergeSynced() switches accounts only on an answer it
+      // actually got, so a transient failure can't be read as "this account has no games"
+      const rc = rcRes.ok ? ((await rcRes.json()).rating_changes || []) : null;
 
-      const added = tftMergeSynced(prof, rc);
+      const { added, cleared } = tftMergeSynced(prof, rc, tftAccountKey(cfg.region, id));
       cfg.lastSyncedAt = Date.now();
       cfg.lastError = '';
-      tftSyncNote = added > 0
+      tftSyncNote = (added > 0
         ? ('Synced — ' + added + ' new ' + (added===1?'game':'games') + ' imported.')
-        : 'Synced — already up to date.';
+        : 'Synced — already up to date.')
+        + (cleared > 0
+            ? ' Cleared ' + cleared + ' imported ' + (cleared===1?'game':'games')
+              + ' from the previous account.'
+            : '');
     } catch(err){
       // A CORS rejection and an offline browser both surface as TypeError with no useful detail,
       // so don't pretend to distinguish them.
@@ -326,15 +340,49 @@
 
   /* Merge a fetched profile into state.tft.entries. Idempotent: every imported row carries the
      rating point's own timestamp as srcKey, and anything already present is skipped, so re-syncing
-     adds only what's new. Hand-typed rows have no srcKey and are never touched, moved or removed. */
-  function tftMergeSynced(prof, ratingChanges){
+     adds only what's new. Hand-typed rows have no srcKey and are never touched, moved or removed.
+
+     `acct` is the account this fetch describes. Imported rows are stamped with it, and rows
+     stamped with a DIFFERENT one are dropped before the merge — there is one chart and no
+     per-account switch, so two ladders plotted as one line draw a climb that never happened.
+     Rows predating the stamp (`acct` '') count as foreign for the same reason: whichever account
+     they came from, the ones belonging to this one come straight back out of this same fetch. */
+  function tftMergeSynced(prof, ratingChanges, acct){
+    // only a fetch that actually answered may switch accounts — see the call site
+    const canSwitch = Array.isArray(ratingChanges);
+
+    /* A placement can only be paired inside MetaTFT's 40-match window, so a row re-imported from
+       further back than that would come back without the one it already had. Carry them across the
+       purge by srcKey — the rating point's own millisecond timestamp, which can't collide. */
+    const carried = {};
+    const purgedKeys = [];
+    let cleared = 0;
+    if(canSwitch){
+      const foreign = e => e.src === 'metatft' && e.acct !== acct;
+      if(state.tft.entries.some(foreign)){
+        state.tft.entries.forEach(e=>{
+          if(!foreign(e)) return;
+          if(e.srcKey){
+            purgedKeys.push(e.srcKey);
+            if(e.placement != null) carried[e.srcKey] = e.placement;
+          }
+          cleared++;
+        });
+        state.tft.entries = state.tft.entries.filter(e=> !foreign(e));
+      }
+    }
+
     const seen = {};
     state.tft.entries.forEach(e=>{ if(e.srcKey) seen[e.srcKey] = true; });
 
     // Only the current set. LP resets between sets, so importing older ones would put a cliff of
     // several hundred LP in the middle of the chart that never happened as a real loss.
     const points = (ratingChanges || []).filter(p=> p.queue_id === TFT_RANKED_QUEUE && p.rating_text);
-    if(!points.length) return 0;
+    if(!points.length){
+      // purged with nothing to put back: whatever the target measured from went with it
+      if(cleared) state.tft.target.startValue = null;
+      return { added: 0, cleared: cleared };
+    }
     const newestSet = points
       .slice()
       .sort((a,b)=> String(a.created_timestamp).localeCompare(String(b.created_timestamp)))
@@ -391,9 +439,12 @@
         lp: parsed.lp,
         // no paired match means the game is older than the 40-match window MetaTFT returns — the
         // LP is still real, so it plots; it just can't count toward the placement stats
-        placement: pl === undefined ? null : pl,
+        // carried[key] is the placement this same row carried before an account-switch purge, and
+        // is the only way to keep one that sits behind the 40-match window
+        placement: pl === undefined ? (carried[key] === undefined ? null : carried[key]) : pl,
         src: 'metatft',
-        srcKey: key
+        srcKey: key,
+        acct: acct
       });
       seen[key] = true;
       added++;
@@ -402,13 +453,16 @@
     if(state.tft.entries.length > TFT_MAX_ENTRIES){
       state.tft.entries = tftSortedEntries().slice(-TFT_MAX_ENTRIES);
     }
+    // A purged row that didn't come back was the other account's, so the target is anchored to a
+    // climb that is no longer on this chart — drop the anchor and let the block below re-take it.
+    if(purgedKeys.some(k=> !seen[k])) state.tft.target.startValue = null;
     // a target set before any history existed anchors to the oldest imported point, not to the
     // newest — otherwise the bar would read 100% the moment the backfill lands
     if(state.tft.target.tier && state.tft.target.startValue == null){
       const sorted = tftSortedEntries();
       if(sorted.length) state.tft.target.startValue = tftEntryValue(sorted[0]);
     }
-    return added;
+    return { added: added, cleared: cleared };
   }
 
   /* Live Grandmaster/Challenger LP cutoffs. Above Master those aren't LP thresholds at all, they're
@@ -1138,12 +1192,27 @@
     state.tft.sync.region = el('tftSyncRegion').value;
     state.tft.sync.lastError = '';
     save(); renderTftSyncPanel();
+    tftSyncIfAccountChanged();
   });
   el('tftSyncRiotId').addEventListener('change', ()=>{
     state.tft.sync.riotId = el('tftSyncRiotId').value.trim();
     state.tft.sync.lastError = '';
     save(); renderTftSyncPanel();
+    tftSyncIfAccountChanged();
   });
+  /* Pointing the panel at a different account is the one edit that invalidates what's already on
+     the chart, so it syncs immediately rather than waiting for the next open — the purge inside
+     tftMergeSynced() is what drops the previous account's games, and until it runs the chart keeps
+     drawing them. Ignores the cooldown (this is an explicit change, not a revisit), and a typo
+     just 404s, which changes nothing. */
+  function tftSyncIfAccountChanged(){
+    const cfg = state.tft.sync;
+    const id = tftSplitRiotId(cfg.riotId);
+    if(!id || tftSyncInFlight) return;
+    const acct = tftAccountKey(cfg.region, id);
+    if(state.tft.entries.some(e=> e.src === 'metatft' && e.acct === acct)) return; // already showing it
+    tftSync();
+  }
   el('tftSyncAuto').addEventListener('change', ()=>{
     state.tft.sync.auto = el('tftSyncAuto').checked;
     save();

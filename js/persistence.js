@@ -209,6 +209,18 @@
     if(!state.fitness.unit) state.fitness.unit = 'kg';
     if(!state.fitness.weightLog) state.fitness.weightLog = [];
     if(!state.fitness.progressPhotos) state.fitness.progressPhotos = [];
+    // Calories are their own dated log, not a field on the weigh-in: the two are recorded together
+    // but belong to different days (you weigh in the morning after you eat), and either can exist
+    // without the other. kcalOffset is which day the log row's kcal box attributes to — 1 = the
+    // day before the weigh-in, which is the default because that is the pairing being measured.
+    if(!state.fitness.calorieLog) state.fitness.calorieLog = [];
+    if(state.fitness.kcalOffset !== 0) state.fitness.kcalOffset = 1;
+    // Activities are a flat dated array like the two logs, not a field on the day, because a day
+    // holds any number of them. They are recorded and displayed only — see the note above
+    // calorieReview() for why exercise burn must never be added to the measured maintenance.
+    if(!state.fitness.activityLog) state.fitness.activityLog = [];
+    // the goal physique: one photo, same Drive-metadata-only shape as a progressPhotos entry
+    if(state.fitness.dreamPhoto === undefined) state.fitness.dreamPhoto = null;
     state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:{} };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];

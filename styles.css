@@ -1161,20 +1161,53 @@
     .mana-fill::after{animation:none;opacity:0;}
   }
 
-  .photo-carousel{display:flex;gap:12px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;padding-bottom:10px;margin-top:10px;}
-  .photo-carousel::-webkit-scrollbar{height:6px;}
-  .photo-carousel::-webkit-scrollbar-track{background:transparent;}
-  .photo-carousel::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  /* the progress-photo carousel that used to live here is gone: the goal comparison shows the
+     same records and owns adding, stepping through and removing them (see .compare-* below) */
   /* the carousel's horizontal scrollbar sits in that padding-bottom, so the upload button below
      needs its own gap or the two end up touching */
-  #progressPhotoUploadRow{margin-top:16px;}
-  .photo-card{flex:0 0 auto;width:200px;scroll-snap-align:start;background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;}
-  .photo-card-img-wrap{width:200px;height:260px;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
-  .photo-card-img-wrap img{width:100%;height:100%;object-fit:cover;display:block;}
-  .photo-card-img-wrap.no-preview{color:var(--faint);font-size:11.5px;text-align:center;padding:14px;line-height:1.5;}
-  .photo-card-footer{padding:9px 10px;}
-  .photo-card-name{display:block;color:var(--muted);font-size:11px;margin-bottom:8px;word-break:break-word;}
-  .photo-card-actions{display:flex;gap:6px;flex-wrap:wrap;}
+  #comparePhotoUploadRow{margin-top:16px;}
+
+  /* ---- goal comparison ----
+     Two columns at every width, phones included: side by side *is* the feature, and stacking them
+     would leave you scrolling between the two things you are trying to hold in one glance. */
+  .compare-wrap{margin-top:10px;}
+  .compare-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  .compare-side{margin:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;
+    overflow:hidden;display:flex;flex-direction:column;min-width:0;}
+  .compare-side.goal{border-color:var(--violet);}
+  .compare-img{aspect-ratio:3/4;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  /* contain, not cover: cropping a physique to fill a box is exactly the wrong thing to do to the
+     subject of the comparison, and two photos cropped differently can't be compared at all */
+  .compare-img img{width:100%;height:100%;object-fit:contain;display:block;}
+  .compare-empty{color:var(--faint);font-size:11px;text-align:center;padding:14px;line-height:1.55;}
+  .compare-cap{padding:9px 10px 6px;display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .compare-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;font-weight:800;color:var(--faint);}
+  .compare-side.goal .compare-lbl{color:var(--violet-dark);}
+  .compare-meta{font-size:12px;color:var(--text);font-weight:800;font-variant-numeric:tabular-nums;}
+  .compare-sub{font-size:10.5px;color:var(--muted);}
+  /* nav and actions stack in one block pinned to the bottom of the card, so two cards of
+     different caption lengths still line their controls up */
+  .compare-tools{margin-top:auto;padding:0 10px 9px;display:flex;flex-direction:column;gap:7px;}
+  .compare-nav{display:flex;align-items:center;justify-content:space-between;gap:6px;}
+  .compare-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .compare-act{background:none;border:none;padding:0;cursor:pointer;font-family:'Inter',sans-serif;
+    font-size:10.5px;font-weight:700;color:var(--muted);text-decoration:none;}
+  .compare-act:hover{color:var(--violet-dark);text-decoration:underline;}
+  .compare-act.danger:hover{color:var(--danger);}
+  .compare-arrow{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);
+    cursor:pointer;font-size:14px;line-height:1;padding:3px 10px;font-family:'Inter',sans-serif;}
+  .compare-arrow:hover:not(:disabled){border-color:var(--violet);color:var(--violet-dark);}
+  .compare-arrow:disabled{opacity:.35;cursor:default;}
+  .compare-count{font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;}
+  .compare-foot{margin-top:9px;font-size:12px;color:var(--muted);text-align:center;font-weight:700;
+    font-variant-numeric:tabular-nums;}
+  @media(max-width:560px){
+    .compare-grid{gap:7px;}
+    .compare-cap{padding:7px 8px 5px;}
+    .compare-meta{font-size:11px;}
+    .compare-sub,.compare-empty{font-size:10px;}
+    .compare-nav{padding:0 8px 8px;}
+  }
 
   /* habits */
   .habit-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:10px;overflow:hidden;cursor:pointer;}
@@ -2749,6 +2782,121 @@
   body.dark-mode .weight-log-item .wl-delta.up{background:#3A1E1E;}
   .weight-log-item .wl-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 6px;}
   .weight-log-item .wl-del:hover{color:var(--danger);}
+
+  /* calorie logging — the kcal box and its day selector read as one control, since the number is
+     meaningless without knowing which day it lands on */
+  .wl-kcal-group{display:flex;gap:6px;align-items:stretch;min-width:0;}
+  .weight-log-row-add #wlKcal{width:110px;}
+  .weight-log-row-add select{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:10px 9px;font-size:12px;outline:none;font-family:'Inter',sans-serif;cursor:pointer;}
+  .weight-log-row-add select:focus{border-color:var(--violet);}
+  .wl-add-hint{font-size:11px;color:var(--faint);margin:-4px 0 12px;line-height:1.6;}
+  .wl-add-hint b{color:var(--muted);font-weight:700;}
+  /* ---- the weight/calorie log, as a month calendar ----
+     Cells are buttons: the whole grid is one tab stop per day, and clicking opens the day editor
+     under it. Weight is the loud figure, calories the quiet one, and an unlogged past day carries
+     a dash rather than blank space — the gap is the thing worth seeing. */
+  .weight-cal{border:1px solid var(--border);border-radius:12px;background:var(--surface);padding:10px 10px 12px;}
+  .weight-cal-head{display:flex;align-items:center;gap:6px;margin-bottom:9px;}
+  .wcal-title{flex:1;text-align:center;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;color:var(--text);}
+  .wcal-nav{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);cursor:pointer;
+    font-size:15px;line-height:1;padding:5px 11px;font-family:'Inter',sans-serif;}
+  .wcal-nav:hover{border-color:var(--violet);color:var(--violet-dark);}
+  .wcal-nav:focus-visible,.wcal-cell:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  .wcal-today{flex:none;}
+  .wcal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
+  .wcal-dow span{text-align:center;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);}
+  .wcal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .wcal-cell{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:56px;padding:4px 5px;
+    border:1px solid var(--border);border-radius:9px;background:var(--surface-alt);cursor:pointer;
+    font-family:'Inter',sans-serif;text-align:left;overflow:hidden;min-width:0;}
+  .wcal-cell.empty{border:none;background:none;cursor:default;min-height:0;}
+  .wcal-cell:hover{border-color:var(--violet);}
+  .wcal-cell.sel{border-color:var(--violet);background:var(--violet-pale);}
+  /* today is marked with a ring rather than a fill, so it can't be mistaken for the selected day */
+  .wcal-cell.today{box-shadow:inset 0 0 0 1.5px var(--violet);}
+  .wcal-cell.today .wcal-num{color:var(--violet-dark);}
+  .wcal-cell.future{opacity:.45;}
+  .wcal-num{font-size:10px;font-weight:700;color:var(--faint);line-height:1.2;}
+  .wcal-cell.has .wcal-num{color:var(--muted);}
+  .wcal-w{font-size:11.5px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;line-height:1.25;}
+  .wcal-dt{font-style:normal;font-size:8px;margin-left:2px;vertical-align:top;}
+  .wcal-dt.down{color:var(--wt-pos);}
+  .wcal-dt.up{color:var(--wt-neg);}
+  .wcal-k{font-size:10px;font-weight:700;color:var(--violet-dark);font-variant-numeric:tabular-nums;line-height:1.2;}
+  /* gold, not red: eating over on one day isn't an error, it's the thing the trend averages out */
+  .wcal-k.miss{color:var(--wt-gold-text);}
+  .wcal-k.none{color:var(--faint);font-weight:600;}
+
+  /* one panel under the grid, not a popover: two number fields and two buttons don't fit beside a
+     50px cell on a phone, and a popover would have to chase a cell that moves when the month does */
+  .wcal-editor{margin-top:10px;border:1px solid var(--violet);border-radius:12px;background:var(--surface);padding:11px 13px;}
+  .wcal-ed-head{display:flex;align-items:center;gap:8px;margin-bottom:9px;}
+  .wcal-ed-date{flex:1;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;color:var(--text);}
+  .wcal-ed-close{background:none;border:none;color:var(--faint);cursor:pointer;font-size:13px;padding:2px 6px;}
+  .wcal-ed-close:hover{color:var(--danger);}
+  .wcal-ed-fields{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;}
+  .wcal-ed-fields label{display:flex;flex-direction:column;gap:5px;font-size:9.5px;text-transform:uppercase;
+    letter-spacing:.4px;color:var(--faint);font-weight:700;}
+  .wcal-ed-fields input{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;
+    padding:9px 10px;font-size:13px;outline:none;font-family:'Inter',sans-serif;width:112px;}
+  .wcal-ed-fields input:focus{border-color:var(--violet);}
+  .wcal-ed-note{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.55;}
+  .wcal-ed-note:empty{display:none;}
+
+  /* activities: a list plus one add row, kept visually quieter than the two fields above it —
+     weight and intake are what the day is for, this is what explains it */
+  .wcal-act{margin-top:11px;border-top:1px solid var(--border);padding-top:10px;}
+  .wcal-act-lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);font-weight:700;margin-bottom:7px;}
+  .wcal-act-row{display:flex;align-items:center;gap:8px;font-size:12px;padding:4px 0;}
+  .wcal-act-nm{font-weight:700;color:var(--text);}
+  .wcal-act-mn{color:var(--faint);font-size:11px;}
+  .wcal-act-kc{margin-left:auto;font-weight:700;color:var(--wt-gold-text);font-variant-numeric:tabular-nums;}
+  .wcal-act-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:12px;padding:2px 4px;flex:none;}
+  .wcal-act-del:hover{color:var(--danger);}
+  .wcal-act-add{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px;}
+  .wcal-act-add select,.wcal-act-add input{background:var(--surface);border:1px solid var(--border);color:var(--text);
+    border-radius:9px;padding:8px 10px;font-size:12.5px;outline:none;font-family:'Inter',sans-serif;}
+  .wcal-act-add select{cursor:pointer;flex:1;min-width:120px;}
+  .wcal-act-add input{width:82px;}
+  .wcal-act-add select:focus,.wcal-act-add input:focus{border-color:var(--violet);}
+
+  /* the grid's activity mark — the heaviest activity's own emoji, top right. Emoji carry their own
+     colour, so it is left unstyled apart from size: big enough to read the glyph at a glance, which
+     is the whole point of using one instead of a dot. */
+  /* It shares the day number's row rather than floating over the cell: at this size an absolutely
+     positioned glyph lands on top of a five-character weight ("176.4") in a 44px column, and a
+     flex row simply cannot collide. The row is also why the emoji can be this big at all. */
+  .wcal-top{display:flex;align-items:center;justify-content:space-between;gap:3px;width:100%;min-width:0;}
+  .wcal-act-mark{font-size:17px;line-height:1;flex:none;
+    /* the emoji fonts by name so a system without one falls back rather than drawing a tofu box */
+    font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
+  @media(max-width:560px){ .wcal-act-mark{font-size:14px;} }
+
+  @media(max-width:560px){
+    .wcal-cell{min-height:48px;padding:3px 4px;}
+    .wcal-num{font-size:9px;}
+    .wcal-w{font-size:10px;}
+    .wcal-k{font-size:8.5px;}
+    .wcal-dow span{font-size:8px;}
+    .wcal-ed-fields input{width:100%;}
+    .wcal-ed-fields label{flex:1;min-width:120px;}
+  }
+
+  /* ---- calorie budget check ----
+     Same hierarchy as the weight chart above it: one verdict at high weight (it reuses .wt-delta /
+     .wt-delta-val, since it answers the same "am I on track" question in the same shape), the
+     supporting figures underneath, the plot last. */
+  .kcal-card{padding:14px 16px 12px;}
+  /* auto-fit, not a fixed 4: the card count varies with how much has been logged, and a lone
+     stat marooned in a quarter-width box reads as three cards that failed to load */
+  .kcal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:9px;margin-bottom:12px;}
+  .kcal-stats:empty{display:none;}
+  .kcal-stat{background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;padding:10px 10px;text-align:center;min-width:0;}
+  .kcal-stat .num{font-family:'Manrope',sans-serif;font-size:17px;font-weight:800;color:var(--violet-dark);font-variant-numeric:tabular-nums;}
+  .kcal-stat .num.pos{color:var(--wt-pos);}
+  .kcal-stat .num.neg{color:var(--wt-neg);}
+  .kcal-stat .lbl{font-size:9.5px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.4px;font-weight:700;}
+  .kcal-stat .sub{font-size:10px;color:var(--faint);margin-top:3px;line-height:1.4;}
 
   .chart-card{background:var(--surface);border:1px solid var(--border);border-radius:15px;padding:16px 18px;margin-bottom:18px;}
   .chart-legend{display:flex;gap:16px;font-size:11px;color:var(--muted);margin-top:8px;justify-content:center;flex-wrap:wrap;}

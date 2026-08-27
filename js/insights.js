@@ -254,8 +254,8 @@
     const tone = prevV === null ? '' : (latest.kg <= prevV ? 'pos' : 'neg');
     return insCard({
       title:'Weight', tab:'fitness',
-      body:'<div class="ins-big">' + roundDisp(kgToDisplay(latest.kg)) + '<small>' + unitLabel() + '</small></div>'
-        + insDelta(latest.kg, prevV, false, v=> roundDisp(kgToDisplay(v)) + ' ' + unitLabel(), insSince(prev))
+      body:'<div class="ins-big">' + roundWeight(kgToDisplay(latest.kg)) + '<small>' + unitLabel() + '</small></div>'
+        + insDelta(latest.kg, prevV, false, v=> roundWeight(kgToDisplay(v)) + ' ' + unitLabel(), insSince(prev))
         + (tier ? '<span class="ins-chip" style="color:'+tier.color+'">'+escapeHtml(tier.label)+'</span>' : '')
         + insSparkline(series, tone)
     });

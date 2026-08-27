@@ -260,8 +260,8 @@
     const f = state.fitness || {};
     const cw = parseFloat(f.currentWeight), tw = parseFloat(f.targetWeight), h = parseFloat(f.height);
     if(isNaN(cw)) return '';
-    const lines = ['- Current weight: ' + roundDisp(kgToDisplay(cw)) + unitLabel()];
-    if(!isNaN(tw)) lines.push('- Target weight: ' + roundDisp(kgToDisplay(tw)) + unitLabel() + ' (' + roundDisp(Math.abs(kgToDisplay(cw)-kgToDisplay(tw))) + unitLabel() + ' to go)');
+    const lines = ['- Current weight: ' + roundWeight(kgToDisplay(cw)) + unitLabel()];
+    if(!isNaN(tw)) lines.push('- Target weight: ' + roundWeight(kgToDisplay(tw)) + unitLabel() + ' (' + roundWeight(Math.abs(kgToDisplay(cw)-kgToDisplay(tw))) + unitLabel() + ' to go)');
     if(!isNaN(h) && h > 0){
       const bmi = cw / ((h/100)*(h/100));
       lines.push('- BMI: ' + bmi.toFixed(1) + ' (' + bmiCategory(bmi) + ')');

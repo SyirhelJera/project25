@@ -33,7 +33,7 @@
 
   // Edge Functions don't exist inside Claude.ai (window.storage mode) or when Supabase isn't
   // configured at all, so the pane has nothing to call. Same gate and same wording as
-  // renderProgressPhotos() in fitness.js and renderValorantStore() in valorant.js.
+  // renderComparePhotos() in fitness.js and renderValorantStore() in valorant.js.
   function calUnavailable(){ return usingClaudeStorage || !supabaseConfigured; }
 
   function calLookaheadDays(){

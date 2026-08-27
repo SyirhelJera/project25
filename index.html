@@ -549,23 +549,62 @@
 
     <div id="fitnessLogBanner" class="fitness-log-banner" style="display:none;"><span>⚠️ You haven't logged your weight today yet.</span><button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button></div>
 
-    <div class="section-lbl" style="margin-top:4px;">Progress Photos</div>
-    <div class="view-sub" id="progressPhotoUnavailable" style="display:none;">Photo upload needs the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
-    <div id="progressPhotoList" class="photo-carousel"></div>
-    <div class="empty" id="progressPhotoEmpty" style="display:none;">No progress photos yet — upload one below and it's saved straight to Google Drive.</div>
-    <div id="progressPhotoUploadRow" class="img-row">
-      <label class="ai-btn">📷 Upload Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
-      <span id="progressPhotoStatus" class="fitness-note" style="margin:0;"></span>
+    <!-- Photos live here and nowhere else. A carousel of progress-photo cards used to sit above
+         this block, showing the same records a second time; it is gone, and this pane took over
+         its two jobs — the ‹ › arrows step back through every photo, and each side carries its own
+         Remove and its Drive link. So this is now the only place a progress photo is added, seen
+         or removed, and the unavailable note has to stay visible in the mode where uploads are off
+         (nothing else is left to say where the photos went). Both uploads share one Drive round
+         trip, driveUploadPhoto(); only the file's Drive metadata reaches state, never the bytes.
+         Built by renderComparePhotos() in js/fitness.js. -->
+    <div id="compareSection">
+      <div class="section-lbl" style="margin-top:4px;">Progress &amp; Goal</div>
+      <div class="view-sub" id="comparePhotoUnavailable" style="display:none;">Progress photos need the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
+      <div class="compare-wrap" id="compareWrap"></div>
+      <div class="img-row" id="comparePhotoUploadRow">
+        <label class="ai-btn">📷 Add Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
+        <label class="ai-btn" id="dreamPhotoLabel">🎯 Upload Dream Physique<input type="file" accept="image/*" id="dreamPhotoInput" style="display:none;"></label>
+        <!-- one status line for both buttons: only one upload can be in flight at a time, and two
+             empty spans side by side left a gap that read as a missing control -->
+        <span id="photoStatus" class="fitness-note" style="margin:0;"></span>
+      </div>
     </div>
 
-    <div class="section-lbl" style="margin-top:22px;">Log Today's Weight</div>
+    <!-- One row logs the morning weigh-in and the calories that produced it. They land on two
+         different dates on purpose: you weigh in the morning after the day you ate, so the kcal
+         box attributes to the day before by default (state.fitness.kcalOffset) and #wlAddHint
+         spells both dates out rather than leaving that offset implicit. Either field alone is a
+         valid entry — weight-only logging works exactly as it did before calories existed. -->
+    <div class="section-lbl" style="margin-top:22px;">Log Weight &amp; Calories</div>
     <div class="weight-log-row-add">
       <input type="date" id="wlDate">
-      <input type="number" id="wlWeight" step="0.1" min="0" placeholder="Weight">
-      <button class="btn btn-primary" id="wlAddBtn">+ Log Weight</button>
+      <input type="number" id="wlWeight" step="0.01" min="0" placeholder="Weight">
+      <span class="wl-kcal-group">
+        <input type="number" id="wlKcal" step="10" min="0" placeholder="Calories" aria-label="Calories eaten">
+        <select id="wlKcalDay" aria-label="Which day those calories were eaten">
+          <option value="1">eaten the day before</option>
+          <option value="0">eaten the same day</option>
+        </select>
+      </span>
+      <button class="btn btn-primary" id="wlAddBtn">+ Log</button>
     </div>
-    <div class="weight-log-list" id="weightLogList"></div>
-    <div class="empty" id="weightLogEmpty" style="display:none;">No weight logged yet. Log your first entry above.</div>
+    <div class="wl-add-hint" id="wlAddHint"></div>
+    <!-- A month grid rather than a list of rows: the question this section raises is "which days
+         am I missing" (the Budget Check below is gated on exactly that), and a gap is invisible
+         between two list rows and obvious in a calendar. Clicking a day opens #wcalEditor beneath
+         it, which is also how any past date gets filled in. Built by renderWeightCalendar(). -->
+    <div class="weight-cal">
+      <div class="weight-cal-head">
+        <button type="button" class="wcal-nav" id="wcalPrev" aria-label="Previous month">‹</button>
+        <div class="wcal-title" id="wcalTitle" aria-live="polite"></div>
+        <button type="button" class="wcal-nav" id="wcalNext" aria-label="Next month">›</button>
+        <button type="button" class="btn btn-ghost btn-sm wcal-today" id="wcalToday">Today</button>
+      </div>
+      <div class="wcal-dow" id="wcalDow" aria-hidden="true"></div>
+      <div class="wcal-grid" id="wcalGrid"></div>
+    </div>
+    <div class="wcal-editor" id="wcalEditor" style="display:none;"></div>
+    <div class="empty" id="weightLogEmpty" style="display:none;">Nothing logged yet — use the row above, or click any day.</div>
 
     <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
     <div class="chart-zoom-row" id="weightChartZoomRow"></div>
@@ -575,6 +614,19 @@
       <div class="chart-legend" id="weightChartLegend"></div>
     </div>
 
+    <!-- "Is the calorie budget actually working?" — answered from what happened rather than from
+         the formula below it: average intake over the window, the weight trend across the same
+         window, and the maintenance figure those two together imply. Rendered by
+         renderCalorieReview() in js/fitness.js. -->
+    <div class="section-lbl" style="margin-top:22px;">Calorie Budget Check</div>
+    <div class="chart-zoom-row" id="kcalRangeRow"></div>
+    <div class="chart-card kcal-card">
+      <div class="wt-delta" id="kcalVerdict"></div>
+      <div class="kcal-stats" id="kcalStats"></div>
+      <div id="kcalChartWrap"></div>
+      <div class="chart-legend" id="kcalChartLegend"></div>
+    </div>
+
     <div class="section-lbl" style="margin-top:22px;">BMI &amp; Calorie Calculator</div>
     <div class="unit-toggle" id="unitToggle">
       <button data-unit="kg" id="unitBtnKg">KG</button>
@@ -582,8 +634,8 @@
     </div>
 
     <div class="fitness-fields">
-      <div class="fitness-field"><label id="fitCurrentLbl">Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.1"></div>
-      <div class="fitness-field"><label id="fitTargetLbl">Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.1"></div>
+      <div class="fitness-field"><label id="fitCurrentLbl">Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.01"></div>
+      <div class="fitness-field"><label id="fitTargetLbl">Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.01"></div>
       <div class="fitness-field"><label>Height (cm)</label><input type="number" id="fitHeight" min="0" step="0.1"></div>
       <div class="fitness-field"><label>Age</label><input type="number" id="fitAge" min="0"></div>
       <div class="fitness-field"><label>Biological Sex</label><select id="fitSex"><option value="male">Male</option><option value="female">Female</option></select></div>

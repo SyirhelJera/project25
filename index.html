@@ -2101,7 +2101,9 @@
      Not a modal: it never traps focus and never blocks the page (see .cal-bubble's z-index note).
      This container is EMPTY and always present: it is the aria-live region, and a live region has
      to exist before the content it announces is put into it. renderCalBubbles() fills it with one
-     .cal-bubble card per upcoming event (Settings → Tracking sets how many).
+     .cal-bubble card per upcoming event (Settings → Tracking sets how many), led by a .is-now
+     "now until 3:00 PM" card when an event is already under way — that one is extra rather than
+     one of the counted slots, since the count means "things coming up".
      Each whole card is the click target (there's no View button) — tabindex/title/keydown are what
      keep that reachable without a mouse, since cursor:pointer alone announces nothing. role=status
      is kept over role=button on purpose: this thing's first job is to be ANNOUNCED when it arrives,

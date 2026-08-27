@@ -4484,6 +4484,20 @@
     border:2px solid var(--cal-accent);opacity:0;pointer-events:none;
     animation:cal-bubble-ping 1.5s ease-out .2s 2;}
   @keyframes cal-bubble-ping{from{opacity:.8;transform:scale(1);}to{opacity:0;transform:scale(1.07);}}
+  /* THE "NOW UNTIL" CARD — the event you are currently in, rather than one coming up. It has to
+     read as a different KIND of message before either line of it is read, or it's just another
+     card saying something subtly different. Three cheap signals do that and none of them changes
+     the card's size: a 2px border with 1px taken back off the padding, a faint wash of the
+     calendar's own accent behind it, and rings that keep pulsing for the card's short life instead
+     of stopping after two — this is the only card describing something happening RIGHT NOW, and a
+     live thing that stops moving stops reading as live.
+     The plain background declaration before the color-mix() is the fallback for engines without
+     it, the same pattern .lvl-* uses above. And this block sits BEFORE the .is-leaving rules on
+     purpose: those match with identical specificity, so the later ones have to win in order to
+     stop a card pulsing on its way off screen. */
+  .cal-bubble.is-now{border-width:2px;padding:11px 12px;background:var(--surface);
+    background:color-mix(in srgb, var(--cal-accent) 9%, var(--surface));}
+  .cal-bubble.is-now::after{animation:cal-bubble-ping 2.2s ease-out infinite;}
   /* Leaving: back out the way it came in, and faster than it arrived — an exit that lingers reads
      as sluggish where an entrance that lingers reads as deliberate. forwards holds the final frame
      so the card stays gone for the moment between the animation ending and leaveCalCard() detaching
@@ -4523,4 +4537,10 @@
     .cal-bubble{animation:none;transition:none;}
     .cal-bubble:hover{transform:none;}
     .cal-bubble::after{animation:none;}
+    /* spelled out separately because .cal-bubble.is-now::after outranks .cal-bubble::after on
+       specificity, and a media query adds none of its own — without this line the "now until"
+       card would be the one thing on the page still pulsing for a reader who asked it not to.
+       The 2px border and the accent wash stay: those aren't motion, and they're what carries the
+       distinction once the rings are gone. */
+    .cal-bubble.is-now::after{animation:none;}
   }

@@ -140,12 +140,28 @@
     return d.toLocaleDateString(undefined, { weekday:'short', month:'short', day:'numeric' });
   }
 
-  // "9:00 AM" for a timed event, using clock.js's formatter so the Calendar pane and the Clock
+  // "9:00 AM" for a moment in time, using clock.js's formatter so the Calendar pane and the Clock
   // pane one button away never disagree about how a time is written.
+  function calFmtClock(ms){
+    const d = new Date(ms);
+    return fmtTime12(String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'));
+  }
   function calEventTime(ev){
     if(ev.allDay) return 'all-day';
-    const d = new Date(ev.startMs);
-    return fmtTime12(String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'));
+    return calFmtClock(ev.startMs);
+  }
+
+  // When an event finishes. The Edge Function passes endIso straight through and derives no
+  // millisecond twin for it the way it does for the start, so the parsing happens here — with the
+  // same 'T00:00:00' appended for an all-day date, since a bare "2026-08-25" parses as UTC and
+  // lands on the wrong local day either side of Greenwich. Anything unparseable, or an end that
+  // isn't after the start, falls back to the start: a zero-length event is a thing that has already
+  // finished, which is exactly how the callers below then treat it, whereas NaN would leak into
+  // every comparison it touched.
+  function calEventEndMs(ev){
+    if(!ev) return 0;
+    const ms = Date.parse(ev.allDay ? String(ev.endIso || '') + 'T00:00:00' : String(ev.endIso || ''));
+    return (isFinite(ms) && ms > ev.startMs) ? ms : ev.startMs;
   }
 
   // "now" / "in 25m" / "in 2h 10m" / "tomorrow" / "in 5 days". Anything inside today is a duration,
@@ -271,7 +287,8 @@
 
   /* ---------- the "coming up" bubble ----------
      Fires once per page load, from renderAll(), stacking the next bubbleCount events that fall
-     within bubbleDays. It is a body-level sibling of .main (never inside a .view) so it can show from any tab — the same
+     within bubbleDays — plus, ahead of them, a "now until" card for the event you are currently in
+     (calNowEvent()). It is a body-level sibling of .main (never inside a .view) so it can show from any tab — the same
      reason #valItemPreviewOverlay and #scratchOverlay sit outside theirs.
   --------------------------------------------- */
 
@@ -328,6 +345,54 @@
     return Math.min(n, CAL_BUBBLE_MAX_COUNT);
   }
 
+  /* ---- the "now until" card ----
+     The thing you are IN, rather than the thing coming up. Without it the stack goes quiet during
+     the one window where it has the most to say: open the app twenty minutes into a two-hour
+     meeting and the next thing on the calendar is whatever follows it, so the card reads "in 1h
+     40m" and says nothing at all about the block you are actually sitting in — or worse, on an
+     empty afternoon, nothing shows at all.
+
+     TIMED EVENTS ONLY. An all-day event is "in progress" from local midnight to local midnight,
+     so a "now until" for one would read "now until Tomorrow 12:00 AM", which is noise dressed up
+     as urgency — and today's all-day event is already carried by the ordinary card, whose
+     calRelative() renders its midnight start as plain "now". Countdowns are excluded for the same
+     reason by construction: countdownBubbleEvents() marks them allDay, and they carry no end.
+
+     At most ONE, and it is the one ending SOONEST. Overlapping meetings are real and nothing here
+     can tell which of them you are actually in, so the choice is between spending the whole stack
+     on that ambiguity or answering the question the card exists to answer — when are you free.
+     The earliest end is that answer.
+
+     calEvents arrives start-ordered from the Edge Function, so the walk can BREAK once a start is
+     in the future: nothing after it has begun either. */
+  function calNowEvent(){
+    const now = Date.now();
+    let best = null, bestEnd = 0;
+    for(const ev of calEvents){
+      if(ev.startMs > now) break;
+      if(ev.allDay) continue;
+      const end = calEventEndMs(ev);
+      if(end <= now) continue;
+      if(!best || end < bestEnd){ best = ev; bestEnd = end; }
+    }
+    // A copy, never the record itself: calEvents is the fetched agenda the pane renders from, and
+    // stamping source:'now' onto it would follow the event into the agenda rows and the next
+    // nextCalBubbleEvents() walk. 'now' is also what keeps it clear of the isCd branch in
+    // calBubbleCard(), which tests for source === 'countdown'.
+    return best ? Object.assign({}, best, { source:'now' }) : null;
+  }
+
+  // "now until 3:00 PM · 25m left". The day is named only when the event doesn't end today, which
+  // is rare (a timed event running past midnight) and unreadable without it. fmtDurationMinutes()
+  // is clock.js's, so "25m left" is worded exactly as the fasting and time-block counters are.
+  function calNowUntilText(ev){
+    const end = calEventEndMs(ev);
+    const label = calDayLabel(localDateStr(new Date(end)));
+    const until = ['now until', label === 'Today' ? '' : label, calFmtClock(end)].filter(Boolean).join(' ');
+    const left = Math.round((end - Date.now())/60000);
+    return left > 0 ? until + ' · ' + fmtDurationMinutes(left) + ' left' : until;
+  }
+
   // The next N things coming up — calendar events and, if enabled, countdowns — however far off,
   // as long as they land inside the horizon. calBubbleCandidates() hands them over start-ordered,
   // so this is a walk from the front, and the horizon test can BREAK rather than continue since
@@ -343,17 +408,26 @@
     const horizon = calBubbleDays();
     const want = calBubbleCount();
     const out = [];
+    // What you're in goes first, and deliberately does NOT spend one of the bubbleCount slots:
+    // that preference means "how many things coming up to show me", and silently answering it with
+    // the meeting you are already sitting in would displace the card it was asked for. It also
+    // needs no horizon test — something happening now is inside every horizon.
+    const nowEv = calNowEvent();
+    if(nowEv) out.push(nowEv);
+    const upcoming = [];
     for(const ev of calBubbleCandidates()){
-      if(out.length >= want) break;
+      if(upcoming.length >= want) break;
       // Calendar days, not now+N*24h — the same unit calRelative() speaks in, and the only reading
       // that matches "7 days away". A millisecond horizon cuts off partway through the seventh day,
       // so a 10am meeting a week out was excluded at 08:24 and included at 11:00, while the bubble
       // would have called it "in 7 days" either way.
       const days = daysLeft(new Date(ev.startMs));
       if(days > horizon) break;
-      if(ev.allDay ? days >= 0 : ev.startMs >= now) out.push(ev);
+      // startMs >= now is also what keeps the in-progress event from appearing twice: the card
+      // above is built from exactly the events this test drops.
+      if(ev.allDay ? days >= 0 : ev.startMs >= now) upcoming.push(ev);
     }
-    return out;
+    return out.concat(upcoming);
   }
 
   // Called from renderAll(), beside maybeSyncPinterestCategories() — the function already there
@@ -500,11 +574,15 @@
   // quotes, so it must never reach an attribute.
   function calBubbleCard(ev, index){
     const box = document.createElement('div');
-    box.className = 'cal-bubble';
-    box.tabIndex = 0;
     // A countdown deep-links to the Countdowns pane, not the Calendar one — sending you to an
     // agenda that doesn't contain the thing you just clicked would be a dead end.
     const isCd = ev.source === 'countdown';
+    // The event you are currently in. It stays a Calendar card in every mechanical sense — same
+    // colour, same deep link, same handlers — and differs only in what its second line says and
+    // how loudly the card says it, which is why this is one class rather than a second builder.
+    const isNow = ev.source === 'now';
+    box.className = 'cal-bubble' + (isNow ? ' is-now' : '');
+    box.tabIndex = 0;
     box.dataset.subtab = isCd ? 'countdowns' : 'calendar';
     box.title = isCd ? 'Open the Countdowns tab' : 'Open the Calendar tab';
     // Staggered entry, so a stack of three reads as arriving rather than as one block appearing.
@@ -525,7 +603,7 @@
     const icon = document.createElement('div');
     icon.className = 'cal-bubble-icon';
     icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = isCd ? '⏳' : '📅';
+    icon.textContent = isNow ? '⏱' : (isCd ? '⏳' : '📅');
 
     const body = document.createElement('div');
     body.className = 'cal-bubble-body';
@@ -534,17 +612,24 @@
     title.textContent = ev.summary || '(no title)';
     const when = document.createElement('div');
     when.className = 'cal-bubble-when';
-    // The date is only spelled out when the relative phrase doesn't already imply it: "in 25m ·
-    // 9:00 AM" and "tomorrow · 9:00 AM" need no date, but "in 5 days · 9:00 AM" is useless without
-    // one. calDayLabel() is reused so the bubble names a day exactly as the agenda behind it does.
-    const label = calDayLabel(localDateStr(new Date(ev.startMs)));
-    const dated = (label === 'Today' || label === 'Tomorrow') ? '' : label;
-    // A countdown gets no time at all. It is stored as a date with no clock time, so calEventTime()
-    // would render the literal word "all-day" — true of the underlying record, and meaningless as a
-    // thing to read on a card counting down to a birthday.
-    const timePart = isCd ? '' : calEventTime(ev);
-    when.textContent = [calRelative(ev.startMs), [dated, timePart].filter(Boolean).join(' ')]
-      .filter(Boolean).join(' · ');
+    if(isNow){
+      // The END is the useful number for something already under way. calRelative() would render
+      // this event's start as a bare "now" followed by a start time that has already gone by,
+      // which reads as a card that arrived late rather than as one describing what you're in.
+      when.textContent = calNowUntilText(ev);
+    } else {
+      // The date is only spelled out when the relative phrase doesn't already imply it: "in 25m ·
+      // 9:00 AM" and "tomorrow · 9:00 AM" need no date, but "in 5 days · 9:00 AM" is useless without
+      // one. calDayLabel() is reused so the bubble names a day exactly as the agenda behind it does.
+      const label = calDayLabel(localDateStr(new Date(ev.startMs)));
+      const dated = (label === 'Today' || label === 'Tomorrow') ? '' : label;
+      // A countdown gets no time at all. It is stored as a date with no clock time, so calEventTime()
+      // would render the literal word "all-day" — true of the underlying record, and meaningless as a
+      // thing to read on a card counting down to a birthday.
+      const timePart = isCd ? '' : calEventTime(ev);
+      when.textContent = [calRelative(ev.startMs), [dated, timePart].filter(Boolean).join(' ')]
+        .filter(Boolean).join(' · ');
+    }
     body.appendChild(title); body.appendChild(when);
 
     const close = document.createElement('button');

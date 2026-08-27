@@ -588,6 +588,37 @@ midnight" is not something to warn about 40 minutes in advance — but over a we
 or a birthday is exactly what "what's next" means. Today's all-day event is matched on its *day*
 rather than on `startMs`, which sits at midnight and would otherwise test as already past.
 
+**The "now until" card** leads the stack whenever an event is already under way (`calNowEvent()`).
+Without it the bubble goes quiet in the one window where it has the most to say: open the app twenty
+minutes into a two-hour meeting and the next thing on the calendar is whatever *follows* it, so the
+card reads "in 1h 40m" and says nothing about the block you're actually sitting in — or, on an empty
+afternoon, nothing appears at all. It reads **"now until 3:00 PM · 25m left"**, naming the day only
+when the event runs past midnight, and it's a `.cal-bubble.is-now`: same colour and same deep link
+as any other Calendar card, with a 2px border, a 9% wash of the calendar's accent, a ⏱ chip and
+rings that keep pulsing rather than stopping after two, because it's the only card describing
+something happening right now. (That last one is spelled out again under `prefers-reduced-motion`,
+since `.cal-bubble.is-now::after` outranks `.cal-bubble::after` and a media query adds no
+specificity of its own.)
+
+Four rules hold it up. It is **extra, not one of the counted slots** — `bubbleCount` means "how many
+things coming up", and quietly answering that with the meeting you are already in would displace the
+card it was asked for, so `nextCalBubbleEvents()` builds the upcoming list to `bubbleCount` as
+before and prepends this one. **Timed events only**: an all-day event is "in progress" from local
+midnight to local midnight, so a "now until" for one would read "now until Tomorrow 12:00 AM", and
+today's all-day event is already carried by the ordinary card, whose `calRelative()` renders its
+midnight start as plain "now"; countdowns fall out for the same reason by construction, since
+`countdownBubbleEvents()` marks them `allDay`. **At most one, the one ending soonest** — overlapping
+meetings are real and nothing here can tell which of them you're in, so the choice is between
+spending the whole stack on that ambiguity and answering the question the card exists to answer,
+which is when you're free. And it's a **copy** of the record, stamped `source:'now'`, never the
+event itself: `calEvents` is what the agenda pane renders from, and marking it in place would follow
+the event into those rows and into the next walk. The end time is parsed here rather than
+server-side — the Edge Function passes `endIso` straight through without deriving a millisecond twin
+for it — through `calEventEndMs()`, which appends the same `T00:00:00` to an all-day date and falls
+back to the start for anything unparseable, so a bad end reads as an event that has already finished
+rather than leaking `NaN` into every comparison it touches. No dedupe is needed against the upcoming
+list: `startMs >= now` is exactly the test that drops the events this card is built from.
+
 The horizon is measured in **calendar days** via countdowns.js's `daysLeft()`, not as `now + N×24h`,
 because a millisecond horizon cuts off partway through the seventh day: a 10am meeting a week out
 was excluded at 08:24 and included at 11:00, while the bubble called it "in 7 days" either way. It's

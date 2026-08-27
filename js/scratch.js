@@ -1233,6 +1233,7 @@
     ['key',   'drag an image',                   'lift it out of the text'],
     ['touch', 'press and hold an image',         'lift it out of the text'],
     ['',      'drag an image’s corner',          'resize it'],
+    ['',      'click an image',                  'crop it, or cut its background out'],
     ['',      'click the page count',            'every page, drag to reorder']
     // no `esc` row: the footer says "esc to exit" permanently, and only on the same screens where
     // these keyboard rows are shown at all
@@ -1706,30 +1707,507 @@
     return false;
   }
 
-  /* ---- the lightbox ---- */
+  /* ---- the studio: look, crop, cut out ----------------------------------------------------
+     Clicking a photo on the sheet opens it here. It began as a plain lightbox and is still one at
+     rest — "let me see that bigger" is the common act and it stays one click — but the two things
+     you actually want to DO to a picture you have just pasted onto a napkin are both here now:
+     trim it, and lift the subject off its background.
 
-  function openScratchImgView(img){
-    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg');
-    if(!ov || !big || !img) return;
-    hideScratchImgBox();
-    // natural size, capped by CSS to the viewport — the point is to see it bigger than the column
-    big.src = img.getAttribute('src') || '';
-    big.alt = img.getAttribute('alt') || '';
-    ov.style.display = 'flex';
-    scratchImgViewOn = true;
-    const close = el('scratchImgViewClose');
-    if(close) close.focus({ preventScroll:true });
+     Nothing is destructive until Save, and Save UPLOADS A NEW FILE rather than overwriting the old
+     one. uploadCompressedImage() gives every image its own uid() path, so the edit costs one new
+     object and leaves the original URL referenced by no page at all — which hands it straight to
+     the reclaim sweep already running on close (sweepDeletedScratchImages). No special case, and
+     the edit is undoable with Ctrl+Z right up until the pad is shut, exactly like every other one.
+
+     The picture is drawn into a CANVAS, not into the <img>. The Edge slider recomputes the whole
+     cut-out on every tick, and going back through an encode and an object URL per tick just to
+     feed an <img> would cost more than the cut-out itself. The <img> survives for exactly one
+     case: a picture whose bytes cannot be read back at all. Drawing a foreign image into a canvas
+     taints it, and a tainted canvas refuses getImageData — so a photo from a host that sends no
+     CORS header gets shown with its tools hidden, rather than being offered edits that would throw
+     the moment they ran.
+
+     THE STATE MODEL is three layers and the order between them is the whole design. `orig` is the
+     decoded source and never changes, which is what Reset returns to. `base` is what crops have
+     made of it. `key` is the cut-out, and it is a LIVE recomputation over `base` — never written
+     into it — so the Edge slider and every picked colour stay adjustable for as long as the studio
+     is open. Only a crop bakes, because only a crop has to (see applyScratchCrop). */
+
+  const SCRATCH_STUDIO_MINCROP = 0.05;  // fraction of the picture — a floor the crop can't collapse below
+  const SCRATCH_STUDIO_MAXPX = 2000;    // working resolution ceiling; the flood fill is per-pixel work
+
+  let studio = null;      // null whenever the studio is closed
+  let studioRaf = 0;
+
+  const scratchClamp01 = v => Math.max(0, Math.min(1, v));
+
+  /* Copied into a canvas at a bounded size rather than used at whatever the source happens to be:
+     every pass below is O(pixels), and a 12-megapixel phone photo would turn the Edge slider into
+     a slideshow. Scratch images are already capped at 1400 on upload, so this only ever bites on
+     something linked in from elsewhere. */
+  function scratchStudioCanvas(src){
+    const nw = src.naturalWidth || src.width, nh = src.naturalHeight || src.height;
+    const k = Math.min(1, SCRATCH_STUDIO_MAXPX / Math.max(nw, nh, 1));
+    const w = Math.max(1, Math.round(nw * k)), h = Math.max(1, Math.round(nh * k));
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.getContext('2d').drawImage(src, 0, 0, w, h);
+    return c;
   }
 
-  function closeScratchImgView(){
-    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg');
+  /* ---- the cut-out ----
+     A flood fill inwards from the edges of the picture, which is the honest version of what can be
+     done here: it lifts a subject off a PLAIN background — a screenshot, a product shot, a logo, a
+     photo against a wall — and it will not segment a person out of a street scene. No model ships
+     in a repo with no build step, and pretending otherwise would only mean a button that fails.
+
+     A flood rather than a global "delete every pixel of this colour" for one specific reason: a
+     white shirt in front of a white wall keeps its shirt, because the shirt is not connected to
+     the border. That connectivity is the only thing standing in for an understanding of the image.
+
+     Every pixel is compared against the colour of the SEED ITS REGION GREW FROM, never against the
+     neighbour it was reached through. Comparing against the neighbour lets a fill walk a gradient
+     clean across the subject one imperceptible step at a time, which is how a sky-blue background
+     ends up eating a blue jacket. Each border pixel is its own seed, so a background that shades
+     from one corner to the other is still handled — it simply grows from several references.
+
+     And a rejected pixel is deliberately NOT marked visited, so a pixel the border ring could not
+     claim can still be claimed later by a colour picked by hand. Each pixel being tested at most
+     four times is what that costs. */
+  function scratchCutout(base, tol, seeds){
+    const w = base.width, h = base.height, n = w * h;
+    const d = base.getContext('2d').getImageData(0, 0, w, h).data;
+    /* Squared distance throughout — the comparison never needs the root, and skipping it takes the
+       one operation that would otherwise run millions of times off the hot path. The weights are
+       the usual cheap stand-in for how much each channel actually matters to the eye. */
+    const max = tol * tol;
+    const mark = new Uint8Array(n);    // 1 = background
+    const ref = new Int32Array(n);     // which seed's colour this pixel was judged against
+    const q = new Int32Array(n);       // a typed queue, not a JS array: this holds up to n entries
+    let head = 0, tail = 0;
+    const near = (i, r) => {
+      const a = i << 2, b = r << 2;
+      const dr = d[a] - d[b], dg = d[a + 1] - d[b + 1], db = d[a + 2] - d[b + 2];
+      return 2 * dr * dr + 4 * dg * dg + 3 * db * db <= max;
+    };
+    const push = (i, r) => {
+      if(mark[i]) return;
+      // already transparent — background by definition, and it carries the seed's colour onwards
+      // so the fill flows straight through a hole a previous cut-out left behind
+      if(d[(i << 2) + 3] === 0 || near(i, r)){ mark[i] = 1; ref[i] = r; q[tail++] = i; }
+    };
+    for(let x = 0; x < w; x++){ push(x, x); push((h - 1) * w + x, (h - 1) * w + x); }
+    for(let y = 0; y < h; y++){ push(y * w, y * w); push(y * w + w - 1, y * w + w - 1); }
+    for(let s = 0; s < seeds.length; s++){
+      const sx = seeds[s][0], sy = seeds[s][1];
+      if(sx < 0 || sy < 0 || sx >= w || sy >= h) continue;
+      const i = sy * w + sx;
+      if(!mark[i]) push(i, i);   // a hand-picked point is its own reference, whatever it is
+    }
+    while(head < tail){
+      const i = q[head++], r = ref[i], x = i % w;
+      if(x > 0) push(i - 1, r);
+      if(x < w - 1) push(i + 1, r);
+      if(i >= w) push(i - w, r);
+      if(i < n - w) push(i + w, r);
+    }
+    /* THE EDGE is what separates a cut-out from a bad cut-out. A hard mask leaves a one-pixel
+       fringe of the old background all the way round the subject — the pixels the lens, or the
+       JPEG, already blended half and half — and that bright halo is exactly what makes a pasted
+       photo look pasted. So every kept pixel that touches a removed one is given a partial alpha
+       from how far its colour still is from the background beside it, and is then un-blended
+       against that background (the standard c = (c - bg(1 - a)) / a). Hair lit against a white
+       wall comes back as hair rather than as white.
+       Uint8ClampedArray is doing real work in that division: an un-blend can overshoot both ends,
+       and the array clamps each channel on assignment instead of needing three Math.min calls. */
+    const out = new Uint8ClampedArray(d);
+    const soft = Math.max(1, max * 1.9);   // the squared-distance band the fringe fades across
+    for(let i = 0; i < n; i++){
+      if(mark[i]){ out[(i << 2) + 3] = 0; continue; }
+      const x = i % w;
+      let r = -1;
+      if(x > 0 && mark[i - 1]) r = ref[i - 1];
+      else if(x < w - 1 && mark[i + 1]) r = ref[i + 1];
+      else if(i >= w && mark[i - w]) r = ref[i - w];
+      else if(i < n - w && mark[i + w]) r = ref[i + w];
+      if(r < 0) continue;                  // interior: nothing to feather against
+      const a4 = i << 2, b4 = r << 2;
+      const dr = d[a4] - d[b4], dg = d[a4 + 1] - d[b4 + 1], db = d[a4 + 2] - d[b4 + 2];
+      const dist = 2 * dr * dr + 4 * dg * dg + 3 * db * db;
+      if(dist >= max + soft) continue;     // far enough from the background to stay fully solid
+      const a = scratchClamp01((dist - max) / soft);
+      out[a4 + 3] = Math.round(d[a4 + 3] * a);
+      // below this the pixel is mostly background anyway, and the division amplifies its noise
+      if(a > 0.15){
+        out[a4]     = (d[a4]     - d[b4]     * (1 - a)) / a;
+        out[a4 + 1] = (d[a4 + 1] - d[b4 + 1] * (1 - a)) / a;
+        out[a4 + 2] = (d[a4 + 2] - d[b4 + 2] * (1 - a)) / a;
+      }
+    }
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    cv.getContext('2d').putImageData(new ImageData(out, w, h), 0, 0);
+    return cv;
+  }
+
+  /* ---- what is on screen ---- */
+
+  // The Edge slider is 2–100 and this is the only place that turns it into a distance. The metric
+  // above tops out at 255 × 3, so a root of 260 is already most of the way to "take everything".
+  function scratchStudioTol(){ return (studio ? studio.key.tol : 22) * 2.6; }
+
+  /* The cut-out is recomputed lazily and cached on `out`, which every mutation clears. That single
+     rule is what keeps the live model honest: nothing has to remember to re-run the fill, it only
+     has to remember to forget the answer. */
+  function studioResult(){
+    if(!studio || !studio.base) return null;
+    if(!studio.key.on) return studio.base;
+    if(!studio.out) studio.out = scratchCutout(studio.base, scratchStudioTol(), studio.key.seeds);
+    return studio.out;
+  }
+
+  function scratchStudioDirty(){
+    return !!(studio && studio.editable && (studio.base !== studio.orig || studio.key.on));
+  }
+
+  function renderScratchStudio(){
+    if(!studio) return;
+    const cv = el('scratchImgCanvas'), frame = el('scratchImgFrame'), ov = el('scratchImgOverlay');
+    const src = studio.editable ? studioResult() : null;
+    if(src && cv){
+      if(cv.width !== src.width || cv.height !== src.height){ cv.width = src.width; cv.height = src.height; }
+      const c = cv.getContext('2d');
+      c.clearRect(0, 0, cv.width, cv.height);   // or a cut-out's holes would show the previous frame
+      c.drawImage(src, 0, 0);
+    }
+    if(frame) frame.classList.toggle('is-alpha', !!(src && studio.key.on));
+    if(ov) ov.classList.toggle('is-picking', !!(src && studio.key.on && studio.mode === 'view'));
+    renderScratchStudioCrop();
+    renderScratchStudioBar();
+  }
+
+  function renderScratchStudioCrop(){
+    const layer = el('scratchImgCropLayer'), rect = el('scratchImgCropRect');
+    if(!layer || !rect) return;
+    if(!studio || studio.mode !== 'crop' || !studio.crop){ layer.style.display = 'none'; return; }
+    layer.style.display = 'block';
+    const c = studio.crop;
+    // percentages of the frame, which IS the picture — see .scratch-imgview-frame in styles.css
+    rect.style.left = (c.x * 100) + '%';
+    rect.style.top = (c.y * 100) + '%';
+    rect.style.width = (c.w * 100) + '%';
+    rect.style.height = (c.h * 100) + '%';
+  }
+
+  const SCRATCH_STUDIO_HINTS = {
+    view:  'Crop it, or lift the subject off a plain background.',
+    key:   'Click any colour in the picture to take that out as well · Edge tunes how much goes.',
+    crop:  'Drag the box or its handles · drag anywhere else on the picture to start a new one.',
+    plain: 'This picture is hosted somewhere that won’t let it be edited here — you can still look at it.'
+  };
+
+  function renderScratchStudioBar(){
+    const cropBtn = el('scratchImgCropBtn'), cutBtn = el('scratchImgCutBtn'), tol = el('scratchImgTolWrap'),
+          ok = el('scratchImgCropOkBtn'), no = el('scratchImgCropNoBtn'),
+          reset = el('scratchImgResetBtn'), save = el('scratchImgSaveBtn'), hint = el('scratchImgHint');
+    if(!cropBtn || !hint) return;
+    const on = !!(studio && studio.editable), cropping = !!(on && studio.mode === 'crop');
+    const show = (node, yes) => { if(node) node.style.display = yes ? '' : 'none'; };
+    show(cropBtn, on && !cropping);
+    show(cutBtn, on && !cropping);
+    show(tol, on && !cropping && studio.key.on);
+    show(ok, cropping);
+    show(no, cropping);
+    show(reset, on);
+    show(save, on);
+    if(on){
+      const dirty = scratchStudioDirty();
+      cutBtn.classList.toggle('is-on', !!studio.key.on);
+      reset.disabled = !dirty || studio.busy;
+      save.disabled = !dirty || studio.busy;
+    }
+    /* Nothing at all until the readable copy has been tried: `plain` is a verdict, and announcing
+       "this can't be edited" during the fetch that decides whether it can would be a lie half the
+       time — one that then corrects itself, which is worse than the empty line it replaced. */
+    hint.textContent = (studio && studio.msg) || (!on ? (studio && studio.probed ? SCRATCH_STUDIO_HINTS.plain : '')
+      : cropping ? SCRATCH_STUDIO_HINTS.crop
+      : studio.key.on ? SCRATCH_STUDIO_HINTS.key
+      : SCRATCH_STUDIO_HINTS.view);
+  }
+
+  /* ---- open and close ---- */
+
+  function openScratchImgView(img){
+    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg'), cv = el('scratchImgCanvas');
+    if(!ov || !big || !img) return;
+    hideScratchImgBox();
+    const url = img.getAttribute('src') || '';
+    studio = { target: img, url: url, editable: false, busy: false, mode: 'view', msg: '',
+               probed: false, orig: null, base: null, out: null, crop: null,
+               key: { on: false, tol: 22, seeds: [] } };
+    // shown from the <img> first and swapped to the canvas once the readable copy lands: the photo
+    // is usually already in the browser's cache, so this puts it on screen with no wait at all
+    big.src = url;
+    big.alt = img.getAttribute('alt') || '';
+    big.style.display = '';
+    if(cv) cv.style.display = 'none';
+    const tol = el('scratchImgTol');
+    if(tol) tol.value = String(studio.key.tol);
+    ov.style.display = 'flex';
+    ov.classList.remove('is-busy');
+    scratchImgViewOn = true;
+    renderScratchStudio();
+    /* Fetched a SECOND time with crossOrigin set, because the fetch above had no such flag and a
+       canvas that has had a non-CORS image drawn into it can never be read back — the taint is on
+       the canvas, not on the request, so there is no way to test for it after the fact except to
+       try. Supabase Storage answers with a wildcard header, so this is free for anything this app
+       uploaded; anything else falls through to view-only rather than to a broken button. */
+    const probe = new Image();
+    probe.crossOrigin = 'anonymous';
+    probe.onload = ()=>{
+      if(!studio || studio.url !== url) return;   // closed, or another picture opened meanwhile
+      studio.probed = true;
+      let base;
+      try{
+        base = scratchStudioCanvas(probe);
+        base.getContext('2d').getImageData(0, 0, 1, 1);   // the taint check, and the only one that counts
+      }catch(e){ renderScratchStudio(); return; }
+      studio.orig = studio.base = base;
+      studio.editable = true;
+      big.style.display = 'none';
+      if(cv) cv.style.display = '';
+      renderScratchStudio();
+    };
+    probe.onerror = ()=>{ if(studio && studio.url === url){ studio.probed = true; renderScratchStudio(); } };
+    probe.src = url;
+    const close = el('scratchImgViewClose');
+    if(close) close.focus({ preventScroll: true });
+  }
+
+  /* `force` is for the one caller that cannot be refused: closeScratch() is already tearing the pad
+     down, and a prompt there would leave the studio on screen over a page that had gone. */
+  function closeScratchImgView(force){
+    const ov = el('scratchImgOverlay'), big = el('scratchImgViewImg'), cv = el('scratchImgCanvas');
     if(!ov) return;
+    if(!force){
+      if(studio && studio.busy) return;   // an upload is in flight; it closes itself when it lands
+      if(scratchStudioDirty() && !window.confirm('Discard the changes to this picture?')) return;
+    }
     ov.style.display = 'none';
+    ov.classList.remove('is-picking', 'is-busy');
     scratchImgViewOn = false;
-    // drop the decoded bitmap rather than leaving a full-resolution photo held open behind a
-    // display:none — these come from Storage and can be several megabytes
+    scratchCropDrag = null;
+    if(studioRaf){ cancelAnimationFrame(studioRaf); studioRaf = 0; }
+    studio = null;
+    /* Drop every decoded bitmap rather than leaving a full-resolution photo — plus a cut-out of it,
+       plus the canvas holding the result — alive behind a display:none. These come from Storage and
+       are several megabytes each once decoded. */
     if(big) big.removeAttribute('src');
+    if(cv){ cv.width = cv.height = 1; }
     focusScratchSurface();
+  }
+
+  /* ---- the edits ---- */
+
+  function toggleScratchCutout(){
+    if(!studio || !studio.editable || studio.busy) return;
+    studio.key.on = !studio.key.on;
+    studio.key.seeds = [];   // turning it off and on again is a fresh start, not a resumed one
+    studio.out = null;
+    studio.msg = '';
+    renderScratchStudio();
+  }
+
+  function beginScratchCrop(){
+    if(!studio || !studio.editable || studio.busy) return;
+    studio.mode = 'crop';
+    // an inset default rather than the whole picture: a box with margin around it says "drag me",
+    // and one flush to the edges has no dim surround to show what cropping even means
+    if(!studio.crop) studio.crop = { x: 0.08, y: 0.08, w: 0.84, h: 0.84 };
+    studio.msg = '';
+    renderScratchStudio();
+  }
+
+  function cancelScratchCrop(){
+    if(!studio) return;
+    studio.mode = 'view';
+    studio.crop = null;
+    renderScratchStudio();
+  }
+
+  function applyScratchCrop(){
+    if(!studio || studio.mode !== 'crop' || !studio.crop) return;
+    /* Cropping BAKES what is on screen, cut-out included, and then clears the key. It is the one
+       operation that has to, because a live cut-out's seeds are the OLD border ring and the crop
+       has just thrown that border away — carrying them across would be carrying a reference to
+       pixels that no longer exist. Baking keeps exactly the picture you were looking at, and
+       leaves the button free to run again on the new edges: a pixel that is already transparent
+       seeds the next fill for free (see push() above), so a second run picks up where this one
+       left off rather than starting blind. */
+    const src = studioResult(), c = studio.crop;
+    if(!src) return;
+    const sx = Math.round(c.x * src.width), sy = Math.round(c.y * src.height);
+    const sw = Math.max(1, Math.round(c.w * src.width)), sh = Math.max(1, Math.round(c.h * src.height));
+    const cv = document.createElement('canvas');
+    cv.width = sw; cv.height = sh;
+    cv.getContext('2d').drawImage(src, sx, sy, sw, sh, 0, 0, sw, sh);
+    studio.base = cv;
+    studio.key.on = false; studio.key.seeds = []; studio.out = null;
+    studio.crop = null; studio.mode = 'view'; studio.msg = '';
+    renderScratchStudio();
+  }
+
+  function resetScratchStudio(){
+    if(!studio || !studio.editable || studio.busy) return;
+    studio.base = studio.orig;   // never a copy: orig is only ever drawn FROM, never drawn into
+    studio.out = null; studio.crop = null; studio.mode = 'view'; studio.msg = '';
+    studio.key = { on: false, tol: studio.key.tol, seeds: [] };
+    renderScratchStudio();
+  }
+
+  function failScratchStudio(msg){
+    setScratchStatus('dirty');
+    if(!studio) return;
+    studio.busy = false;
+    studio.msg = msg;
+    const ov = el('scratchImgOverlay');
+    if(ov) ov.classList.remove('is-busy');
+    renderScratchStudioBar();
+  }
+
+  function saveScratchStudio(){
+    if(!studio || !studio.editable || studio.busy || !scratchStudioDirty()) return;
+    const img = studio.target, surf = el('scratchText'), src = studioResult();
+    if(!src) return;
+    // it can only have gone if the pad was torn down under us, but the upload below writes to this
+    // node, and a write into a detached image is an edit that silently never happened
+    if(!surf || !surf.contains(img)){ closeScratchImgView(true); return; }
+    /* The width ATTRIBUTE is scaled by how much of the picture survived, never left alone: a crop
+       down to half the pixels, still carrying the width the whole photo had, would blow the
+       remaining half up to the size the original used to be. Measured against studio.orig rather
+       than against naturalWidth, so it stays right even where scratchStudioCanvas() downscaled the
+       working copy. Nothing is written where there was no width to begin with — that image is
+       being laid out by the column, and should go on being laid out by the column. */
+    const attr = parseInt(img.getAttribute('width') || '', 10);
+    const ratio = studio.orig && studio.orig.width ? src.width / studio.orig.width : 1;
+    studio.busy = true;
+    studio.msg = 'Saving…';
+    const ov = el('scratchImgOverlay');
+    if(ov) ov.classList.add('is-busy');
+    renderScratchStudioBar();
+    setScratchStatus('uploading');
+    /* PNG on the way out, always — and uploadCompressedImage() is what decides what actually gets
+       stored: it re-encodes a fully opaque result as JPEG and keeps PNG only where some pixel is
+       genuinely transparent (js/core.js). So a crop is stored as a photo-sized JPEG and a cut-out
+       keeps its alpha, with no format argument passed from here at all. */
+    src.toBlob(blob=>{
+      if(!blob){ failScratchStudio('Couldn’t read that picture back.'); return; }
+      uploadCompressedImage(blob, 1400, 0.86, 'scratch').then(url=>{
+        if(!scratchOpen || !surf.contains(img)) return;   // the pad went while this was in flight
+        img.setAttribute('src', url);
+        if(attr) setScratchImgWidth(img, Math.round(attr * ratio));
+        // the URL it replaced now belongs to no page, so the sweep on close reclaims its file —
+        // and this one has to be known immediately, or that same sweep would reclaim the new one
+        scratchKnownImages.add(url);
+        setScratchStatus('dirty');
+        onScratchInput();
+        if(studio) studio.busy = false;
+        closeScratchImgView(true);
+      }).catch(err=> failScratchStudio((err && err.message) || 'Couldn’t save that picture.'));
+    }, 'image/png');
+  }
+
+  /* ---- the crop gesture ----
+     One pointer handler for the whole layer, and which of the three gestures it is comes from what
+     was under the finger: a handle resizes the edges it names, the rect itself moves, and the dim
+     surround starts a fresh selection. Pointer capture goes on the LAYER, never on a handle — the
+     same rule the scratch dot row follows, for a related reason: the layer is the node that is
+     certainly still there at the end of the gesture, whatever happens to the rest.
+     Everything is in fractions of the picture, so the numbers that come out of a drag are already
+     the numbers applyScratchCrop() needs — no screen-to-source conversion anywhere. */
+  let scratchCropDrag = null;
+
+  function scratchCropPoint(e){
+    const frame = el('scratchImgFrame');
+    if(!frame) return { x: 0, y: 0 };
+    const r = frame.getBoundingClientRect();
+    return { x: r.width ? (e.clientX - r.left) / r.width : 0, y: r.height ? (e.clientY - r.top) / r.height : 0 };
+  }
+
+  function onScratchCropDown(e){
+    if(!studio || studio.mode !== 'crop' || !studio.crop) return;
+    const layer = el('scratchImgCropLayer');
+    const t = e.target, h = t && t.getAttribute ? t.getAttribute('data-h') : null;
+    const p = scratchCropPoint(e);
+    e.preventDefault();
+    if(h) scratchCropDrag = { kind: 'edge', h: h };
+    else if(t && t.closest && t.closest('#scratchImgCropRect')) scratchCropDrag = { kind: 'move', px: p.x, py: p.y, c: studio.crop };
+    else {
+      scratchCropDrag = { kind: 'new', ax: scratchClamp01(p.x), ay: scratchClamp01(p.y) };
+      studio.crop = { x: scratchCropDrag.ax, y: scratchCropDrag.ay, w: 0, h: 0 };
+      renderScratchStudioCrop();
+    }
+    scratchCropDrag.id = e.pointerId;
+    try{ layer.setPointerCapture(e.pointerId); }catch(err){}
+  }
+
+  function onScratchCropMove(e){
+    const g = scratchCropDrag;
+    if(!g || !studio || !studio.crop || e.pointerId !== g.id) return;
+    const p = scratchCropPoint(e), MIN = SCRATCH_STUDIO_MINCROP;
+    if(g.kind === 'new'){
+      const x = scratchClamp01(p.x), y = scratchClamp01(p.y);
+      studio.crop = { x: Math.min(g.ax, x), y: Math.min(g.ay, y), w: Math.abs(x - g.ax), h: Math.abs(y - g.ay) };
+    } else if(g.kind === 'move'){
+      // the whole rect stays inside the picture, so a move can never carry the crop past an edge
+      studio.crop = { x: Math.max(0, Math.min(1 - g.c.w, g.c.x + (p.x - g.px))),
+                      y: Math.max(0, Math.min(1 - g.c.h, g.c.y + (p.y - g.py))), w: g.c.w, h: g.c.h };
+    } else {
+      const c = studio.crop;
+      let l = c.x, t2 = c.y, r = c.x + c.w, b = c.y + c.h;
+      // 'nw' names both of its edges, so testing for each letter handles corners and sides alike;
+      // each moving edge is clamped against the opposite one so the rect can't turn inside out
+      if(g.h.indexOf('w') >= 0) l = Math.max(0, Math.min(scratchClamp01(p.x), r - MIN));
+      if(g.h.indexOf('e') >= 0) r = Math.min(1, Math.max(scratchClamp01(p.x), l + MIN));
+      if(g.h.indexOf('n') >= 0) t2 = Math.max(0, Math.min(scratchClamp01(p.y), b - MIN));
+      if(g.h.indexOf('s') >= 0) b = Math.min(1, Math.max(scratchClamp01(p.y), t2 + MIN));
+      studio.crop = { x: l, y: t2, w: r - l, h: b - t2 };
+    }
+    renderScratchStudioCrop();
+  }
+
+  function endScratchCropDrag(){
+    const g = scratchCropDrag;
+    if(!g) return;
+    scratchCropDrag = null;
+    const layer = el('scratchImgCropLayer');
+    try{ if(layer) layer.releasePointerCapture(g.id); }catch(err){}
+    /* A tap on the dim surround, or a drag of three pixels, leaves a rect too small to grab again —
+       so the floor is enforced here rather than during the drag, where it would make the box stop
+       following the finger. Grown around where it was drawn, then pushed back inside the picture. */
+    const MIN = SCRATCH_STUDIO_MINCROP, c = studio && studio.crop;
+    if(c){
+      if(c.w < MIN){ c.w = MIN; c.x = Math.max(0, Math.min(1 - MIN, c.x - MIN / 2)); }
+      if(c.h < MIN){ c.h = MIN; c.y = Math.max(0, Math.min(1 - MIN, c.y - MIN / 2)); }
+    }
+    renderScratchStudioCrop();
+  }
+
+  /* Picking a colour to remove is a click on the picture itself, which is why the canvas takes a
+     crosshair while a cut-out is showing. The click maps back to a source pixel through the
+     canvas's own rect — the same fraction-of-the-picture arithmetic the crop uses. */
+  function onScratchStudioPick(e){
+    if(!studio || !studio.editable || !studio.key.on || studio.mode !== 'view' || studio.busy) return;
+    const cv = el('scratchImgCanvas');
+    if(!cv) return;
+    const r = cv.getBoundingClientRect();
+    if(!r.width || !r.height) return;
+    const x = Math.floor((e.clientX - r.left) / r.width * cv.width);
+    const y = Math.floor((e.clientY - r.top) / r.height * cv.height);
+    if(x < 0 || y < 0 || x >= cv.width || y >= cv.height) return;
+    studio.key.seeds.push([x, y]);
+    studio.out = null;
+    renderScratchStudio();
   }
 
   /* ---------- find across pages ----------
@@ -2510,12 +2988,55 @@
     // no scroll/resize hooks here: trackScratchImgBox() already re-reads the rect every frame,
     // which covers those two and the cases they missed
 
+    /* ---- the studio ----
+       Every control is bound once here, and every one of them is a thin call into the functions
+       above — the studio keeps its whole model in `studio` and re-renders from it, so nothing in
+       this block reads the DOM to find out what state it is in. */
     const ov = el('scratchImgOverlay');
     if(ov) ov.addEventListener('click', e=>{
-      // the backdrop and the × both close; a click on the photo itself does not
-      if(e.target === el('scratchImgViewImg')) return;
+      /* The backdrop closes. The picture and the controls do not — and that has to be a test on
+         the two containers rather than on one <img>, now that the thing being clicked might be the
+         canvas, a crop handle, or the Edge slider. */
+      const t = e.target;
+      if(t && t.closest && t.closest('.scratch-imgview-stage, .scratch-imgview-panel')) return;
       closeScratchImgView();
     });
+
+    const cutBtn = el('scratchImgCutBtn');
+    if(cutBtn) cutBtn.addEventListener('click', toggleScratchCutout);
+    const cropBtn = el('scratchImgCropBtn');
+    if(cropBtn) cropBtn.addEventListener('click', beginScratchCrop);
+    const cropOk = el('scratchImgCropOkBtn');
+    if(cropOk) cropOk.addEventListener('click', applyScratchCrop);
+    const cropNo = el('scratchImgCropNoBtn');
+    if(cropNo) cropNo.addEventListener('click', cancelScratchCrop);
+    const resetBtn = el('scratchImgResetBtn');
+    if(resetBtn) resetBtn.addEventListener('click', resetScratchStudio);
+    const saveBtn = el('scratchImgSaveBtn');
+    if(saveBtn) saveBtn.addEventListener('click', saveScratchStudio);
+
+    const tolInput = el('scratchImgTol');
+    if(tolInput) tolInput.addEventListener('input', ()=>{
+      if(!studio) return;
+      studio.key.tol = parseInt(tolInput.value, 10) || 22;
+      studio.out = null;
+      /* One recompute per frame at most. Dragging a range input fires `input` far faster than a
+         two-megapixel flood fill can finish, and every superseded run is work thrown away — the
+         slider would lag a second behind the finger. The value is read again inside the frame, so
+         what gets computed is always the position the slider is at by then, never a stale one. */
+      if(studioRaf) return;
+      studioRaf = requestAnimationFrame(()=>{ studioRaf = 0; renderScratchStudio(); });
+    });
+
+    const cropLayer = el('scratchImgCropLayer');
+    if(cropLayer){
+      cropLayer.addEventListener('pointerdown', onScratchCropDown);
+      cropLayer.addEventListener('pointermove', onScratchCropMove);
+      cropLayer.addEventListener('pointerup', endScratchCropDrag);
+      cropLayer.addEventListener('pointercancel', endScratchCropDrag);
+    }
+    const studioCanvas = el('scratchImgCanvas');
+    if(studioCanvas) studioCanvas.addEventListener('click', onScratchStudioPick);
   })();
 
   /* ---------- find: wiring ---------- */
@@ -2829,7 +3350,7 @@
 
   function closeScratch(){
     if(!scratchOpen) return;
-    if(scratchImgViewOn) closeScratchImgView();
+    if(scratchImgViewOn) closeScratchImgView(true);   // force: the pad is going, a prompt can't stand in the way
     if(scratchSheetOn) closeScratchPageSheet();
     closeScratchHelp();   // a panel left up would be waiting there on the next open
     hideScratchImgBox();

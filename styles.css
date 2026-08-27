@@ -1642,7 +1642,7 @@
   /* height:auto is what preserves the aspect ratio when js/scratch.js writes a width ATTRIBUTE,
      and max-width:100% is what keeps a width set on a wide screen from overflowing the column on a
      narrow one — the stored number survives, only the display is clamped. zoom-in says the click
-     does something, since it opens the lightbox rather than placing a caret. */
+     does something, since it opens the studio rather than placing a caret. */
   .scratch-text img{max-width:100%;height:auto;border-radius:10px;margin:6px 0;display:block;cursor:zoom-in;}
   /* FREE-FLOATING: out of the text flow, positioned from data-x/data-y by js/scratch.js, stacked by
      data-z. Selecting on the attribute rather than a class is deliberate — a class on the image
@@ -1693,11 +1693,74 @@
      uses, so "on" and "about to be clicked" stay distinguishable from each other. */
   .scratch-imgbox-lift.is-on{background:var(--violet);color:#fff;border-color:#111;}
   .scratch-imgbox-grip:focus-visible,.scratch-imgbox-lift:focus-visible{outline:2px solid var(--violet);outline-offset:3px;}
-  /* The lightbox. 1000 is the app's modal tier (.struggle-overlay, .play-overlay, .mosaic-overlay),
-     which is correct: the scratch page is a MODE at 950 and a modal beats a mode. */
-  .scratch-imgview{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;
-    background:rgba(8,10,22,.9);padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));}
-  .scratch-imgview img{max-width:96vw;max-height:92vh;width:auto;height:auto;object-fit:contain;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+  /* The image STUDIO — look at a photo big, crop it, cut its background out (js/scratch.js).
+     1000 is the app's modal tier (.struggle-overlay, .play-overlay, .mosaic-overlay), which is
+     correct: the scratch page is a MODE at 950 and a modal beats a mode.
+     A column — picture, then controls — rather than the single centred image this used to be,
+     because the crop rect and the Edge slider both have to be reachable without covering the very
+     thing they are changing. */
+  .scratch-imgview{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    background:rgba(8,10,22,.92);padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));}
+  .scratch-imgview-stage{display:flex;align-items:center;justify-content:center;min-height:0;}
+  /* Shrink-wrapped to the picture, and position:relative — which is what makes the crop layer's
+     percentages the PICTURE's own coordinates, so the whole crop UI never has to measure a
+     letterboxed object-fit box or re-measure it on every resize. line-height:0 keeps the frame from
+     inheriting a text baseline's worth of extra height under the image. */
+  .scratch-imgview-frame{position:relative;display:flex;line-height:0;border-radius:12px;box-shadow:0 24px 60px rgba(0,0,0,.5);}
+  /* The ceiling is viewport units on the picture ITSELF, never a percentage of the frame: the
+     frame's size comes from the picture, so a percentage max-height is circular and every engine
+     resolves that to "no limit" — the photo would run off the bottom of the screen. The subtracted
+     band is the controls underneath it. */
+  .scratch-imgview img,.scratch-imgview canvas{display:block;max-width:min(96vw,1400px);
+    max-height:max(200px,calc(100dvh - 214px));width:auto;height:auto;border-radius:12px;}
+  /* Only while a cut-out is on screen: transparency has to READ as transparency, and a permanent
+     chequerboard behind every ordinary photo would be nothing but noise. */
+  .scratch-imgview-frame.is-alpha{background-color:#171a29;
+    background-image:linear-gradient(45deg,#232739 25%,transparent 25%),linear-gradient(-45deg,#232739 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#232739 75%),linear-gradient(-45deg,transparent 75%,#232739 75%);
+    background-size:18px 18px;background-position:0 0,0 9px,9px -9px,-9px 0;}
+  /* Picking a colour to remove is a click ON the photo, so the photo has to say so. */
+  .scratch-imgview.is-picking canvas{cursor:crosshair;}
+  .scratch-imgview.is-busy .scratch-imgview-panel{opacity:.5;pointer-events:none;}
+  /* ---- the crop selection ----
+     The layer covers the picture exactly (see .scratch-imgview-frame), so every coordinate here is
+     a percentage and the stored rect is in units of the image rather than of the screen — which is
+     what lets the same numbers be applied to the source pixels on "Apply crop" with no scaling
+     bookkeeping at all. touch-action:none because the whole thing is pointer-dragged. */
+  .scratch-crop{position:absolute;inset:0;overflow:hidden;border-radius:12px;touch-action:none;cursor:crosshair;}
+  /* The dimming outside the selection is ONE enormous spread shadow cast off the selection itself,
+     not four mask elements: it costs no layout and it can never disagree with the rect it is cut
+     from. overflow:hidden on the layer above is what stops that shadow painting the whole screen.
+     The thirds are a repeating gradient whose period IS a third, so they follow the rect for free. */
+  .scratch-crop-rect{position:absolute;box-shadow:0 0 0 9999px rgba(6,8,18,.62);outline:1px solid rgba(255,255,255,.92);cursor:move;
+    background-image:repeating-linear-gradient(to right,rgba(255,255,255,.3) 0 1px,transparent 1px 33.333%),
+      repeating-linear-gradient(to bottom,rgba(255,255,255,.3) 0 1px,transparent 1px 33.333%);}
+  /* White-on-black for the same reason .scratch-imgbox-grip is: these sit on top of an arbitrary
+     photograph, where any single theme colour disappears somewhere. */
+  .scratch-crop-h{--h:16px;position:absolute;width:var(--h);height:var(--h);background:#fff;border:1.5px solid #111;border-radius:3px;
+    box-shadow:0 1px 3px rgba(0,0,0,.5);}
+  @media (pointer:coarse){ .scratch-crop-h{--h:24px;} }
+  .scratch-crop-h.is-nw{left:calc(var(--h) / -2);top:calc(var(--h) / -2);cursor:nwse-resize;}
+  .scratch-crop-h.is-ne{right:calc(var(--h) / -2);top:calc(var(--h) / -2);cursor:nesw-resize;}
+  .scratch-crop-h.is-sw{left:calc(var(--h) / -2);bottom:calc(var(--h) / -2);cursor:nesw-resize;}
+  .scratch-crop-h.is-se{right:calc(var(--h) / -2);bottom:calc(var(--h) / -2);cursor:nwse-resize;}
+  .scratch-crop-h.is-n{left:calc(50% - var(--h) / 2);top:calc(var(--h) / -2);cursor:ns-resize;}
+  .scratch-crop-h.is-s{left:calc(50% - var(--h) / 2);bottom:calc(var(--h) / -2);cursor:ns-resize;}
+  .scratch-crop-h.is-w{top:calc(50% - var(--h) / 2);left:calc(var(--h) / -2);cursor:ew-resize;}
+  .scratch-crop-h.is-e{top:calc(50% - var(--h) / 2);right:calc(var(--h) / -2);cursor:ew-resize;}
+  /* ---- the controls ---- */
+  .scratch-imgview-panel{flex:none;display:flex;flex-direction:column;align-items:center;gap:8px;max-width:min(96vw,780px);}
+  /* min-height so the bar doesn't jump up and down as the hint changes between modes */
+  .scratch-imgview-hint{color:rgba(255,255,255,.72);font-size:11.5px;line-height:1.4;text-align:center;min-height:16px;}
+  .scratch-imgview-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;}
+  .scratch-imgview-btn{padding:8px 14px;border-radius:999px;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.1);
+    color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:background .15s ease,border-color .15s ease;}
+  .scratch-imgview-btn:hover{background:rgba(255,255,255,.2);}
+  .scratch-imgview-btn.is-on,.scratch-imgview-btn.is-primary{background:var(--violet);border-color:var(--violet);}
+  .scratch-imgview-btn.is-primary:hover{background:var(--violet-dark);border-color:var(--violet-dark);}
+  .scratch-imgview-btn:disabled{opacity:.4;cursor:default;}
+  .scratch-imgview-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+  .scratch-imgview-tol{display:flex;align-items:center;gap:8px;color:rgba(255,255,255,.8);font-size:11.5px;font-weight:700;}
+  .scratch-imgview-tol input{width:132px;accent-color:var(--violet);}
   .scratch-imgview-close{position:absolute;top:max(14px,env(safe-area-inset-top));right:18px;
     width:38px;height:38px;padding:0;background:rgba(255,255,255,.12);border:none;border-radius:50%;
     color:#fff;font-size:22px;line-height:1;cursor:pointer;transition:background .15s ease;}

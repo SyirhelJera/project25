@@ -2072,13 +2072,47 @@
   </div>
 </div>
 
-<!-- IMAGE LIGHTBOX — clicking an image in the scratch page opens it here at full size.
+<!-- IMAGE STUDIO — clicking an image in the scratch page opens it here at full size, where it can
+     also be CROPPED and have its background cut out (js/scratch.js, "the studio").
      BODY LEVEL, deliberately not inside #scratchOverlay: that element carries z-index 950 and so
      creates its own stacking context, and a child of it could never outrank the app's 1000-tier
      modals no matter what z-index it was given. Out here it sits in the 1000 tier properly, which
-     is the same reason #valItemPreviewOverlay lives outside #view-games. -->
+     is the same reason #valItemPreviewOverlay lives outside #view-games.
+     The <img> and the <canvas> are two display paths for one picture and exactly one of them is
+     ever visible: the canvas is what the editor draws into (no re-encode per slider tick), and the
+     plain <img> is the fallback for a photo whose bytes can't be read back into a canvas at all —
+     a foreign host that sends no CORS header — where the studio degrades to just looking at it. -->
 <div id="scratchImgOverlay" class="scratch-imgview" style="display:none;" role="dialog" aria-modal="true" aria-label="Image">
-  <img id="scratchImgViewImg" alt="">
+  <div class="scratch-imgview-stage">
+    <!-- shrink-wraps whichever display element is showing, so the crop layer's percentages ARE the
+         picture's own coordinates and need no measuring -->
+    <div class="scratch-imgview-frame" id="scratchImgFrame">
+      <img id="scratchImgViewImg" alt="">
+      <canvas id="scratchImgCanvas" style="display:none;"></canvas>
+      <div class="scratch-crop" id="scratchImgCropLayer" style="display:none;">
+        <div class="scratch-crop-rect" id="scratchImgCropRect">
+          <span class="scratch-crop-h is-nw" data-h="nw"></span><span class="scratch-crop-h is-n" data-h="n"></span><span class="scratch-crop-h is-ne" data-h="ne"></span>
+          <span class="scratch-crop-h is-w" data-h="w"></span><span class="scratch-crop-h is-e" data-h="e"></span>
+          <span class="scratch-crop-h is-sw" data-h="sw"></span><span class="scratch-crop-h is-s" data-h="s"></span><span class="scratch-crop-h is-se" data-h="se"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="scratch-imgview-panel">
+    <div class="scratch-imgview-hint" id="scratchImgHint" role="status"></div>
+    <div class="scratch-imgview-bar" id="scratchImgBar">
+      <button type="button" id="scratchImgCropBtn" class="scratch-imgview-btn">Crop</button>
+      <button type="button" id="scratchImgCutBtn" class="scratch-imgview-btn">Remove background</button>
+      <span class="scratch-imgview-tol" id="scratchImgTolWrap" style="display:none;">
+        <label for="scratchImgTol">Edge</label>
+        <input type="range" id="scratchImgTol" min="2" max="100" value="22" aria-label="How much of the background to take">
+      </span>
+      <button type="button" id="scratchImgCropOkBtn" class="scratch-imgview-btn is-primary" style="display:none;">Apply crop</button>
+      <button type="button" id="scratchImgCropNoBtn" class="scratch-imgview-btn" style="display:none;">Cancel</button>
+      <button type="button" id="scratchImgResetBtn" class="scratch-imgview-btn">Reset</button>
+      <button type="button" id="scratchImgSaveBtn" class="scratch-imgview-btn is-primary">Save</button>
+    </div>
+  </div>
   <button type="button" id="scratchImgViewClose" class="scratch-imgview-close" aria-label="Close image">&times;</button>
 </div>
 

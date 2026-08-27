@@ -543,52 +543,60 @@
   </div>
 
   <!-- FITNESS -->
-  <div class="view" id="view-fitness">
-    <div class="view-title">Fitness</div>
-    <div class="view-sub">Log your weight, track BMI and trends, and get a daily calorie target.</div>
+  <!-- No view-title/view-sub here, unlike the other tabs: the sidebar item already says Fitness,
+       and those two lines cost the whole first screen.
 
+       Three panes behind one sub-nav (showFitnessSubTab() in js/fitness.js). They are three views
+       of one concern rather than three different things, so the choice RESETS to Weight on entry —
+       the Time tab's rule, not the Games tab's: you open this tab to see the trend, and landing
+       on whichever pane you left last would bury it. The log banner sits ABOVE the strip because
+       it is about the day rather than about any one pane, and its "Log now" button switches to
+       Weight before focusing the field, which would otherwise be display:none. -->
+  <div class="view" id="view-fitness">
     <div id="fitnessLogBanner" class="fitness-log-banner" style="display:none;"><span>⚠️ You haven't logged your weight today yet.</span><button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button></div>
 
-    <!-- Photos live here and nowhere else. A carousel of progress-photo cards used to sit above
-         this block, showing the same records a second time; it is gone, and this pane took over
-         its two jobs — the ‹ › arrows step back through every photo, and each side carries its own
-         Remove and its Drive link. So this is now the only place a progress photo is added, seen
-         or removed, and the unavailable note has to stay visible in the mode where uploads are off
-         (nothing else is left to say where the photos went). Both uploads share one Drive round
-         trip, driveUploadPhoto(); only the file's Drive metadata reaches state, never the bytes.
-         Built by renderComparePhotos() in js/fitness.js. -->
-    <div id="compareSection">
-      <div class="section-lbl" style="margin-top:4px;">Progress &amp; Goal</div>
-      <div class="view-sub" id="comparePhotoUnavailable" style="display:none;">Progress photos need the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
-      <div class="compare-wrap" id="compareWrap"></div>
-      <div class="img-row" id="comparePhotoUploadRow">
-        <label class="ai-btn">📷 Add Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
-        <label class="ai-btn" id="dreamPhotoLabel">🎯 Upload Dream Physique<input type="file" accept="image/*" id="dreamPhotoInput" style="display:none;"></label>
-        <!-- one status line for both buttons: only one upload can be in flight at a time, and two
-             empty spans side by side left a gap that read as a missing control -->
-        <span id="photoStatus" class="fitness-note" style="margin:0;"></span>
-      </div>
+    <div class="finance-subnav" id="fitnessSubnav">
+      <button class="finance-subnav-btn active" data-fittab="weight" type="button"><span>Weight</span></button>
+      <button class="finance-subnav-btn" data-fittab="photos" type="button"><span>Photos</span></button>
+      <button class="finance-subnav-btn" data-fittab="calories" type="button"><span>Calories</span></button>
     </div>
 
-    <!-- One row logs the morning weigh-in and the calories that produced it. They land on two
-         different dates on purpose: you weigh in the morning after the day you ate, so the kcal
-         box attributes to the day before by default (state.fitness.kcalOffset) and #wlAddHint
-         spells both dates out rather than leaving that offset implicit. Either field alone is a
-         valid entry — weight-only logging works exactly as it did before calories existed. -->
+    <!-- The trend is the hero: it is the one figure this tab exists to answer, and the calendar
+         under it is where the readings that draw it are entered and corrected. -->
+    <div class="fittab" id="fittab-weight">
+    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
+    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
+    <div class="chart-card wt-chart-card">
+      <div class="wt-delta" id="weightTrendDelta"></div>
+      <div id="weightChartWrap"></div>
+      <div class="chart-legend" id="weightChartLegend"></div>
+    </div>
+
+    <!-- This row logs today and only today. It used to carry a date picker, which cost most of
+         the line on a phone to serve the rare case; backfilling and corrections belong to the
+         calendar below, where you can see which days are missing. The two readings still land on
+         two different dates: you weigh in the morning after the day you ate, so the kcal box
+         attributes to the day before by default (state.fitness.kcalOffset) and #wlAddHint spells
+         both dates out rather than leaving that offset implicit. Either field alone is a valid
+         entry — weight-only logging works exactly as it did before calories existed. -->
     <div class="section-lbl" style="margin-top:22px;">Log Weight &amp; Calories</div>
     <div class="weight-log-row-add">
-      <input type="date" id="wlDate">
-      <input type="number" id="wlWeight" step="0.01" min="0" placeholder="Weight">
-      <span class="wl-kcal-group">
+      <!-- the three fields you type into; they stay on one line at every width -->
+      <span class="wl-fields">
+        <input type="number" id="wlWeight" step="0.01" min="0" placeholder="Weight" aria-label="Weight">
         <input type="number" id="wlKcal" step="10" min="0" placeholder="Calories" aria-label="Calories eaten">
-        <select id="wlKcalDay" aria-label="Which day those calories were eaten">
-          <option value="1">eaten the day before</option>
-          <option value="0">eaten the same day</option>
-        </select>
       </span>
-      <button class="btn btn-primary" id="wlAddBtn">+ Log</button>
+      <!-- and the two controls that qualify them, which is where the row breaks on a phone -->
+      <span class="wl-when">
+        <select id="wlKcalDay" aria-label="Which day those calories were eaten">
+          <option value="1">yesterday</option>
+          <option value="0">today</option>
+        </select>
+        <button class="btn btn-primary" id="wlAddBtn">+ Log</button>
+      </span>
     </div>
     <div class="wl-add-hint" id="wlAddHint"></div>
+
     <!-- A month grid rather than a list of rows: the question this section raises is "which days
          am I missing" (the Budget Check below is gated on exactly that), and a gap is invisible
          between two list rows and obvious in a calendar. Clicking a day opens #wcalEditor beneath
@@ -602,18 +610,41 @@
       </div>
       <div class="wcal-dow" id="wcalDow" aria-hidden="true"></div>
       <div class="wcal-grid" id="wcalGrid"></div>
+      <!-- appears only in a month that actually has an ideal-conditions day, so the calendar
+           stays bare until the tint needs explaining -->
+      <div class="wcal-legend" id="wcalLegend"></div>
     </div>
     <div class="wcal-editor" id="wcalEditor" style="display:none;"></div>
     <div class="empty" id="weightLogEmpty" style="display:none;">Nothing logged yet — use the row above, or click any day.</div>
-
-    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
-    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
-    <div class="chart-card wt-chart-card">
-      <div class="wt-delta" id="weightTrendDelta"></div>
-      <div id="weightChartWrap"></div>
-      <div class="chart-legend" id="weightChartLegend"></div>
     </div>
 
+    <div class="fittab" id="fittab-photos" style="display:none;">
+    <!-- Photos live here and nowhere else. A carousel of progress-photo cards used to sit above
+         this block, showing the same records a second time; it is gone, and this pane took over
+         its two jobs — the ‹ › arrows step back through every photo, and each side carries its own
+         Remove and its Drive link. So this is now the only place a progress photo is added, seen
+         or removed, and the unavailable note has to stay visible in the mode where uploads are off
+         (nothing else is left to say where the photos went). Both uploads share one Drive round
+         trip, driveUploadPhoto(); only the file's Drive metadata reaches state, never the bytes.
+         Built by renderComparePhotos() in js/fitness.js. -->
+    <div id="compareSection">
+      <div class="section-lbl" style="margin-top:4px;">Progress &amp; Goal</div>
+      <div class="view-sub" id="comparePhotoUnavailable" style="display:none;">Progress photos need the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
+      <div class="compare-wrap" id="compareWrap"></div>
+      <!-- Only the progress-photo button lives out here. The goal physique is replaced from
+           inside its own maximised view, and picked for the first time by clicking the empty goal
+           card — so the control sits with the thing it acts on rather than in a row of two buttons
+           where the less-used one was as loud as the daily one. The file input stays here, hidden
+           and stable, because the viewer that triggers it is rebuilt on every open. -->
+      <div class="img-row" id="comparePhotoUploadRow">
+        <label class="ai-btn">📷 Add Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
+        <span id="photoStatus" class="fitness-note" style="margin:0;"></span>
+      </div>
+      <input type="file" accept="image/*" id="dreamPhotoInput" style="display:none;">
+    </div>
+    </div>
+
+    <div class="fittab" id="fittab-calories" style="display:none;">
     <!-- "Is the calorie budget actually working?" — answered from what happened rather than from
          the formula below it: average intake over the window, the weight trend across the same
          window, and the maintenance figure those two together imply. Rendered by
@@ -666,6 +697,7 @@
       <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Estimated Weeks</div></div>
     </div>
     <div class="fitness-note" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
+    </div>
   </div>
 
   <!-- GAMES — Valorant and TFT behind one nav item, so the sidebar doesn't grow a tab per game.
@@ -2134,6 +2166,22 @@
      ever visible: the canvas is what the editor draws into (no re-encode per slider tick), and the
      plain <img> is the fallback for a photo whose bytes can't be read back into a canvas at all —
      a foreign host that sends no CORS header — where the studio degrades to just looking at it. -->
+<!-- Maximised progress / goal photo. BODY LEVEL, deliberately outside #view-fitness: a .view is
+     display:none whenever its tab isn't active, which would take this with it — the same rule
+     #valItemPreviewOverlay and #scratchImgOverlay follow. It sits in the app's 1000 modal tier.
+
+     It exists because the destructive control needed somewhere to be. Remove used to sit on the
+     card a few pixels from the ‹ › arrows, which is a mis-tap waiting to happen on a phone; putting
+     it behind "open the photo" makes deleting a deliberate two-step act and gives the photo the
+     room it wanted anyway. Built by openPhotoView() in js/fitness.js. -->
+<div id="photoViewOverlay" class="photo-view" style="display:none;" role="dialog" aria-modal="true" aria-label="Photo">
+  <div class="photo-view-stage"><img id="photoViewImg" alt=""></div>
+  <div class="photo-view-bar">
+    <div class="photo-view-cap" id="photoViewCap"></div>
+    <div class="photo-view-acts" id="photoViewActs"></div>
+  </div>
+</div>
+
 <div id="scratchImgOverlay" class="scratch-imgview" style="display:none;" role="dialog" aria-modal="true" aria-label="Image">
   <div class="scratch-imgview-stage">
     <!-- shrink-wraps whichever display element is showing, so the crop layer's percentages ARE the

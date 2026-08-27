@@ -237,7 +237,6 @@
     el('fitSex').value = f.sex || 'male';
     el('fitActivity').value = f.activity || '1.55';
     el('fitPace').value = f.pace || '0.5';
-    el('wlDate').value = localDateStr(new Date());
     el('wlKcalDay').value = String(kcalOffset());
     updateLogHint();
     calcFitness();
@@ -325,14 +324,15 @@
   // hint states both dates outright instead of leaving "yesterday" to be worked out.
   function updateLogHint(){
     const hintEl = el('wlAddHint'); if(!hintEl) return;
-    const wDate = el('wlDate').value || localDateStr(new Date());
+    const wDate = localDateStr(new Date());
     const kDate = shiftDateStr(wDate, -kcalOffset());
     hintEl.innerHTML = 'Weight lands on <b>' + escapeHtml(fmtDate(parseLocalDateStr(wDate).getTime()))
       + '</b> · calories land on <b>' + escapeHtml(fmtDate(parseLocalDateStr(kDate).getTime())) + '</b>';
   }
 
   function addWeightLogEntry(){
-    const dateStr = el('wlDate').value || localDateStr(new Date());
+    // today, always — a past date is corrected on the calendar, where you can see what is missing
+    const dateStr = localDateStr(new Date());
     const v = parseFloat(el('wlWeight').value);
     const kc = parseFloat(el('wlKcal').value);
     const hasWeight = !isNaN(v) && v > 0, hasKcal = !isNaN(kc) && kc >= 0;
@@ -341,18 +341,25 @@
     if(hasKcal) upsertCalorieLog(shiftDateStr(dateStr, -kcalOffset()), Math.round(kc));
     el('wlWeight').value = '';
     el('wlKcal').value = '';
+    // This row writes to today, and today may be the very day open in the calendar editor below —
+    // which does not rebuild unless the day or the unit changed, so its fields and note would go
+    // on showing what they held before this entry. Every other write path resets this for the same
+    // reason; the date picker used to make the collision unlikely, and now it is the common case.
+    weightCalEditorFor = null;
     save(); renderFitness();
   }
   el('wlAddBtn').addEventListener('click', addWeightLogEntry);
   el('wlWeight').addEventListener('keydown', e=>{ if(e.key==='Enter') addWeightLogEntry(); });
   el('wlKcal').addEventListener('keydown', e=>{ if(e.key==='Enter') addWeightLogEntry(); });
-  el('wlDate').addEventListener('change', updateLogHint);
   el('wlKcalDay').addEventListener('change', ()=>{
     state.fitness.kcalOffset = Number(el('wlKcalDay').value) === 0 ? 0 : 1;
     save(); updateLogHint();
   });
   // whichever half of today's entry is still missing is the one the banner is nagging about
   el('fitnessLogNowBtn').addEventListener('click', ()=>{
+    // the banner sits above the strip and can be clicked from any pane, and a display:none input
+    // cannot take focus — so reveal the pane the fields live in first
+    showFitnessSubTab('weight');
     const loggedToday = (state.fitness.weightLog||[]).some(e=>e.date===localDateStr(new Date()));
     el(loggedToday ? 'wlKcal' : 'wlWeight').focus();
   });
@@ -418,6 +425,72 @@
     return Math.round(met * kg * (mins/60));
   }
 
+  /* ---- the three panes ----------------------------------------------------------------------
+     Weight (the trend, the entry row and the calendar), Photos, and Calories. Three views of one
+     concern rather than three separate things, so the choice is NOT persisted and resets to Weight
+     on entry — the Time tab's rule, not the Games tab's. You open this tab to see the trend, and
+     landing on whichever pane you happened to leave last would bury it. */
+  const FITNESS_SUBTABS = ['weight','photos','calories'];
+  let fitnessSubTab = 'weight';
+  function showFitnessSubTab(key){
+    if(FITNESS_SUBTABS.indexOf(key) < 0) key = 'weight';
+    fitnessSubTab = key;
+    document.querySelectorAll('#view-fitness .finance-subnav-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.fittab === key);
+    });
+    document.querySelectorAll('#view-fitness .fittab').forEach(t=>{
+      t.style.display = (t.id === 'fittab-'+key) ? '' : 'none';
+    });
+    /* A chart drawn while its pane was display:none measured a zero-width wrapper and fell back to
+       the 780-unit default, which renders desktop-scaled type on a phone. Redraw whichever pane
+       just became visible now that it has a real width. The observers below would get there
+       eventually, but only once something else changed size — this makes it immediate. */
+    if(key === 'weight') renderWeightChart();
+    if(key === 'calories') renderCalorieReview();
+  }
+  el('fitnessSubnav').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-fittab]');
+    if(btn) showFitnessSubTab(btn.dataset.fittab);
+  });
+
+  /* ---- measurement conditions ---------------------------------------------------------------
+     A weigh-in is only comparable to the one before it if it was taken the same way, and the three
+     things that move the number most overnight are food the evening before, food that morning, and
+     water drunk before stepping on. Ticking all three marks the day's reading as taken under the
+     same protocol as every other ticked day — a green ✓ on the calendar — so a jump can be read as
+     a real change rather than as a measurement artefact.
+
+     Only the ticked keys are stored, which is what keeps a day with nothing ticked absent from the
+     array entirely, and means adding a fourth condition later leaves old days honestly short of it
+     rather than retroactively declaring them controlled. */
+  const WEIGH_CHECKS = [
+    {key:'noLate',  label:'No eating after 7 PM'},
+    {key:'fasted',  label:'Ate only after 8 AM'},
+    {key:'noWater', label:'No water before weighing'},
+    {key:'noHeavy', label:'No heavy clothes'}
+  ];
+  function measureLog(){
+    if(!state.fitness.measureLog) state.fitness.measureLog = [];
+    return state.fitness.measureLog;
+  }
+  function measureChecks(dateStr){
+    const rec = measureLog().find(e=>e.date===dateStr);
+    return (rec && rec.checks) || [];
+  }
+  function isControlledDay(dateStr){
+    const on = measureChecks(dateStr);
+    return WEIGH_CHECKS.every(c=> on.indexOf(c.key) >= 0);
+  }
+  function toggleMeasureCheck(dateStr, key){
+    const log = measureLog();
+    let rec = log.find(e=>e.date===dateStr);
+    if(!rec){ rec = { date:dateStr, checks:[] }; log.push(rec); }
+    const i = rec.checks.indexOf(key);
+    if(i >= 0) rec.checks.splice(i,1); else rec.checks.push(key);
+    // an emptied record is dead weight in a row that is re-uploaded whole on every save
+    if(!rec.checks.length) state.fitness.measureLog = log.filter(e=> e !== rec);
+  }
+
   /* ---- the log as a month calendar -------------------------------------------------------
      A list answered "what have I logged"; a calendar answers "which days am I missing", and that
      is the question this tab actually raises — every figure in the Budget Check below depends on
@@ -478,9 +551,16 @@
       const rec = byDate[ds] || {};
       const future = ds > todayStr;
       const burn = activityBurnOn(ds);
-      const has = rec.kg != null || rec.kcal != null || burn > 0;
+      const controlled = rec.kg != null && isControlledDay(ds);
+      const has = rec.kg != null || rec.kcal != null || burn > 0 || measureChecks(ds).length > 0;
       let cls = 'wcal-cell';
       if(has) cls += ' has';
+      /* An ideal-conditions day is tinted rather than badged: the point is to see at a glance which
+         stretches of the month are comparable, and a glyph per cell reads one day at a time. The
+         weight value is underlined in the same blue as a second, non-colour channel — the tint
+         alone would vanish in greyscale and for a colour-blind reader. Only on a day that has a
+         weigh-in: this qualifies a reading, and there is nothing to qualify without one. */
+      if(controlled) cls += ' is-ideal';
       // The heaviest activity's own emoji in the corner, rather than a third line of figures:
       // seven columns on a 360px screen have no room for one, and this says what you did as well
       // as that you did something. aria-hidden because the cell's label already names them all
@@ -513,17 +593,27 @@
         + (rec.kg != null ? roundWeight(kgToDisplay(rec.kg))+' '+unitLabel() : 'no weigh-in') + ' · '
         + (rec.kcal != null ? Math.round(rec.kcal).toLocaleString()+' kcal' : 'no calories logged')
         + (burn > 0 ? ' · ' + activitiesOn(ds).map(a=>a.name).join(', ')
-            + ', ' + burn.toLocaleString() + ' kcal burned' : '');
+            + ', ' + burn.toLocaleString() + ' kcal burned' : '')
+        + (controlled ? ' · controlled measurement' : '');
       html += '<button type="button" class="'+cls+'" data-day="'+ds+'"'
         + ' aria-pressed="'+(ds === weightCalSelected ? 'true' : 'false')+'"'
         + ' aria-label="'+escapeHtml(label)+'">'
-        + '<span class="wcal-top"><span class="wcal-num">'+d+'</span>' + actMark + '</span>'
+        + '<span class="wcal-top"><span class="wcal-num">'+d+'</span>'
+        +   '<span class="wcal-marks">' + actMark + '</span></span>'
         + wHtml + kHtml + '</button>';
     }
     // trail the last week out to seven, so the final row's cells keep the same width as the rest
     const trail = (7 - ((lead + daysInMonth) % 7)) % 7;
     for(let i=0;i<trail;i++) html += '<div class="wcal-cell empty"></div>';
     el('wcalGrid').innerHTML = html;
+
+    const idealDays = (state.fitness.weightLog||[]).filter(e=>
+      e.date.slice(0,7) === weightCalMonth && isControlledDay(e.date)).length;
+    el('wcalLegend').innerHTML = idealDays
+      ? '<span class="wcal-legend-key"></span>'
+        + escapeHtml(idealDays + (idealDays === 1 ? ' day' : ' days')
+          + ' weighed under ideal conditions — fasted, no water, light clothing, nothing after 7 PM')
+      : '';
 
     renderWeightDayEditor();
   }
@@ -548,7 +638,8 @@
     const kgVal = (state.fitness.weightLog||[]).find(e=>e.date===ds);
     const kcalVal = kcalOn(ds);
     const acts = activitiesOn(ds);
-    const has = !!kgVal || kcalVal != null || acts.length > 0;
+    const checks = measureChecks(ds);
+    const has = !!kgVal || kcalVal != null || acts.length > 0 || checks.length > 0;
 
     wrap.style.display = 'block';
     wrap.innerHTML = '<div class="wcal-ed-head">'
@@ -560,6 +651,20 @@
       +   '<label>Calories<input type="number" class="wcal-ed-k" step="10" min="0" placeholder="—"></label>'
       +   '<button type="button" class="btn btn-primary btn-sm wcal-ed-save">Save</button>'
       +   (has ? '<button type="button" class="btn btn-ghost btn-sm wcal-ed-del">Clear day</button>' : '')
+      + '</div>'
+      + '<div class="wcal-checks">'
+      +   '<div class="wcal-act-lbl">Measurement conditions</div>'
+      +   WEIGH_CHECKS.map(c=>{
+            const on = checks.indexOf(c.key) >= 0;
+            return '<label class="wcal-check'+(on?' on':'')+'">'
+              + '<input type="checkbox" data-chk="'+c.key+'"'+(on?' checked':'')+'>'
+              + '<span>'+escapeHtml(c.label)+'</span></label>';
+          }).join('')
+      +   '<div class="wcal-check-status'+(checks.length === WEIGH_CHECKS.length ? ' ok' : '')+'">'
+      +     (checks.length === WEIGH_CHECKS.length
+              ? (kgVal ? 'Ideal conditions — this reading is comparable' : 'All conditions met — log a weight to mark the day')
+              : checks.length + ' of ' + WEIGH_CHECKS.length + ' conditions')
+      +   '</div>'
       + '</div>'
       + '<div class="wcal-act">'
       +   '<div class="wcal-act-lbl">Activity</div>'
@@ -597,8 +702,20 @@
       state.fitness.weightLog = (state.fitness.weightLog||[]).filter(e=>e.date!==ds);
       state.fitness.calorieLog = calorieLog().filter(e=>e.date!==ds);
       state.fitness.activityLog = activityLog().filter(a=>a.date!==ds);
+      state.fitness.measureLog = measureLog().filter(m=>m.date!==ds);
       syncCurrentWeightFromLog();
       weightCalSelected = ''; weightCalEditorFor = null;
+      save(); renderFitness();
+    });
+
+    // delegated, and it commits the two number fields first: this re-renders the editor, which
+    // would otherwise discard a weight you had half-typed above it
+    wrap.querySelector('.wcal-checks').addEventListener('change', e=>{
+      const box = e.target.closest('[data-chk]');
+      if(!box) return;
+      applyWeightDayFields();
+      toggleMeasureCheck(ds, box.dataset.chk);
+      weightCalEditorFor = null;
       save(); renderFitness();
     });
 
@@ -667,6 +784,8 @@
       bits.push(burn.toLocaleString() + ' kcal burned');
       if(kcalVal != null) bits.push(Math.round(kcalVal - burn).toLocaleString() + ' kcal net');
     }
+    // first, because it qualifies every other figure on the line
+    if(kgRec && isControlledDay(ds)) bits.unshift('ideal conditions');
     if(!bits.length && !kgRec && kcalVal == null && burn === 0) bits.push('Nothing logged on this day yet.');
     return escapeHtml(bits.join(' · '));
   }
@@ -722,6 +841,84 @@
     weightCalEditorFor = null;
     renderWeightCalendar();
   });
+  /* ---- the maximised photo ----
+     One overlay for both sides; which one it is showing is the only state it keeps. Escape and a
+     backdrop click close it, and the Escape listener is added on open and removed on close rather
+     than living for the life of the page — the same shape the calendar bubble's outside-click
+     listener uses. */
+  let photoViewKind = '';
+  function photoViewRec(){
+    if(photoViewKind === 'goal') return state.fitness.dreamPhoto || null;
+    const photos = (state.fitness.progressPhotos || []).slice()
+      .sort((a,b)=> (a.uploadedAt||0) - (b.uploadedAt||0));
+    return photos[comparePhotoIdx] || null;
+  }
+  function openPhotoView(kind){
+    photoViewKind = kind;
+    const rec = photoViewRec();
+    if(!rec || !rec.imageUrl) return;
+    el('photoViewImg').src = rec.imageUrl;
+    el('photoViewImg').alt = kind === 'goal' ? 'Goal physique' : 'Progress photo';
+
+    let cap;
+    if(kind === 'goal'){
+      cap = 'Goal physique';
+    } else {
+      const ds = localDateStr(new Date(rec.uploadedAt));
+      const w = weightAtOrBefore(ds);
+      cap = (ds === localDateStr(new Date()) ? 'Today' : fmtDate(rec.uploadedAt))
+        + (w ? ' · ' + roundWeight(kgToDisplay(w.kg)) + ' ' + unitLabel() : '');
+    }
+    el('photoViewCap').textContent = cap;
+
+    // Remove sits at the far left of the bar and Close at the far right, so the destructive one is
+    // never the button your thumb lands on when reaching for the safe one
+    el('photoViewActs').innerHTML =
+      '<button type="button" class="photo-view-btn danger" data-pv="remove">Remove</button>'
+      + (kind === 'goal' ? '<button type="button" class="photo-view-btn" data-pv="replace">Replace</button>' : '')
+      + (rec.driveViewLink ? '<a class="photo-view-btn" href="'+escapeHtml(rec.driveViewLink)+'" target="_blank" rel="noopener">Drive ↗</a>' : '')
+      + '<button type="button" class="photo-view-btn primary" data-pv="close">Close</button>';
+
+    el('photoViewOverlay').style.display = 'flex';
+    document.addEventListener('keydown', photoViewKeys);
+  }
+  function closePhotoView(){
+    el('photoViewOverlay').style.display = 'none';
+    el('photoViewImg').src = '';        // don't hold the bytes for a photo nobody is looking at
+    photoViewKind = '';
+    document.removeEventListener('keydown', photoViewKeys);
+  }
+  function photoViewKeys(e){ if(e.key === 'Escape') closePhotoView(); }
+
+  el('photoViewOverlay').addEventListener('click', e=>{
+    // the backdrop closes; a click on the picture or the bar must not
+    if(e.target === el('photoViewOverlay')){ closePhotoView(); return; }
+    const btn = e.target.closest('[data-pv]');
+    if(!btn) return;
+    if(btn.dataset.pv === 'close'){ closePhotoView(); return; }
+    if(btn.dataset.pv === 'replace'){
+      // the picker replaces the overlay: uploadDreamPhoto() re-renders the panel behind it, and
+      // leaving a stale photo maximised over the new one would be the one thing worse than either
+      closePhotoView();
+      el('dreamPhotoInput').click();
+      return;
+    }
+    if(btn.dataset.pv === 'remove'){
+      // it leaves this list, the Drive file stays — the contract every Remove here has had
+      const rec = photoViewRec();
+      if(rec){
+        if(photoViewKind === 'goal') state.fitness.dreamPhoto = null;
+        else {
+          state.fitness.progressPhotos = (state.fitness.progressPhotos||[]).filter(p=> p.id !== rec.id);
+          if(comparePhotoIdx >= state.fitness.progressPhotos.length) comparePhotoIdx = -1;
+        }
+        save();
+      }
+      closePhotoView();
+      renderComparePhotos();
+    }
+  });
+
   el('wcalPrev').addEventListener('click', ()=> shiftWeightCalMonth(-1));
   el('wcalNext').addEventListener('click', ()=> shiftWeightCalMonth(1));
   el('wcalToday').addEventListener('click', ()=>{
@@ -870,18 +1067,16 @@
     const dream = state.fitness.dreamPhoto;
     if(comparePhotoIdx < 0 || comparePhotoIdx >= photos.length) comparePhotoIdx = photos.length - 1;
     const cur = photos[comparePhotoIdx] || null;
-    el('dreamPhotoLabel').childNodes[0].nodeValue = dream ? '🎯 Replace Dream Physique' : '🎯 Upload Dream Physique';
 
-    /* Drive link and Remove, the two things a carousel card used to carry. Removing takes the photo
-       out of this list only — the file itself stays in Drive, the same contract the card had. */
-    const compareActs = (rec, cmd, label) =>
-      '<div class="compare-acts">'
-      + (rec.driveViewLink ? '<a class="compare-act" href="'+escapeHtml(rec.driveViewLink)+'" target="_blank" rel="noopener">Drive ↗</a>' : '')
-      + '<button type="button" class="compare-act danger" data-cmp="'+cmd+'" title="Remove from this list (does not delete the file from Drive)">'+escapeHtml(label)+'</button>'
-      + '</div>';
-
-    const imgBox = (url, alt) => url
-      ? '<div class="compare-img"><img src="'+escapeHtml(url)+'" alt="'+escapeHtml(alt)+'" loading="lazy"></div>'
+    /* The picture is the button: tapping it maximises the photo, and the Drive link and Remove
+       live in there. They used to sit on the card itself, a few pixels from the ‹ › arrows — one
+       mis-tap from deleting the photo you were trying to step past. */
+    const imgBox = (url, alt, cmd) => url
+      ? '<button type="button" class="compare-img" data-cmp="'+cmd+'" aria-label="'+escapeHtml('Open '+alt)+'">'
+        + '<img src="'+escapeHtml(url)+'" alt="'+escapeHtml(alt)+'" loading="lazy">'
+        // a persistent corner glyph, not a hover state: there is no hover on a phone, and this is
+        // now the only way to reach the photo's actions
+        + '<span class="compare-zoom" aria-hidden="true">⤢</span></button>'
       : '<div class="compare-img"><div class="compare-empty">No in-app preview<br>(uploaded before this feature, or Drive sharing failed)</div></div>';
 
     let nowSide;
@@ -889,7 +1084,7 @@
       const dateStr = localDateStr(new Date(cur.uploadedAt));
       const w = weightAtOrBefore(dateStr);
       nowSide = '<figure class="compare-side">'
-        + imgBox(cur.imageUrl, 'Progress photo')
+        + imgBox(cur.imageUrl, 'progress photo', 'viewCur')
         + '<figcaption class="compare-cap">'
         +   '<span class="compare-lbl">You</span>'
         +   '<span class="compare-meta">'+escapeHtml(dateStr === localDateStr(new Date())
@@ -904,7 +1099,6 @@
                 + '<button type="button" class="compare-arrow" data-cmp="next"'+(comparePhotoIdx>=photos.length-1?' disabled':'')+' aria-label="Later photo">›</button>'
                 + '</div>'
               : '')
-        +   compareActs(cur, 'dropCur', 'Remove this photo')
         + '</div>'
         + '</figure>';
     } else {
@@ -921,17 +1115,20 @@
         ? (Math.abs(cw - tw) < 0.005 ? 'you’re there' : roundWeight(Math.abs(kgToDisplay(cw - tw))) + ' ' + unitLabel() + ' to go')
         : 'set a target weight in the calculator below';
       goalSide = '<figure class="compare-side goal">'
-        + imgBox(dream.imageUrl, 'Goal physique')
+        + imgBox(dream.imageUrl, 'goal physique', 'viewGoal')
         + '<figcaption class="compare-cap">'
         +   '<span class="compare-lbl">Goal</span>'
         +   '<span class="compare-meta">'+escapeHtml(meta)+'</span>'
         +   '<span class="compare-sub">'+escapeHtml(sub)+'</span>'
         + '</figcaption>'
-        + '<div class="compare-tools">' + compareActs(dream, 'drop', 'Remove') + '</div>'
         + '</figure>';
     } else {
-      goalSide = '<figure class="compare-side goal"><div class="compare-img">'
-        + '<div class="compare-empty">Upload the physique you’re working toward,<br>and it sits here beside your own.</div></div>'
+      // the empty card is the way in the first time: there is no viewer to open yet, so the
+      // placeholder itself picks the file
+      goalSide = '<figure class="compare-side goal">'
+        + '<button type="button" class="compare-img" data-cmp="pickDream">'
+        +   '<span class="compare-empty">🎯 Upload the physique you’re working toward,<br>and it sits here beside your own.</span>'
+        + '</button>'
         + '<figcaption class="compare-cap"><span class="compare-lbl">Goal</span></figcaption></figure>';
     }
 
@@ -956,23 +1153,15 @@
     const btn = e.target.closest('[data-cmp]');
     if(!btn) return;
     const photos = state.fitness.progressPhotos || [];
+    if(btn.dataset.cmp === 'pickDream'){ el('dreamPhotoInput').click(); return; }
+    if(btn.dataset.cmp === 'viewCur' || btn.dataset.cmp === 'viewGoal'){
+      openPhotoView(btn.dataset.cmp === 'viewGoal' ? 'goal' : 'progress');
+      return;                       // nothing changed, so nothing to re-render
+    }
+    // stepping is all that is left here: removal moved into the viewer, where it cannot be hit
+    // by a thumb aiming for an arrow
     if(btn.dataset.cmp === 'prev' && comparePhotoIdx > 0) comparePhotoIdx--;
     else if(btn.dataset.cmp === 'next' && comparePhotoIdx < photos.length-1) comparePhotoIdx++;
-    else if(btn.dataset.cmp === 'drop'){
-      // it leaves this list, the Drive file stays — the contract the carousel's Remove had
-      state.fitness.dreamPhoto = null;
-      save();
-    }
-    else if(btn.dataset.cmp === 'dropCur'){
-      const shown = photos.slice().sort((a,b)=> (a.uploadedAt||0) - (b.uploadedAt||0))[comparePhotoIdx];
-      if(shown){
-        state.fitness.progressPhotos = photos.filter(p=> p.id !== shown.id);
-        // the index now points at whatever took its place; -1 falls back to the newest, which is
-        // the right answer when the one removed was the newest
-        if(comparePhotoIdx >= state.fitness.progressPhotos.length) comparePhotoIdx = -1;
-        save();
-      }
-    }
     renderComparePhotos();
   });
 
@@ -1002,7 +1191,11 @@
     {key:'1y', label:'1Y', months:12},
     {key:'all', label:'All', months:null}
   ];
-  let weightChartZoom = '1y'; // not persisted — resets to a sensible default each page load
+  // 1M by default, not persisted — it resets to this every page load. A month is the window a
+  // cut or a bulk is actually judged over: long enough that daily water noise has averaged out,
+  // short enough that the line still has the shape of what you are doing now rather than a year of
+  // history compressed into a slope.
+  let weightChartZoom = '1m';
   // background bands showing BMI territory (underweight/normal/overweight/obese) translated into
   // actual weight values for this person's height, so the chart visually shows which zone their
   // weight sits in over time. Skipped entirely if height hasn't been entered yet.
@@ -1257,11 +1450,25 @@
       if(!w || Math.abs(w - wtChartLastWidth) < 12) return;
       wtChartLastWidth = w;
       renderWeightChart();
-      // the calorie chart sits in the same column and is sized the same way, so it needs the same
-      // second pass — it has no observer of its own because its wrapper is never the one measured
-      renderCalorieReview();
     });
     wtChartObserver.observe(wrap);
+  }
+
+  /* The calorie chart used to ride the weight chart's observer, back when the two sat in one
+     column and always resized together. They are in different panes now — the weight pane can be
+     hidden while the calorie pane is the one being resized — so it needs its own. Same guard: only
+     a meaningful width change redraws, or setting innerHTML would loop. */
+  let kcalChartLastWidth = 0, kcalChartObserver = null;
+  function observeCalorieChartWidth(wrap){
+    kcalChartLastWidth = wrap.clientWidth || 0;
+    if(kcalChartObserver || typeof ResizeObserver === 'undefined') return;
+    kcalChartObserver = new ResizeObserver(entries=>{
+      const w = Math.round(entries[0].contentRect.width);
+      if(!w || Math.abs(w - kcalChartLastWidth) < 12) return;
+      kcalChartLastWidth = w;
+      renderCalorieReview();
+    });
+    kcalChartObserver.observe(wrap);
   }
 
   /* Pointer/finger scrub over the weight line — same interaction as the net-worth chart in
@@ -1326,9 +1533,15 @@
     {key:'30', label:'30D', days:30},
     {key:'90', label:'90D', days:90}
   ];
-  // 14 days by default: long enough that a couple of watery mornings average out, short enough that
-  // the answer still describes how you are eating now rather than last month.
-  let kcalRange = '14';
+  /* 7D by default, not persisted. It is the most current answer the panel can give, and the one
+       worth seeing first: what this week's eating did.
+
+       It is also the noisiest, and the panel is honest about that on its own — a week gives the
+       regression fewer weigh-ins to work from, so the maintenance figure moves around more than the
+       14D one does, and the two gates below (half the window's days logged, three weigh-ins spanning
+       five days) bite sooner on a week with a gap in it. When the estimate looks unstable, 14D is
+       one tap away and is the steadier read. */
+  let kcalRange = '7';
 
   // signed weekly rate, in whichever unit is on display — the pace dropdown is always kg/week, so
   // the plan figure is converted too rather than printing two units in one sentence
@@ -1576,5 +1789,6 @@
     wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Daily calorie intake over the last '+r.days+' days">'
       + gridSvg + xLabelSvg + barsSvg + targetSvg
       + '</svg>';
+    observeCalorieChartWidth(wrap);
     return !!targetSvg;
   }

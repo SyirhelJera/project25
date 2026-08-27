@@ -219,6 +219,10 @@
     // holds any number of them. They are recorded and displayed only — see the note above
     // calorieReview() for why exercise burn must never be added to the measured maintenance.
     if(!state.fitness.activityLog) state.fitness.activityLog = [];
+    // Which of the weigh-in conditions were met that morning — only the ticked keys are stored,
+    // so a day carries nothing until you tick something, and adding a fourth condition later
+    // correctly leaves old days short of it rather than retroactively calling them controlled.
+    if(!state.fitness.measureLog) state.fitness.measureLog = [];
     // the goal physique: one photo, same Drive-metadata-only shape as a progressPhotos entry
     if(state.fitness.dreamPhoto === undefined) state.fitness.dreamPhoto = null;
     state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:{} };

@@ -1165,7 +1165,9 @@
      same records and owns adding, stepping through and removing them (see .compare-* below) */
   /* the carousel's horizontal scrollbar sits in that padding-bottom, so the upload button below
      needs its own gap or the two end up touching */
-  #comparePhotoUploadRow{margin-top:16px;}
+  /* one button now, so it sits centred rather than hanging off the left edge under a two-column
+     grid; the status line follows it and wraps underneath on a narrow screen */
+  #comparePhotoUploadRow{margin-top:16px;justify-content:center;text-align:center;}
 
   /* ---- goal comparison ----
      Two columns at every width, phones included: side by side *is* the feature, and stacking them
@@ -1175,7 +1177,15 @@
   .compare-side{margin:0;background:var(--surface);border:1px solid var(--border);border-radius:14px;
     overflow:hidden;display:flex;flex-direction:column;min-width:0;}
   .compare-side.goal{border-color:var(--violet);}
-  .compare-img{aspect-ratio:3/4;background:var(--bg);display:flex;align-items:center;justify-content:center;overflow:hidden;}
+  /* a button when there is a photo behind it, a plain box when there isn't — hence the reset of
+     the button chrome here rather than a separate class */
+  .compare-img{position:relative;aspect-ratio:3/4;background:var(--bg);display:flex;align-items:center;
+    justify-content:center;overflow:hidden;width:100%;padding:0;border:none;font:inherit;color:inherit;}
+  button.compare-img{cursor:zoom-in;}
+  .compare-zoom{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:6px;
+    display:flex;align-items:center;justify-content:center;font-size:11px;line-height:1;
+    background:rgba(8,10,22,.55);color:#fff;pointer-events:none;}
+  button.compare-img:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;}
   /* contain, not cover: cropping a physique to fill a box is exactly the wrong thing to do to the
      subject of the comparison, and two photos cropped differently can't be compared at all */
   .compare-img img{width:100%;height:100%;object-fit:contain;display:block;}
@@ -1188,12 +1198,32 @@
   /* nav and actions stack in one block pinned to the bottom of the card, so two cards of
      different caption lengths still line their controls up */
   .compare-tools{margin-top:auto;padding:0 10px 9px;display:flex;flex-direction:column;gap:7px;}
+  /* one photo means no arrows, and an empty block still paid for its own bottom padding */
+  .compare-tools:empty{display:none;}
   .compare-nav{display:flex;align-items:center;justify-content:space-between;gap:6px;}
-  .compare-acts{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .compare-act{background:none;border:none;padding:0;cursor:pointer;font-family:'Inter',sans-serif;
-    font-size:10.5px;font-weight:700;color:var(--muted);text-decoration:none;}
-  .compare-act:hover{color:var(--violet-dark);text-decoration:underline;}
-  .compare-act.danger:hover{color:var(--danger);}
+
+  /* ---- the maximised photo ----
+     The 1000 modal tier, like every other overlay in the app. The picture gets the whole viewport
+     minus the action bar, and object-fit:contain for the reason the cards use it: a physique must
+     not be cropped to fill a shape. */
+  .photo-view{position:fixed;inset:0;z-index:1000;display:flex;flex-direction:column;gap:12px;
+    align-items:center;justify-content:center;background:rgba(8,10,22,.93);
+    padding:max(20px,env(safe-area-inset-top)) 18px max(20px,env(safe-area-inset-bottom));}
+  .photo-view-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;width:100%;}
+  .photo-view-stage img{max-width:100%;max-height:100%;object-fit:contain;border-radius:10px;display:block;}
+  .photo-view-bar{flex:none;display:flex;align-items:center;justify-content:space-between;gap:14px;
+    width:100%;max-width:560px;flex-wrap:wrap;}
+  .photo-view-cap{font-size:12.5px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;}
+  /* Remove far left, Close far right, with the Drive link between them: the destructive control is
+     never where a thumb lands reaching for the safe one */
+  .photo-view-acts{display:flex;align-items:center;gap:10px;margin-left:auto;}
+  .photo-view-btn{background:rgba(255,255,255,.12);border:none;border-radius:9px;color:#fff;
+    cursor:pointer;font-family:'Inter',sans-serif;font-size:12px;font-weight:700;padding:9px 14px;text-decoration:none;}
+  .photo-view-btn:hover{background:rgba(255,255,255,.22);}
+  .photo-view-btn.primary{background:var(--violet);}
+  .photo-view-btn.danger{order:-1;margin-right:auto;background:none;color:#FCA5A5;padding-left:0;}
+  .photo-view-btn.danger:hover{background:none;color:#F87171;text-decoration:underline;}
+  .photo-view-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
   .compare-arrow{background:none;border:1px solid var(--border);border-radius:8px;color:var(--muted);
     cursor:pointer;font-size:14px;line-height:1;padding:3px 10px;font-family:'Inter',sans-serif;}
   .compare-arrow:hover:not(:disabled){border-color:var(--violet);color:var(--violet-dark);}
@@ -2761,9 +2791,14 @@
   body.dark-mode .fitness-log-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
   body.dark-mode .fitness-log-banner span{color:#C7CCF5;}
 
-  .weight-log-row-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
-  .weight-log-row-add input[type=date]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;}
-  .weight-log-row-add input[type=number]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;width:120px;}
+  .weight-log-row-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:stretch;}
+  /* Two groups, not five loose children: on a phone the row has to break somewhere, and this makes
+     it break between "what I'm entering" and "which day / go" rather than wherever the widths
+     happen to run out — which is what used to leave the date on one line and the weight on another. */
+  .wl-fields{display:flex;gap:8px;min-width:0;flex:1 1 auto;}
+  .wl-when{display:flex;gap:8px;min-width:0;}
+  .weight-log-row-add input[type=date]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;min-width:0;}
+  .weight-log-row-add input[type=number]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;width:120px;min-width:0;}
   .weight-log-row-add input:focus{border-color:var(--violet);}
 
   .weight-log-list{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface);}
@@ -2785,10 +2820,27 @@
 
   /* calorie logging — the kcal box and its day selector read as one control, since the number is
      meaningless without knowing which day it lands on */
-  .wl-kcal-group{display:flex;gap:6px;align-items:stretch;min-width:0;}
   .weight-log-row-add #wlKcal{width:110px;}
   .weight-log-row-add select{background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:10px 9px;font-size:12px;outline:none;font-family:'Inter',sans-serif;cursor:pointer;}
   .weight-log-row-add select:focus{border-color:var(--violet);}
+  /* Phones: the three fields share the line and shrink to fit rather than wrapping. A date input
+     will not go below its own "mm/dd/yyyy" intrinsic width, so the font and padding come down with
+     it — that is what buys the room, not flex alone. The select and the button take the line below. */
+  @media(max-width:560px){
+    .weight-log-row-add{gap:6px;}
+    /* auto, not 100%: a full-width basis forces its own line, which is what put the selector
+       and the button underneath. It was there for the date picker, which is gone. */
+    .wl-fields{flex:1 1 auto;gap:6px;}
+    .wl-fields > *{min-width:0;}
+    /* With the date picker gone the whole row fits one line on a phone: the two number fields take
+       what is left after the day selector and the button, both of which are content-sized. The
+       wrap stays enabled as a fallback rather than a plan — an overflowing row is worse than a
+       wrapped one if a locale renders the selector wider than expected. */
+    .wl-fields > input[type=number]{flex:1 1 0;width:auto;font-size:12px;padding:10px 6px;}
+    .wl-when{flex:0 1 auto;min-width:0;}
+    .wl-when select{flex:0 1 auto;min-width:0;font-size:11px;padding:10px 5px;}
+    .wl-when .btn{flex:0 0 auto;padding-left:11px;padding-right:11px;}
+  }
   .wl-add-hint{font-size:11px;color:var(--faint);margin:-4px 0 12px;line-height:1.6;}
   .wl-add-hint b{color:var(--muted);font-weight:700;}
   /* ---- the weight/calorie log, as a month calendar ----
@@ -2806,10 +2858,23 @@
   .wcal-dow{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:4px;}
   .wcal-dow span{text-align:center;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;color:var(--faint);}
   .wcal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;}
+  .wcal-legend{display:flex;align-items:center;gap:7px;margin-top:9px;font-size:10.5px;color:var(--muted);line-height:1.5;}
+  .wcal-legend:empty{display:none;}
+  /* the swatch is the cell's own tint with its underline, so the legend shows the thing itself
+     rather than a nearby approximation of it */
+  .wcal-legend-key{flex:none;width:16px;height:16px;border-radius:5px;background:var(--ok-blue-wash);
+    border:1px solid var(--border);border-bottom:2px solid var(--ok-blue);}
   .wcal-cell{display:flex;flex-direction:column;align-items:flex-start;gap:1px;min-height:56px;padding:4px 5px;
     border:1px solid var(--border);border-radius:9px;background:var(--surface-alt);cursor:pointer;
     font-family:'Inter',sans-serif;text-align:left;overflow:hidden;min-width:0;}
   .wcal-cell.empty{border:none;background:none;cursor:default;min-height:0;}
+  /* deliberately ahead of .sel and .today: those are interactive states and must still be
+     unmistakable on a tinted day */
+  .wcal-cell.is-ideal{background:var(--ok-blue-wash);}
+  /* the second channel, so the meaning survives greyscale and colour blindness. An underline
+     rather than a border-bottom: no layout shift, and it hugs the number it qualifies. */
+  .wcal-cell.is-ideal .wcal-w{text-decoration:underline;text-decoration-color:var(--ok-blue);
+    text-decoration-thickness:2px;text-underline-offset:2px;}
   .wcal-cell:hover{border-color:var(--violet);}
   .wcal-cell.sel{border-color:var(--violet);background:var(--violet-pale);}
   /* today is marked with a ring rather than a fill, so it can't be mistaken for the selected day */
@@ -2843,6 +2908,17 @@
   .wcal-ed-note{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.55;}
   .wcal-ed-note:empty{display:none;}
 
+  /* measurement conditions: three tick boxes that qualify the weigh-in above them, so they sit
+     between the fields and the activities rather than at the bottom of the card */
+  .wcal-checks{margin-top:11px;border-top:1px solid var(--border);padding-top:10px;}
+  .wcal-check{display:flex;align-items:center;gap:9px;font-size:12px;padding:4px 0;cursor:pointer;color:var(--muted);}
+  .wcal-check input{width:15px;height:15px;accent-color:var(--violet);cursor:pointer;flex:none;margin:0;}
+  .wcal-check.on{color:var(--text);font-weight:600;}
+  .wcal-check-status{margin-top:7px;font-size:11px;font-weight:700;color:var(--faint);}
+  /* a pill in the same blue the calendar tints with, so the two are obviously the same statement */
+  .wcal-check-status.ok{color:var(--ok-blue);background:var(--ok-blue-wash);
+    display:inline-block;padding:3px 10px;border-radius:999px;}
+
   /* activities: a list plus one add row, kept visually quieter than the two fields above it —
      weight and intake are what the day is for, this is what explains it */
   .wcal-act{margin-top:11px;border-top:1px solid var(--border);padding-top:10px;}
@@ -2867,6 +2943,8 @@
      positioned glyph lands on top of a five-character weight ("176.4") in a 44px column, and a
      flex row simply cannot collide. The row is also why the emoji can be this big at all. */
   .wcal-top{display:flex;align-items:center;justify-content:space-between;gap:3px;width:100%;min-width:0;}
+  /* the day number sits left, its marks right */
+  .wcal-marks{display:flex;align-items:center;gap:3px;flex:none;}
   .wcal-act-mark{font-size:17px;line-height:1;flex:none;
     /* the emoji fonts by name so a system without one falls back rather than drawing a tofu box */
     font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif;}
@@ -2919,6 +2997,11 @@
     --wt-pos:#0F7A38;
     --wt-neg:#C0261F;
     --wt-gold-text:#B45309;
+    /* "measured under ideal conditions" — blue, deliberately not the green/red the weight deltas
+       own and not the violet the selection owns, so it can't be read as either. 5.3:1 at worst
+       against the pale surfaces it sits on (checked against #FFFFFF, #EEF0FA and #E5E5EA). */
+    --ok-blue:#1D4ED8;
+    --ok-blue-wash:rgba(29,78,216,.10);
   }
   body[data-theme="dark"],body[data-theme="ios-dark"],body.dark-mode{
     --wt-band-under:rgba(251,191,36,.15);
@@ -2929,6 +3012,10 @@
     --wt-pos:var(--success);
     --wt-neg:var(--danger);
     --wt-gold-text:var(--gold);
+    /* lighter blue and a stronger wash: a 10% tint tuned for a white card is invisible on #1C1F2B.
+       5.5:1 at worst against the four dark surfaces. */
+    --ok-blue:#60A5FA;
+    --ok-blue-wash:rgba(96,165,250,.16);
   }
   .wt-chart-card{padding:14px 16px 12px;}
   /* headline: one figure at high weight, its context muted underneath — reading the panel should

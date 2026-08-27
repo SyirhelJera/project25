@@ -32,7 +32,10 @@
       // visit and come back from, not a mode you'd want the tab to remember.
       if(t.dataset.tab==='board') showBoardSubTab('ask');
       if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
-      if(t.dataset.tab==='fitness') renderFitness();
+      // Fitness always lands on Weight — the trend is what the tab is for, and the pane choice is
+      // deliberately not persisted. showFitnessSubTab() also redraws that pane's chart now that it
+      // has a real width to measure.
+      if(t.dataset.tab==='fitness'){ renderFitness(); showFitnessSubTab('weight'); }
       // Games holds both Valorant and TFT. Unlike Time above it does NOT reset to the first pane —
       // showGameSubTab() reads the persisted choice and renders whichever game it reveals.
       if(t.dataset.tab==='games') showGameSubTab(state.games.active);

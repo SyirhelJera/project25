@@ -1474,10 +1474,32 @@
        showTimeSubTab() in js/countdowns.js. Clock is first/default — it's the one that's useful at
        a glance every time the tab is opened, countdowns barely change day to day. -->
   <div class="view" id="view-time">
+    <!-- The three marks are inline SVG in the same 24x24 currentColor idiom as the games strip and
+         the nav icons — and they are the SAME three CAL_ICONS js/calendar.js draws on a bubble, so
+         a clock, an hourglass and a calendar mean one thing each across the app. Emoji could do
+         neither job: the platform draws them in its own colours, so 🕐⏳📅 stayed multicoloured on
+         the violet fill of the active button and reported nothing about which pane you were on. -->
     <div class="finance-subnav time-subnav">
-      <button class="finance-subnav-btn active" data-timetab="clock" type="button">🕐 Clock</button>
-      <button class="finance-subnav-btn" data-timetab="countdowns" type="button">⏳ Countdowns</button>
-      <button class="finance-subnav-btn" data-timetab="calendar" type="button">📅 Calendar</button>
+      <button class="finance-subnav-btn active" data-timetab="clock" type="button">
+        <svg class="time-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg><span>Clock</span>
+      </button>
+      <button class="finance-subnav-btn" data-timetab="countdowns" type="button">
+        <svg class="time-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M6.4 3.4h11.2M6.4 20.6h11.2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          <path d="M7.8 3.4c0 4.2 4.2 5.4 4.2 8.6 0 3.2-4.2 4.4-4.2 8.6" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M16.2 3.4c0 4.2-4.2 5.4-4.2 8.6 0 3.2 4.2 4.4 4.2 8.6" stroke="currentColor" stroke-width="1.8"/>
+        </svg><span>Countdowns</span>
+      </button>
+      <button class="finance-subnav-btn" data-timetab="calendar" type="button">
+        <svg class="time-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3.3" y="5.3" width="17.4" height="15.4" rx="2.6" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M3.3 10.1h17.4" stroke="currentColor" stroke-width="1.8"/>
+          <path d="M8.3 3.3v3.6M15.7 3.3v3.6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        </svg><span>Calendar</span>
+      </button>
     </div>
 
     <!-- CALENDAR — read-only agenda from Google Calendar via the google-calendar Edge Function.
@@ -1486,14 +1508,21 @@
     <div class="timetab" id="timetab-calendar" style="display:none;">
       <div class="view-sub" style="margin-top:-4px;">What's coming up, straight from Google Calendar. Read-only — nothing here can change a real event.</div>
       <div class="view-sub" id="calUnavailable" style="display:none;">The calendar needs the Supabase-hosted deployment (it reads Google through an Edge Function) and isn't available in this mode.</div>
-      <div class="cal-controls" id="calControls">
-        <button class="btn btn-sm btn-ghost" id="calRefreshBtn" type="button">↻ Refresh</button>
-        <div class="cal-status" id="calStatus"></div>
-      </div>
-      <!-- .cal-chip, NOT .finance-subnav-btn, even though it looks like one: showTimeSubTab() owns
+      <!-- Picker first, controls second: the chips say WHAT is being shown and the row under them
+           says when it was last read, so the block reads "these calendars / read at 09:12 / here
+           they are". The two were the other way round, which put the meta line ahead of the thing
+           it was meta about — and left the agenda's own heading a scroll further down.
+
+           .cal-chip, NOT .finance-subnav-btn, even though it looks like one: showTimeSubTab() owns
            every '#view-time .finance-subnav-btn' and strips .active off all of them, which would
-           blank these chips on every sub-tab switch. -->
-      <div class="cal-picker" id="calPicker" style="display:none;"></div>
+           blank these chips on every sub-tab switch. role=group + aria-pressed per chip, because
+           these are toggles and a plain button announces no state at all — you would hear "Work,
+           button" whether that calendar was on the agenda or not. -->
+      <div class="cal-picker" id="calPicker" role="group" aria-label="Calendars to show" style="display:none;"></div>
+      <div class="cal-controls" id="calControls">
+        <div class="cal-status" id="calStatus"></div>
+        <button class="btn btn-sm btn-ghost cal-refresh" id="calRefreshBtn" type="button">↻ Refresh</button>
+      </div>
       <div id="calAgenda"></div>
       <div class="empty" id="calEmpty" style="display:none;">Nothing on the calendar for the next couple of weeks.</div>
     </div>

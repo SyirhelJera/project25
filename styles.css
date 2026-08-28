@@ -4926,33 +4926,76 @@
   /* ================= GOOGLE CALENDAR ================= */
   /* Third pane of the Time tab (js/calendar.js). Every colour is a token, so all four themes
      come free — there is nothing hardcoded here the way the clock dial deliberately is. */
-  .cal-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:2px 0 12px;}
-  .cal-status{font-size:12px;color:var(--muted);}
-  .cal-status.cal-status-error{color:var(--danger);}
+  /* The pane's own head: the picker says WHAT is shown, this row says when it was last read and
+     offers the one action. It sits BELOW the picker and directly above the agenda, so the block
+     reads top to bottom as "these calendars / read at 09:12 / here they are" — it used to sit
+     above the chips, which put the meta line ahead of the thing it was meta about. */
+  .cal-controls{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    flex-wrap:wrap;margin:0 0 14px;}
+  .cal-status{font-size:11.5px;color:var(--muted);min-width:0;}
+  .cal-status:empty{display:none;}
+  .cal-status.cal-status-error{color:var(--danger);font-weight:600;}
+  .cal-refresh{flex:none;margin-left:auto;}
 
   /* Looks like a .finance-subnav strip but is deliberately NOT one — showTimeSubTab() owns every
      '#view-time .finance-subnav-btn' and would strip .active off these on each sub-tab switch. So
-     the scroll-strip rules are restated here rather than borrowed. --cal-ink is the calendar's own
-     colour out of Google, falling back to the theme violet when it has none. */
-  .cal-picker{display:flex;gap:6px;margin-bottom:14px;flex-wrap:nowrap;overflow-x:auto;
+     the scroll-strip rules are restated here rather than borrowed. */
+  .cal-picker{display:flex;gap:6px;margin:2px 0 10px;flex-wrap:nowrap;overflow-x:auto;
     -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
   .cal-picker::-webkit-scrollbar{display:none;}
-  .cal-chip{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
-    border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;
+  /* A TOGGLE, drawn as one. Its two states are the same shape in two weights rather than grey-pill
+     versus solid-colour-fill, because the fill was `background:var(--cal-ink); color:#fff` and
+     --cal-ink is Google's RAW colour — white on "Banana" (#fbd75b) is about 1.6:1, the exact
+     failure calAccentFor() exists to fix on the bubble and which this strip never got. So the
+     selected chip is now a WASH of the calendar's colour with the contrast-corrected --cal-ink-text
+     on top, which also spares the eye a row of five saturated Google colours side by side. */
+  .cal-chip{display:inline-flex;align-items:center;gap:8px;
+    background:var(--surface);border:1px solid var(--border);color:var(--muted);
+    border-radius:9px;padding:8px 13px;font-size:12.5px;font-weight:700;cursor:pointer;
     font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:38px;
     transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
+  /* The calendar's real colour, always on the chip, on or off. Without it an unselected chip is
+     grey and carries no colour at all — so which calendar owns which colour in the agenda and in
+     the bubbles could only be learned by switching one off and watching what disappeared. The dot
+     is a mark rather than text, and it is always paired with the calendar's name, so the raw hue
+     is the right value here; the inset ring gives a pale one an edge on a pale chip. */
+  .cal-chip-dot{width:9px;height:9px;border-radius:50%;flex:none;
+    background:var(--cal-ink,var(--violet));box-shadow:inset 0 0 0 1px rgba(20,24,45,.22);}
+  .cal-chip:not(.active) .cal-chip-dot{opacity:.5;}
   .cal-chip:hover{color:var(--text);border-color:var(--cal-ink,var(--violet));}
-  .cal-chip.active{background:var(--cal-ink,var(--violet));border-color:var(--cal-ink,var(--violet));color:#fff;}
-  .cal-chip.active:hover{color:#fff;}
+  .cal-chip.active{color:var(--cal-ink-text,var(--violet-dark));
+    border-color:var(--cal-ink,var(--violet));
+    background:var(--surface-alt);
+    background:color-mix(in srgb, var(--cal-ink, var(--violet)) 13%, var(--surface));}
+  .cal-chip.active:hover{color:var(--cal-ink-text,var(--violet-dark));}
   .cal-chip:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  @media (pointer:coarse){ .cal-chip{min-height:42px;} }
+
+  /* Icons for the Time strip, in the same 24x24 currentColor idiom as the games strip one tab over
+     — and deliberately the SAME three marks the bubble uses, so a clock/hourglass/calendar means
+     the same thing whether it arrives in a notification or names a pane. Emoji could do neither:
+     the platform draws them in its own colours, so they stayed multicoloured on the violet fill of
+     the active button and could not report selection at all. Sized off the label's own font-size
+     so they track the mobile bump, exactly as .game-logo does. */
+  .time-logo{width:1.2em;height:1.2em;flex:none;}
+  .time-subnav .finance-subnav-btn{display:inline-flex;align-items:center;gap:7px;}
+  .time-subnav .finance-subnav-btn:not(.active) .time-logo{opacity:.65;}
 
   .cal-day{margin-bottom:18px;}
   .cal-day-head{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;
     color:var(--muted);padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid var(--border);}
   .cal-day-head.is-today{color:var(--violet);}
 
-  .cal-row{background:var(--surface);border:1px solid var(--border);border-radius:12px;
-    padding:11px 14px;margin-bottom:7px;display:flex;align-items:flex-start;gap:13px;}
+  /* The same spine the bubble wears, for the same reason and in the same colour. Without it the
+     picker above colour-codes five calendars and then the list it filters shows none of it, so the
+     chips' colours mean nothing in the one place they could be used — and a merged agenda of five
+     calendars is exactly where "whose is this" is worth a glance rather than a click through to
+     Google. --cal-ink is set per row by renderCalendar(); the fallback keeps a row that arrived
+     with no colour looking like a row rather than like one missing its stripe. */
+  .cal-row{background:linear-gradient(var(--cal-ink,var(--border)),var(--cal-ink,var(--border)))
+      left/4px 100% no-repeat, var(--surface);
+    border:1px solid var(--border);border-radius:12px;
+    padding:11px 14px 11px 17px;margin-bottom:7px;display:flex;align-items:flex-start;gap:13px;}
   /* fixed-width time column so the titles line up down the day regardless of "9:00 AM" vs "11:30 AM" */
   .cal-row-time{flex:0 0 74px;font-size:12px;font-weight:700;color:var(--violet);padding-top:1px;}
   .cal-row.is-allday .cal-row-time{color:var(--muted);font-weight:600;}
@@ -4962,9 +5005,15 @@
   .cal-row-loc{font-size:11.5px;color:var(--muted);margin-top:3px;overflow-wrap:anywhere;}
   /* an event that already started stays listed (it's still today) but stops competing for attention */
   .cal-row.is-past{opacity:.55;}
-  .cal-row-open{flex:none;color:var(--faint);text-decoration:none;font-size:14px;padding:2px 4px;border-radius:6px;line-height:1;}
+  /* --muted rather than --faint, and a real box: --faint is about 1.9:1 on the row, under the 3:1
+     a non-text control needs, and a 14px glyph in 4px of padding is a 20px target for the one thing
+     on the row that leaves the app. Same fix as .cal-bubble-close. */
+  .cal-row-open{flex:none;color:var(--muted);text-decoration:none;font-size:14px;border-radius:6px;
+    line-height:1;width:28px;height:28px;margin:-3px -4px -3px 0;display:flex;align-items:center;
+    justify-content:center;}
   .cal-row-open:hover{color:var(--violet);background:var(--surface-alt);}
   .cal-row-open:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  @media (pointer:coarse){ .cal-row-open{width:40px;height:40px;margin:-8px -8px -8px 0;} }
 
   /* ---- the "coming up" bubbles ----
      The STACK owns the fixed positioning; the cards inside it are ordinary flow items, so adding a
@@ -4999,8 +5048,19 @@
      themes instead of being one hardcoded hex. */
   .cal-bubble{--cal-accent:var(--success);--cal-accent-ink:var(--success);
     position:relative;pointer-events:auto;display:flex;align-items:center;gap:11px;
-    background:var(--surface);border:1px solid var(--cal-accent);border-radius:14px;
-    padding:12px 13px;box-shadow:0 16px 40px rgba(0,0,0,.30);
+    /* THE SPINE is a background LAYER, not a pseudo-element and not a border-left. A background is
+       clipped by the card's own border-radius for free, so the stripe takes the corner arc exactly;
+       a pseudo-element would need overflow:hidden on the card to get that, and overflow:hidden also
+       clips ::after's ping shadow, which is painted outside the padding box. Its outer 1px sits
+       under the border (borders paint over backgrounds), hence 5px for 4px of visible colour. */
+    background:linear-gradient(var(--cal-accent),var(--cal-accent)) left/5px 100% no-repeat,
+      var(--surface);
+    border:1px solid var(--border);border-radius:14px;
+    padding:12px 13px 12px 17px;
+    /* Two shadows, not one: a tight dark one that draws the card's own edge and a wide diffuse one
+       that lifts it off the page. A single 40px/30% blur is a smudge under the card rather than a
+       shadow of it, and on a white page it reads as dirt. */
+    box-shadow:0 1px 2px rgba(10,14,30,.12), 0 10px 30px rgba(10,14,30,.20);
     /* fill-mode both is what makes the per-card animation-delay (set inline by calBubbleCard) work:
        without it a delayed card renders at its FINAL state during the delay, then snaps back to the
        start when the animation begins. */
@@ -5008,9 +5068,17 @@
     /* the whole card is the click target now that the View button is gone */
     cursor:pointer;-webkit-tap-highlight-color:transparent;
     transition:border-color .14s ease, box-shadow .14s ease, transform .14s ease;}
-  /* the only affordance a mouse gets, so it has to be legible: lifts and tightens its shadow.
-     :active covers touch, where there is no hover to report anything at all. */
-  .cal-bubble:hover{transform:translateY(-2px);box-shadow:0 20px 46px rgba(0,0,0,.34);}
+  /* Why a spine at all: the card's edge used to BE the accent, and a 1px line in Google's palette
+     is not a colour signal. Half that palette is pale by design — it is drawn as small blocks on a
+     white grid — so "Banana" on white was a border you could not see, on a card whose only reason
+     to be coloured is telling two calendars apart. A band at the edge is visible at any lightness,
+     and it spends the accent in ONE strong place instead of spraying it around the perimeter, the
+     icon chip and the text at once. */
+  /* the only affordance a mouse gets, so it has to be legible: lifts, tightens its shadow, and
+     brings the calendar's colour up onto the edge. :active covers touch, where there is no hover
+     to report anything at all. */
+  .cal-bubble:hover{transform:translateY(-2px);border-color:var(--cal-accent);
+    box-shadow:0 2px 4px rgba(10,14,30,.14), 0 16px 40px rgba(10,14,30,.26);}
   .cal-bubble:active{transform:translateY(0);}
   /* Slides in from the right — starting outboard of its resting place and travelling left into it,
      which is the direction that reads as "arriving from the edge it's pinned to". The start offset
@@ -5021,10 +5089,19 @@
   /* Two expanding rings on arrival, then gone — the thing that actually catches a glance on a page
      you're already reading. A pseudo-element rather than an animated box-shadow so it can use
      var(--cal-accent) and track all four themes. pointer-events:none keeps it off the ✕ underneath. */
-  .cal-bubble::after{content:'';position:absolute;inset:-1px;border-radius:inherit;
-    border:2px solid var(--cal-accent);opacity:0;pointer-events:none;
-    animation:cal-bubble-ping 1.5s ease-out .2s 2;}
-  @keyframes cal-bubble-ping{from{opacity:.8;transform:scale(1);}to{opacity:0;transform:scale(1.07);}}
+  /* Spread on a box-shadow, not transform:scale(). A card is about 340x62, so scaling it by 1.07
+     pushed the ring 12px out at the sides and 2px at the top — a horizontal smear rather than a
+     ring. A spread grows by the same number of pixels on every edge, which is what a ping is. It
+     still shows through the card's overflow:hidden, because a box-shadow is painted outside the
+     element's own box and clipping applies to the box, not to what is painted beyond it. */
+  .cal-bubble::after{content:'';position:absolute;inset:0;border-radius:inherit;
+    opacity:0;pointer-events:none;
+    animation:cal-bubble-ping 1.6s ease-out .15s 2;}
+  /* the spread is painted outside the card, so the card must NOT carry overflow:hidden — which is
+     the whole reason the spine above is a background layer rather than a ::before */
+  @keyframes cal-bubble-ping{
+    from{opacity:.5;box-shadow:0 0 0 0 var(--cal-accent);}
+    to{opacity:0;box-shadow:0 0 0 11px var(--cal-accent);}}
   /* THE "NOW UNTIL" CARD — the event you are currently in, rather than one coming up. It has to
      read as a different KIND of message before either line of it is read, or it's just another
      card saying something subtly different. Three cheap signals do that and none of them changes
@@ -5036,9 +5113,17 @@
      it, the same pattern .lvl-* uses above. And this block sits BEFORE the .is-leaving rules on
      purpose: those match with identical specificity, so the later ones have to win in order to
      stop a card pulsing on its way off screen. */
-  .cal-bubble.is-now{border-width:2px;padding:11px 12px;background:var(--surface);
-    background:color-mix(in srgb, var(--cal-accent) 9%, var(--surface));}
+  /* a wider spine (the accent border it used to thicken is gone) over a faint wash of the same
+     colour. Both layers are restated because a shorthand background replaces the whole stack. */
+  .cal-bubble.is-now{padding-left:22px;
+    background:linear-gradient(var(--cal-accent),var(--cal-accent)) left/9px 100% no-repeat,
+      var(--surface);
+    background:linear-gradient(var(--cal-accent),var(--cal-accent)) left/9px 100% no-repeat,
+      color-mix(in srgb, var(--cal-accent) 9%, var(--surface));}
   .cal-bubble.is-now::after{animation:cal-bubble-ping 2.2s ease-out infinite;}
+  /* the card itself is a wash of the accent here, so a chip that is also a wash of the accent
+     stops being a chip — this one goes back to the plain surface to keep its edge */
+  .cal-bubble.is-now .cal-bubble-icon{background:var(--surface);}
   /* Leaving: back out the way it came in, and faster than it arrived — an exit that lingers reads
      as sluggish where an entrance that lingers reads as deliberate. forwards holds the final frame
      so the card stays gone for the moment between the animation ending and leaveCalCard() detaching
@@ -5047,9 +5132,24 @@
   @keyframes cal-bubble-out{from{opacity:1;transform:none;}to{opacity:0;transform:translateX(34px);}}
   /* the rings must not keep pulsing on something that is on its way off screen */
   .cal-bubble.is-leaving::after{animation:none;opacity:0;}
-  .cal-bubble.is-leaving:hover{transform:none;box-shadow:0 16px 40px rgba(0,0,0,.30);}
-  .cal-bubble-icon{flex:none;font-size:15px;line-height:1;width:30px;height:30px;border-radius:9px;
-    background:var(--cal-accent);display:flex;align-items:center;justify-content:center;}
+  .cal-bubble.is-leaving:hover{transform:none;border-color:var(--border);
+    box-shadow:0 1px 2px rgba(10,14,30,.12), 0 10px 30px rgba(10,14,30,.20);}
+  /* A WASH plus the corrected ink, never the raw accent as a fill. The chip used to be solid
+     --cal-accent with an emoji sitting on it, which is the same failure applyCalBubbleAccent() was
+     written to fix a few lines down: a glyph on raw "Banana" is a glyph on pale yellow. A wash of
+     the accent over the card keeps the chip near the surface's own luminance, which is exactly what
+     --cal-accent-ink was corrected against — so the mark inside it is legible by construction on
+     every calendar colour in all four themes. Plain background first as the fallback for engines
+     without color-mix(), the pattern .is-now and .lvl-* already use. */
+  .cal-bubble-icon{flex:none;width:30px;height:30px;border-radius:9px;
+    background:var(--surface-alt);
+    background:color-mix(in srgb, var(--cal-accent) 15%, var(--surface));
+    color:var(--cal-accent-ink);
+    display:flex;align-items:center;justify-content:center;}
+  /* SVG in the same 24x24 currentColor idiom as the nav marks and the games strip, so the glyph
+     takes the corrected ink above. An emoji is drawn by the platform in its own colours and could
+     take neither that ink nor the theme's. */
+  .cal-bubble-icon svg{width:16px;height:16px;display:block;}
   .cal-bubble-body{flex:1 1 auto;min-width:0;}
   .cal-bubble-title{font-size:13.5px;font-weight:700;color:var(--text);overflow-wrap:anywhere;}
   /* the countdown is the urgent half of the message, so it gets the accent rather than muted grey */
@@ -5057,9 +5157,17 @@
      the card, so it uses the contrast-corrected variant. The border, rings and chip keep the
      calendar's real colour, which is what makes two calendars tell apart at a glance. */
   .cal-bubble-when{font-size:11.5px;font-weight:700;color:var(--cal-accent-ink);margin-top:2px;}
-  .cal-bubble-close{flex:none;background:none;border:none;color:var(--faint);font-size:18px;
-    line-height:1;padding:2px 4px;border-radius:6px;cursor:pointer;font-family:inherit;}
+  /* --muted, not --faint: --faint is about 1.9:1 on the card, under the 3:1 a non-text control
+     needs — and this one sits inside a card where every other pixel navigates, so a dismiss you can
+     barely see beside a 340px-wide "go" target is a mis-tap waiting to happen. The negative margin
+     is what lets the hit box grow to a real target without the card growing with it. */
+  .cal-bubble-close{flex:none;background:none;border:none;color:var(--muted);font-size:18px;
+    line-height:1;width:30px;height:30px;margin:-4px -3px -4px 0;display:flex;align-items:center;
+    justify-content:center;border-radius:8px;cursor:pointer;font-family:inherit;}
   .cal-bubble-close:hover{color:var(--text);background:var(--surface-alt);}
+  @media (pointer:coarse){
+    .cal-bubble-close{width:40px;height:40px;margin:-9px -8px -9px 0;}
+  }
   .cal-bubble:focus-visible,.cal-bubble-close:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
 
   @media (max-width:760px){

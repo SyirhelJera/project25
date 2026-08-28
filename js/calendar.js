@@ -220,6 +220,15 @@
       g.events.forEach(ev=>{
         const row = document.createElement('div');
         row.className = 'cal-row' + (ev.allDay ? ' is-allday' : '') + (ev.startMs < Date.now() ? ' is-past' : '');
+        // The row's spine takes the colour of the calendar the event is on, the same value and the
+        // same idea as the bubble's — the picker above colour-codes the calendars, and this is the
+        // list it filters, so it is the one place those colours are worth anything. Raw accent, not
+        // the corrected ink: a 3px band is a shape rather than text, and fidelity to the real colour
+        // is exactly what makes two calendars tell apart in a merged agenda.
+        if(ev.color){
+          const a = calAccentFor(ev.color);
+          if(a) row.style.setProperty('--cal-ink', a.accent);
+        }
         // Built as elements with textContent rather than interpolated markup: these strings come
         // from Google and are arbitrary user text, and escapeHtml() does not escape double quotes
         // (the same reason updateCountdownReminder() sets its tooltip as a property).
@@ -269,8 +278,29 @@
       // .cal-chip and not .finance-subnav-btn: showTimeSubTab() clears .active on every
       // '#view-time .finance-subnav-btn', which would blank these on each sub-tab switch.
       btn.className = 'cal-chip' + (on ? ' active' : '');
-      btn.textContent = c.summary || c.id;
-      if(c.backgroundColor) btn.style.setProperty('--cal-ink', c.backgroundColor);
+      // A toggle, so it has to SAY it is a toggle. .active is a class a screen reader cannot see,
+      // and without this you hear "Work, button" whether that calendar is on the agenda or not.
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      // the dot is an element rather than markup because the label beside it is arbitrary user text
+      // out of Google, and escapeHtml() does not escape double quotes — same rule as calBubbleCard()
+      const dot = document.createElement('span');
+      dot.className = 'cal-chip-dot';
+      dot.setAttribute('aria-hidden', 'true');
+      const lbl = document.createElement('span');
+      lbl.textContent = c.summary || c.id;
+      btn.appendChild(dot); btn.appendChild(lbl);
+      /* Two variables, the same split the bubble makes and for the same reason. --cal-ink is the
+         calendar's colour UNTOUCHED, and drives the dot and the chip's border and wash — shapes,
+         where fidelity to the real colour is what makes two calendars tell apart. --cal-ink-text is
+         that colour dragged to WCAG AA against the card, and is used only where it becomes words.
+         The selected chip used to be `background:--cal-ink; color:#fff` with no correction at all:
+         white on Google's "Banana" (#fbd75b) is about 1.6:1, which is the exact bug calAccentFor()
+         was written for on the bubble and which this strip simply never got. */
+      if(c.backgroundColor){
+        const a = calAccentFor(c.backgroundColor);
+        btn.style.setProperty('--cal-ink', a ? a.accent : c.backgroundColor);
+        if(a) btn.style.setProperty('--cal-ink-text', a.ink);
+      }
       btn.addEventListener('click', ()=>{
         // First click materialises the implicit "primary only" default into a real list, so
         // turning primary OFF is expressible rather than silently reverting to it.
@@ -569,6 +599,32 @@
     emit();
   }
 
+  /* The three marks a card can wear, and they are the same three the Time tab's sub-nav wears —
+     a clock, an hourglass and a calendar mean one thing each wherever they appear, so the icon on
+     a bubble already tells you which pane its card will take you to.
+
+     Inline SVG in the app's 24x24 currentColor idiom, not the ⏱ ⏳ 📅 these used to be. Two reasons
+     an emoji cannot do this job: it is drawn by the platform in its own colours, so it could take
+     neither the chip's contrast-corrected ink nor the theme's, and it sat on a chip filled with the
+     RAW calendar colour — a multicoloured glyph on pale yellow, which is the same failure
+     calAccentFor() exists to prevent one screen over.
+
+     These are constants with no interpolation, which is the only reason innerHTML is allowed near
+     this file at all — everything carrying event text below is still built as elements. */
+  const CAL_ICONS = {
+    calendar: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+      + '<rect x="3.3" y="5.3" width="17.4" height="15.4" rx="2.6" stroke="currentColor" stroke-width="1.9"/>'
+      + '<path d="M3.3 10.1h17.4" stroke="currentColor" stroke-width="1.9"/>'
+      + '<path d="M8.3 3.3v3.6M15.7 3.3v3.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>',
+    countdown: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+      + '<path d="M6.4 3.4h11.2M6.4 20.6h11.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>'
+      + '<path d="M7.8 3.4c0 4.2 4.2 5.4 4.2 8.6 0 3.2-4.2 4.4-4.2 8.6" stroke="currentColor" stroke-width="1.9"/>'
+      + '<path d="M16.2 3.4c0 4.2-4.2 5.4-4.2 8.6 0 3.2 4.2 4.4 4.2 8.6" stroke="currentColor" stroke-width="1.9"/></svg>',
+    now: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true">'
+      + '<circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.9"/>'
+      + '<path d="M12 7.2V12l3.2 2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+
   // One card per event. Built as elements with textContent rather than interpolated markup: the
   // summary comes from Google and is arbitrary user text, and escapeHtml() does not escape double
   // quotes, so it must never reach an attribute.
@@ -603,7 +659,7 @@
     const icon = document.createElement('div');
     icon.className = 'cal-bubble-icon';
     icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = isNow ? '⏱' : (isCd ? '⏳' : '📅');
+    icon.innerHTML = isNow ? CAL_ICONS.now : (isCd ? CAL_ICONS.countdown : CAL_ICONS.calendar);
 
     const body = document.createElement('div');
     body.className = 'cal-bubble-body';

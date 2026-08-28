@@ -780,13 +780,36 @@ load, before that has ever happened. The `"primary"` alias needs its own entry i
 request for the literal string `primary` — what an untouched picker sends — would match nothing.
 
 Client side, `calAccentFor()` turns that hex into **two** values, because one can't do both jobs.
-`--cal-accent` is the calendar's colour untouched, painting the border, rings and icon chip —
-decorative shapes where fidelity is what makes two calendars tell apart. `--cal-accent-ink` is that
-same colour dragged toward the theme until it clears WCAG AA against `--surface`, and is used *only*
-for the countdown text. Correcting one shared value for both instead would crush "Banana" to a dark
-olive just so eleven words of 11.5px text could sit on white. The surface luminance is read live off
+`--cal-accent` is the calendar's colour untouched, painting the **spine**, the ping rings and the
+wash behind the icon chip — shapes, where fidelity is what makes two calendars tell apart.
+`--cal-accent-ink` is that same colour dragged toward the theme until it clears WCAG AA against
+`--surface`, and is used only where the accent becomes something to read: the countdown line and
+the icon glyph. Correcting one shared value for both instead would crush "Banana" to a dark olive
+just so eleven words of 11.5px text could sit on white. The surface luminance is read live off
 `--surface` rather than hardcoded per theme, and the nudge loop tests the *rounded* colour, since
 rounding to whole channels is exactly what turns a 4.50 into a failing 4.49.
+
+**The accent is spent in one place, not four.** The card's own edge is a neutral `--border` hairline
+and the colour lives in a 4px spine down its left side (a `::before`, so the card's radius rounds
+it and `::after` stays free for the ping). It used to be the whole 1px border, which is not a colour
+signal at all: half of Google's palette is pale by design — it is drawn as small blocks on a white
+grid — so "Banana" on white was a border you could not see, on a card whose only reason to be
+coloured is telling two calendars apart. For the same reason the icon chip is a *wash* of the accent
+with the corrected ink on top, rather than a solid fill of the raw colour with an emoji on it. And
+the same spine, at 3px, now runs down every `.cal-row` in the agenda and every chip in the picker
+carries the calendar's dot — the picker colour-codes five calendars, and the agenda is the list it
+filters, so that is the one place those colours are worth anything. The ping is a `box-shadow`
+spread rather than `transform:scale()`: a card is about 340×62, so scaling by 1.07 pushed the ring
+12px out at the sides and 2px at the top, which is a smear rather than a ring.
+
+**The picker chips are a toggle and are drawn as one.** The selected chip used to be
+`background:var(--cal-ink); color:#fff` with the *raw* colour — white on "Banana" is about 1.6:1,
+the exact failure `calAccentFor()` was written for on the bubble and which this strip simply never
+got. It is now a wash of the calendar's colour with `--cal-ink-text` (the corrected value) on top,
+which also spares the eye a row of five saturated Google colours side by side. Each chip carries the
+calendar's dot whether it is on or off, so which calendar owns which colour is legible without
+switching one off to find out, and each carries `aria-pressed` — without it a screen reader
+announces "Work, button" whether that calendar is on the agenda or not.
 
 Three placement rules it depends on. The bubble is a **body-level sibling of `.main`**, never inside
 `#view-time` — `.view{display:none}` would hide it whenever the Time tab wasn't the active one, and

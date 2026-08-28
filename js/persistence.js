@@ -383,6 +383,13 @@
     if(typeof state.tft.sync.lastError !== 'string') state.tft.sync.lastError = '';
     if(state.tft.sync.cutoffs === undefined) state.tft.sync.cutoffs = null;
 
+    /* Live lobby PREFERENCES only. The roster itself never lands in state — it is other people's
+       accounts, it is wrong within minutes, and this panel polls every few seconds while it is
+       open, so a persisted copy would re-upload the whole shared row continuously. Same ruling,
+       for the same reason, as state.valorant.live. See the LIVE LOBBY section in js/tft.js. */
+    if(!state.tft.lobby || typeof state.tft.lobby !== 'object') state.tft.lobby = {};
+    if(typeof state.tft.lobby.enabled !== 'boolean') state.tft.lobby.enabled = true;
+
     state.clock = parsed.clock || { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] };
     if(!state.clock.fasting) state.clock.fasting = { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' };
     if(state.clock.fasting.enabled===undefined) state.clock.fasting.enabled = false;

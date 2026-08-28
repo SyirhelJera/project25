@@ -1870,6 +1870,11 @@
     renderValLocalPanel();
     // the helper appearing/disappearing is what starts or stops the live poll loop
     renderValLive();
+    // ...and the TFT lobby card, which polls the same helper through POST /tft-live. Called from
+    // here rather than left to renderTft() because nothing else re-renders that tab while you sit
+    // on it, so starting the helper would otherwise leave the card saying "not running" until you
+    // navigated away and back. Guarded because valorant.js parses before tft.js defines it.
+    if(typeof renderTftLobby === 'function') renderTftLobby();
   }
 
   /* ---- Account switcher: chips, not a dropdown.

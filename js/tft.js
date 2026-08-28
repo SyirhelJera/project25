@@ -506,7 +506,10 @@
     // means entering the tab can never start the Live Match poll on its own — syncValLivePolling()
     // below sees 'shop' and stays stopped until you actually ask for that panel.
     if(key === 'valorant'){ state.valorant.activeSubtab = 'shop'; renderValSubtabs(); renderValorant(); }
-    if(key === 'tft'){ renderTft(); maybeAutoSyncTft(); }
+    // showTftSubTab() before renderTft(), not after: it resets to Rank, and until it has, the
+    // lobby pane may still count as visible from a previous visit — renderTft() would then start
+    // the lobby poll for a panel that is about to be hidden again.
+    if(key === 'tft'){ showTftSubTab('rank'); renderTft(); maybeAutoSyncTft(); }
     // Switching to TFT hides the Live Match panel just as surely as leaving the tab does, and a
     // loop hitting Riot every few seconds from a panel nobody can see is exactly what that feature
     // must not do. syncValLivePolling() is the single choke point and now reads state.games.active,
@@ -517,6 +520,35 @@
     // save() lives here, not in showGameSubTab(), so nav.js's call on tab entry and renderAll()'s
     // call on load don't write
     btn.addEventListener('click', ()=>{ showGameSubTab(btn.dataset.gametab); save(); });
+  });
+
+  /* ---- TFT sub-tabs (Rank | Live Lobby) ----
+     Deliberately NOT persisted, unlike the Games strip one level up. That one remembers because
+     Valorant and TFT are two different games; these two are two views of one game, so they follow
+     the Time/Finance/Valorant rule and reset on entry. The reset is also load-bearing: landing on
+     Live Lobby would start its poll for anyone who merely opened the tab, which is the same thing
+     Valorant avoids by always landing on Shop Tracker. A module-level variable rather than a state
+     key for exactly that reason — there is nothing here worth saving. */
+  const TFT_SUBTABS = ['rank','lobby'];
+  let tftActiveSubtab = 'rank';
+  function showTftSubTab(key){
+    if(!TFT_SUBTABS.includes(key)) key = 'rank';
+    tftActiveSubtab = key;
+    el('tftSubtabBtnRank').classList.toggle('active', key === 'rank');
+    el('tftSubtabBtnLobby').classList.toggle('active', key === 'lobby');
+    el('tftSubtabRank').style.display = key === 'rank' ? 'block' : 'none';
+    el('tftSubtabLobby').style.display = key === 'lobby' ? 'block' : 'none';
+    // the chart is drawn at its container's real pixel width, which is 0 while the pane is
+    // display:none — so it has to be redrawn on reveal, the same reason showFitnessSubTab() does
+    if(key === 'rank') renderTftChart();
+    // the lobby poll only runs while its own pane is the one on screen; renderTftLobby() ends by
+    // re-evaluating that, so this one call both repaints and starts/stops the loop
+    renderTftLobby();
+  }
+  el('tftSubtabToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-tftsubtab]');
+    if(!btn) return;
+    showTftSubTab(btn.dataset.tftsubtab);
   });
 
   /* ---------- select population ---------- */
@@ -1175,7 +1207,391 @@
     }
   }
 
+
+  /* ================= LIVE LOBBY =================
+     The eight players in the game you are in right now, and how high each of them has ever
+     climbed. That last part is the whole point: TFT matches you on current LP, so a Silver lobby
+     routinely contains someone who was Challenger two sets ago, and the in-game scoreboard only
+     ever shows you names.
+
+     Where the data comes from, and why this needs the local helper at all: the roster is read
+     from the League/TFT client's own loopback API, which no web page can call (self-signed cert,
+     credentials in a lockfile only a local process can read). scripts/tft-live.mjs does that read
+     and resolves each player against the same MetaTFT index tftSync() already uses, behind
+     POST /tft-live on the helper this repo already runs for Valorant. See that file's header.
+
+     Memory-only, exactly like state.valorant.live: `state.tft.lobby` holds PREFERENCES, and the
+     roster lives in tftLobbyState below and is thrown away. It must never join state — this polls
+     every few seconds, and doSave() re-uploads the whole shared row on every save from every tab,
+     so persisting it would re-send every goal, habit and finance record in the app continuously
+     to store eight strangers' ranks that are wrong ten minutes later.
+
+     The ranks are passed through as MetaTFT's own rating_text ("DIAMOND II 95 LP") and parsed
+     here by tftParseRatingText(), so the crest, the colour and the ordering all come from
+     TFT_TIERS — the one ladder table this tab already treats as the source of truth. Nothing
+     about a lobby row re-derives what tftValue() or tftRankLabel() already answer. */
+
+  // no game to watch is the common state, so it's the slow one; a lobby that's still filling is
+  // the only thing worth asking about often
+  const TFT_LOBBY_INTERVAL = { none:15000, queued:5000, ingame:20000, ended:15000, other:20000 };
+  const TFT_LOBBY_BACKOFF = [5000, 15000, 30000, 60000];
+
+  let tftLobbyState = {
+    data: null, err: '', code: '',
+    status: 'idle',    // idle | ok | error | stopped
+    timer: null, inFlight: false, backoff: 0,
+    epoch: 0,          // bumped by every stop, so a reply still in flight is discarded
+  };
+
+  /* Reused rather than redefined: this is the same "can this page reach a loopback server at all"
+     question the Valorant panel asks, and inside Claude.ai's sandbox the answer is no for both.
+     A second copy of the test is a second thing to keep in step. */
+  function tftLobbyUnavailable(){ return valLiveUnavailable(); }
+
+  /* The Games view being on screen is checked against the DOM rather than inferred from state,
+     because renderAll() calls renderTft() on every load whatever tab you are actually on — and
+     state.games.active is persisted, so it says 'tft' even while you are looking at Goals. */
+  function tftLobbyVisible(){
+    const v = el('view-games');
+    return !!v && v.classList.contains('active')
+      && state.games.active === 'tft'
+      // ...and the Live Lobby pane specifically. Switching to Rank hides this panel just as surely
+      // as leaving the tab does, and a loop polling the game client from a pane nobody can see is
+      // exactly what this must not do — the same clause, for the same reason, as
+      // syncValLivePolling()'s state.valorant.activeSubtab === 'live'.
+      && tftActiveSubtab === 'lobby';
+  }
+
+  function tftLobbyInterval(){
+    if(tftLobbyState.err) return TFT_LOBBY_BACKOFF[Math.min(tftLobbyState.backoff, TFT_LOBBY_BACKOFF.length-1)];
+    const d = tftLobbyState.data;
+    if(!d) return TFT_LOBBY_INTERVAL.none;
+    return TFT_LOBBY_INTERVAL[d.phase] || TFT_LOBBY_INTERVAL.other;
+  }
+
+  function stopTftLobbyPolling(){
+    if(tftLobbyState.timer){ clearTimeout(tftLobbyState.timer); tftLobbyState.timer = null; }
+    tftLobbyState.epoch++;
+  }
+
+  // The single choke point, same arrangement as syncValLivePolling(): everything that could change
+  // whether the loop should run calls this instead of touching timers itself.
+  function syncTftLobbyPolling(){
+    const shouldRun = !tftLobbyUnavailable()
+      && state.tft.lobby.enabled
+      && tftLobbyVisible()
+      && !document.hidden
+      && valLocalStatus.connected
+      && !!state.valorant.localServerToken
+      && tftLobbyState.status !== 'stopped';
+    if(shouldRun){
+      if(!tftLobbyState.timer && !tftLobbyState.inFlight) tftLobbyTick();
+    } else if(tftLobbyState.timer){
+      stopTftLobbyPolling();
+    }
+  }
+
+  async function tftLobbyTick(refresh){
+    if(tftLobbyState.inFlight) return;
+    const epoch = tftLobbyState.epoch;
+    tftLobbyState.inFlight = true;
+    if(tftLobbyState.timer){ clearTimeout(tftLobbyState.timer); tftLobbyState.timer = null; }
+    try{
+      const res = await fetch(valLocalUrl()+'/tft-live', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          token: state.valorant.localServerToken,
+          // the helper reads the region off the client itself; this is only the fallback for a
+          // client that won't answer that one call
+          region: state.tft.sync.region || undefined,
+          refresh: !!refresh,
+        })
+      });
+      const json = await res.json().catch(()=>null);
+      if(epoch !== tftLobbyState.epoch) return;
+
+      if(res.status === 401){
+        tftLobbyState.status = 'stopped';
+        tftLobbyState.code = 'bad_token';
+        tftLobbyState.err = 'The local helper rejected the token. Paste the one it printed into Settings → Valorant Local Helper.';
+      } else if(!json){
+        throw new Error('The local helper sent something unreadable.');
+      } else if(json.ok === false){
+        tftLobbyState.code = json.code || '';
+        tftLobbyState.err = json.error || 'The local helper could not read the lobby.';
+        tftLobbyState.status = 'error';
+        /* The client being closed is an ordinary state, not a fault: it is what the helper says
+           whenever the game isn't open, which is most of the time. Backing off to a minute would
+           make the panel look broken at the exact moment you finally launched, so it keeps the
+           idle cadence and clears any stale roster instead. */
+        if(tftLobbyState.code === 'client_closed'){ tftLobbyState.data = null; tftLobbyState.backoff = 0; }
+        else tftLobbyState.backoff++;
+      } else {
+        tftLobbyState.data = json;
+        tftLobbyState.err = ''; tftLobbyState.code = ''; tftLobbyState.backoff = 0;
+        tftLobbyState.status = 'ok';
+      }
+    }catch(e){
+      if(epoch !== tftLobbyState.epoch) return;
+      tftLobbyState.status = 'error';
+      tftLobbyState.err = (e && e.message) || 'Could not reach the local helper.';
+      tftLobbyState.backoff++;
+    }finally{
+      tftLobbyState.inFlight = false;
+    }
+    if(epoch !== tftLobbyState.epoch) return;
+    // schedule BEFORE repainting, for the reason spelled out in valLiveTick(): renderTftLobby()
+    // ends in syncTftLobbyPolling(), which starts a tick whenever it sees no timer and nothing in
+    // flight, so painting first would fire the next request immediately and spin.
+    if(tftLobbyState.status !== 'stopped') tftLobbyState.timer = setTimeout(tftLobbyTick, tftLobbyInterval());
+    renderTftLobby();
+  }
+
+  // Polling from a tab nobody is looking at is exactly what this must not do — same listener, same
+  // reason, as the Live Match panel's.
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.hidden) stopTftLobbyPolling(); else syncTftLobbyPolling();
+  });
+
+  /* ---- one player's numbers ----
+     MetaTFT's rating_text is the only rank format crossing the wire, so everything below is
+     tftParseRatingText() plus the ladder table. `value` is tftValue()'s rank power, which is what
+     makes "who has peaked highest" a single comparison across tiers and divisions — the same
+     trick the LP chart plots. */
+  function tftLobbyRank(row){
+    if(!row || !row.text) return null;
+    const parsed = tftParseRatingText(row.text);
+    if(!parsed) return null;
+    return {
+      tier: parsed.tier, division: parsed.division, lp: parsed.lp,
+      label: tftRankLabel(parsed.tier, parsed.division),
+      value: tftValue(parsed.tier, parsed.division, parsed.lp),
+      set: row.set || ''
+    };
+  }
+  // sort key: how high they have ever been. Unresolved players sort last rather than as 0, so a
+  // profile MetaTFT hasn't indexed doesn't read as "this person is terrible".
+  function tftLobbyPeakValue(p){
+    const r = tftLobbyRank(p.best);
+    return r ? r.value : -1;
+  }
+
+  /* How far below their peak someone is sitting, in the unit that is actually true at that
+     distance. tftValue()'s scale is rank POWER, not LP — a step is a division — so subtracting two
+     of them and calling the answer LP is only honest inside one division. Across the ladder it is
+     badly wrong: Diamond II down to Silver II differs by 1640 on that scale, and quoting
+     "−1640 LP" describes a loss that cannot happen. So the unit follows the distance:
+
+       different tier      → tiers      ("4 tiers below peak")
+       same tier           → divisions  ("2 divisions below peak")
+       same division       → LP         ("−2 LP off peak"), the one case where it really is LP
+
+     Master/Grandmaster/Challenger all share one step, so two apex ranks land in the last branch
+     and correctly report a genuine LP gap — which above Master is exactly what separates them. */
+  function tftLobbyGapText(best, cur){
+    if(!best || !cur) return '';
+    const gap = best.value - cur.value;
+    if(gap <= 0) return 'at peak now';
+    const tierDiff = TFT_TIER_INDEX[best.tier] - TFT_TIER_INDEX[cur.tier];
+    if(tierDiff > 0) return tierDiff + ' tier' + (tierDiff===1?'':'s') + ' below peak';
+    const divDiff = Math.floor(best.value/100) - Math.floor(cur.value/100);
+    if(divDiff > 0) return divDiff + ' division' + (divDiff===1?'':'s') + ' below peak';
+    return '−' + gap + ' LP off peak';
+  }
+
+  function renderTftLobby(){
+    const card = el('tftLobbyCard');
+    if(!card) return;
+    const statusEl = el('tftLobbyStatus');
+    const bodyEl = el('tftLobbyBody');
+    const errEl = el('tftLobbyErr');
+
+    el('tftLobbyAuto').checked = !!state.tft.lobby.enabled;
+    errEl.style.display = 'none';
+
+    /* `is-idle` collapses the card to its header line. This panel sits above the rank summary, and
+       a multi-line "not connected" explanation would push the whole tab down the page every time
+       you opened it without a game running — which is most of the time. Every state that has
+       nothing to show is therefore one line, and only a real lobby expands the card. */
+    const setIdle = (html, on)=>{
+      card.classList.add('is-idle');
+      statusEl.innerHTML = '<span class="val-local-dot '+(on?'on':'off')+'"></span> ' + html;
+      bodyEl.innerHTML = '';
+      syncTftLobbyPolling();
+    };
+
+    if(tftLobbyUnavailable()){
+      // no poll to sync here: this mode can never reach a loopback server, so the card is inert
+      card.classList.add('is-idle');
+      statusEl.innerHTML = '<span class="val-local-dot off"></span> Live lobby needs the Supabase-hosted deployment plus the local helper (see README).';
+      bodyEl.innerHTML = '';
+      return;
+    }
+    if(!valLocalStatus.connected){
+      setIdle('Live lobby — local helper not running (<code>node scripts/valorant-local-server.mjs</code>)', false);
+      return;
+    }
+    if(!state.valorant.localServerToken){
+      setIdle('Live lobby — paste the helper token into Settings → Valorant Local Helper', false);
+      return;
+    }
+    if(!state.tft.lobby.enabled){
+      setIdle('Live lobby — off', false);
+      return;
+    }
+    if(tftLobbyState.code === 'client_closed'){
+      setIdle('Live lobby — the League / TFT client isn\'t running', false);
+      return;
+    }
+    if(tftLobbyState.err){
+      card.classList.add('is-idle');
+      statusEl.innerHTML = '<span class="val-local-dot off"></span> Live lobby';
+      errEl.textContent = tftLobbyState.err;
+      errEl.style.display = 'block';
+      bodyEl.innerHTML = '';
+      syncTftLobbyPolling();
+      return;
+    }
+
+    const d = tftLobbyState.data;
+    if(!d || d.phase === 'none'){
+      setIdle('Live lobby — watching for a game', true);
+      return;
+    }
+    if(d.phase === 'other-game'){
+      setIdle('Live lobby — you\'re in a game, but not TFT'
+        + (d.queueName ? ' (' + escapeHtml(d.queueName) + ')' : ''), true);
+      return;
+    }
+    if(!d.players.length){
+      setIdle('Live lobby — in queue, no opponents yet', true);
+      return;
+    }
+
+    card.classList.remove('is-idle');
+    const phaseTxt = d.phase === 'ingame' ? 'In game' : (d.phase === 'ended' ? 'Game just ended' : 'Queued');
+    statusEl.innerHTML = '<span class="val-local-dot on"></span> '
+      + phaseTxt + ' · ' + escapeHtml(d.queueName || 'Teamfight Tactics')
+      + (d.region ? ' · ' + escapeHtml(String(d.region).toUpperCase()) : '');
+
+    const players = d.players.slice().sort((a,b)=> tftLobbyPeakValue(b) - tftLobbyPeakValue(a));
+    const self = players.find(p=> p.self) || null;
+    const selfPeak = self ? tftLobbyPeakValue(self) : -1;
+    const topPeak = tftLobbyPeakValue(players[0]);
+
+    /* The one line the panel exists to deliver, above the list: how many people here have been
+       higher than you. It reduces "is this lobby harder than it looks" to a number, and it is only
+       answerable once, at the top — repeating it per row would be noise. */
+    let lead;
+    if(self && selfPeak >= 0){
+      const above = players.filter(p=> !p.self && tftLobbyPeakValue(p) > selfPeak).length;
+      lead = above === 0
+        ? 'You have the highest peak in this lobby.'
+        : above + ' player' + (above===1?' has':'s have') + ' peaked above you.';
+    } else {
+      const known = players.filter(p=> tftLobbyPeakValue(p) >= 0).length;
+      lead = known + ' of ' + players.length + ' players have ranked history.';
+    }
+
+    /* The set nearly everyone here is playing. Rows only name their set when it ISN'T this one —
+       eight identical "· Set 17" tails are pure noise, while "· Set 14" on one row is the useful
+       signal that this account has not played since. Taken as the most common value rather than
+       the highest, because set names don't sort (TFTSet9_2 sits between 9 and 10). */
+    const setCounts = {};
+    players.forEach(p=>{ if(p.cur && p.cur.set) setCounts[p.cur.set] = (setCounts[p.cur.set]||0) + 1; });
+    const commonSet = Object.keys(setCounts).sort((a,b)=> setCounts[b] - setCounts[a])[0] || '';
+
+    bodyEl.innerHTML = '<div class="tft-lobby-lead">' + escapeHtml(lead) + '</div>'
+      + '<div class="tft-lobby-list">'
+      + players.map(p=> tftLobbyRowHtml(p, topPeak, commonSet)).join('')
+      + '</div>'
+      + '<div class="tft-lobby-foot">Peak is the highest rank MetaTFT has ever recorded for that '
+      + 'account, in any set — sorted highest first. "Now" is their most recently played set.</div>';
+    tftGuardCrests(bodyEl);
+    syncTftLobbyPolling();
+  }
+
+  function tftLobbyRowHtml(p, topPeak, commonSet){
+    const best = tftLobbyRank(p.best);
+    const cur = tftLobbyRank(p.cur);
+    const setPeak = tftLobbyRank(p.setPeak);
+    const cls = ['tft-lobby-row'];
+    if(p.self) cls.push('is-self');
+    /* The highest peak in the room gets the star, and only when it isn't yours — the flag means
+       "watch out for this one", which your own row can never be. Guarded on topPeak >= 0 so a
+       lobby where nobody resolved doesn't crown the first unknown player. */
+    const isTop = !p.self && !!best && topPeak >= 0 && tftLobbyPeakValue(p) === topPeak;
+    if(isTop) cls.push('is-top');
+
+    const accent = best ? tftTierColor(best.tier) : 'var(--faint)';
+
+    // why a row can be blank, said plainly — an empty right-hand column otherwise reads as a
+    // failed fetch, and each of these is a different thing the user might act on
+    let peakHtml;
+    if(best){
+      peakHtml = '<div class="tft-lobby-peak-rank">' + escapeHtml(best.label) + '</div>'
+        + '<div class="tft-lobby-peak-sub">peak' + (best.set ? ' · ' + escapeHtml(tftSetLabel(best.set)) : '') + '</div>';
+    } else if(p.hidden){
+      peakHtml = '<div class="tft-lobby-peak-none">Profile hidden</div>';
+    } else if(p.unranked){
+      peakHtml = '<div class="tft-lobby-peak-none">No ranked history</div>';
+    } else {
+      peakHtml = '<div class="tft-lobby-peak-none">' + (p.queued ? 'Not indexed yet' : 'Unknown') + '</div>';
+    }
+
+    /* Where they are now, which is what makes the peak mean anything: a Diamond peak reads very
+       differently for someone still sitting at Diamond than for someone who has slid to Silver.
+       The set is named only when it isn't the one the rest of the lobby is playing — see
+       commonSet at the call site. */
+    let nowTxt;
+    if(cur){
+      nowTxt = 'now ' + cur.label + ' · ' + cur.lp + ' LP'
+        + (p.cur.games ? ' · ' + p.cur.games + ' game' + (p.cur.games===1?'':'s') : '')
+        + (cur.set && cur.set !== commonSet ? ' · last played ' + tftSetLabel(cur.set) : '');
+    } else {
+      nowTxt = p.hidden ? '—' : 'no ranked games recorded';
+    }
+    const gapTxt = tftLobbyGapText(best, cur);
+
+    return '<div class="' + cls.join(' ') + '" style="--tier:' + accent + '">'
+      + (best ? tftCrestHtml(best.tier, 'md') : '<span class="tft-crest md tft-crest-blank"></span>')
+      + '<div class="tft-lobby-ident">'
+      +   '<div class="tft-lobby-name">'
+      +     '<b>' + escapeHtml(p.name) + '</b><span class="tft-lobby-tag">#' + escapeHtml(p.tag) + '</span>'
+      +     (p.self ? '<span class="tft-lobby-you">you</span>' : '')
+      +     (isTop ? '<span class="tft-lobby-top" title="Highest peak in this lobby">★</span>' : '')
+      +   '</div>'
+      +   '<div class="tft-lobby-now">' + escapeHtml(nowTxt) + '</div>'
+      + '</div>'
+      + '<div class="tft-lobby-peak">' + peakHtml
+      +   (gapTxt ? '<div class="tft-lobby-gap' + (gapTxt === 'at peak now' ? ' at' : '') + '">'
+            + escapeHtml(gapTxt) + '</div>' : '')
+      +   (setPeak && best && setPeak.value < best.value
+            ? '<div class="tft-lobby-setpeak">' + escapeHtml(setPeak.label) + ' this set</div>' : '')
+      + '</div>'
+      + '</div>';
+  }
+
+  el('tftLobbyAuto').addEventListener('change', ()=>{
+    state.tft.lobby.enabled = el('tftLobbyAuto').checked;
+    // a panel that stopped itself on a bad token must be able to come back when re-enabled
+    if(state.tft.lobby.enabled && tftLobbyState.status === 'stopped'){
+      tftLobbyState.status = 'idle'; tftLobbyState.err = ''; tftLobbyState.code = '';
+    }
+    save();
+    renderTftLobby();
+  });
+  el('tftLobbyRefreshBtn').addEventListener('click', ()=>{
+    // refresh:true drops the helper's memoized roster AND its rank cache — this button exists for
+    // the case where someone's rank moved mid-session, which is the one thing those caches hide
+    tftLobbyState.status = 'idle'; tftLobbyState.err = ''; tftLobbyState.code = ''; tftLobbyState.backoff = 0;
+    stopTftLobbyPolling();
+    tftLobbyTick(true);
+  });
+
   function renderTft(){
+    renderTftLobby();
     renderTftSyncPanel();
     renderTftCurrentCard();
     renderTftTarget();
@@ -1355,6 +1771,6 @@
       const w = Math.round(entries[0].contentRect.width);
       if(!w || Math.abs(w - tftLastW) < 8) return;
       tftLastW = w;
-      if(state.games.active === 'tft') renderTftChart();
+      if(state.games.active === 'tft' && tftActiveSubtab === 'rank') renderTftChart();
     }).observe(el('tftChartWrap'));
   }

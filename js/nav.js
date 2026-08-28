@@ -11,7 +11,7 @@
       if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); }
       // same idea for the Live Match poll loop: a timer hitting Riot every few seconds from a tab
       // you've navigated away from has nothing on screen to justify the traffic.
-      if(t.dataset.tab!=='games') stopValLivePolling();
+      if(t.dataset.tab!=='games'){ stopValLivePolling(); stopTftLobbyPolling(); }
       if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       // Settings always opens on Appearance. Its five categories are five views of one concern
       // (like Finance and Board below, unlike the Games tab's persisted game choice), so there's

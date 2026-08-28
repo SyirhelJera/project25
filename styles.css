@@ -4324,6 +4324,59 @@
   #tftLogList .wl-delta.down{color:var(--danger);background:#FEECEC;}
   body[data-theme="dark"] #tftLogList .wl-delta.down,
   body[data-theme="ios-dark"] #tftLogList .wl-delta.down{background:#3A1E1E;}
+  /* ---- live lobby (renderTftLobby() in js/tft.js) ----
+     Deliberately built from .tft-* rather than reusing .val-live-*: that vocabulary is two facing
+     teams with agent portraits, and this is one flat list of eight strangers keyed on rank crests.
+     What it does borrow is --tier, the per-row accent every other rank surface in this tab uses. */
+  .tft-lobby-card{
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-card,14px);
+    padding:12px 14px;box-shadow:var(--fin-shadow);min-width:0;margin-bottom:10px;
+  }
+  /* collapsed to just the header line. The card spends most of its life with nothing to say —
+     no game running, no helper — so every empty state is one line rather than a paragraph of
+     excuses filling an otherwise blank pane. */
+  .tft-lobby-card.is-idle{padding:9px 12px;}
+  .tft-lobby-card.is-idle .tft-lobby-head{margin-bottom:0;}
+  .tft-lobby-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:11px;}
+  .tft-lobby-status{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);font-weight:600;min-width:0;}
+  .tft-lobby-status code{background:var(--surface-alt);border-radius:4px;padding:1px 5px;font-size:11px;}
+  .tft-lobby-head-right{display:flex;align-items:center;gap:8px;margin-left:auto;flex:none;}
+  /* the headline number, and the reason the panel exists — sized above the rows it summarises */
+  .tft-lobby-lead{font-size:12.5px;font-weight:700;color:var(--text);margin-bottom:9px;}
+
+  /* Two columns where there's room, one on a phone. Eight rows in a single column pushes the LP
+     chart off the bottom of a laptop screen, and the rows are short enough to pair up. */
+  .tft-lobby-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(272px,1fr));gap:7px;}
+  .tft-lobby-row{
+    display:flex;align-items:center;gap:9px;min-width:0;
+    background:var(--surface-alt);border:1px solid var(--border);
+    border-left:3px solid var(--tier);border-radius:var(--fin-r-ctl,9px);
+    padding:7px 10px;
+  }
+  .tft-lobby-row.is-self{background:var(--surface);border-color:var(--tier);}
+  .tft-lobby-row.is-top{box-shadow:inset 0 0 0 1px rgba(236,225,184,.5);}
+  .tft-lobby-row .tft-crest.md{width:30px;height:30px;}
+  .tft-lobby-ident{min-width:0;flex:1 1 auto;}
+  .tft-lobby-name{display:flex;align-items:baseline;gap:4px;min-width:0;}
+  .tft-lobby-name b{font-size:12.5px;font-weight:700;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .tft-lobby-tag{font-size:10px;color:var(--faint,var(--muted));font-weight:600;flex:none;}
+  .tft-lobby-you{
+    font-size:8.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;flex:none;
+    background:var(--violet);color:#fff;border-radius:4px;padding:1px 4px;
+  }
+  .tft-lobby-top{font-size:11px;color:var(--gold);flex:none;}
+  .tft-lobby-now{font-size:10.5px;color:var(--muted);font-weight:600;margin-top:2px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* the peak column is the answer the panel was opened for, so it's the one thing right-aligned
+     and painted in the rank's own colour */
+  .tft-lobby-peak{text-align:right;flex:none;max-width:46%;}
+  .tft-lobby-peak-rank{font-size:12.5px;font-weight:800;color:var(--tier);white-space:nowrap;}
+  .tft-lobby-peak-sub{font-size:9px;text-transform:uppercase;letter-spacing:.5px;font-weight:800;color:var(--faint,var(--muted));margin-top:1px;}
+  .tft-lobby-peak-none{font-size:10.5px;color:var(--faint,var(--muted));font-weight:600;}
+  .tft-lobby-gap{font-size:10px;color:var(--muted);font-weight:700;margin-top:2px;white-space:nowrap;}
+  .tft-lobby-gap.at{color:var(--success);}
+  .tft-lobby-setpeak{font-size:9.5px;color:var(--faint,var(--muted));font-weight:600;margin-top:1px;white-space:nowrap;}
+  .tft-lobby-foot{font-size:10px;color:var(--faint,var(--muted));line-height:1.5;margin-top:9px;}
   /* MetaTFT sync row (tftSync() in js/tft.js) */
   /* peak-rank marker on the LP chart (renderTftChart()). Same surface-coloured halo as
      .val-chart-tierlbl so both stay legible where they cross the data line. */
@@ -4452,6 +4505,13 @@
     .tft-duo-arrow{font-size:12px;}
     .tft-duo-lbl{font-size:8.5px;letter-spacing:.5px;margin-bottom:3px;}
     .tft-est{flex:1 1 100%;}
+    /* the lobby drops to one column here — a 272px minimum would still fit two on a 360px phone
+       only by clipping every Riot ID, and the name is what identifies the row */
+    .tft-lobby-list{grid-template-columns:1fr;}
+    .tft-lobby-card{padding:11px 12px;}
+    .tft-lobby-row{padding:6px 9px;gap:8px;}
+    .tft-lobby-row .tft-crest.md{width:26px;height:26px;}
+    .tft-lobby-peak-rank{font-size:11.5px;}
     /* region + Riot ID + Sync stay on one row; only the auto-sync toggle drops below, forced there
        by a 100% basis rather than by letting the row wrap wherever it happens to run out */
     .tft-sync-row{gap:6px;}

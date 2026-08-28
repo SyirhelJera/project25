@@ -72,7 +72,12 @@
       season: { set:'', endDate:'' },
       // MetaTFT auto-sync (js/tft.js). Their public API sends permissive CORS, so the browser calls
       // it directly — no local helper and no Edge Function, unlike the Valorant tooling.
-      sync: { region:'sg2', riotId:'', auto:true, lastSyncedAt:null, lastError:'', cutoffs:null } },
+      sync: { region:'sg2', riotId:'', auto:true, lastSyncedAt:null, lastError:'', cutoffs:null },
+      // Live lobby (js/tft.js) — PREFERENCES ONLY, the same rule as valorant.live above: the eight
+      // players themselves never touch state. Defined HERE as well as in applyLoadedState() for
+      // the same reason games.active is: syncTftLobbyPolling() reads it from a visibilitychange
+      // listener that can fire before a load finishes, so it must never be undefined.
+      lobby: { enabled:true } },
     clock: { fasting: { enabled:false, eatingStart:'12:00', eatingEnd:'20:00' }, blocks: [] },
     // Google Calendar (js/calendar.js) — PREFERENCES ONLY, the same rule as valorant.live above.
     // The fetched events are never stored anywhere: they'd ride in the shared blob on every save

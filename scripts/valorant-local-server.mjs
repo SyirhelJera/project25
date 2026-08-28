@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // scripts/valorant-local-server.mjs
 //
-// Small local HTTP bridge so the "Local Helper" panel on the Valorant tab can trigger
+// Small local HTTP bridge for the Games tab, serving the parts of it that can only work on the
+// machine you actually play on. Mostly that is Valorant: the "Local Helper" panel triggers
 // valorant-login.mjs and valorant-check-store.mjs with a button click instead of a terminal
-// command. This has to run on the SAME machine that owns the Riot login session — see
-// README.md for why these scripts run locally at all (Riot's bot detection) — and only ever
-// binds to 127.0.0.1, never the network.
+// command, which has to run on the SAME machine that owns the Riot login session — see
+// README.md for why these scripts run locally at all (Riot's bot detection). POST /tft-live is
+// the one route that isn't Valorant at all; it reads the League/TFT client's own loopback API,
+// which is unreachable from a browser for reasons of its own (see scripts/tft-live.mjs).
+// Either way this only ever binds to 127.0.0.1, never the network.
 //
 // First run generates a random token, printed below and saved to
 // scripts/.valorant-local-token.json (gitignored, never committed). Paste that token into the
@@ -28,6 +31,7 @@ import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, rec
 import { loginAccount } from './valorant-login.mjs';
 import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
 import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
+import { getTftLobby } from './tft-live.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_FILE = path.join(__dirname, '.valorant-local-token.json');
@@ -201,6 +205,35 @@ const server = http.createServer(async (req, res) => {
         code: err && err.code ? err.code : 'riot_unreachable',
         error: (err && err.message) || String(err),
         shard: err && err.shard, tried: err && err.tried,
+      }, origin);
+    }
+    return;
+  }
+
+  /* POST /tft-live — the TFT lobby you are in right now, with each player's peak rank.
+     See scripts/tft-live.mjs.
+
+     This route is on the Valorant helper rather than on a second server of its own because there
+     is only one thing here that has to be local: the machine running the game. A second process
+     would mean a second port, a second token to paste and a second "helper not running" banner,
+     for a bridge the user has already set up. Nothing about it touches the Valorant session file —
+     it reads the League/TFT client's own loopback API and a public third-party index.
+
+     Writes nothing, for the same reason /live writes nothing: a lobby is other people's accounts
+     and is stale within minutes. POST for the token, and because the service worker skips non-GET
+     outright, so a cached lobby can never be served back to the page. */
+  if (req.method === 'POST' && url.pathname === '/tft-live') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    try {
+      sendJson(res, 200, await getTftLobby({ region: body.region, refresh: !!body.refresh }), origin);
+    } catch (err) {
+      // client_closed is the ordinary case, not a fault — the page shows it as a state and keeps
+      // polling slowly, the way "no match" is a state on the Valorant panel
+      sendJson(res, 200, {
+        ok: false,
+        code: err && err.code ? err.code : 'tft_unreachable',
+        error: (err && err.message) || String(err),
       }, origin);
     }
     return;

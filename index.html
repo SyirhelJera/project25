@@ -940,6 +940,17 @@
            block right below is itself the answer to "why is entry manual". Both are written up in
            README's "TFT rank sync". -->
 
+      <!-- Rank | Live Lobby. Same .unit-toggle grammar as the Valorant pane's three sub-tabs,
+           and — unlike the Games strip one level up, which persists — this one RESETS to Rank on
+           entry: these are two views of one game, not two games. It resetting is also what stops
+           opening the tab from starting the lobby poll on its own, exactly as Valorant landing on
+           Shop Tracker does for Live Match. See showTftSubTab() in js/tft.js. -->
+      <div class="unit-toggle" id="tftSubtabToggle">
+        <button data-tftsubtab="rank" id="tftSubtabBtnRank" class="active">Rank</button>
+        <button data-tftsubtab="lobby" id="tftSubtabBtnLobby">Live Lobby</button>
+      </div>
+
+      <div class="val-subtab-panel" id="tftSubtabRank">
       <!-- MetaTFT sync. Their public API sends permissive CORS, so this is a direct browser fetch —
            no local helper, no Edge Function. Manual logging below stays as the fallback: this is an
            undocumented third-party API and a failed sync must never cost you a way to record a game. -->
@@ -1004,6 +1015,34 @@
       <div class="section-lbl">Placement log</div>
       <div class="weight-log-list" id="tftLogList"></div>
       <div class="empty" id="tftLogEmpty" style="display:none;">Nothing logged yet — log your current rank above to start the chart.</div>
+      </div><!-- /#tftSubtabRank -->
+
+      <div class="val-subtab-panel" id="tftSubtabLobby" style="display:none;">
+      <!-- LIVE LOBBY — the seven people you are playing against right now, and the highest rank
+           each of them has ever held. Its own pane, because it is the only thing on this tab that
+           is only true for the next twenty minutes; the poll that fills it runs ONLY while this
+           pane is the one on screen (tftLobbyVisible() in js/tft.js).
+
+           Everything inside #tftLobbyBody is rebuilt on every poll; the header line and its two
+           controls are static, so the Auto checkbox keeps its focus across a repaint. The card
+           still collapses to just that header (.is-idle) whenever there is no lobby to show —
+           which is most of the time, and an empty pane reads better than a paragraph of excuses.
+
+           Unlike the sync row below, this one DOES need the local helper: the roster comes from
+           the game client's loopback API, which a browser cannot reach. See js/tft.js's LIVE LOBBY
+           section and scripts/tft-live.mjs. -->
+      <div class="tft-lobby-card is-idle" id="tftLobbyCard">
+        <div class="tft-lobby-head">
+          <div class="tft-lobby-status" id="tftLobbyStatus"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+          <div class="tft-lobby-head-right">
+            <label class="val-live-auto"><input type="checkbox" id="tftLobbyAuto" checked> Auto</label>
+            <button class="btn btn-sm" id="tftLobbyRefreshBtn" title="Refresh now" aria-label="Refresh lobby now">⟳</button>
+          </div>
+        </div>
+        <div class="val-err" id="tftLobbyErr" style="display:none;"></div>
+        <div id="tftLobbyBody"></div>
+      </div>
+      </div><!-- /#tftSubtabLobby -->
     </div>
 
     <!-- Log-a-game modal. Deliberately a sibling of the two .gametab panes rather than inside one:

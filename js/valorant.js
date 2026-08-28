@@ -1868,6 +1868,7 @@
       valLocalStatus.accounts = [];
     }
     renderValLocalPanel();
+    renderValHelperPower();
     // the helper appearing/disappearing is what starts or stops the live poll loop
     renderValLive();
     // ...and the TFT lobby card, which polls the same helper through POST /tft-live. Called from
@@ -1875,6 +1876,161 @@
     // on it, so starting the helper would otherwise leave the card saying "not running" until you
     // navigated away and back. Guarded because valorant.js parses before tft.js defines it.
     if(typeof renderTftLobby === 'function') renderTftLobby();
+  }
+
+  /* ---- Start / Stop the helper from the app ------------------------------------
+     The two directions are not symmetrical and cannot be made so. Stop is an ordinary request:
+     the helper is listening, so POST /shutdown reaches it. Start cannot be a request at all —
+     by then nothing is listening — so it hands off to the `p25helper://` URL protocol, which
+     Windows resolves to scripts/valorant-local-server.vbs. That handler has to be registered once
+     (scripts/helper-protocol.mjs); it is deliberately registered WITHOUT %1, so nothing from the
+     URL reaches the process and the hand-off is a doorbell rather than a parameterised call.
+
+     Neither button can confirm anything by itself: the protocol hand-off gives the page no result
+     (the browser may even have asked the user first), and a shutdown closes the socket that would
+     have reported it. So both fall through to the same test — poll /status until it flips. That
+     poll is also the only way to notice the handler isn't registered, which is why the setup note
+     is shown by a timeout rather than by feature detection. */
+  const VAL_HELPER_PROTOCOL = 'p25helper://start';
+  /* Bounded by wall-clock, not by a probe count: a fetch to a port with nothing on it costs
+     Chrome ~2s to give up on, so a fixed number of tries stretched this to ~24s of the button
+     saying "Starting…". 15s is a browser prompt plus node's startup; overshooting it is not
+     fatal, because a helper that appears afterwards is still picked up by the background
+     status poll and clears the note (see renderValHelperPower). */
+  const VAL_HELPER_WAIT_MS = 15000;
+  let valHelperBusy = '';             // '' | 'starting' | 'stopping'
+  let valHelperShowSetupHint = false; // set by a hand-off that produced no helper
+
+  /* Poll /status faster than the 15s background loop until it reports `want`, so a click feels
+     like it did something. Neither button can confirm its own result — the protocol hand-off
+     returns nothing to the page, and a shutdown closes the socket that would have reported it —
+     so this is the actual verdict for both. Resolves false on timeout; the caller decides what
+     that means. */
+  async function waitForHelper(want){
+    const deadline = Date.now() + VAL_HELPER_WAIT_MS;
+    while(Date.now() < deadline){
+      await new Promise(r=> setTimeout(r, 700));
+      await pollValLocalStatus();
+      if(!!valLocalStatus.connected === want) return true;
+    }
+    return false;
+  }
+
+  /* The control renders into every `[data-helper-slot]` on the page rather than owning one fixed
+     pair of buttons, because the helper being down is noticed in three different places: Settings,
+     the ⓘ modal on the Shop Tracker, and the TFT live-lobby card. Sending someone to Settings to
+     switch on the thing the panel in front of them is complaining about is the whole problem this
+     solves.
+
+     Slots are markup-only and carry their own variant:
+       data-helper-mode="start-only"  renders nothing while the helper is up (the Games tab wants a
+                                      way IN, not a Stop button sitting in a game panel's header)
+     Buttons are identified by `data-helper-power`, never by id — three copies of one id is invalid
+     markup and only the first would ever be wired up — so the clicks are delegated from document
+     once, below, instead of listeners being re-attached on every repaint. */
+  function valHelperPowerHtml(mode){
+    const on = !!valLocalStatus.connected;
+    const startOnly = mode === 'start-only';
+    if(startOnly && on) return '';       // nothing to offer: it's already running
+
+    const busy = valHelperBusy;
+    let html = '';
+    if(!on){
+      html += '<button class="btn btn-primary btn-sm" type="button" data-helper-power="start"'
+        + (busy === 'starting' ? ' disabled' : '') + '>▶ Start helper</button>';
+    } else {
+      // Stop needs the token, same as every other write route — without one the button could only
+      // ever come back 401, so say why rather than failing on click
+      const noToken = !state.valorant.localServerToken;
+      html += '<button class="btn btn-ghost btn-sm" type="button" data-helper-power="stop"'
+        + (busy === 'stopping' || noToken ? ' disabled' : '') + '>■ Stop helper</button>';
+    }
+    if(startOnly) return html + valHelperSetupNoteHtml();
+
+    let note = '';
+    if(busy === 'starting') note = 'Starting… (your browser may ask permission)';
+    else if(busy === 'stopping') note = 'Stopping…';
+    else if(on && !state.valorant.localServerToken) note = 'Save the token below to enable Stop.';
+    if(note) html += '<span class="val-peak-note">' + escapeHtml(note) + '</span>';
+    return html + valHelperSetupNoteHtml();
+  }
+
+  /* Shown only after a hand-off that produced no helper. The hint can't tell "the protocol isn't
+     registered" apart from "you dismissed the browser's permission prompt", so it doesn't claim to
+     know which. Held as a flag rather than as a style on one element, so every slot agrees. */
+  function valHelperSetupNoteHtml(){
+    if(!valHelperShowSetupHint) return '';
+    return '<div class="val-peak-note val-helper-setup-note">Nothing started. If your browser didn\'t ask '
+      + 'permission, the <code>p25helper://</code> handler isn\'t registered yet — run '
+      + '<code>node scripts/helper-protocol.mjs register</code> once on this machine, then try again.</div>';
+  }
+
+  function renderValHelperPower(){
+    /* The hand-off can outlast waitForHelper()'s window — a browser permission prompt sits there
+       until it's answered — so a helper that turns up late retracts the hint itself, rather than
+       leaving "nothing started" contradicting the green dot right above it. */
+    if(valLocalStatus.connected) valHelperShowSetupHint = false;
+    // no loopback server is reachable in this mode at all, so offering to switch one on is a lie
+    const unavailable = usingClaudeStorage || !supabaseConfigured;
+    document.querySelectorAll('[data-helper-slot]').forEach(slot=>{
+      if(unavailable){ slot.style.display = 'none'; slot.innerHTML = ''; return; }
+      const html = valHelperPowerHtml(slot.dataset.helperMode || '');
+      // an empty slot must not leave its padding/gap behind in a flex row
+      slot.style.display = html ? '' : 'none';
+      slot.innerHTML = html;
+    });
+  }
+
+  // Delegated once. Slots are rebuilt on every repaint, so per-button listeners would be re-added
+  // (and leak) each time — and the buttons deliberately have no ids to hang them off anyway.
+  document.addEventListener('click', e=>{
+    const btn = e.target.closest('[data-helper-power]');
+    if(!btn || btn.disabled) return;
+    if(btn.dataset.helperPower === 'start') startValHelper();
+    else stopValHelper();
+  });
+
+  async function startValHelper(){
+    if(valHelperBusy) return;
+    valHelperBusy = 'starting';
+    valHelperShowSetupHint = false;
+    renderValHelperPower();
+    /* Hand off through a hidden iframe rather than location.href: an unregistered scheme assigned
+       to location can leave the page sitting on a failed navigation in some browsers, and this is
+       a single-page app that must not be navigated away from. An iframe that fails to load simply
+       does nothing. */
+    const f = document.createElement('iframe');
+    f.style.display = 'none';
+    f.src = VAL_HELPER_PROTOCOL;
+    document.body.appendChild(f);
+    setTimeout(()=>{ try{ f.remove(); }catch(e){} }, 4000);
+
+    const ok = await waitForHelper(true);
+    valHelperBusy = '';
+    valHelperShowSetupHint = !ok;
+    renderValLocalPanel();
+    renderValHelperPower();
+  }
+
+  async function stopValHelper(){
+    if(valHelperBusy) return;
+    valHelperBusy = 'stopping';
+    renderValHelperPower();
+    try{
+      await fetch(valLocalUrl()+'/shutdown', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken })
+      });
+    }catch(e){
+      /* A dropped connection is the EXPECTED outcome here — the server is exiting as it replies,
+         and some browsers surface that as a network error even though the request landed. So this
+         is never treated as a failure; waitForHelper() below is the actual verdict. */
+    }
+    await waitForHelper(false);
+    valHelperBusy = '';
+    renderValLocalPanel();
+    renderValHelperPower();
   }
 
   /* ---- Account switcher: chips, not a dropdown.
@@ -2066,6 +2222,12 @@
 
   function renderValLocalPanel(){
     const chip = el('valLocalStatusBtn'); if(!chip) return;
+    /* Repainted from here, not only from pollValLocalStatus(): the token lives in `state`, which
+       is still loading when this first runs, so a Stop button gated on it would sit wrongly
+       disabled until the 15s status poll came round. Hooking it to the panel's own render means
+       every path that repaints the helper card — load, tab entry, a poll — also fixes the buttons.
+       Safe to call before the unavailable check below: it makes its own. */
+    renderValHelperPower();
     const credsWrap = el('valLocalCredsPanel');
     const unavailable = usingClaudeStorage || !supabaseConfigured;
     chip.style.display = unavailable ? 'none' : 'inline-flex';

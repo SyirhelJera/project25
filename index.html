@@ -548,12 +548,24 @@
 
        Three panes behind one sub-nav (showFitnessSubTab() in js/fitness.js). They are three views
        of one concern rather than three different things, so the choice RESETS to Weight on entry —
-       the Time tab's rule, not the Games tab's: you open this tab to see the trend, and landing
-       on whichever pane you left last would bury it. The log banner sits ABOVE the strip because
+       the Time tab's rule, not the Games tab's: you open this tab to read where you are and to log
+       today, both of which are the first card of the Weight pane, and landing on whichever pane you
+       left last would bury them. The log banner sits ABOVE the strip because
        it is about the day rather than about any one pane, and its "Log now" button switches to
        Weight before focusing the field, which would otherwise be display:none. -->
   <div class="view" id="view-fitness">
-    <div id="fitnessLogBanner" class="fitness-log-banner" style="display:none;"><span>⚠️ You haven't logged your weight today yet.</span><button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button></div>
+    <!-- The nag's mark is inline SVG in the same 24x24 currentColor idiom as the nav icons, not the
+         ⚠️ it used to open with: an emoji is drawn by the platform in its own colours, and this one
+         glyph has to take the banner's, which is the whole of what says "attention" here. -->
+    <div id="fitnessLogBanner" class="fitness-log-banner" role="status" style="display:none;">
+      <svg class="fit-banner-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M12 3.6 21.2 19.5H2.8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+        <path d="M12 9.6v4.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+        <circle cx="12" cy="16.7" r="1.05" fill="currentColor"/>
+      </svg>
+      <span></span>
+      <button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button>
+    </div>
 
     <div class="finance-subnav" id="fitnessSubnav">
       <button class="finance-subnav-btn active" data-fittab="weight" type="button"><span>Weight</span></button>
@@ -561,46 +573,79 @@
       <button class="finance-subnav-btn" data-fittab="calories" type="button"><span>Calories</span></button>
     </div>
 
-    <!-- The trend is the hero: it is the one figure this tab exists to answer, and the calendar
-         under it is where the readings that draw it are entered and corrected. -->
     <div class="fittab" id="fittab-weight">
-    <div class="section-lbl" style="margin-top:22px;">Weight Trend</div>
-    <div class="chart-zoom-row" id="weightChartZoomRow"></div>
+    <!-- THE HERO — the one thing this tab exists to answer, and the action that keeps it true.
+         The tab used to open on a chart: the plot was the largest object on the screen while the
+         figure it is a plot OF (today's weight, and how far that is from the target) existed only
+         as a form field on a different sub-tab. So the reading is the headline now, the goal rail
+         under it turns "74.2" into "how far along", and the log row is folded into the same card —
+         the number and the field that sets it are one thought, and they used to be two sections
+         with a chart between them. Everything variable in here is built by renderFitnessHero(). -->
+    <section class="fit-hero" aria-labelledby="fitHeroLbl">
+      <div class="fit-hero-top">
+        <div class="fit-hero-read">
+          <h2 class="fit-hero-lbl" id="fitHeroLbl">Current weight</h2>
+          <div class="fit-hero-val" id="fitHeroVal">—</div>
+          <div class="fit-hero-as" id="fitHeroAs"></div>
+        </div>
+        <!-- tier + trend, the two qualifiers of the number beside them. Empty until there is
+             something true to put in them, and the container collapses rather than reserving a
+             gap for chips that never arrive. -->
+        <div class="fit-hero-chips" id="fitHeroChips"></div>
+      </div>
+
+      <!-- start -> target, with today's marker on it. Rendered only when both ends are known and
+           differ; a rail from 80 to 80 has no length to read. -->
+      <div class="fit-hero-rail" id="fitHeroRail"></div>
+
+      <!-- This row logs today and only today. It used to carry a date picker, which cost most of
+           the line on a phone to serve the rare case; backfilling and corrections belong to the
+           calendar below, where you can see which days are missing. The two readings still land on
+           two different dates: you weigh in the morning after the day you ate, so the kcal box
+           attributes to the day before by default (state.fitness.kcalOffset) and #wlAddHint spells
+           both dates out rather than leaving that offset implicit. Either field alone is a valid
+           entry — weight-only logging works exactly as it did before calories existed. -->
+      <div class="fit-hero-log">
+        <div class="weight-log-row-add">
+          <!-- the two fields you type into; they stay on one line at every width -->
+          <span class="wl-fields">
+            <input type="number" id="wlWeight" step="0.01" min="0" placeholder="Weight" aria-label="Weight">
+            <input type="number" id="wlKcal" step="10" min="0" placeholder="Calories" aria-label="Calories eaten">
+          </span>
+          <!-- and the two controls that qualify them, which is where the row breaks on a phone -->
+          <span class="wl-when">
+            <select id="wlKcalDay" aria-label="Which day those calories were eaten">
+              <option value="1">yesterday</option>
+              <option value="0">today</option>
+            </select>
+            <button class="btn btn-primary" id="wlAddBtn">Log</button>
+          </span>
+        </div>
+        <div class="wl-add-hint" id="wlAddHint"></div>
+      </div>
+    </section>
+
+    <!-- Section headings are a row, not a lone label: the control that scopes the section (the
+         range chips here, the unit toggle in Calories) belongs beside its title rather than
+         stranded on a line of its own between the heading and the thing it acts on. -->
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Weight trend</h2>
+      <div class="chart-zoom-row" id="weightChartZoomRow"></div>
+    </div>
     <div class="chart-card wt-chart-card">
       <div class="wt-delta" id="weightTrendDelta"></div>
       <div id="weightChartWrap"></div>
       <div class="chart-legend" id="weightChartLegend"></div>
     </div>
 
-    <!-- This row logs today and only today. It used to carry a date picker, which cost most of
-         the line on a phone to serve the rare case; backfilling and corrections belong to the
-         calendar below, where you can see which days are missing. The two readings still land on
-         two different dates: you weigh in the morning after the day you ate, so the kcal box
-         attributes to the day before by default (state.fitness.kcalOffset) and #wlAddHint spells
-         both dates out rather than leaving that offset implicit. Either field alone is a valid
-         entry — weight-only logging works exactly as it did before calories existed. -->
-    <div class="section-lbl" style="margin-top:22px;">Log Weight &amp; Calories</div>
-    <div class="weight-log-row-add">
-      <!-- the three fields you type into; they stay on one line at every width -->
-      <span class="wl-fields">
-        <input type="number" id="wlWeight" step="0.01" min="0" placeholder="Weight" aria-label="Weight">
-        <input type="number" id="wlKcal" step="10" min="0" placeholder="Calories" aria-label="Calories eaten">
-      </span>
-      <!-- and the two controls that qualify them, which is where the row breaks on a phone -->
-      <span class="wl-when">
-        <select id="wlKcalDay" aria-label="Which day those calories were eaten">
-          <option value="1">yesterday</option>
-          <option value="0">today</option>
-        </select>
-        <button class="btn btn-primary" id="wlAddBtn">+ Log</button>
-      </span>
-    </div>
-    <div class="wl-add-hint" id="wlAddHint"></div>
-
     <!-- A month grid rather than a list of rows: the question this section raises is "which days
          am I missing" (the Budget Check below is gated on exactly that), and a gap is invisible
          between two list rows and obvious in a calendar. Clicking a day opens #wcalEditor beneath
          it, which is also how any past date gets filled in. Built by renderWeightCalendar(). -->
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Daily log</h2>
+      <span class="fit-sec-hint">Click a day to fill it in</span>
+    </div>
     <div class="weight-cal">
       <div class="weight-cal-head">
         <button type="button" class="wcal-nav" id="wcalPrev" aria-label="Previous month">‹</button>
@@ -628,18 +673,28 @@
          trip, driveUploadPhoto(); only the file's Drive metadata reaches state, never the bytes.
          Built by renderComparePhotos() in js/fitness.js. -->
     <div id="compareSection">
-      <div class="section-lbl" style="margin-top:4px;">Progress &amp; Goal</div>
+      <!-- Only the progress-photo button lives up here, and it is a real <button> rather than a
+           <label> wrapping the input: a display:none input cannot take focus and a <label> is not
+           a tab stop, so the old control could not be reached from a keyboard at all. The click is
+           forwarded to the input in js/fitness.js. The goal physique is replaced from inside its
+           own maximised view, and picked for the first time by clicking the empty goal card — so
+           that control sits with the thing it acts on rather than beside this one, where the
+           less-used action would be as loud as the daily one. The file inputs stay out here,
+           hidden and stable, because the viewer that triggers them is rebuilt on every open. -->
+      <div class="fit-sec-head">
+        <h2 class="fit-sec-title">Progress &amp; goal</h2>
+        <button type="button" class="btn btn-sm btn-primary fit-photo-btn" id="progressPhotoBtn">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 8.4h3.1L8.7 6h6.6l1.6 2.4H20a1.4 1.4 0 0 1 1.4 1.4v8A1.4 1.4 0 0 1 20 19.2H4a1.4 1.4 0 0 1-1.4-1.4v-8A1.4 1.4 0 0 1 4 8.4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+            <circle cx="12" cy="13.6" r="3.2" stroke="currentColor" stroke-width="1.7"/>
+          </svg>
+          Add photo
+        </button>
+      </div>
       <div class="view-sub" id="comparePhotoUnavailable" style="display:none;">Progress photos need the Supabase-hosted deployment (Edge Functions aren't available in this mode).</div>
       <div class="compare-wrap" id="compareWrap"></div>
-      <!-- Only the progress-photo button lives out here. The goal physique is replaced from
-           inside its own maximised view, and picked for the first time by clicking the empty goal
-           card — so the control sits with the thing it acts on rather than in a row of two buttons
-           where the less-used one was as loud as the daily one. The file input stays here, hidden
-           and stable, because the viewer that triggers it is rebuilt on every open. -->
-      <div class="img-row" id="comparePhotoUploadRow">
-        <label class="ai-btn">📷 Add Progress Photo<input type="file" accept="image/*" id="progressPhotoInput" style="display:none;"></label>
-        <span id="photoStatus" class="fitness-note" style="margin:0;"></span>
-      </div>
+      <div class="fit-photo-status" id="comparePhotoUploadRow"><span id="photoStatus" class="fitness-note"></span></div>
+      <input type="file" accept="image/*" id="progressPhotoInput" style="display:none;">
       <input type="file" accept="image/*" id="dreamPhotoInput" style="display:none;">
     </div>
     </div>
@@ -649,8 +704,10 @@
          the formula below it: average intake over the window, the weight trend across the same
          window, and the maintenance figure those two together imply. Rendered by
          renderCalorieReview() in js/fitness.js. -->
-    <div class="section-lbl" style="margin-top:22px;">Calorie Budget Check</div>
-    <div class="chart-zoom-row" id="kcalRangeRow"></div>
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Budget check</h2>
+      <div class="chart-zoom-row" id="kcalRangeRow"></div>
+    </div>
     <div class="chart-card kcal-card">
       <div class="wt-delta" id="kcalVerdict"></div>
       <div class="kcal-stats" id="kcalStats"></div>
@@ -658,45 +715,73 @@
       <div class="chart-legend" id="kcalChartLegend"></div>
     </div>
 
-    <div class="section-lbl" style="margin-top:22px;">BMI &amp; Calorie Calculator</div>
-    <div class="unit-toggle" id="unitToggle">
-      <button data-unit="kg" id="unitBtnKg">KG</button>
-      <button data-unit="lb" id="unitBtnLb">LB</button>
-    </div>
-
-    <div class="fitness-fields">
-      <div class="fitness-field"><label id="fitCurrentLbl">Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.01"></div>
-      <div class="fitness-field"><label id="fitTargetLbl">Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.01"></div>
-      <div class="fitness-field"><label>Height (cm)</label><input type="number" id="fitHeight" min="0" step="0.1"></div>
-      <div class="fitness-field"><label>Age</label><input type="number" id="fitAge" min="0"></div>
-      <div class="fitness-field"><label>Biological Sex</label><select id="fitSex"><option value="male">Male</option><option value="female">Female</option></select></div>
-      <div class="fitness-field"><label>Activity Level</label>
-        <select id="fitActivity">
-          <option value="1.2">Sedentary (little/no exercise)</option>
-          <option value="1.375">Light (1-3 days/week)</option>
-          <option value="1.55">Moderate (3-5 days/week)</option>
-          <option value="1.725">Active (6-7 days/week)</option>
-          <option value="1.9">Very active (hard exercise daily)</option>
-        </select>
-      </div>
-      <div class="fitness-field"><label id="fitPaceLbl">Target Pace (kg/week)</label>
-        <select id="fitPace">
-          <option value="0.25">0.25</option>
-          <option value="0.5">0.5</option>
-          <option value="0.75">0.75</option>
-          <option value="1">1</option>
-        </select>
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">BMI &amp; calorie calculator</h2>
+      <div class="unit-toggle" id="unitToggle">
+        <button data-unit="kg" id="unitBtnKg">KG</button>
+        <button data-unit="lb" id="unitBtnLb">LB</button>
       </div>
     </div>
 
+    <!-- Two fieldsets rather than one seven-field grid. The old grid was a fixed two columns, so
+         the seventh field sat alone on its own row at every width; more to the point, "how much do
+         you weigh" and "how fast do you want to move" are two different questions and the form
+         never said so. -->
+    <div class="fit-calc">
+      <fieldset class="fit-calc-group">
+        <legend>About you</legend>
+        <div class="fitness-fields">
+          <div class="fitness-field"><label for="fitCurrent" id="fitCurrentLbl">Current Weight (kg)</label><input type="number" id="fitCurrent" min="0" step="0.01"></div>
+          <div class="fitness-field"><label for="fitHeight">Height (cm)</label><input type="number" id="fitHeight" min="0" step="0.1"></div>
+          <div class="fitness-field"><label for="fitAge">Age</label><input type="number" id="fitAge" min="0"></div>
+          <div class="fitness-field"><label for="fitSex">Biological Sex</label><select id="fitSex"><option value="male">Male</option><option value="female">Female</option></select></div>
+        </div>
+      </fieldset>
+      <fieldset class="fit-calc-group">
+        <legend>Your plan</legend>
+        <div class="fitness-fields">
+          <div class="fitness-field"><label for="fitTarget" id="fitTargetLbl">Target Weight (kg)</label><input type="number" id="fitTarget" min="0" step="0.01"></div>
+          <div class="fitness-field"><label for="fitPace" id="fitPaceLbl">Target Pace (kg/week)</label>
+            <select id="fitPace">
+              <option value="0.25">0.25</option>
+              <option value="0.5">0.5</option>
+              <option value="0.75">0.75</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+          <div class="fitness-field fit-field-wide"><label for="fitActivity">Activity Level</label>
+            <select id="fitActivity">
+              <option value="1.2">Sedentary (little/no exercise)</option>
+              <option value="1.375">Light (1-3 days/week)</option>
+              <option value="1.55">Moderate (3-5 days/week)</option>
+              <option value="1.725">Active (6-7 days/week)</option>
+              <option value="1.9">Very active (hard exercise daily)</option>
+            </select>
+          </div>
+        </div>
+      </fieldset>
+    </div>
+
+    <!-- Five identical cards in a fixed five-column row gave the same weight to the answer and to
+         its inputs — "Daily Calorie Target" is what the form is FOR, and BMR is trivia beside it.
+         So the target is one wide card carrying the note that used to sit under the whole block,
+         and the other four are a quieter auto-fitting row underneath. -->
     <div class="fitness-results" id="fitnessResults" style="display:none;">
-      <div class="fitness-result-card"><div class="num" id="fitBMI">—</div><div class="lbl">BMI</div><div class="sub" id="fitBMICat">—</div></div>
-      <div class="fitness-result-card"><div class="num" id="fitBMR">—</div><div class="lbl">BMR (kcal/day)</div></div>
-      <div class="fitness-result-card"><div class="num" id="fitTDEE">—</div><div class="lbl">Maintenance (kcal/day)</div></div>
-      <div class="fitness-result-card"><div class="num" id="fitTarget2">—</div><div class="lbl">Daily Calorie Target</div></div>
-      <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Estimated Weeks</div></div>
+      <div class="fit-res-primary">
+        <div class="lbl">Daily calorie target</div>
+        <div class="num" id="fitTarget2">—</div>
+        <div class="sub" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
+      </div>
+      <div class="fit-res-grid">
+        <div class="fitness-result-card"><div class="num" id="fitBMI">—</div><div class="lbl">BMI</div><div class="sub" id="fitBMICat">—</div></div>
+        <div class="fitness-result-card"><div class="num" id="fitTDEE">—</div><div class="lbl">Maintenance</div><div class="sub">kcal/day</div></div>
+        <div class="fitness-result-card"><div class="num" id="fitBMR">—</div><div class="lbl">BMR</div><div class="sub">kcal/day at rest</div></div>
+        <div class="fitness-result-card"><div class="num" id="fitWeeks">—</div><div class="lbl">Est. weeks</div><div class="sub">to target</div></div>
+      </div>
     </div>
-    <div class="fitness-note" id="fitnessNote">Fill in current weight, height, and age to calculate your calorie targets.</div>
+    <!-- the same sentence, for the state where there is no results block to hang it inside yet.
+         calcFitness() shows exactly one of the two. -->
+    <div class="fitness-note" id="fitnessNoteEmpty">Fill in current weight, height, and age to calculate your calorie targets.</div>
     </div>
   </div>
 
@@ -1035,6 +1120,7 @@
         <div class="tft-lobby-head">
           <div class="tft-lobby-status" id="tftLobbyStatus"><span class="val-local-dot off"></span> Checking for the local helper…</div>
           <div class="tft-lobby-head-right">
+            <div class="val-helper-power is-compact" data-helper-slot data-helper-mode="start-only"></div>
             <label class="val-live-auto"><input type="checkbox" id="tftLobbyAuto" checked> Auto</label>
             <button class="btn btn-sm" id="tftLobbyRefreshBtn" title="Refresh now" aria-label="Refresh lobby now">⟳</button>
           </div>
@@ -1120,6 +1206,7 @@
         <button type="button" class="val-preview-close" id="valLocalInfoCloseBtn" title="Close">✕</button>
       </div>
       <div class="val-local-status" id="valLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+      <div class="val-helper-power" data-helper-slot></div>
       <div class="view-sub">Riot blocks this store check from cloud infrastructure, so it runs on your own machine: <code>node scripts/valorant-local-server.mjs</code>. This tab only reads what it has already saved, so the store, wishlist and owned skins all work with the helper off — what needs it running is <em>fetching</em> new data.</div>
       <div class="view-sub">Check Store Now, Check Owned Skins, Add Account and Delete live in <strong>Settings → Valorant Local Helper</strong>.</div>
     </div>
@@ -1962,6 +2049,14 @@
         <div class="set-card-h">Local helper</div>
         <div class="set-card-sub">Connects to <code>scripts/valorant-local-server.mjs</code> running on this machine so you can trigger a store check, save Riot account sessions, or delete one here instead of the terminal (see README.md). Pick which saved account to act on from the dropdown under the store on the Valorant tab.</div>
         <div class="val-local-status" id="valSettingsLocalStatusTxt"><span class="val-local-dot off"></span> Checking for the local helper…</div>
+        <!-- Start/Stop. Deliberately OUTSIDE #valLocalCredsPanel, which is hidden while the helper
+             is down — the Start button is needed exactly then. The two halves work by completely
+             different mechanisms and only Stop is an ordinary request: Stop calls POST /shutdown on
+             the server itself, while Start hands off to the p25helper:// URL protocol, because once
+             the helper is down there is nothing left for the page to call. That protocol has to be
+             registered once (scripts/helper-protocol.mjs) and the note below appears only when the
+             hand-off produced no helper, which is the one symptom of it not being registered. -->
+        <div class="val-helper-power" data-helper-slot></div>
         <div class="val-local-panel" id="valLocalCredsPanel" style="display:none;">
           <div class="val-toolbar">
             <button class="btn btn-primary btn-sm" id="valLocalCheckBtn" type="button">Check Store Now</button>

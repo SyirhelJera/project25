@@ -239,6 +239,29 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  /* POST /shutdown — stop the helper from the app's own Stop button.
+     Token-gated like every other write route, so a page that merely knows this port is open can't
+     switch it off. Only half of an on/off toggle can live here: turning the helper back ON cannot
+     come through this server, because by then nothing is listening — that path is a registered
+     URL protocol instead (scripts/helper-protocol.mjs).
+
+     The response is sent BEFORE the exit is scheduled, and the exit is deferred a tick, or the
+     socket dies mid-reply and the page reports a network failure for an action that in fact
+     succeeded. server.close() stops new connections and lets in-flight ones drain; the unref'd
+     timer is the backstop for a keep-alive socket the browser is holding open, which would
+     otherwise keep the process alive indefinitely. */
+  if (req.method === 'POST' && url.pathname === '/shutdown') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    sendJson(res, 200, { ok: true, stopping: true }, origin);
+    console.log('Shutdown requested from the app — stopping.');
+    setTimeout(() => {
+      server.close(() => process.exit(0));
+      setTimeout(() => process.exit(0), 1500).unref();
+    }, 50);
+    return;
+  }
+
   if (req.method === 'POST' && url.pathname === '/login') {
     const body = await readJsonBody(req);
     if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }

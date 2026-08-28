@@ -1403,6 +1403,9 @@
   function renderTftLobby(){
     const card = el('tftLobbyCard');
     if(!card) return;
+    // this card's header holds a [data-helper-slot] Start button, so its repaint has to keep that
+    // in step — the helper can go up or down while this pane is the one on screen
+    if(typeof renderValHelperPower === 'function') renderValHelperPower();
     const statusEl = el('tftLobbyStatus');
     const bodyEl = el('tftLobbyBody');
     const errEl = el('tftLobbyErr');
@@ -1429,7 +1432,9 @@
       return;
     }
     if(!valLocalStatus.connected){
-      setIdle('Live lobby — local helper not running (<code>node scripts/valorant-local-server.mjs</code>)', false);
+      // no terminal command recited here: there's a ▶ Start helper button in this card's own
+      // header now (the [data-helper-slot] in .tft-lobby-head-right), so the fix is one click away
+      setIdle('Live lobby — local helper not running', false);
       return;
     }
     if(!state.valorant.localServerToken){

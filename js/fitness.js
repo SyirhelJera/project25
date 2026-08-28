@@ -39,6 +39,29 @@
     return { label:'Fit', color:'var(--success)' };
   }
 
+  /* The weigh-in the latest one is judged against, and the difference between them — one helper
+     because the profile card's arrow and the Fitness hero's trend chip are the same statement in
+     two places, and two copies of this walk would eventually disagree about which reading "since"
+     names. What it compares against is Settings -> Trend Comparison: with a window, the newest
+     weigh-in on or before it (or the oldest, if none reaches back that far); without one, simply
+     the entry before the latest. Returns null when there is nothing to compare. */
+  function fitnessTrendDelta(){
+    const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+    const latest = log[log.length-1];
+    if(!latest) return null;
+    const cutoff = trendCutoffKey();
+    let prev = null;
+    if(cutoff){
+      for(let i=log.length-1; i>=0; i--){ if(log[i].date <= cutoff){ prev = log[i]; break; } }
+      if(!prev && log.length > 1) prev = log[0];
+      if(prev === latest) prev = null; // nothing newer than the window: no change to report
+    } else {
+      prev = log[log.length-2];
+    }
+    if(!prev) return null;
+    return { latest, prev, deltaDisp: roundWeight(kgToDisplay(latest.kg - prev.kg)) };
+  }
+
   // Fitness Level shown on the profile card, plus a weight-direction arrow beside it: losing
   // weight reads as a green ▼ and gaining as a red ▲, regardless of which BMI tier you're in.
   function updateFitnessLevelUI(){
@@ -51,25 +74,13 @@
     const trendEl = el('pfFitnessTrend');
     if(trendEl){
       // Same 0.1-display-unit threshold the per-entry deltas in the weight log use, so tiny scale
-      // noise doesn't show an arrow. What it compares against is Settings -> Trend Comparison:
-      // with a window, the newest weigh-in on or before it (or the oldest, if none reaches back
-      // that far); without one, simply the entry before the latest.
-      const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
-      const latest = log[log.length-1];
-      const cutoff = trendCutoffKey();
-      let prev = null;
-      if(cutoff){
-        for(let i=log.length-1; i>=0; i--){ if(log[i].date <= cutoff){ prev = log[i]; break; } }
-        if(!prev && log.length > 1) prev = log[0];
-        if(prev === latest) prev = null; // nothing newer than the window: no change to report
-      } else {
-        prev = log[log.length-2];
-      }
-      const deltaDisp = (latest && prev) ? roundWeight(kgToDisplay(latest.kg - prev.kg)) : 0;
+      // noise doesn't show an arrow.
+      const t = fitnessTrendDelta();
+      const deltaDisp = t ? t.deltaDisp : 0;
       trendEl.innerHTML = Math.abs(deltaDisp) >= 0.1
         ? trendMarker(deltaDisp > 0 ? 1 : -1, deltaDisp < 0,
             (deltaDisp > 0 ? 'Gained ' : 'Lost ') + Math.abs(deltaDisp) + ' ' + unitLabel()
-            + ' since ' + fmtDate(parseLocalDateStr(prev.date)))
+            + ' since ' + fmtDate(parseLocalDateStr(t.prev.date)))
         : '';
     }
     // after the trend, not before: the Goals board mirrors both the tier and its arrow on phones,
@@ -183,14 +194,19 @@
     const f = state.fitness;
     const cw = parseFloat(f.currentWeight), tw = parseFloat(f.targetWeight), h = parseFloat(f.height);
     const pace = parseFloat(f.pace)||0.5;
-    const resultsEl = el('fitnessResults'), noteEl = el('fitnessNote');
+    // the note now lives INSIDE the primary result card, which is the thing it qualifies — so the
+    // standalone copy below the block is what carries it in the state where there is no card yet,
+    // and exactly one of the two is ever showing
+    const resultsEl = el('fitnessResults'), noteEl = el('fitnessNote'), emptyNoteEl = el('fitnessNoteEmpty');
     updateFitnessLevelUI();
+    renderFitnessHero();
     const bmr = fitnessBmr();
     if(bmr==null){
       resultsEl.style.display='none';
-      noteEl.textContent = 'Fill in current weight, height, and age to calculate your calorie targets.';
+      emptyNoteEl.style.display='';
       return;
     }
+    emptyNoteEl.style.display='none';
     const tdee = fitnessTdee(), target = fitnessCalorieTarget();
     let note = 'Enter a target weight above to get a daily calorie target for reaching it.';
     if(!isNaN(tw) && tw !== cw){
@@ -225,6 +241,99 @@
     el('fitPaceLbl').textContent = 'Target Pace (kg/week)';
     el('unitBtnKg').classList.toggle('active', state.fitness.unit!=='lb');
     el('unitBtnLb').classList.toggle('active', state.fitness.unit==='lb');
+  }
+
+  /* ---- the hero -----------------------------------------------------------------------------
+     The first card of the Weight pane: today's reading, what qualifies it, and how far along the
+     goal it sits. Every figure comes from a helper that already owns it — getFitnessTier() for the
+     band, fitnessTrendDelta() for the arrow — rather than being re-derived here, the same rule the
+     Insights tab follows, so the hero and the profile card can never disagree about the same
+     number.
+
+     The rail is drawn from the FIRST weigh-in to the target, not from some notion of a starting
+     weight typed once: the log is the only record of where this began, and a rail anchored to an
+     editable field would move its own start line every time the calculator was touched. It is
+     skipped entirely when the two ends coincide (or either is missing) — a rail with no length
+     reads as a broken control, and the sentence that replaces it says what to do instead. */
+  function renderFitnessHero(){
+    const valEl = el('fitHeroVal'); if(!valEl) return;
+    const asEl = el('fitHeroAs'), chipsEl = el('fitHeroChips'), railEl = el('fitHeroRail');
+    const u = unitLabel();
+    const log = (state.fitness.weightLog||[]).slice().sort((a,b)=> a.date.localeCompare(b.date));
+    const latest = log[log.length-1] || null;
+    // the log first, the calculator field second: syncCurrentWeightFromLog() keeps them equal, but
+    // the field is what exists before anything has ever been weighed in
+    const curKg = latest ? latest.kg : parseFloat(state.fitness.currentWeight);
+    const haveCur = curKg != null && !isNaN(curKg) && curKg > 0;
+
+    valEl.innerHTML = haveCur
+      ? escapeHtml(String(roundWeight(kgToDisplay(curKg)))) + '<span class="fit-hero-unit">' + escapeHtml(u) + '</span>'
+      // a 40px em dash in the reading's own colour reads as a drawn bar rather than as a blank;
+      // it is a placeholder standing beside a sentence that explains itself, so it recedes
+      : '<span class="fit-hero-none">—</span>';
+
+    const todayStr = localDateStr(new Date());
+    asEl.textContent = !latest ? 'Nothing weighed in yet — the box below starts the log.'
+      : latest.date === todayStr ? 'Weighed in today'
+      : 'Last weighed in ' + fmtDate(parseLocalDateStr(latest.date).getTime());
+
+    /* Two chips at most, and each only when it is true of something: the BMI band, and the change
+       since Settings -> Trend Comparison. The arrow reports which way the weight went and the
+       colour reports whether that was TOWARD the target — cutting and bulking are both progress,
+       so a green ↓ would be wrong half the time — and the chip repeats both in words, so neither
+       channel is carried by colour alone. */
+    const chips = [];
+    const tier = getFitnessTier();
+    // the band's own colour rides on the dot, not on the word: getFitnessTier() hands back the raw
+    // --gold/--success/--danger hues, which sit near 3:1 on a pale card — fine for a mark, short of
+    // AA for a 12.5px label. The label is the second channel, so the meaning survives greyscale.
+    if(tier) chips.push('<span class="fit-chip fit-chip-tier">'
+      + '<span class="fit-chip-dot" style="background:' + tier.color + '"></span>'
+      + escapeHtml(tier.label) + '</span>');
+    const t = fitnessTrendDelta();
+    if(t && Math.abs(t.deltaDisp) >= 0.1){
+      const targetKg = parseFloat(state.fitness.targetWeight);
+      let tone = 'neutral';
+      if(!isNaN(targetKg) && targetKg > 0){
+        tone = Math.abs(t.latest.kg - targetKg) < Math.abs(t.prev.kg - targetKg) ? 'good' : 'bad';
+      }
+      chips.push('<span class="fit-chip fit-chip-' + tone + '">'
+        + (t.deltaDisp > 0 ? '↑' : '↓') + ' ' + escapeHtml(Math.abs(t.deltaDisp) + ' ' + u)
+        + '<span class="fit-chip-since">since ' + escapeHtml(fmtDate(parseLocalDateStr(t.prev.date).getTime())) + '</span>'
+        + '</span>');
+    }
+    chipsEl.innerHTML = chips.join('');
+
+    const targetKg = parseFloat(state.fitness.targetWeight);
+    const startKg = log.length ? log[0].kg : NaN;
+    const canRail = haveCur && !isNaN(targetKg) && targetKg > 0 && !isNaN(startKg)
+      && Math.abs(targetKg - startKg) > 0.05;
+    if(!canRail){
+      railEl.innerHTML = '<p class="fit-rail-none">'
+        + (isNaN(targetKg) || targetKg <= 0
+            ? 'Set a target weight under <b>Calories</b> to track how far along you are.'
+            : escapeHtml('Target ' + roundWeight(kgToDisplay(targetKg)) + ' ' + u
+              + (haveCur ? ' · ' + roundDisp(Math.abs(kgToDisplay(curKg - targetKg))) + ' ' + u + ' to go' : '')))
+        + '</p>';
+      return;
+    }
+    const frac = Math.min(1, Math.max(0, (curKg - startKg) / (targetKg - startKg)));
+    const pct = Math.round(frac * 100);
+    const gap = Math.abs(kgToDisplay(curKg - targetKg));
+    const done = gap < 0.05;
+    const gapTxt = done ? 'Target reached' : roundDisp(gap) + ' ' + u + ' to go';
+    railEl.innerHTML =
+      '<div class="fit-rail-track' + (done ? ' done' : '') + '" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+      + ' aria-valuenow="' + pct + '" aria-label="Progress toward target weight"'
+      + ' aria-valuetext="' + escapeHtml(pct + '% of the way — ' + gapTxt) + '">'
+      + '<span class="fit-rail-fill" style="width:' + pct + '%"></span>'
+      + '<span class="fit-rail-dot" style="left:' + pct + '%"></span>'
+      + '</div>'
+      + '<div class="fit-rail-ends">'
+      +   '<span class="fit-rail-end">' + escapeHtml(roundDisp(kgToDisplay(startKg)) + ' ' + u) + '<i>start</i></span>'
+      +   '<span class="fit-rail-gap' + (done ? ' done' : '') + '">' + escapeHtml(gapTxt) + '</span>'
+      +   '<span class="fit-rail-end to">' + escapeHtml(roundDisp(kgToDisplay(targetKg)) + ' ' + u) + '<i>target</i></span>'
+      + '</div>';
   }
 
   function renderFitness(){
@@ -998,6 +1107,11 @@
     e.target.value = ''; // allow re-selecting the same file consecutively
     if(file) uploadProgressPhoto(file);
   });
+  /* A real <button> forwarding to the hidden input, not a <label> wrapping it. The input has to
+     stay display:none (a file input draws its own control and its own filename), and a display:none
+     input cannot take focus while a <label> is not a tab stop — so the old pairing left the only
+     way to add a photo unreachable from a keyboard entirely. */
+  el('progressPhotoBtn').addEventListener('click', ()=> el('progressPhotoInput').click());
 
   // The goal physique is a single photo rather than a list — it is the one thing you are aiming
   // at, and a carousel of aspirations is a different feature. Uploading again replaces it.
@@ -1053,7 +1167,8 @@
        carousel gone this is the only place photos appear, so a silent disappearance would read as
        lost data rather than as a mode without Edge Functions. */
     el('comparePhotoUnavailable').style.display = unavailable ? 'block' : 'none';
-    el('comparePhotoUploadRow').style.display = unavailable ? 'none' : 'flex';
+    el('progressPhotoBtn').style.display = unavailable ? 'none' : '';
+    el('comparePhotoUploadRow').style.display = unavailable ? 'none' : '';
     el('compareWrap').style.display = unavailable ? 'none' : '';
     if(unavailable) return;
 
@@ -1179,7 +1294,7 @@
     const banner = el('fitnessLogBanner');
     banner.style.display = missing.length ? 'flex' : 'none';
     const txt = banner.querySelector('span');
-    if(txt) txt.textContent = '⚠️ You haven\u2019t logged ' + missing.join(' or ') + ' yet.';
+    if(txt) txt.textContent = 'You haven\u2019t logged ' + missing.join(' or ') + ' yet.';
     el('fitnessLogBadge').style.display = missing.length ? 'inline-flex' : 'none';
   }
 

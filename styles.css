@@ -1163,11 +1163,8 @@
 
   /* the progress-photo carousel that used to live here is gone: the goal comparison shows the
      same records and owns adding, stepping through and removing them (see .compare-* below) */
-  /* the carousel's horizontal scrollbar sits in that padding-bottom, so the upload button below
-     needs its own gap or the two end up touching */
-  /* one button now, so it sits centred rather than hanging off the left edge under a two-column
-     grid; the status line follows it and wraps underneath on a narrow screen */
-  #comparePhotoUploadRow{margin-top:16px;justify-content:center;text-align:center;}
+  /* The Add-photo button moved up into the section head, beside the heading it acts on, so what
+     is left down here is only the upload status sentence — see .fit-photo-status. */
 
   /* ---- goal comparison ----
      Two columns at every width, phones included: side by side *is* the feature, and stacking them
@@ -1179,7 +1176,11 @@
   .compare-side.goal{border-color:var(--violet);}
   /* a button when there is a photo behind it, a plain box when there isn't — hence the reset of
      the button chrome here rather than a separate class */
-  .compare-img{position:relative;aspect-ratio:3/4;background:var(--bg);display:flex;align-items:center;
+  /* 3:4 is the shape a phone photo comes in, but on a desktop column that is a 560px-tall box
+     per side — and two of them empty is most of a screen of nothing. The cap clamps the height
+     only; the images are object-fit:contain, so a portrait shot letterboxes inside it rather
+     than being cropped, which is the one thing this comparison must never do. */
+  .compare-img{position:relative;aspect-ratio:3/4;max-height:min(58vh,440px);background:var(--bg);display:flex;align-items:center;
     justify-content:center;overflow:hidden;width:100%;padding:0;border:none;font:inherit;color:inherit;}
   button.compare-img{cursor:zoom-in;}
   .compare-zoom{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:6px;
@@ -2761,6 +2762,98 @@
   .job-account-mini-btn{background:none;border:none;color:var(--violet-dark);cursor:pointer;font-size:10.5px;font-weight:700;padding:0;}
   .job-account-mini-btn:hover{text-decoration:underline;}
 
+  /* ================= FITNESS =================
+     Hierarchy for the tab, decided once and then held to: ONE reading is the headline (today's
+     weight, in the hero), one accent carries the primary action (violet: the Log button, the goal
+     rail's fill, the calorie-target card), and every other figure steps down to a quiet stat card.
+     The tab used to open on a chart with every section introduced by the same 10.5px --faint
+     label — which is 1.9:1 on --bg and so was not really readable text at all. */
+
+  /* Section head: the title and whatever control scopes that section, on one line. Replaces a
+     bare .section-lbl followed by a loose row of chips, which read as two unrelated things and
+     put a full line of nothing between a heading and the thing it heads. --muted, not --faint:
+     see above. */
+  .fit-sec-head{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;
+    flex-wrap:wrap;margin:26px 0 9px;}
+  .fit-sec-head:first-child{margin-top:0;}
+  .fit-sec-title{font-size:11.5px;text-transform:uppercase;letter-spacing:0.7px;color:var(--muted);
+    font-weight:800;margin:0;font-family:'Inter',sans-serif;}
+  .fit-sec-hint{font-size:11px;color:var(--muted);}
+  /* the controls hand their own outer margin back to the row that now positions them */
+  .fit-sec-head .chart-zoom-row,.fit-sec-head .unit-toggle{margin:0;}
+
+  /* ---- the hero -------------------------------------------------------------------------
+     One card holding the reading, what qualifies it, how far along it is, and the row that
+     updates it. The divider is inside the card rather than between two cards because the number
+     and the field that sets it are one thought — they used to be two sections with a chart in
+     between. Size does the hierarchy work here: the reading is ~3x the next-largest type on the
+     screen, so nothing else has to be coloured or boxed to stay out of its way. */
+  .fit-hero{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+    padding:18px 20px 0;margin-bottom:4px;}
+  .fit-hero-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px 16px;flex-wrap:wrap;}
+  .fit-hero-read{min-width:0;}
+  .fit-hero-lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted);
+    font-weight:800;margin:0 0 2px;font-family:'Inter',sans-serif;}
+  .fit-hero-val{font-family:'Manrope',sans-serif;font-size:40px;font-weight:800;color:var(--text);
+    line-height:1.05;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;}
+  .fit-hero-unit{font-size:16px;font-weight:700;color:var(--muted);margin-left:6px;letter-spacing:0;}
+  .fit-hero-none{color:var(--muted);font-weight:700;}
+  .fit-hero-as{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;}
+  .fit-hero-chips{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .fit-hero-chips:empty{display:none;}
+
+  /* Chips: the BMI band and the change since Settings -> Trend Comparison. The trend chip reuses
+     the weight chart's own headline palette (--wt-pos / --wt-neg on the pale washes) so the two
+     "am I on track" statements on this tab speak in one colour language. */
+  .fit-chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 12px;
+    font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1.3;}
+  .fit-chip-since{font-size:10.5px;font-weight:600;}
+  .fit-chip-tier{background:var(--surface-alt);color:var(--text);}
+  /* The band's own colour rides on a dot, not on the text: getFitnessTier() hands back --gold /
+     --success / --danger, which are the raw hues and sit near 3:1 on a pale surface — fine for a
+     mark, short of AA for a 12.5px word. The label beside it is the second channel, so nothing
+     here is carried by colour alone. The inset ring gives a pale dot an edge on a pale card. */
+  .fit-chip-dot{width:9px;height:9px;border-radius:50%;flex:none;
+    box-shadow:inset 0 0 0 1px rgba(20,24,45,.22);}
+  .fit-chip-good{background:var(--success-pale);color:var(--wt-pos);}
+  .fit-chip-bad{background:var(--danger-pale);color:var(--wt-neg);}
+  .fit-chip-neutral{background:var(--violet-pale);color:var(--violet-dark);}
+
+  /* the goal rail — start to target with today on it. Rendered only when both ends exist and
+     differ; renderFitnessHero() swaps in a sentence instead when they don't. */
+  .fit-hero-rail{margin-top:16px;}
+  .fit-rail-track{position:relative;height:8px;border-radius:999px;background:var(--surface-alt);}
+  .fit-rail-fill{position:absolute;left:0;top:0;bottom:0;border-radius:999px;background:var(--violet);}
+  .fit-rail-track.done .fit-rail-fill{background:var(--success);}
+  /* the marker is drawn ON the track rather than as the end of the fill, so it stays visible at
+     0% and at 100% — where a fill-end cap would be clipped by the track's own radius */
+  .fit-rail-dot{position:absolute;top:50%;width:15px;height:15px;border-radius:50%;
+    transform:translate(-50%,-50%);background:var(--surface);
+    box-shadow:0 0 0 3px var(--violet),0 1px 3px rgba(16,20,40,.28);}
+  .fit-rail-track.done .fit-rail-dot{box-shadow:0 0 0 3px var(--success),0 1px 3px rgba(16,20,40,.28);}
+  .fit-rail-ends{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-top:9px;}
+  .fit-rail-end{font-size:11.5px;font-weight:700;color:var(--muted);font-variant-numeric:tabular-nums;
+    display:flex;flex-direction:column;gap:1px;min-width:0;}
+  .fit-rail-end.to{text-align:right;}
+  .fit-rail-end i{font-style:normal;font-size:9.5px;font-weight:800;text-transform:uppercase;
+    letter-spacing:.4px;color:var(--muted);}
+  .fit-rail-gap{font-size:12px;font-weight:800;color:var(--text);text-align:center;
+    font-variant-numeric:tabular-nums;}
+  .fit-rail-gap.done{color:var(--wt-pos);}
+  .fit-rail-none{font-size:12px;color:var(--muted);margin:0;line-height:1.55;}
+  .fit-rail-none b{color:var(--text);font-weight:700;}
+
+  /* the log row, divided off inside the same card. The rule is inset from the card's edges rather
+     than run edge to edge, so it reads as a fold in one card and not as two stacked ones. */
+  .fit-hero-log{margin-top:18px;border-top:1px solid var(--border);padding:14px 0 17px;}
+
+  @media(max-width:560px){
+    .fit-hero{padding:15px 15px 0;border-radius:14px;}
+    .fit-hero-val{font-size:32px;}
+    .fit-hero-unit{font-size:14px;}
+    .fit-hero-top{gap:8px;}
+  }
+
   /* fitness */
   .fitness-fields{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:16px;}
   .fitness-field{display:flex;flex-direction:column;gap:5px;min-width:0;}
@@ -2775,23 +2868,96 @@
   .fitness-field input[type="color"]::-webkit-color-swatch{border:none;border-radius:6px;}
   .fitness-field input[type="color"]::-moz-color-swatch{border:none;border-radius:6px;}
   .fitness-field input:focus, .fitness-field select:focus{border-color:var(--violet);}
-  .fitness-results{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-top:6px;}
-  .fitness-result-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:15px 8px;text-align:center;}
-  .fitness-result-card .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--violet-dark);}
-  .fitness-result-card .lbl{font-size:10px;color:var(--muted);margin-top:4px;}
-  .fitness-result-card .sub{font-size:9.5px;color:var(--faint);margin-top:2px;}
+  /* the calculator's two fieldsets. The old form was one fixed two-column grid, so its seventh
+     field sat alone on a row at every width — and it never said that "how much do you weigh" and
+     "how fast do you want to move" are two different questions. fieldset needs min-inline-size
+     reset or its default min-content sizing refuses to let the grid inside it shrink. */
+  .fit-calc{display:grid;gap:12px;margin-bottom:18px;}
+  @media(min-width:820px){ .fit-calc{grid-template-columns:1fr 1fr;align-items:start;} }
+  .fit-calc-group{border:1px solid var(--border);border-radius:14px;background:var(--surface);
+    padding:6px 14px 14px;margin:0;min-inline-size:0;min-width:0;}
+  .fit-calc-group legend{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;
+    font-weight:800;color:var(--muted);padding:0 6px;}
+  /* auto-fit rather than a hard 2: these two groups hold four and three fields and sit side by
+     side above 820px, so a fixed column count is wrong in at least one of the four combinations.
+     140px is the floor at which "Current Weight (kg)" still sets on one line — below it the label
+     wraps, and a two-line label pushes its own input half a row below its neighbours'. */
+  #view-fitness .fitness-fields{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:11px;margin-bottom:0;align-items:end;}
+  #view-fitness .fit-field-wide{grid-column:1/-1;}
+
+  /* One answer, four supporting figures — not five identical boxes. "Daily calorie target" is
+     what the form above is FOR; BMR is trivia beside it, and giving them the same card said they
+     were the same kind of thing. The note that used to sit under the whole block now sits inside
+     the card it describes. */
+  .fitness-results{display:grid;gap:10px;margin-top:6px;}
+  .fit-res-primary{background:var(--violet-pale);border:1px solid var(--violet);border-radius:15px;
+    padding:16px 18px;}
+  .fit-res-primary .lbl{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;
+    font-weight:800;color:var(--violet-dark);}
+  .fit-res-primary .num{font-family:'Manrope',sans-serif;font-size:34px;font-weight:800;
+    color:var(--violet-dark);line-height:1.1;letter-spacing:-0.02em;
+    font-variant-numeric:tabular-nums;margin-top:3px;}
+  .fit-res-primary .sub{font-size:12px;color:var(--text);margin-top:6px;line-height:1.55;}
+  .fit-res-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:9px;}
+  .fitness-result-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 10px;text-align:center;}
+  .fitness-result-card .num{font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
+  .fitness-result-card .lbl{font-size:10px;color:var(--muted);margin-top:4px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.4px;}
+  .fitness-result-card .sub{font-size:10px;color:var(--muted);margin-top:3px;line-height:1.4;}
   .fitness-note{font-size:11.5px;color:var(--muted);margin-top:12px;line-height:1.6;text-align:center;}
+  @media(max-width:560px){
+    .fit-res-primary{padding:14px 15px;}
+    .fit-res-primary .num{font-size:29px;}
+  }
+
+  /* Photos pane: the add control sits in the section head, with the thing it adds to. The status
+     line is a status line — it only ever holds a sentence, so it is left-aligned prose rather than
+     the centred row it used to share with the button. */
+  .fit-photo-btn{display:inline-flex;align-items:center;gap:7px;padding:8px 13px;font-size:12px;}
+  .fit-photo-btn svg{width:16px;height:16px;flex:none;}
+  .fit-photo-status{margin-top:12px;}
+  .fit-photo-status .fitness-note{margin:0;text-align:left;}
+
+  /* Every control in the tab gets a visible ring, the same blanket rule #view-finance and
+     #view-games already use — the inputs here set outline:none and answer focus with a 1px
+     border-colour change, which is not a focus indicator anyone can find. */
+  #view-fitness :is(button,input,select,summary,[tabindex]):focus-visible{
+    outline:2px solid var(--violet);outline-offset:2px;}
+  /* except the photo itself, which fills a card with overflow:hidden — an outset ring on that one
+     is clipped away by the card, so it keeps drawing inside its own edge */
+  #view-fitness button.compare-img:focus-visible{outline-offset:-2px;}
+  /* a ~33px control is a coin toss to hit with a thumb; bumped only under a coarse pointer so the
+     desktop rows keep their density, the same trade the chart range chips already make */
+  @media (pointer:coarse){
+    #view-fitness .btn,#view-fitness .unit-toggle button{min-height:40px;}
+  }
 
   .unit-toggle{display:inline-flex;background:var(--surface-alt);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;margin-bottom:16px;}
   .unit-toggle button{border:none;background:none;color:var(--muted);font-size:12px;font-weight:700;padding:6px 14px;border-radius:7px;cursor:pointer;font-family:'Inter',sans-serif;}
   .unit-toggle button.active{background:var(--violet);color:#fff;}
 
-  .fitness-log-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .fitness-log-banner span{flex:1;font-size:12.5px;color:#3730A3;min-width:200px;}
-  body.dark-mode .fitness-log-banner{background:#252A4A;border-color:#3B4080;color:#C7CCF5;}
-  body.dark-mode .fitness-log-banner span{color:#C7CCF5;}
+  /* The nag reads amber, not violet. It used to be a lavender card with a violet button in it, so
+     the one thing to click was the same colour as the box it sat in and disappeared into it —
+     violet is this tab's accent and belongs to the action, which leaves the warning tones for the
+     warning. Colours are tokens now: the old hardcoded #EEF0FF/#3730A3 pair had a dark override
+     keyed on body.dark-mode, a class nothing in js/ has set since themes moved to
+     body[data-theme], so the banner stayed a pale lavender card on every dark theme. */
+  :root{
+    --fit-warn-wash:rgba(245,165,36,.14);
+    --fit-warn-line:rgba(245,165,36,.45);
+  }
+  body[data-theme="dark"],body[data-theme="ios-dark"],body.dark-mode{
+    --fit-warn-wash:rgba(251,191,36,.13);
+    --fit-warn-line:rgba(251,191,36,.34);
+  }
+  .fitness-log-banner{background:var(--fit-warn-wash);border:1px solid var(--fit-warn-line);
+    border-radius:12px;padding:11px 15px;margin-bottom:16px;display:flex;align-items:center;
+    gap:11px;flex-wrap:wrap;}
+  .fitness-log-banner span{flex:1;font-size:12.5px;font-weight:600;color:var(--wt-gold-text);min-width:180px;line-height:1.5;}
+  .fit-banner-icon{flex:none;width:19px;height:19px;color:var(--wt-gold-text);}
 
-  .weight-log-row-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:stretch;}
+  .weight-log-row-add{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:0;align-items:stretch;}
   /* Two groups, not five loose children: on a phone the row has to break somewhere, and this makes
      it break between "what I'm entering" and "which day / go" rather than wherever the widths
      happen to run out — which is what used to leave the date on one line and the weight on another. */
@@ -2832,17 +2998,19 @@
        and the button underneath. It was there for the date picker, which is gone. */
     .wl-fields{flex:1 1 auto;gap:6px;}
     .wl-fields > *{min-width:0;}
-    /* With the date picker gone the whole row fits one line on a phone: the two number fields take
-       what is left after the day selector and the button, both of which are content-sized. The
-       wrap stays enabled as a fallback rather than a plan — an overflowing row is worse than a
-       wrapped one if a locale renders the selector wider than expected. */
+    /* Inside the hero card the row has ~30px less to work with than it did as a bare section, so
+       on a phone it takes two lines rather than one — and the two groups are exactly where it
+       should break: what you are entering, then which day and go. Given that it breaks, the
+       second line is spent making Log a full-width primary target instead of a 55px one. */
     .wl-fields > input[type=number]{flex:1 1 0;width:auto;font-size:12px;padding:10px 6px;}
-    .wl-when{flex:0 1 auto;min-width:0;}
+    .wl-when{flex:1 1 100%;min-width:0;}
     .wl-when select{flex:0 1 auto;min-width:0;font-size:11px;padding:10px 5px;}
-    .wl-when .btn{flex:0 0 auto;padding-left:11px;padding-right:11px;}
+    .wl-when .btn{flex:1 1 auto;padding-left:11px;padding-right:11px;}
   }
-  .wl-add-hint{font-size:11px;color:var(--faint);margin:-4px 0 12px;line-height:1.6;}
-  .wl-add-hint b{color:var(--muted);font-weight:700;}
+  /* --muted, not --faint: --faint is 1.9:1 on the card behind it, which is not readable text —
+     and this line is the only place the calorie day-offset is stated at all */
+  .wl-add-hint{font-size:11px;color:var(--muted);margin:9px 0 0;line-height:1.6;}
+  .wl-add-hint b{color:var(--text);font-weight:700;}
   /* ---- the weight/calorie log, as a month calendar ----
      Cells are buttons: the whole grid is one tab stop per day, and clicking opens the day editor
      under it. Weight is the loud figure, calories the quiet one, and an unlogged past day carries
@@ -2970,7 +3138,11 @@
   .kcal-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:9px;margin-bottom:12px;}
   .kcal-stats:empty{display:none;}
   .kcal-stat{background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;padding:10px 10px;text-align:center;min-width:0;}
-  .kcal-stat .num{font-family:'Manrope',sans-serif;font-size:17px;font-weight:800;color:var(--violet-dark);font-variant-numeric:tabular-nums;}
+  /* --text, not violet. Violet is this tab's accent and now carries the Log button, the goal
+     rail and the one calorie-target card — four violet figures in a supporting stat row spend
+     it on things that are not the answer, and .pos/.neg below stop meaning anything against a
+     coloured baseline. Same reason .fitness-result-card .num reads --text. */
+  .kcal-stat .num{font-family:'Manrope',sans-serif;font-size:17px;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;}
   .kcal-stat .num.pos{color:var(--wt-pos);}
   .kcal-stat .num.neg{color:var(--wt-neg);}
   .kcal-stat .lbl{font-size:9.5px;color:var(--muted);margin-top:3px;text-transform:uppercase;letter-spacing:.4px;font-weight:700;}
@@ -4324,6 +4496,15 @@
   #tftLogList .wl-delta.down{color:var(--danger);background:#FEECEC;}
   body[data-theme="dark"] #tftLogList .wl-delta.down,
   body[data-theme="ios-dark"] #tftLogList .wl-delta.down{background:#3A1E1E;}
+  /* Start/Stop for the local helper (Settings -> Local helper). Sits above the panel that hides
+     itself when the helper is down, since Start is needed exactly then. */
+  .val-helper-power{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:8px 0 4px;}
+  .val-helper-power .val-peak-note{margin:0;}
+  /* the hint is a full line under the buttons, not a third item beside them */
+  .val-helper-setup-note{flex:1 1 100%;line-height:1.5;}
+  /* inside the TFT lobby card's header strip, which is already a tight row */
+  .val-helper-power.is-compact{margin:0;gap:6px;}
+
   /* ---- live lobby (renderTftLobby() in js/tft.js) ----
      Deliberately built from .tft-* rather than reusing .val-live-*: that vocabulary is two facing
      teams with agent portraits, and this is one flat list of eight strangers keyed on rank crests.
@@ -4464,7 +4645,9 @@
 
   @media (max-width:720px){
     .fitness-fields{grid-template-columns:repeat(2,1fr);}
-    .fitness-results{grid-template-columns:repeat(2,1fr);}
+    /* .fitness-results is no longer a row of equal cards to be re-columned here — it is one wide
+       answer stacked over an auto-fitting row of supporting figures, and both halves size
+       themselves. A column count set here put the target card beside the stats. */
     .val-tracker-card{padding:14px;}
     /* auto-fit, not auto-fill: with four daily offers in a five-track row, auto-fill leaves the
        fifth track standing empty on the right — auto-fit collapses it so the tiles use the row */

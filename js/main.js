@@ -13,6 +13,10 @@
     // no-op unless something starts within the lead time; fires once per page load, and its fetch
     // is async so it never delays first paint or hideLoadScreen()
     maybeShowCalendarBubble();
+    // logs this visit's device and (asynchronously) its rough location — see js/access.js. Same
+    // fires-once-per-page-load slot as the bubble above: its own guard makes the second call a
+    // no-op, so a backup restore re-rendering everything can't log the same session twice.
+    recordAppAccess();
     renderInsights(); // no-op unless the Insights tab is the one on screen (see its guard)
   }
 

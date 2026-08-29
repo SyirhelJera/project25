@@ -21,7 +21,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 | **Mantras** | Short phrases; one is shown (rerollable) on the Goals page each day. |
 | **Board** | A personal board of advisers — a roster of AI personas (Truth-Teller, Pragmatist, Visionary, Health Anchor, Outsider, plus eight more to hire and any number you write yourself), a prompt maker that turns a decision into one block of markdown, and a log of past consults with the answer pasted back. Nothing here calls a model: it builds the prompt and hands it to whichever AI tool you already use. See "Board of Advisers" below. |
 | **Insights** | The one cross-tracker view — every other tab answers "how is *this* going", this one answers "how am I doing". Four sections of summary cards: *Today* (level/XP, habits done, dailies done, and a "needs you" count), *Trends* (net worth, weight, habit consistency and daily activity, each a headline figure with a ▲▼ delta and a 90-day sparkline), *Pipelines* (goal completion, money goals/debts/subscriptions, the job funnel, the next countdowns) and *Games* (Valorant RR — with a chip row to pick which tracked account the card reads, defaulting to whichever one the Valorant tab has selected — and TFT LP with progress toward your goal rank). Every card is a doorway: it summarises, then links into the tab that owns the data, where the real chart lives. Nothing here is a new number — each figure is read through the owning tab's own helper, so the two can never disagree. Read-only; it never writes to `state`. |
-| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks, and rings those days on the habit calendars and the Goals heat map in a configurable color), and backup restore. |
+| **Settings** | Theme (light/dark/iOS light/iOS dark), avatar visibility, net worth display currency, protected days (vacation/sick/event — exempts Habits streaks and Checklists miss-streaks, and rings those days on the habit calendars and the Goals heat map in a configurable color), backup restore, and the **access log** — every device this dashboard has been opened on and roughly where from. See "Access log" below. |
 
 **Gamification layer:** completing goals and checklist items earns XP (weighted by goal tier) that drives a level shown on the profile card; the profile also shows a hand-drawn SVG avatar whose hair/build reflects age, chest emblem reflects level, and outfit/crown reflects net worth. Net worth = a manually-entered figure + everything tracked in Finance. The Net Worth and Fitness Level rows each carry a ▲/▼ trend marker (`trendMarker()` in `js/core.js`) — net worth against the newest `netWorthHistory` point from an earlier day, fitness against the previous `weightLog` entry. Arrow direction and color are independent: rising net worth is a green ▲, but rising weight is a red ▲ and losing weight a green ▼.
 
@@ -31,7 +31,7 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 
 ```
 core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
-countdowns.js → settings.js → backups.js → mantras.js → motivation.js → music.js →
+countdowns.js → settings.js → backups.js → access.js → mantras.js → motivation.js → music.js →
 checklists.js → notes.js → scratch.js → finance.js → wishlist.js → jobs.js → fitness.js →
 valorant.js → clock.js → calendar.js → tft.js → board.js → insights.js → main.js
 ```
@@ -45,7 +45,7 @@ All modules share one global `state` object (defined in `core.js`) and a handful
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
 - **`main.js`** — `renderAll()`, theme switching, kicks off `load()`.
 - **`nav.js`** — tab switching, mobile sticky-header shrink, hold-and-drag tab switcher.
-- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `scratch.js`, `countdowns.js`, `calendar.js`, `mantras.js`, `backups.js`, `settings.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
+- One file per feature area (`goals.js`, `habits.js`, `finance.js`, `fitness.js`, `valorant.js`, `tft.js`, `checklists.js`, `notes.js`, `scratch.js`, `countdowns.js`, `calendar.js`, `mantras.js`, `backups.js`, `settings.js`, `access.js`, `protecteddays.js`) — each owns its own render function (e.g. `renderGoals()`) and wires its own DOM event listeners directly (no central router/dispatcher).
 - **`insights.js`** — the Insights tab, and the one file that reads across all the others. It loads last for that reason. Read-only: it never mutates `state` and never calls `save()`.
 - **`sw.js`** — service worker; precaches the app shell for offline use (see PWA section).
 
@@ -858,6 +858,22 @@ That is a deliberate choice rather than a missing feature. The app already has o
 
 Consults ride in the shared `app_data` row, which is why they are capped at 25 rather than kept forever — every save re-uploads that blob whole, and a consult carries a full prompt plus a pasted answer. The cap is `BOARD_SESSION_CAP` in `js/core.js` and is enforced both when saving and when loading.
 
+### Access log
+
+Settings → Data → **Access log**: every device this dashboard has been opened on, and roughly where from. It exists because this app's data row is **unauthenticated** — anyone with the link can read and write it (see "Persistence — two modes, no auth") — so "has anyone but me opened this?" previously had no answer at all. Everything lives in `js/access.js`; the log itself is `state.access.log` in the shared row.
+
+**Sessions, not page loads.** A reload, a restored tab, or a PWA relaunch an hour later is the same sitting, so an open matching the newest entry's device *and* network within six hours bumps that entry's `lastAt`/`visits` instead of appending. Without that the list is a wall of identical rows and the one genuinely new device is invisible in it. The newest 100 sessions are kept — the log rides the shared blob, which is re-uploaded in full on every save from every tab, so the cap is load-bearing rather than cosmetic.
+
+**A bump usually costs no write.** Recording an access is the only write in this app that happens without the user doing anything, and the shared row uses optimistic-concurrency conflict detection — so a phone opening the app while the laptop has it open would hand the laptop a conflict banner it did nothing to earn. Only a genuinely new entry, or a bump more than five minutes after the last one, saves; anything smaller stays in memory and rides the next ordinary save.
+
+**Location is IP-level, never GPS.** The browser Geolocation API is deliberately unused: it prompts, and a permission dialog on every app open to fill in a log nobody asked to see is a worse trade than a coarser answer. The lookup goes to `ipwho.is`, falling back to `ipapi.co` then `get.geojs.io` — all keyless with permissive CORS, so the browser calls them directly, the same reasoning that lets the TFT sync call MetaTFT with no Edge Function in between. Their hosts must stay in `sw.js`'s `LIVE_DATA_HOSTS`: the service worker's cross-origin branch is cache-first, and a cached lookup would pin the answer to whatever network the app was first opened on and have every later session claim that place. A failed lookup (offline, blocked by an ad blocker, over the free tier's daily cap) still logs the device — the row just reads "Location unavailable".
+
+**Same device, new network is a new row.** The location arrives after the device half has already been recorded, so if it comes back with a different IP than the entry that was just bumped, the bump is handed back and a row of its own is started. That is what makes the log answer "where", rather than showing one merged row per device.
+
+**Two switches and a Clear, because this stores your own IP** in that same unauthenticated row. *Logging off* stops recording entirely; *Device only* keeps the device history and never contacts the lookup service at all. Both default to on for data saved before the feature existed, since a log with nothing in it has nothing to show.
+
+Device identification prefers `navigator.userAgentData` where it exists — it names Edge, Opera and Brave properly, which UA-string sniffing cannot, since every Chromium browser puts "Chrome" in its UA — and falls back to ordered UA regexes for Safari and Firefox. An iPad reports the Macintosh UA verbatim, so `maxTouchPoints` is the only thing separating the two and is checked first. The browser *version* is deliberately left out of the fingerprint that merges sessions: a background update mid-session must not split one sitting into two rows.
+
 ### External APIs used
 
 | API | Used for | Auth |
@@ -867,6 +883,7 @@ Consults ride in the shared `app_data` row, which is why they are capped at 25 r
 | Community Dragon (`raw.communitydragon.org`) | TFT rank crest art | No key. Immutable, so cached offline by `sw.js` |
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, accessory-shop item names & art (sprays/buddies/player cards/titles), weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
+| ipwho.is, ipapi.co, get.geojs.io | City-level location for the Settings access log (whichever answers first) | No key. Permissive CORS, called straight from the browser |
 | Pinterest RSS (`pinterest.com/<user>/feed.rss` + each `/<user>/<board>.rss`, via the `pinterest-feed` function) | The daily 25 random pins in a Motivation "Pinterest collection" | None (public profile + board feeds) |
 | Pinterest pin pages + `v*.pinimg.com` (via the `pinterest-feed` function's `resolve` action) | Finding which of the 25 picked pins are videos, and their mp4 URL — the clip itself then streams from the CDN to the browser, not through the function | None (public pin pages) |
 | Anthropic API (via `suggest-subtasks` function) | Goal subtask suggestions | Server-side secret only |
@@ -880,7 +897,7 @@ Consults ride in the shared `app_data` row, which is why they are capped at 25 r
 
 ### PWA / offline
 
-`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, `valorant-api.com`, YouTube (`youtube.com`/`ytimg.com`, the session-music player), or `127.0.0.1`/`localhost` (the Valorant Local Helper) requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state). The loopback entry matters more than it looks: the helper's `GET /status` heartbeat is cross-origin, so without it the connection dot could keep reporting "connected" against a server that had already been stopped.
+`manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, `valorant-api.com`, YouTube (`youtube.com`/`ytimg.com`, the session-music player), the IP-geolocation hosts behind the access log (`ipwho.is`/`ipapi.co`/`get.geojs.io`), or `127.0.0.1`/`localhost` (the Valorant Local Helper) requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state). The loopback entry matters more than it looks: the helper's `GET /status` heartbeat is cross-origin, so without it the connection dot could keep reporting "connected" against a server that had already been stopped.
 
 ## Setup
 
@@ -962,6 +979,7 @@ js/
   goals.js / habits.js / finance.js / fitness.js / valorant.js / motivation.js /
   checklists.js / notes.js / countdowns.js / mantras.js / backups.js / settings.js
   insights.js
+  access.js                         Settings → Data → Access log: records this visit's device + rough location, renders the list
                                      one file per feature tab
 supabase/functions/
   manage-backups/                   list/restore daily backups

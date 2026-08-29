@@ -188,6 +188,10 @@
   function renderSettings(){
     applyTheme();
     renderTabOrderSettings();
+    // Settings → Data → Access log (js/access.js). It owns its own wiring and rendering, the way
+    // renderValLocalPanel() and renderProtectedDays() do — this is just the entry hook.
+    initAccessSettings();
+    renderAccessLog();
 
     const tabIconVisToggle = el('tabIconVisToggle');
     if(tabIconVisToggle && !tabIconVisToggle.dataset.wired){

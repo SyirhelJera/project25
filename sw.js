@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v50';
+const SHELL_CACHE = 'p25-shell-v51';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -27,6 +27,7 @@ const SHELL_ASSETS = [
   './js/countdowns.js',
   './js/settings.js',
   './js/backups.js',
+  './js/access.js',
   './js/mantras.js',
   './js/motivation.js',
   './js/music.js',
@@ -87,8 +88,11 @@ self.addEventListener('fetch', (event) => {
   // live rank data that changes every game, so it must never come back from cache. Note this is
   // only the API host — raw.communitydragon.org (the TFT rank crests) is deliberately NOT listed,
   // since those are immutable art and are worth caching for offline.
+  // The access log's IP-geolocation lookups (js/access.js). Listed for a sharper reason than the
+  // rest: the cross-origin branch below is cache-FIRST, so a cached lookup would pin the answer to
+  // whatever network the app was first opened on and every later session would claim that place.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
-    'api.metatft.com',
+    'api.metatft.com', 'ipwho.is', 'ipapi.co', 'get.geojs.io',
     'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
     '127.0.0.1', 'localhost'];
   if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;

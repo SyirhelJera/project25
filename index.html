@@ -2164,6 +2164,39 @@
         <div id="backupList" class="set-list"></div>
         <div id="restoreSlot"></div>
       </div>
+
+      <!-- ACCESS LOG — every device and place this dashboard has been opened from. Under Data
+           rather than Appearance because it answers a question about the data: this app's row is
+           unauthenticated (js/persistence.js), so "has anyone but me opened this?" had no answer
+           before. Rendering, recording and wiring all live in js/access.js; the two toggles are
+           real controls rather than decoration, since the log stores the user's own IP in that
+           same shared row — see the header comment there for the full reasoning. -->
+      <div class="set-card" id="accessCard">
+        <div class="set-card-h">Access log</div>
+        <div class="set-card-sub">Every device this dashboard has been opened on, and roughly where from. Location is worked out from the network address (city-level, never GPS) by a public lookup service — the app never asks for your location. Repeat visits from the same device and network within six hours count as one session. The most recent 100 are kept, and they're stored in the same shared data as everything else in the app.</div>
+        <div class="unit-toggle" id="accessToggle">
+          <button data-access="on" type="button">Logging on</button>
+          <button data-access="off" type="button">Logging off</button>
+        </div>
+        <!-- the divider lives INSIDE the row, so switching logging off takes the rule with it
+             rather than leaving a line above nothing -->
+        <div id="accessGeoRow">
+          <div class="set-divider"></div>
+          <div class="set-sub-h">Location lookup</div>
+          <div class="set-card-sub">Off keeps the device history and stops the app contacting the lookup service at all.</div>
+          <div class="unit-toggle" id="accessGeoToggle">
+            <button data-accessgeo="on" type="button">Look up location</button>
+            <button data-accessgeo="off" type="button">Device only</button>
+          </div>
+        </div>
+        <div class="acc-summary" id="accessSummary" style="display:none;"></div>
+        <div id="accessList" class="set-list"></div>
+        <div class="empty set-list" id="accessEmpty" style="display:none;">Nothing logged yet — this session will appear here.</div>
+        <div class="set-inline-row acc-actions">
+          <button class="btn btn-ghost btn-sm" id="accessMoreBtn" type="button" style="display:none;">Show all</button>
+          <button class="btn btn-ghost btn-sm" id="accessClearBtn" type="button" style="display:none;">Clear history</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2437,6 +2470,7 @@
 <script src="js/countdowns.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/backups.js"></script>
+<script src="js/access.js"></script>
 <script src="js/mantras.js"></script>
 <script src="js/motivation.js"></script>
 <script src="js/music.js"></script>

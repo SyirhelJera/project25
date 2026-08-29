@@ -138,6 +138,10 @@
     // the color protected days are ringed in — on the habit week/month calendars AND on the goals
     // heat map, so it's a top-level key rather than part of mosaicColors. Empty = the theme's violet.
     protectedDayColor: '',
+    // where and on what this dashboard has been opened (Settings → Data, js/access.js). Rides the
+    // shared row like everything else here, so the log is capped at ACCESS_LOG_CAP entries; `geo`
+    // off keeps the device history while never contacting the IP-location service.
+    access: { enabled: true, geo: true, log: [] },  // log: { id, firstAt, lastAt, visits, fp, device, net }
     // hierarchical outliner notes (Notes tab, js/notes.js) — a FLAT list: nesting is expressed
     // by parentId (null = top level) and sibling order is this array's own order, so a move is a
     // splice plus one field write, and a whole subtree follows its parent for free (the children

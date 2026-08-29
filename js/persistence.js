@@ -497,6 +497,14 @@
       if(p.endDate === undefined) p.endDate = p.startDate;
     });
     state.protectedDayColor = parsed.protectedDayColor || '';
+    /* Access log (Settings → Data, js/access.js). Both switches default to ON for saved data that
+       predates the feature: the log is what makes an unauthenticated shared row auditable, so the
+       useful default is the one that has something to show. `!== false` rather than a truthiness
+       test, so an explicit off survives a reload. */
+    state.access = parsed.access || { enabled:true, geo:true, log:[] };
+    if(!Array.isArray(state.access.log)) state.access.log = [];
+    state.access.enabled = state.access.enabled !== false;
+    state.access.geo = state.access.geo !== false;
     /* Board of Advisers (js/board.js). The seed is keyed off the whole `board` object being
        ABSENT, never off advisers being empty — firing every adviser is a thing you're allowed to
        do, and re-seeding the five defaults on the next reload would silently undo it. */

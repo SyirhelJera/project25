@@ -2671,11 +2671,25 @@
     flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;overflow-y:clip;
     -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
   .finance-subnav::-webkit-scrollbar{display:none;}
-  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);border-bottom:none;color:var(--muted);border-radius:10px 10px 0 0;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:var(--tab-h);margin-bottom:1px;transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
-  .finance-subnav-btn:hover{color:var(--text);border-color:var(--violet);}
+  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);border-bottom:none;color:var(--muted);border-radius:10px 10px 0 0;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:var(--tab-h);margin-bottom:1px;transition:none;}
+  /* The easing lives on :hover and nowhere else. Selecting a tab is a DISCRETE change and has to
+     land in one frame: with the fade on the base rule it ran in both directions at once, so for
+     140ms after a click the tab you left was still mostly violet while the one you clicked was
+     still mostly grey — two half-lit tabs, which reads as the strip lagging behind the pane it
+     already swapped. It got worse when the tabs became binder tabs, because the lift is layout and
+     snaps instantly (it has to — see the overflow note above), leaving the colour as the only half
+     of one state change still catching up. Most obvious on the Time strip, whose three tabs are
+     the widest in the app and whose icons snap with the geometry. Hover is the opposite — a
+     continuous, reversible hint — so it keeps its ease-in; declaring the transition here rather
+     than on the base is what confines it to that. The .active block below then has to say
+     transition:none as well, because the tab you click is by definition the one under the cursor —
+     without it :hover matched at the exact moment of selection and re-introduced the fade on the
+     half that mattered most. It wins on source order, both rules being two classes. */
+  .finance-subnav-btn:hover{color:var(--text);border-color:var(--violet);
+    transition:color .12s ease, background-color .12s ease, border-color .12s ease;}
   .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;
     min-height:calc(var(--tab-h) + var(--tab-lift));padding-top:calc(7px + var(--tab-lift));
-    margin-bottom:0;}
+    margin-bottom:0;transition:none;}
   .finance-subnav-btn.active:hover{color:#fff;}
   .finance-subnav-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
   /* red ring on a sub-nav button whose pane needs attention (Countdowns, when one lands within

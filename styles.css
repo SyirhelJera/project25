@@ -254,6 +254,68 @@
   }
   .load-screen-text{font-size:13.5px;font-weight:600;color:#8b8b96;}
 
+  /* ---------- pin gate ---------- */
+  /* Above the load screen's 9999 — the two are on screen together on a cold open and the door has
+     to be the layer in front. Like .load-screen it is a fixed dark scene rather than a themed one,
+     and for a stronger reason than matching it: applyTheme() doesn't run until the data it reads
+     the theme from has loaded, which is after the gate. A themed gate would be light for one
+     frame and then repaint. */
+  .pin-gate{
+    position:fixed;inset:0;z-index:10000;
+    display:flex;align-items:center;justify-content:center;
+    padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));
+    background:radial-gradient(ellipse at 50% 32%,#20212b 0%,#050506 76%);color:#fff;
+    transition:opacity .28s ease;
+  }
+  .pin-gate.pin-gate-hidden{opacity:0;pointer-events:none;}
+  .pin-gate-card{width:100%;max-width:296px;display:flex;flex-direction:column;align-items:center;}
+  .pin-gate-card.is-wrong{animation:pinShake .38s ease;}
+  @keyframes pinShake{
+    0%,100%{transform:translateX(0);}
+    15%{transform:translateX(-9px);}
+    35%{transform:translateX(8px);}
+    55%{transform:translateX(-5px);}
+    78%{transform:translateX(3px);}
+  }
+  .pin-gate-mark{
+    width:46px;height:46px;border-radius:14px;flex:none;
+    display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,#6366F1,#4338CA);
+    box-shadow:0 10px 26px rgba(67,56,202,.42);
+  }
+  .pin-gate-mark svg{width:25px;height:25px;}
+  .pin-gate-title{margin-top:14px;font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;letter-spacing:-.2px;}
+  .pin-gate-sub{margin-top:5px;font-size:13px;font-weight:500;color:#8b8b96;}
+  .pin-dots{margin-top:24px;display:flex;gap:13px;}
+  .pin-dots i{
+    width:11px;height:11px;border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.3);
+    transition:background .12s ease,border-color .12s ease,transform .12s ease;
+  }
+  .pin-dots i.is-filled{background:#fff;border-color:#fff;transform:scale(1.12);}
+  /* Holds its line height while empty so the keypad doesn't jump down the screen the first time
+     a wrong PIN puts a message here. */
+  .pin-gate-msg{margin-top:13px;min-height:17px;font-size:12.5px;font-weight:600;color:#8b8b96;text-align:center;}
+  .pin-gate-msg.is-bad{color:#F87171;}
+  .pin-pad{margin-top:18px;width:100%;display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+  .pin-pad.is-disabled{opacity:.42;pointer-events:none;}
+  .pin-key{
+    height:62px;border-radius:18px;border:1px solid rgba(255,255,255,.12);
+    background:rgba(255,255,255,.06);color:#fff;
+    font-family:'Inter',sans-serif;font-size:21px;font-weight:600;
+    cursor:pointer;-webkit-tap-highlight-color:transparent;
+    transition:background .12s ease,transform .08s ease;
+  }
+  .pin-key:hover{background:rgba(255,255,255,.12);}
+  .pin-key:active{background:rgba(255,255,255,.2);transform:scale(.95);}
+  .pin-key:focus-visible{outline:2px solid #A5B4FC;outline-offset:2px;}
+  .pin-key-del{font-size:19px;background:none;border-color:transparent;}
+  .pin-key-gap{display:block;}
+  @media (prefers-reduced-motion: reduce){
+    .pin-gate-card.is-wrong{animation:none;}
+    .pin-key:active{transform:none;}
+  }
+
   .sidebar-footer{font-size:10.5px;color:var(--faint);padding:12px 6px 2px;line-height:1.5;border-top:1px solid var(--border);margin-top:14px;}
 
   /* ---------- main ---------- */

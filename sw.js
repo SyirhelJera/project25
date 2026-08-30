@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v53';
+const SHELL_CACHE = 'p25-shell-v54';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -18,6 +18,8 @@ const SHELL_ASSETS = [
   // so a name that drifts out of sync here fails the whole install and leaves the app with no
   // shell at all. A name merely *missing* is quieter and worse: it installs fine and the app then
   // boots offline with that tab's render function undefined.
+  // first, exactly as in index.html: it decides the role before anything else runs
+  './js/pin.js',
   './js/core.js',
   './js/persistence.js',
   './js/protecteddays.js',

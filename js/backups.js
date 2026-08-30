@@ -68,7 +68,11 @@
       // No fallback to a copy embedded in the shared blob, unlike jobsSeed/notesSeed above: the
       // scratch page has only ever lived in its own row, so a backup that lacks it simply predates
       // the feature and an empty page is the correct result — there is no older location to look in.
-      applyLoadedScratchState(data.scratchData || null);
+      /* Owner only, the same rule as loadScratchData() in js/scratch.js: a guest's session never
+         fetched the scratch row and must not acquire its contents through a restore either. The
+         stored page is left untouched rather than half-restored — saveScratch() below is already a
+         no-op for them, since doSaveScratch() won't write while scratchLoadedOk is false. */
+      if(window.p25IsOwner && window.p25IsOwner()) applyLoadedScratchState(data.scratchData || null);
       pendingRestore = null;
       // force: restoring is a deliberate, user-confirmed overwrite of all four resources.
       // allSettled rather than all/sequential-await because save()/saveJobs()/saveNotes()/saveScratch() never

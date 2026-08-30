@@ -30,16 +30,17 @@ Project 25 is organized into tabs (left sidebar), each a self-contained tracker:
 **No build step.** `index.html` loads Google Fonts, the Supabase JS SDK (CDN), `styles.css`, and then a fixed sequence of `<script>` tags from `js/` — load order matters because later files call functions/reference DOM refs defined in earlier ones:
 
 ```
-core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
+pin.js → core.js → persistence.js → protecteddays.js → nav.js → goals.js → habits.js →
 countdowns.js → settings.js → backups.js → access.js → mantras.js → motivation.js → music.js →
 checklists.js → notes.js → scratch.js → finance.js → wishlist.js → jobs.js → fitness.js →
 valorant.js → clock.js → calendar.js → tft.js → board.js → insights.js → main.js
 ```
 
-`tft.js` sits after `valorant.js` on purpose: it owns `showGameSubTab()`, which calls `renderValorant()` and `syncValLivePolling()`. The same list is precached by hand in `sw.js` — a name missing there installs fine and then boots offline with that tab's render function undefined, so the two must be edited together (and `SHELL_CACHE` bumped).
+`pin.js` is first and is the exception to the rule above — it depends on nothing, not even `el()`, because it is the PIN gate and no change to this order may be able to leave the door open (see "PIN gate"). Its `<script>` tag is also the only one not at the end of the body: it sits directly under the gate markup at the top. `tft.js` sits after `valorant.js` on purpose: it owns `showGameSubTab()`, which calls `renderValorant()` and `syncValLivePolling()`. The same list is precached by hand in `sw.js` — a name missing there installs fine and then boots offline with that tab's render function undefined, so the two must be edited together (and `SHELL_CACHE` bumped).
 
 All modules share one global `state` object (defined in `core.js`) and a handful of small globals (`el()`, `uid()`, `escapeHtml()`, date helpers). There's no bundler, no npm dependencies, and no per-module scoping — everything is written as top-level script blocks that close over the same `state`.
 
+- **`pin.js`** — the PIN gate (loads before everything else). Decides `owner` vs `guest` and exports `p25GateReady` / `p25IsOwner()` / `p25IsGuest()` / `p25Lock()`; see "PIN gate".
 - **`core.js`** — global `state` shape, currency constants, tiny DOM/date helper functions.
 - **`persistence.js`** — the `load()`/`save()` layer (see below); also owns the setup/offline/conflict banners.
 - **`protecteddays.js`** — the vacation/sick/event exemption list (Settings tab): `isDateProtected()`/`dateRangeOverlapsProtected()` are the boolean fast path consumed by `habits.js` (streaks) and `checklists.js` (miss-streaks); `protectedDayFor()`/`protectedDayLabel()` return the covering entry and its display name for UI that also has to *show* the exemption and say why — the habit week/month calendars and the goals heat map, which ring protected days in `var(--protected-day, var(--violet))`.
@@ -383,6 +384,32 @@ state = {
 ```
 
 New fields are back-filled with defaults in `applyLoadedState()` so old saved data upgrades in place without a migration step.
+
+### PIN gate
+
+`js/pin.js` + `#pinGate` in `index.html`. The app asks for a 6-digit PIN before it opens, and there are two of them:
+
+- the **owner** PIN opens everything;
+- the **guest** PIN opens everything **except** the scratch page (`js/scratch.js`).
+
+Neither PIN is written down here or in the source. `pin.js` holds an FNV-1a/32 hash of each (`'p25.gate.v1:' + pin`), which buys exactly one thing: a casual `grep` of the repo for six digits turns up nothing. To change or add one, print the hash and edit `PIN_ROLES` at the top of `js/pin.js`:
+
+```
+node -e "const p=process.argv[1];let h=0x811c9dc5;const s='p25.gate.v1:'+p;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}console.log(h.toString(16))" 123456
+```
+
+**This is a soft gate, not authentication, and it is important to be clear-eyed about that.** The whole file ships to the browser, the PIN space is a million wide, and the Supabase row behind the app stays unauthenticated whichever PIN was typed (see the next section — anyone with the link can already read that row with `curl`). What the gate is actually good for: the dashboard doesn't open itself to whoever picks up an unlocked laptop, and a guest gets a deliberately smaller version of the app. Don't put anything behind it that would be a real problem to lose.
+
+How it hangs together:
+
+- **It loads first**, before `core.js`, and its markup is the first thing in `<body>` — so the door is painted before anything behind it, and it stays shut if the script never runs at all. It depends on nothing else in `js/` (not even `el()`), so no change to the script order can leave it open.
+- **The boot waits on it.** `js/main.js` calls `load()` from `window.p25GateReady.then(…)` rather than racing it, because the role decides which storage resources may be *fetched*: `loadScratchData()` returns immediately for a guest, so a guest's browser never holds the scratch content at all. Hiding a way in while the text sits in memory would be a curtain, not a door. An already-unlocked session resolves on the first microtask, so a reload pays nothing for the wait.
+- **Unknown fails closed.** `p25IsGuest()` answers `true` for a role that hasn't been decided yet, and the three scratch guards are phrased as "not the owner" rather than "is a guest" — if `pin.js` were somehow absent, that loses an easter egg instead of leaking one.
+- **The role is never passed in from outside.** There is no `p25SetRole()` and `unlock()` isn't exported; typing the owner's PIN into this file's own handler is the only way to become the owner.
+- **`sessionStorage`, not `localStorage`.** Closing the tab shuts the door again, which is the point of a door; a reload doesn't, because re-typing a PIN after an accidental refresh mid-edit teaches you to hate the gate. The one thing kept in `localStorage` is the 30-second lockout after 5 wrong tries, so reloading can't be the way past it.
+- **The keypad is the input** — no text field, so a phone never raises a soft keyboard over the keys. A hardware keyboard works too (digits, Backspace), and focus is pulled back into the gate if Tab tries to walk into the page behind it.
+- **Guests still see the app is gated**: Settings → Data → *Lock screen* reports which PIN got in and offers **🔒 Lock now** (clears the session role and reloads). Its wording never names the scratch page — a guest is told they have "a restricted version", because the scratch page's entire design is that nothing in the UI admits it exists.
+- `document.body` carries `data-role="owner" | "guest" | "locked"`, which is the CSS half of the same answer, for anything that wants to hide an owner-only control without a line of script.
 
 ### Persistence — two modes, no auth
 
@@ -979,7 +1006,8 @@ index.html                          all view markup (one <div class="view"> per 
 styles.css                          all styling (theme variables for light/dark/iOS variants)
 manifest.json, sw.js, icons/        PWA installability + offline shell caching
 js/
-  core.js                           state shape, constants, helpers (loads first)
+  pin.js                            the PIN gate — owner vs guest, gets in before anything else (loads first)
+  core.js                           state shape, constants, helpers
   persistence.js                    load()/save(), Claude-storage vs Supabase, offline/conflict handling
   protecteddays.js                  vacation/sick/event exemption list (Settings) — consumed by habits.js/checklists.js
   main.js                           renderAll(), theme switching, boot (load())

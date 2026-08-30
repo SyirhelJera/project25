@@ -35,6 +35,18 @@
      needed (the existing "anyone can read/write" policy covers any id, and the row is created by
      this file's own .upsert() on first edit). Claude-storage mode: a fourth window.storage key.
   ---------------------------------------- */
+  /* ---------- owner-only ----------
+     The scratch page is the one thing behind the guest PIN (js/pin.js). It is guarded in three
+     places rather than one, and the outermost is the point: loadScratchData() refuses to FETCH the
+     row, so a guest's browser never holds the content at all — hiding a way in while the text sits
+     in memory would be a curtain, not a door. The other two are the entrance (the .brand click) and
+     openScratch() itself, which stops a stale call or a console poke re-opening the pad.
+     Phrased as "not the owner" rather than "is a guest" so it fails CLOSED: if pin.js is somehow
+     absent, every one of these answers "no", which loses an easter egg rather than leaking one.
+     Saving needs no guard of its own — doSaveScratch() already refuses to write while
+     scratchLoadedOk is false, and for a guest it never becomes true. */
+  function scratchAllowed(){ return !!(window.p25IsOwner && window.p25IsOwner()); }
+
   const SCRATCH_STORAGE_KEY = 'app-data-scratch';
   const SCRATCH_ROW_ID = 'scratch';
   const OFFLINE_SCRATCH_CACHE_KEY = 'p25-offline-data-scratch';
@@ -661,6 +673,9 @@
      add a migration branch here to "match the others": it could never fire, and CLAUDE.md's rule
      against removing those standing migrations would then keep the dead code alive forever. */
   async function loadScratchData(){
+    /* Not the owner: don't fetch, don't seed, don't touch the offline mirror. scratchLoadedOk stays
+       false, which also means no save from this session can ever overwrite the row. */
+    if(!scratchAllowed()) return;
     try{
       if(usingClaudeStorage){
         try{
@@ -3278,6 +3293,7 @@
 
   function openScratch(){
     if(scratchOpen) return;
+    if(!scratchAllowed()) return; // guest PIN — see scratchAllowed()
     scratchReturnFocus = document.activeElement;
     /* Redraw the logo in place on top of the takeover. It's measured from .brand's live rect — the
        sidebar is still laid out underneath, merely covered — so it lands exactly over the real one
@@ -3376,6 +3392,10 @@
   }
 
   if(scratchBrandEl) scratchBrandEl.addEventListener('click', e=>{
+    /* Guest PIN: the logo goes back to being what it looks like — decoration. Bailing here rather
+       than showing "not available" keeps the easter egg an easter egg; a guest is told nothing
+       exists, which is also what a locked door that doesn't rattle is for. */
+    if(!scratchAllowed()) return;
     /* #navRightGroup holds the fasting/time-block chips and the ▶ Play button, and below 760px it
        sits absolutely positioned INSIDE .brand — so a Play tap bubbles up here and would otherwise
        drop a scratch page on top of the session it just started. */

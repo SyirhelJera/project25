@@ -58,4 +58,11 @@
     save();
   });
 
-  load();
+  /* Waits on the PIN gate rather than racing it (js/pin.js). The role isn't only a question of
+     what gets rendered — it decides which storage resources may be fetched at all: a guest's
+     browser never pulls the scratch row down, and load() is the call that would pull it. An
+     already-unlocked session resolves on the first microtask, so a reload pays nothing for this;
+     the `|| Promise.resolve()` keeps the app booting if pin.js is ever absent, which matters
+     because an older cached service-worker shell can serve an index.html that lists it against a
+     cache that doesn't hold it. */
+  (window.p25GateReady || Promise.resolve()).then(function(){ load(); });

@@ -20,6 +20,45 @@
 </head>
 <body>
 
+<!-- PIN GATE — the front door, and the first thing in the document on purpose: it has to be
+     painted before anything behind it is, and its script (js/pin.js, loaded immediately below
+     rather than with the rest at the end of the body) has to answer "who is this?" before
+     js/main.js decides which storage rows may be fetched at all.
+     Markup lives here rather than being built by that script so the door is shut even if the
+     script is slow, and stays shut if it never runs — the gate fails closed in both directions.
+     It is a soft gate, NOT authentication; js/pin.js's header says exactly how far it goes.
+     No text field: the keypad IS the input, so a phone never raises a soft keyboard over it. -->
+<div id="pinGate" class="pin-gate" role="dialog" aria-modal="true" aria-labelledby="pinGateTitle">
+  <div class="pin-gate-card">
+    <div class="pin-gate-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M6.3 9.8 12 4.6l5.7 5.2"/><path d="M6.3 15.9 12 10.7l5.7 5.2"/><path d="M6.3 20.6h11.4"/></svg>
+    </div>
+    <div class="pin-gate-title" id="pinGateTitle">Project 25</div>
+    <div class="pin-gate-sub">Enter your PIN to continue</div>
+    <!-- aria-hidden: the dots are a picture of how many digits are in, which is precisely the
+         thing a screen reader must not read back out loud one digit at a time -->
+    <div class="pin-dots" id="pinDots" aria-hidden="true">
+      <i></i><i></i><i></i><i></i><i></i><i></i>
+    </div>
+    <div class="pin-gate-msg" id="pinGateMsg" role="status" aria-live="polite"></div>
+    <div class="pin-pad" id="pinPad">
+      <button class="pin-key" data-pin-key="1" type="button">1</button>
+      <button class="pin-key" data-pin-key="2" type="button">2</button>
+      <button class="pin-key" data-pin-key="3" type="button">3</button>
+      <button class="pin-key" data-pin-key="4" type="button">4</button>
+      <button class="pin-key" data-pin-key="5" type="button">5</button>
+      <button class="pin-key" data-pin-key="6" type="button">6</button>
+      <button class="pin-key" data-pin-key="7" type="button">7</button>
+      <button class="pin-key" data-pin-key="8" type="button">8</button>
+      <button class="pin-key" data-pin-key="9" type="button">9</button>
+      <span class="pin-key-gap" aria-hidden="true"></span>
+      <button class="pin-key" data-pin-key="0" type="button">0</button>
+      <button class="pin-key pin-key-del" data-pin-key="del" type="button" aria-label="Delete last digit">⌫</button>
+    </div>
+  </div>
+</div>
+<script src="js/pin.js"></script>
+
 <div id="loadScreen" class="load-screen">
   <div class="load-plane-scene">
     <div class="load-plane-runway"></div>
@@ -2205,6 +2244,19 @@
         <button class="btn btn-ghost btn-sm" id="loadBackupsBtn" type="button">⟳ Refresh backup list</button>
         <div id="backupList" class="set-list"></div>
         <div id="restoreSlot"></div>
+      </div>
+
+      <!-- LOCK SCREEN — which PIN this browser session was let in with, and the way to shut the
+           door again. Under Data next to the access log because it answers the same question from
+           the other side: that card is who HAS opened this, this one is who is holding it now.
+           The blurb deliberately says "a restricted version" and never names what a guest can't
+           reach — the one thing behind the guest PIN is the scratch page, whose whole design is
+           that nothing in the UI admits it exists (js/scratch.js). Wired in js/settings.js. -->
+      <div class="set-card">
+        <div class="set-card-h">Lock screen</div>
+        <div class="set-card-sub">This dashboard asks for a PIN before it opens. The owner PIN opens everything; the guest PIN opens a restricted version. Locking reloads to the PIN screen — it deletes nothing, and the PIN is asked for again by itself whenever this tab is closed.</div>
+        <div class="set-sub-h">Opened with the <span id="lockRoleLbl">…</span> PIN</div>
+        <button class="btn btn-ghost btn-sm" id="lockNowBtn" type="button">🔒 Lock now</button>
       </div>
 
       <!-- ACCESS LOG — every device and place this dashboard has been opened from. Under Data

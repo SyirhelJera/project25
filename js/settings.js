@@ -680,3 +680,16 @@
     }
   }
 
+
+  /* ---------- lock screen (Settings > Data) ----------
+     The PIN gate itself lives in js/pin.js and runs long before this file; all that's left here is
+     the card that reports which PIN got in and offers the way back out. Wired at parse time rather
+     than from a render function because this file loads after the markup and neither control ever
+     changes for the life of the page — the role is fixed once the gate resolves, and locking is a
+     reload. */
+  const lockNowBtn = el('lockNowBtn');
+  if(lockNowBtn) lockNowBtn.addEventListener('click', ()=>{ if(window.p25Lock) window.p25Lock(); });
+  (window.p25GateReady || Promise.resolve(null)).then(role=>{
+    const lbl = el('lockRoleLbl');
+    if(lbl) lbl.textContent = role === 'owner' ? 'owner' : role === 'guest' ? 'guest' : 'unknown';
+  });

@@ -2636,12 +2636,23 @@
      actual relationship, since each button swaps the whole pane below it.
 
      Three things carry the metaphor, and each is doing a job:
-      - the RAIL is the strip's own border-bottom, on the padding box, so it stays put while the
-        tabs scroll sideways past it (these strips are horizontally scrollable on a phone);
+      - the RAIL is a 1px background stripe pinned to the bottom of the strip's padding box, so it
+        stays put while the tabs scroll sideways past it (these strips are horizontally scrollable);
       - the tabs are square-bottomed with no bottom border, so the rail reads as the binder edge
         they are slotted into rather than as a line under a row of boxes;
-      - the active tab is TALLER — it is the one sticking out — and margin-bottom:-1px pulls it a
-        pixel down over the rail so it fuses with it instead of resting on top.
+      - the active tab is TALLER — it is the one sticking out — and it is the only one whose box
+        reaches the rail's own row, so it paints over the stripe and fuses with it, while every
+        other tab is held 1px clear of it by a margin and the rail passes underneath.
+
+     That rail is a background rather than a border-bottom, and the 1px is spent on the inactive
+     tabs' margin rather than on a negative margin under the active one, for a concrete reason:
+     these strips are scroll containers, and overflow-x:auto forces overflow-y to auto too. Any
+     box that reaches past the content edge — which is exactly what a negative bottom margin does —
+     makes the strip scrollable VERTICALLY by that 1px, so dragging it sideways also shoved it up
+     and down. Keeping every box inside the content edge is what removes the vertical scroll at
+     the source; the overflow-y below is only insurance against sub-pixel rounding, and it is
+     `clip` (with `hidden` beneath it for older engines) because a `hidden` box is still a scroll
+     container that focusing a tab can scroll, while a clipped one cannot scroll at all.
 
      The height difference is expressed as two variables rather than two hard numbers, because
      several places re-size these buttons (the coarse-pointer bump in #view-finance is the current
@@ -2655,14 +2666,16 @@
   .finance-subnav{--tab-h:34px;--tab-lift:7px;
     display:flex;align-items:flex-end;gap:4px;margin-bottom:16px;
     min-height:calc(var(--tab-h) + var(--tab-lift));
-    border-bottom:1px solid var(--border);
-    flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
+    background-image:linear-gradient(var(--border),var(--border));
+    background-size:100% 1px;background-position:0 100%;background-repeat:no-repeat;
+    flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;overflow-y:clip;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
   .finance-subnav::-webkit-scrollbar{display:none;}
-  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);border-bottom:none;color:var(--muted);border-radius:10px 10px 0 0;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:var(--tab-h);transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
+  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);border-bottom:none;color:var(--muted);border-radius:10px 10px 0 0;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:var(--tab-h);margin-bottom:1px;transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
   .finance-subnav-btn:hover{color:var(--text);border-color:var(--violet);}
   .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;
     min-height:calc(var(--tab-h) + var(--tab-lift));padding-top:calc(7px + var(--tab-lift));
-    margin-bottom:-1px;}
+    margin-bottom:0;}
   .finance-subnav-btn.active:hover{color:#fff;}
   .finance-subnav-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
   /* red ring on a sub-nav button whose pane needs attention (Countdowns, when one lands within

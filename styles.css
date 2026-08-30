@@ -553,7 +553,7 @@
      description, and one hairline around the whole card rather than a border under every control.
      The strip is sticky because the Valorant category runs several screens tall, and changing
      category from the bottom of it otherwise means scrolling all the way back to the top. */
-  .settings-subnav{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0;margin-bottom:6px;}
+  .settings-subnav{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 0 0;margin-bottom:6px;}
   .set-card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px 18px;margin-bottom:14px;}
   .set-card:last-child{margin-bottom:0;}
   .set-card > :last-child{margin-bottom:0;}
@@ -587,7 +587,7 @@
      as you scroll via .sidebar.scrolled — a second sticky strip underneath would either hide behind
      it or jitter against it, so the strip just scrolls away there */
   @media (max-width:760px){
-    .settings-subnav{position:static;padding:0 0 4px;}
+    .settings-subnav{position:static;padding:0;}
   }
   @media (max-width:560px){
     .set-card{padding:14px;border-radius:12px;}
@@ -2628,11 +2628,41 @@
   .finance-amt.negative{color:var(--fin-neg);}
   .finance-amt.settled{color:var(--muted);}
   /* finance: sub-nav + expandable accounts + transfer + subscriptions + converter */
-  .finance-subnav{display:flex;gap:6px;margin-bottom:16px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
+  /* ---------- The sub-nav strip is drawn as BINDER TABS ----------
+     Every sub-nav in the app is this one strip (Finance, Fitness, Games, Time, Board, Motivation,
+     Settings), so the shape is defined once here and the per-tab files only ever restyle the ink.
+     A row of free-floating pills said "these are buttons"; a row of tabs sitting on a rail says
+     "these are the dividers of one binder, and this is the one you have pulled out" — which is the
+     actual relationship, since each button swaps the whole pane below it.
+
+     Three things carry the metaphor, and each is doing a job:
+      - the RAIL is the strip's own border-bottom, on the padding box, so it stays put while the
+        tabs scroll sideways past it (these strips are horizontally scrollable on a phone);
+      - the tabs are square-bottomed with no bottom border, so the rail reads as the binder edge
+        they are slotted into rather than as a line under a row of boxes;
+      - the active tab is TALLER — it is the one sticking out — and margin-bottom:-1px pulls it a
+        pixel down over the rail so it fuses with it instead of resting on top.
+
+     The height difference is expressed as two variables rather than two hard numbers, because
+     several places re-size these buttons (the coarse-pointer bump in #view-finance is the current
+     one). Overriding --tab-h moves both states together and keeps the tab sticking out; a bare
+     min-height override on .finance-subnav-btn would flatten the active tab back into the row,
+     which is what those overrides used to do before the variable existed.
+
+     The labels stay on one line across the row without any alignment rule: both states share
+     padding-bottom, both centre their slack, and the active tab's extra height is spent entirely
+     on padding-top — so the extra room appears above the label, where the tab sticks out. */
+  .finance-subnav{--tab-h:34px;--tab-lift:7px;
+    display:flex;align-items:flex-end;gap:4px;margin-bottom:16px;
+    min-height:calc(var(--tab-h) + var(--tab-lift));
+    border-bottom:1px solid var(--border);
+    flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;-ms-overflow-style:none;}
   .finance-subnav::-webkit-scrollbar{display:none;}
-  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:9px;padding:8px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:38px;transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
+  .finance-subnav-btn{background:var(--surface-alt);border:1px solid var(--border);border-bottom:none;color:var(--muted);border-radius:10px 10px 0 0;padding:7px 14px;font-size:12.5px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;white-space:nowrap;flex:0 0 auto;min-height:var(--tab-h);transition:color .14s ease, background-color .14s ease, border-color .14s ease;}
   .finance-subnav-btn:hover{color:var(--text);border-color:var(--violet);}
-  .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .finance-subnav-btn.active{background:var(--violet);border-color:var(--violet);color:#fff;
+    min-height:calc(var(--tab-h) + var(--tab-lift));padding-top:calc(7px + var(--tab-lift));
+    margin-bottom:-1px;}
   .finance-subnav-btn.active:hover{color:#fff;}
   .finance-subnav-btn:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
   /* red ring on a sub-nav button whose pane needs attention (Countdowns, when one lands within
@@ -2775,7 +2805,10 @@
   @media (pointer:coarse){
     #view-finance .fin-seg button,#view-finance .fin-step,#view-finance .chart-zoom-btn,
     #view-finance .add-tx-row input,#view-finance .add-tx-row select,#view-finance .add-tx-row .btn,
-    #view-finance .finance-subnav-btn,#view-finance .rate-cell input{min-height:44px;}
+    /* --tab-h, not min-height on the button: the latter would win over .finance-subnav-btn.active
+       (id beats two classes) and flatten the raised tab back into the row */
+    #view-finance .finance-subnav{--tab-h:44px;}
+    #view-finance .rate-cell input{min-height:44px;}
     #view-finance .fin-step{width:44px;}
     #view-finance .tx-row .del-goal{opacity:1;min-width:36px;min-height:36px;}
     /* there is no hover on a finger, so the In/Out pills wear their tap affordance permanently —

@@ -519,12 +519,37 @@ export async function checkAccountStore(label, session){
       // Item shape here ({ItemTypeID, ItemID}) is the same one the accessory shop uses.
       const bundleItems = await Promise.all((store?.FeaturedBundle?.Bundle?.Items || []).map(async (entry) => {
         const info = await resolveAccessoryReward(entry?.Item || {});
-        return { ...info, price: entry?.BasePrice || 0, discountPrice: entry?.DiscountedPrice || 0 };
+        // IsPromoItem is Riot's own flag for the things a bundle throws in for nothing — the melee
+        // on a launch bundle, a gun buddy, a card. It's recorded rather than inferred from a zero
+        // DiscountedPrice, because a store checked before this existed reports 0 for "not known"
+        // too, and guessing there would relabel a paid item as free.
+        return {
+          ...info,
+          price: entry?.BasePrice || 0,
+          discountPrice: entry?.DiscountedPrice || 0,
+          isPromo: !!entry?.IsPromoItem,
+        };
       }));
+      // A bundle has two totals and they are not the same number: TotalBaseCost is what its
+      // contents add up to bought one by one, TotalDiscountedCost is what Riot actually charges
+      // for the bundle — the promo items above are priced into the second one only, so on a launch
+      // bundle the two differ by thousands of VP. Recording the base cost as the price (which is
+      // all this used to do) put a figure on the banner that nobody is ever asked to pay, so the
+      // real one rides alongside it under the same `discountPrice` name every other discounted
+      // offer here already uses. The totals sit on FeaturedBundle.Bundles[] in the current
+      // storefront and on the legacy .Bundle object in older responses — read both, since which of
+      // them carries the money has changed before.
+      const featured = store?.FeaturedBundle || {};
+      const totals = (featured.Bundles || []).find(x => x?.DataAssetID === bundleId)
+        || (featured.Bundles || [])[0]
+        || featured.Bundle || {};
+      const baseCost = firstCostValue(totals.TotalBaseCost)
+        || firstCostValue(featured.Bundle?.TotalBaseCost) || 0;
       bundle = {
         name: j?.data?.displayName || 'Featured Bundle',
         imageUrl: j?.data?.displayIcon || '',
-        price: firstCostValue(store?.FeaturedBundle?.Bundle?.TotalBaseCost) || 0,
+        price: baseCost,
+        discountPrice: firstCostValue(totals.TotalDiscountedCost) || 0,
         remainingSeconds: store?.FeaturedBundle?.BundleRemainingDurationInSeconds || 0,
         items: bundleItems,
       };

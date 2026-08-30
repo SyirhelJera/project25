@@ -442,7 +442,14 @@ function Update-Widget {
 
   # ---- featured bundle
   if ($acct.bundle -and $acct.bundle.name) {
-    $bundleText = '{0} - {1:N0} VP' -f $acct.bundle.name, [int]$acct.bundle.price
+    # discountPrice is what the bundle actually charges; price is what its contents cost bought
+    # separately, which is thousands more on any bundle with free promo items in it. Older
+    # snapshots predate the discounted total, so fall back to the base one rather than show 0.
+    $bundleBase = [int]$acct.bundle.price
+    $bundlePaid = [int]$acct.bundle.discountPrice
+    if ($bundlePaid -le 0) { $bundlePaid = $bundleBase }
+    $bundleText = '{0} - {1:N0} VP' -f $acct.bundle.name, $bundlePaid
+    if ($bundleBase -gt $bundlePaid) { $bundleText += ' (was {0:N0})' -f $bundleBase }
     $lblBundle  = New-Label $bundleText $FontSmall $ColMuted $pad $y ($WidgetWidth - 2 * $pad) 16
     Add-DragHandlers $lblBundle
     $form.Controls.Add($lblBundle)

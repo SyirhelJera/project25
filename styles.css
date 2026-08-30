@@ -4191,6 +4191,14 @@
   .val-bundle-name{font-size:16px;font-weight:800;letter-spacing:.2px;color:#F4F6FB;}
   .val-bundle-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .val-bundle-time{font-size:10.5px;font-weight:700;letter-spacing:.3px;color:#B9C0D0;}
+  /* a bundle sells for less than its contents add up to (valBundlePricing() in valorant.js): the
+     paid price leads in the usual VP pill, the separate-purchase total follows it struck through.
+     Fixed ink again, not --muted — this sits on the scrim over the promo art in every theme. */
+  .val-bundle-was{font-size:11px;font-weight:700;color:#8B93A6;text-decoration:line-through;}
+  .val-bundle-off{
+    padding:2px 7px;border-radius:5px;font-size:9.5px;font-weight:800;letter-spacing:.4px;
+    color:#0B0E14;background:var(--vp-gold);
+  }
   /* a wishlisted item is inside the bundle — the banner shows one piece of promo art, so without
      this the hit is invisible until you open the contents list */
   .val-bundle.wishlist-match{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
@@ -4212,6 +4220,9 @@
   .val-preview-item-name{flex:1;min-width:0;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .val-preview-item-wish{color:var(--danger);}
   .val-preview-item-type{flex:none;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
+  /* the promo items a bundle throws in — the reason its price isn't this list's total */
+  .val-preview-item-was{flex:none;font-size:10.5px;font-weight:700;color:var(--faint);text-decoration:line-through;}
+  .val-preview-item-free{flex:none;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--success);}
 
   /* VP top-up calculator, at the foot of the item preview (valVpCalcHtml() in valorant.js).
      Reads as a receipt: label/value rows, then the plan boxed off under its own heading. */

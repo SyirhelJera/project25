@@ -902,12 +902,28 @@
     });
     return best;
   }
+  /* What a bundle actually costs. Riot quotes two totals for one and the store check records
+     both: `price` is what the contents add up to bought separately, `discountPrice` is what the
+     bundle charges. They differ because a bundle's promo items — the free melee, buddy or card a
+     launch bundle is sold on — are priced into the second figure only, so leading with the first
+     (which is all this used to show) advertised a number nobody is ever asked to pay. The paid
+     figure leads everywhere a bundle is priced; the separate-purchase total follows it struck
+     through, because "you save X" is the whole pitch of a bundle and dropping it would trade one
+     missing number for another. A store checked before the discounted total was recorded has no
+     `discountPrice` at all, so it falls back to the base total and reads exactly as it did — the
+     next store check fills it in, and there's nothing to derive it from in the meantime. */
+  function valBundlePricing(b){
+    const base = parseInt(b && b.price, 10) || 0;
+    const paid = parseInt(b && b.discountPrice, 10) || 0;
+    const off = (paid && base && base > paid) ? Math.round((1 - paid / base) * 100) : 0;
+    return { now: paid || base, was: off ? base : 0, off };
+  }
   function valFeaturedBundleHtml(stores, labels){
     const label = valFeaturedBundleLabel(stores, labels);
     if(!label) return '';
     const ds = stores[label];
     const b = ds.bundle;
-    const price = parseInt(b.price,10)||0;
+    const pr = valBundlePricing(b);
     const timeLeft = valStoreTimeLeft(ds.checkedAt, b.remainingSeconds);
     // a bundle is a bag of items, so a wishlist hit inside one is invisible from the banner unless
     // it's called out — the names go in the tooltip, since the banner has room for a count only
@@ -917,6 +933,8 @@
         + wishHits.length + ' wishlisted</span>'
       : '';
     const title = b.name + ' — Featured Bundle'
+      + (pr.now ? ' — ' + pr.now.toLocaleString() + ' VP'
+          + (pr.was ? ' (' + pr.was.toLocaleString() + ' bought separately, −' + pr.off + '%)' : '') : '')
       + (wishHits.length ? ' — on your wishlist: ' + wishHits.map(it=>it.name).join(', ') : '')
       + ' — click for contents';
     return '<button type="button" class="val-bundle'+(wishHits.length?' wishlist-match':'')+'" data-preview-kind="bundle" data-preview-label="'+escapeHtml(label)+'"'
@@ -926,7 +944,9 @@
       + '<span class="val-bundle-kicker">Featured Bundle</span>'
       + '<span class="val-bundle-name">'+escapeHtml(b.name)+'</span>'
       + '<span class="val-bundle-meta">'
-      + (price ? '<span class="val-store-item-price" title="Valorant Points">'+price.toLocaleString()+'</span>' : '')
+      + (pr.now ? '<span class="val-store-item-price" title="Valorant Points">'+pr.now.toLocaleString()+'</span>' : '')
+      + (pr.was ? '<span class="val-bundle-was" title="Total if the contents were bought separately">'+pr.was.toLocaleString()+'</span>' : '')
+      + (pr.off ? '<span class="val-bundle-off">−'+pr.off+'%</span>' : '')
       + (timeLeft ? '<span class="val-bundle-time">'+escapeHtml(timeLeft)+'</span>' : '')
       + wishHtml
       + '</span></span></button>';
@@ -1316,7 +1336,15 @@
   // things — so the preview is where "what am I actually buying" gets answered, wishlist hits
   // included.
   function valPreviewItemRowHtml(it, wished){
-    const price = parseInt(it.discountPrice,10) || parseInt(it.price,10) || 0;
+    // The promo items are why a bundle's price isn't the sum of this list, so the list has to say
+    // which ones they are. `isPromo` is Riot's flag, carried only by newer store checks: a zero
+    // discountPrice is never *inferred* to mean free, since an older record reports 0 for "not
+    // recorded" as well, and a row with neither field falls back to the base price as before.
+    const base = parseInt(it.price,10) || 0;
+    const disc = parseInt(it.discountPrice,10) || 0;
+    const free = !!it.isPromo;
+    const price = free ? 0 : (disc || base);
+    const was = free ? base : ((disc && base > disc) ? base : 0);
     return '<div class="val-preview-item'+(wished?' wishlist-match':'')+'">'
       + (it.imageUrl
           ? '<img class="val-preview-item-img" src="'+escapeHtml(it.imageUrl)+'" alt="">'
@@ -1325,7 +1353,10 @@
         + (wished ? ' <span class="val-preview-item-wish" title="On your wishlist">★</span>' : '')
       + '</span>'
       + (it.type ? '<span class="val-preview-item-type">'+escapeHtml(it.type)+'</span>' : '')
-      + (price ? '<span class="val-store-item-price">'+price.toLocaleString()+'</span>' : '')
+      + (was ? '<span class="val-preview-item-was">'+was.toLocaleString()+'</span>' : '')
+      + (free
+          ? '<span class="val-preview-item-free" title="Included with the bundle at no extra cost">Free</span>'
+          : (price ? '<span class="val-store-item-price">'+price.toLocaleString()+'</span>' : ''))
       + '</div>';
   }
 
@@ -1410,17 +1441,21 @@
     } else if(tile.dataset.previewKind === 'bundle'){
       const b = ds.bundle;
       if(!b) return;
-      const price = parseInt(b.price,10)||0;
+      // the paid total, not the base one — this feeds the top-up calculator below the art, which
+      // was planning a purchase against a price the bundle doesn't charge
+      const pr = valBundlePricing(b);
       const label = tile.dataset.previewLabel;
       openValItemPreview({
         name: b.name,
-        subtitle: ['Featured Bundle', price ? price.toLocaleString()+' VP' : '', valStoreTimeLeft(ds.checkedAt, b.remainingSeconds)].filter(Boolean).join(' · '),
+        subtitle: ['Featured Bundle',
+          pr.now ? pr.now.toLocaleString()+' VP'+(pr.was ? ' (was '+pr.was.toLocaleString()+', −'+pr.off+'%)' : '') : '',
+          valStoreTimeLeft(ds.checkedAt, b.remainingSeconds)].filter(Boolean).join(' · '),
         color: '#F0D449',
         imageUrl: b.imageUrl,
         // the wishlist flag is resolved here rather than inside the preview, which has no idea
         // which account's list applies
         items: (b.items||[]).map(it => ({ ...it, _wished: valWishlistMatchesForItem(it.name, label).length > 0 })),
-        vpCost: price,
+        vpCost: pr.now,
         accountLabel: label,
       });
     } else if(tile.dataset.previewKind === 'night'){

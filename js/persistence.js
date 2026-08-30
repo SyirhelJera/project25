@@ -93,6 +93,43 @@
     const b = el('offlineBanner');
     if(b) b.style.display = 'none';
   }
+
+  /* ---------- read-only banner (js/pin.js) ----------
+     A guest can still click Add, tick a box, drag a card: the mutation happens in memory, this
+     session's `state` changes, the tab re-renders, and then the save is refused. Nothing is
+     persisted and nothing of the owner's is harmed — but on screen it looks exactly like it
+     worked, right up until the reload that quietly throws it away. That gap is what this banner
+     closes, and it's why the read-only rule is enforced at the save layer rather than by trying to
+     intercept mutations across twenty-odd files: there is one choke point, so there is one honest
+     place to say so.
+     Shown for the whole session (guests are read-only for the whole session — the state can't
+     change without re-entering a PIN), and it sits with the setup/offline/conflict banners at the
+     top of .main so it is on screen on every tab. */
+  function showReadOnlyBanner(){
+    const b = el('readOnlyBanner');
+    if(!b) return;
+    b.style.display = 'block';
+    b.innerHTML = '<b>Read-only.</b> You’re signed in with the guest PIN, so nothing here is saved — '
+      + 'anything you change goes back to normal when the page is reloaded.';
+  }
+  /* Called from the refused save. The banner is already up, so this only draws the eye back to it
+     the first time a guest actually tries to change something — a re-entrant animation rather than
+     a second message, because a stack of "couldn't save" toasts for a session that was never going
+     to save anything is noise, not information. */
+  let readOnlyNoted = false;
+  function noteBlockedWrite(){
+    if(readOnlyNoted) return;
+    readOnlyNoted = true;
+    const b = el('readOnlyBanner');
+    if(!b || b.style.display === 'none') return;
+    b.classList.remove('is-nudge');
+    void b.offsetWidth; // restart the animation — re-adding a class it already has replays nothing
+    b.classList.add('is-nudge');
+  }
+  /* The gate resolves on the first microtask for an already-unlocked session and after the PIN
+     otherwise, so this is wired once at parse time rather than from a render function — the role
+     can't change for the life of the page. */
+  (window.p25GateReady || Promise.resolve(null)).then(role=>{ if(role === 'guest') showReadOnlyBanner(); });
   // Falls back to the local mirror when a live load fails. Returns true if a cached
   // copy existed and was applied; the generic load-warning banner is shown otherwise.
   function fallbackToLocalCache(){
@@ -625,6 +662,16 @@
   // force=true skips the conflict check and overwrites unconditionally — only used when the user
   // explicitly chooses to (the conflict banner's "keep my changes" button, or restoring a backup).
   async function doSave(force){
+    /* READ-ONLY SESSION (js/pin.js). The first line of the app's whole write surface: this
+       function is what every mutation in every tab eventually reaches, so refusing here is what
+       makes "a guest can't change data" true rather than merely unlikely — no key list to keep in
+       sync, no per-tab guard to forget on the next feature.
+       Note it returns BEFORE cacheStateLocally() too, and that isn't tidiness: the local mirror is
+       read back by fallbackToLocalCache() on a later load, so writing it would make a guest's edits
+       reappear on their own device and quietly contradict everything the banner just told them.
+       `force` deliberately does NOT get past this — the flag means "the user chose to overwrite a
+       conflict", never "the rules are off". */
+    if(!appCanWrite()){ noteBlockedWrite(); return; }
     if(!loadedOk) return; // never overwrite remote data before we've confirmed what it actually contains
     cacheStateLocally(); // mirror to this device first, so the edit survives even if the sync below fails
     // Jobs, Notes and the scratch page each live in their own storage resource now (see saveJobs()

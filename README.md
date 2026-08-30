@@ -390,7 +390,7 @@ New fields are back-filled with defaults in `applyLoadedState()` so old saved da
 `js/pin.js` + `#pinGate` in `index.html`. The app asks for a 6-digit PIN before it opens, and there are two of them:
 
 - the **owner** PIN opens everything;
-- the **guest** PIN opens everything **except** the scratch page (`js/scratch.js`).
+- the **guest** PIN opens a **read-only** app, minus the scratch page (`js/scratch.js`).
 
 Neither PIN is written down here or in the source. `pin.js` holds an FNV-1a/32 hash of each (`'p25.gate.v1:' + pin`), which buys exactly one thing: a casual `grep` of the repo for six digits turns up nothing. To change or add one, print the hash and edit `PIN_ROLES` at the top of `js/pin.js`:
 
@@ -410,6 +410,27 @@ How it hangs together:
 - **The keypad is the input** — no text field, so a phone never raises a soft keyboard over the keys. A hardware keyboard works too (digits, Backspace), and focus is pulled back into the gate if Tab tries to walk into the page behind it.
 - **Guests still see the app is gated**: Settings → Data → *Lock screen* reports which PIN got in and offers **🔒 Lock now** (clears the session role and reloads). Its wording never names the scratch page — a guest is told they have "a restricted version", because the scratch page's entire design is that nothing in the UI admits it exists.
 - `document.body` carries `data-role="owner" | "guest" | "locked"`, which is the CSS half of the same answer, for anything that wants to hide an owner-only control without a line of script.
+- **It holds the document still while it's up** (`html.pin-gate-locked`) and puts the page back to the top on the way out. Not cosmetic: the mobile navbar is `position:sticky; top:0`, and a sticky element is re-pinned only by the scroll machinery — so a document that scrolled under the gate left the bar parked off-screen until the next swipe. `releasePage()` also re-fires `scroll` and `resize` so `nav.js`'s `onScroll()` and `measureNav()` run before the first paint of the app. For the same reason nothing auto-focuses a key on a touch screen (focusing scrolls it into view) — the same rule as `scratchWantsAutoFocus()` in `scratch.js`.
+
+#### Guests are read-only
+
+A guest can read every tab (bar scratch) and change nothing. The rule has **one definition** — `p25CanWrite()` in `pin.js`, reached everywhere through the one-line `appCanWrite()` wrapper in `core.js` — and it is enforced at the *bottom* of each write path rather than by disabling controls, so there is nothing to remember when the next feature is added:
+
+| Write path | Where it's refused |
+|---|---|
+| all four storage resources | `doSave()`, `doSaveJobs()`, `doSaveNotes()`, `doSaveScratch()` — ahead of the local mirror too |
+| Supabase Storage (every image in the app) | `uploadCompressedImage()` / `deleteStorageImage()` in `core.js` |
+| Google Drive uploads | `driveUploadPhoto()` (fitness), the résumé upload (jobs) |
+| backup restore | `doRestore()`, before the Edge Function is called |
+| AI subtask suggestions | `goals.js` — no data written, but it spends the owner's rate-limited Anthropic quota |
+| the local helper's six action routes | `startValHelper`, `stopValHelper`, `commitValAcctRename`, `runValStoreCheck`, `startValLoginWindow`, add-account save |
+
+Read paths are untouched: `manage-backups` list, `google-calendar`, `pinterest-feed`, MetaTFT sync, and the helper's `/status`, `/live` and `/tft-live` polls all still work.
+
+Two consequences worth knowing about, both deliberate:
+
+- **A guest's edits look like they worked until the page reloads.** Every mutation happens in memory and the tab re-renders; only the save is refused. Intercepting mutations across twenty-odd files isn't feasible without a rewrite, and the save layer is the one true choke point — so instead the guest gets a standing **Read-only** banner at the top of every tab (`showReadOnlyBanner()`), which pulses once the first time a write is actually refused. Blocking at the save layer is also what makes the guarantee airtight: `force` doesn't get past it either, since that flag means "the user chose to overwrite a conflict", never "the rules are off".
+- **A guest's visit is not recorded in the access log.** The only way to record one is `save()`, which re-uploads the whole shared blob — including whatever else the guest had touched in memory. An accurate log and an honest read-only rule can't both be had, and the read-only rule wins; the same return also stops a guest's IP being sent to the geo lookup service for a row that could never be saved.
 
 ### Persistence — two modes, no auth
 

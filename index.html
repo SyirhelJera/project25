@@ -120,6 +120,10 @@
 <div class="main">
   <div id="setupBanner" class="setup-banner" style="display:none;"></div>
   <div id="loadWarningBanner" class="setup-banner" style="display:none;"></div>
+  <!-- shown for the whole session when the guest PIN was used (js/persistence.js:showReadOnlyBanner).
+       Sits with the other four because it answers the same question they do — why isn't my change
+       being kept — and because this strip is the one thing visible from every tab. -->
+  <div id="readOnlyBanner" class="setup-banner" style="display:none;"></div>
   <div id="conflictBanner" class="setup-banner" style="display:none;"></div>
   <div id="offlineBanner" class="setup-banner" style="display:none;"></div>
 

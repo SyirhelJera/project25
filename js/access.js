@@ -169,6 +169,16 @@
   function recordAppAccess(){
     if(accessRecorded) return;
     accessRecorded = true;
+    /* READ-ONLY SESSION (js/pin.js), and this one costs something real, so it is written down
+       rather than left as an obvious consequence: a guest's visit is NOT recorded in the access
+       log. The log is the one thing in the app that writes unprompted, and the only way to record
+       a visit is save(), which re-uploads the whole shared blob — including whatever else the guest
+       touched in memory before it fired. So the choice is between an accurate log and an honest
+       read-only rule, and the read-only rule wins; a guest getting one write "just for the log"
+       would be a hole shaped exactly like every other write.
+       Returning here also stops the geo lookup below, which is the right answer twice over: it
+       would send a guest's IP to a third-party service to fill in a row that can never be saved. */
+    if(!appCanWrite()) return;
     ensureAccessState();
     if(state.access.enabled === false) return;
 

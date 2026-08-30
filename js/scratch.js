@@ -609,6 +609,11 @@
      Legitimate here in a way it wouldn't be in notes.js: that file separates a render layer from a
      save layer, whereas this one owns both halves of a single screen. */
   async function doSaveScratch(force){
+    /* Belt and braces. A guest can't reach the scratch page at all (scratchAllowed() blocks the
+       entrance, and loadScratchData() never fetches the row, so scratchLoadedOk stays false and the
+       next line would already refuse) — this line is here so the file's write path states the
+       read-only rule explicitly rather than inheriting it from a flag two hundred lines away. */
+    if(!appCanWrite()) return;
     if(!scratchLoadedOk){ setScratchStatus('blocked'); return; } // never overwrite remote data before we've confirmed what it contains
     cacheScratchStateLocally();
     try{

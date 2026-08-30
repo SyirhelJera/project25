@@ -165,6 +165,8 @@
     return notesSavePromise;
   }
   async function doSaveNotes(force){
+    // read-only session (js/pin.js) — see doSave() in js/persistence.js
+    if(!appCanWrite()){ noteBlockedWrite(); return; }
     if(!notesLoadedOk) return; // never overwrite remote data before we've confirmed what it contains
     cacheNotesStateLocally();
     try{

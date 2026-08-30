@@ -2025,7 +2025,16 @@
     else stopValHelper();
   });
 
+  /* ---------- read-only sessions and the local helper (js/pin.js) ----------
+     The helper isn't storage, so these guards aren't about the shared row — they're about the
+     fact that every one of these routes makes something happen on the OWNER'S MACHINE: launching
+     or killing a process, renaming saved session files, opening a browser window, replaying a Riot
+     session. The helper is loopback-only, but "loopback" is exactly where a guest sitting at that
+     laptop is, and its token is in the shared row they can read. So the six action entry points
+     below refuse for a read-only session; the read-only routes (/status, /live, /tft-live) are
+     left alone, because looking is what a guest is allowed to do. */
   async function startValHelper(){
+    if(!appCanWrite()) return; // launches a program on the owner's machine
     if(valHelperBusy) return;
     valHelperBusy = 'starting';
     valHelperShowSetupHint = false;
@@ -2048,6 +2057,7 @@
   }
 
   async function stopValHelper(){
+    if(!appCanWrite()) return; // kills a process on the owner's machine
     if(valHelperBusy) return;
     valHelperBusy = 'stopping';
     renderValHelperPower();
@@ -2208,6 +2218,8 @@
   // account for Live Match). The helper owns the two files; everything else moves here and rides
   // out on the next save().
   async function commitValAcctRename(){
+    // a rename is a migration across five places (see CLAUDE.md), two of them files on the machine
+    if(!appCanWrite()){ showValLocalErr('This session is read-only — accounts can’t be renamed.', 'valSettingsLocalErr'); return; }
     const from = valAcctRenaming;
     const to = el('valAcctRenameInput').value.trim();
     if(!from) return;
@@ -2428,6 +2440,8 @@
   // a check — the whole reason you re-logged in is that the last one couldn't run). Pass no label
   // to check every saved account.
   async function runValStoreCheck(label, errTarget){
+    // the widest of the six: /check, /check-inventory, /delete-account and /login all run from here
+    if(!appCanWrite()){ showValLocalErr('This session is read-only — the store can’t be checked from here.', errTarget || 'valSettingsLocalErr'); return; }
     valLocalStatus.busy = true; valLocalStatus.busyMsg = 'check'; renderValLocalPanel();
     try{
       const res = await fetch(valLocalUrl()+'/check', {
@@ -2634,6 +2648,8 @@
 
   async function startValLoginWindow(label, opts){
     const errTarget = (opts && opts.errTarget) || 'valSettingsLocalErr';
+    // opens a real browser window on the owner's machine and captures a Riot session out of it
+    if(!appCanWrite()){ showValLocalErr('This session is read-only — a login window can’t be opened.', errTarget); return; }
     const errEl = el(errTarget); if(errEl) errEl.style.display = 'none';
     if(valLoginWin.active) return;
     if(!label){ showValLocalErr('Enter a label for this account first, e.g. "main".', errTarget); return; }
@@ -2756,6 +2772,8 @@
 
     el('valAddAccountSaveBtn').addEventListener('click', async ()=>{
       showValAddAccountErr('');
+      // saves a Riot session cookie into the helper's session file
+      if(!appCanWrite()){ showValAddAccountErr('This session is read-only — accounts can’t be added.'); return; }
       const label = el('valAddAccountLabel').value.trim();
       const ssid = el('valAddAccountSsid').value.trim();
       const clid = el('valAddAccountClid').value.trim();

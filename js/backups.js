@@ -45,6 +45,15 @@
 
   async function doRestore(){
     if(!pendingRestore) return;
+    /* Read-only session (js/pin.js). The most destructive button in the app — it replaces all four
+       storage resources with an older snapshot — so it is refused before the Edge Function is even
+       called, not merely left to fail at the four save() calls further down. Reported in the same
+       slot the confirmation was asked in. */
+    if(!appCanWrite()){
+      el('restoreSlot').innerHTML = '<div class="confirm-banner"><span>This session is read-only — backups can’t be restored.</span></div>';
+      pendingRestore = null;
+      return;
+    }
     const file = pendingRestore;
     el('restoreSlot').innerHTML = '<div class="confirm-banner"><span>Restoring…</span></div>';
     try{
@@ -68,11 +77,9 @@
       // No fallback to a copy embedded in the shared blob, unlike jobsSeed/notesSeed above: the
       // scratch page has only ever lived in its own row, so a backup that lacks it simply predates
       // the feature and an empty page is the correct result — there is no older location to look in.
-      /* Owner only, the same rule as loadScratchData() in js/scratch.js: a guest's session never
-         fetched the scratch row and must not acquire its contents through a restore either. The
-         stored page is left untouched rather than half-restored — saveScratch() below is already a
-         no-op for them, since doSaveScratch() won't write while scratchLoadedOk is false. */
-      if(window.p25IsOwner && window.p25IsOwner()) applyLoadedScratchState(data.scratchData || null);
+      // Reached by the owner only — the read-only guard at the top of this function turns a guest
+      // away before any of it runs, so there is no second scratch-specific check to make here.
+      applyLoadedScratchState(data.scratchData || null);
       pendingRestore = null;
       // force: restoring is a deliberate, user-confirmed overwrite of all four resources.
       // allSettled rather than all/sequential-await because save()/saveJobs()/saveNotes()/saveScratch() never

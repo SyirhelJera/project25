@@ -301,8 +301,23 @@
   // One-time setup: run supabase/setup-egress-fix.sql in the Supabase SQL editor to create this
   // bucket + its public read/write policies (same "anyone can read/write" model already used
   // for app_data — see js/persistence.js — since this app has no login).
+  /* ---------- read-only sessions ----------
+     The one short name every write path in the app is guarded with. The policy itself lives in
+     js/pin.js (p25CanWrite) — this is only the wrapper that saves ~20 call sites from repeating
+     the window-prefixed existence check, and core.js owns it because core.js loads second, right
+     after the gate, so every later file can call it.
+     Written so an ABSENT pin.js answers false: no gate, no writes. That direction is the safe one —
+     without pin.js the door never opens and nobody is using the app anyway, whereas failing open
+     would hand a stranger a read-write dashboard the moment one script 404s. */
+  function appCanWrite(){ return !!(window.p25CanWrite && window.p25CanWrite()); }
+
   const ICONS_BUCKET = 'icons';
   function uploadCompressedImage(file, maxDim, quality, folder){
+    /* Read-only guests never put bytes in Storage. Guarded here rather than at the ~6 callers
+       (goal icons, finance icons, fitness photos, motivation images, scratch pastes) because this
+       is the single door to the bucket, and a rejected promise is a shape every one of them
+       already handles — they all show an upload error. */
+    if(!appCanWrite()) return Promise.reject(new Error('This session is read-only — images can’t be uploaded.'));
     return compressImageFile(file, maxDim, quality).then(blob=>{
       if(!supabaseConfigured || usingClaudeStorage || !supa) return blobToDataUrl(blob);
       /* The extension and the content type have to FOLLOW THE ENCODING, not the caller's
@@ -339,6 +354,7 @@
   // Storage at all. Failures are swallowed — a stray orphaned file is harmless, unlike blocking
   // the user's edit on a delete call failing.
   function deleteStorageImage(url){
+    if(!appCanWrite()) return; // a read-only session removes nothing, least of all somebody else's file
     if(!url || !supabaseConfigured || usingClaudeStorage || !supa) return;
     const marker = '/storage/v1/object/public/' + ICONS_BUCKET + '/';
     const idx = url.indexOf(marker);

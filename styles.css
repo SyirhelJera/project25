@@ -221,6 +221,19 @@
   .nav-badge-warn{background:var(--gold);color:#5A3B00;margin-left:4px;}
   .setup-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:#3730A3;line-height:1.6;}
   .setup-banner code{background:#00000010;border-radius:4px;padding:1px 5px;font-size:11.5px;}
+  /* the read-only banner is a .setup-banner in a warmer colour — it reports a standing condition
+     of the session rather than a problem to fix, so it must not read as an error, and it must not
+     read as the blue informational ones either or it disappears into them */
+  #readOnlyBanner{background:#FFF7E6;border-color:#F2D9A0;color:#8A5B00;}
+  /* one pulse when a guest's first change is refused; the banner is already on screen, so this
+     draws the eye to it rather than saying anything twice */
+  #readOnlyBanner.is-nudge{animation:roNudge .9s ease;}
+  @keyframes roNudge{
+    0%,100%{transform:scale(1);box-shadow:none;}
+    12%{transform:scale(1.014);box-shadow:0 0 0 4px rgba(242,217,160,.55);}
+    60%{transform:scale(1);box-shadow:0 0 0 4px rgba(242,217,160,0);}
+  }
+  @media (prefers-reduced-motion: reduce){ #readOnlyBanner.is-nudge{animation:none;} }
   .conflict-actions{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;}
   .conflict-actions .btn{white-space:normal;text-align:center;flex:1 1 180px;}
 
@@ -262,13 +275,20 @@
      frame and then repaint. */
   .pin-gate{
     position:fixed;inset:0;z-index:10000;
-    display:flex;align-items:center;justify-content:center;
+    display:flex;justify-content:center;
     padding:max(24px,env(safe-area-inset-top)) 24px max(24px,env(safe-area-inset-bottom));
     background:radial-gradient(ellipse at 50% 32%,#20212b 0%,#050506 76%);color:#fff;
     transition:opacity .28s ease;
+    /* The gate scrolls INSIDE itself and the document behind it is frozen (js/pin.js adds
+       .pin-gate-locked below) — a document that scrolls under a fixed overlay is what strands the
+       sticky mobile navbar off-screen until the next swipe. margin:auto on the card rather than
+       align-items:center because a card taller than a short phone gets its top clipped off by
+       centering, and it's the top of this one that says which app is asking. */
+    overflow-y:auto;
   }
   .pin-gate.pin-gate-hidden{opacity:0;pointer-events:none;}
-  .pin-gate-card{width:100%;max-width:296px;display:flex;flex-direction:column;align-items:center;}
+  html.pin-gate-locked,html.pin-gate-locked body{overflow:hidden;}
+  .pin-gate-card{width:100%;max-width:296px;margin:auto;display:flex;flex-direction:column;align-items:center;}
   .pin-gate-card.is-wrong{animation:pinShake .38s ease;}
   @keyframes pinShake{
     0%,100%{transform:translateX(0);}

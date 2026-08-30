@@ -165,6 +165,10 @@
     return jobsSavePromise;
   }
   async function doSaveJobs(force){
+    // read-only session (js/pin.js) — the same refusal as doSave() in js/persistence.js, ahead of
+    // the local mirror for the same reason: a cached copy would resurrect a guest's edits on their
+    // own device on the next load
+    if(!appCanWrite()){ noteBlockedWrite(); return; }
     if(!jobsLoadedOk) return; // never overwrite remote data before we've confirmed what it contains
     cacheJobsStateLocally();
     try{
@@ -443,6 +447,8 @@
       return;
     }
     if(!initSupabaseIfNeeded()) return;
+    // read-only session (js/pin.js): this writes a file into the owner's Google Drive
+    if(!appCanWrite()){ if(statusEl) statusEl.textContent = 'Read-only session — resumes can’t be uploaded.'; return; }
     if(statusEl) statusEl.textContent = 'Uploading…';
     try{
       const dataUrl = await new Promise((resolve, reject)=>{

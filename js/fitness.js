@@ -1057,6 +1057,9 @@
      file and where they put the record it returns. Both keep only the Drive id/link/thumbnail —
      never the bytes — which is the whole reason the shared JSON row stays small. */
   async function driveUploadPhoto(file, driveFilename){
+    // read-only session (js/pin.js): this writes a file into the owner's Google Drive. Thrown
+    // rather than returned so it lands in the caller's existing upload-failed path.
+    if(!appCanWrite()) throw new Error('This session is read-only — photos can’t be uploaded.');
     const dataUrl = await new Promise((resolve, reject)=>{
       const reader = new FileReader();
       reader.onload = ev => resolve(ev.target.result);

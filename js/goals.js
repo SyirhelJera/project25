@@ -987,6 +987,11 @@
     const aiBtn = aiWrap.querySelector('[data-ai]');
     const aiSuggDiv = aiWrap.querySelector('.ai-sugg');
     aiBtn.addEventListener('click', async () => {
+      /* Read-only session (js/pin.js). Nothing is written by this call, so it's the one guard here
+         that isn't about data — it's about spend: the Edge Function bills the owner's Anthropic key
+         and is rate-limited per day, so a guest holding the button down would empty a quota that
+         isn't theirs. Reported in the button so the refusal is visible where the click was. */
+      if(!appCanWrite()){ aiBtn.textContent = '✦ Read-only session'; aiBtn.disabled = true; return; }
       aiBtn.textContent = '✦ Thinking...'; aiBtn.disabled = true;
       try{
         const existing = g.subtasks.map(s=>s.title);

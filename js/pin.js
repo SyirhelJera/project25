@@ -195,6 +195,29 @@
     if(b) press(b.getAttribute('data-pin-key'));
   }
 
+  /* Handing the page back once the door is out of the way.
+
+     The mobile navbar is `position:sticky; top:0` (styles.css, the max-width:760px block), and a
+     sticky element is re-pinned only by the scroll machinery — so if anything scrolled the document
+     while the gate was covering it, the bar stays parked at its static position off the top of the
+     screen and doesn't reappear until the next swipe. That was the "invisible navbar" bug, and
+     focusing a keypad button on a phone was enough to cause the scroll.
+
+     Three lines, three different jobs: give back the scroll the gate took, put the page at the top
+     where the bar lives, and fire the scroll/resize pair nav.js listens on so onScroll() and
+     measureNav() re-run — the latter is what publishes --nav-h, which the goal sheets reserve
+     space against, so getting it right on the first paint rather than the second matters too.
+
+     Only ever called on the interactive path. On the already-unlocked path the gate was never
+     shown, nothing was locked, and forcing scrollTo(0,0) there would throw away the browser's own
+     scroll restoration on every reload. */
+  function releasePage(){
+    document.documentElement.classList.remove('pin-gate-locked');
+    window.scrollTo(0, 0);
+    window.dispatchEvent(new Event('scroll'));
+    window.dispatchEvent(new Event('resize'));
+  }
+
   function unlock(role, silent){
     currentRole = role;
     open = false;
@@ -206,6 +229,12 @@
     document.removeEventListener('focusin', onFocusIn, true);
     if(padEl) padEl.removeEventListener('click', onPadClick);
     applyRole();
+    /* Outside the `if(gate)` below and BEFORE it: the page has to be handed back even in the
+       degenerate case where the markup is missing, or show() would have frozen a document with
+       nothing left to unfreeze it. Before, rather than after the fade, because the gate is already
+       pointer-events:none by then — re-pinning the navbar behind a fading overlay means the app is
+       whole the moment it becomes visible. */
+    if(!silent) releasePage();
     if(gate){
       if(silent){
         /* No transition on the already-unlocked path: this runs during parse,
@@ -235,6 +264,10 @@
       gate.style.display = '';
       gate.classList.remove('pin-gate-hidden');
     }
+    /* Holds the document still underneath. Not cosmetic: a document that scrolls while a fixed
+       overlay covers it is what strands the sticky navbar off-screen (see releasePage). The gate
+       scrolls internally instead, so a short phone can still reach the whole keypad. */
+    document.documentElement.classList.add('pin-gate-locked');
     applyRole();
     renderDots();
     tickLockout();
@@ -243,11 +276,18 @@
     if(padEl) padEl.addEventListener('click', onPadClick);
     /* Focus a keypad button rather than any text field: a real <input> would
        raise the soft keyboard over the keypad on a phone, and the keypad IS
-       the input here. */
-    setTimeout(function(){
-      var first = gate ? gate.querySelector('.pin-key') : null;
-      if(first) first.focus();
-    }, 0);
+       the input here.
+       Fine pointers only, the same rule as scratch.js's scratchWantsAutoFocus():
+       on a touch screen focusing a key gains nothing (the next thing that
+       happens is a tap) and costs something real — the browser scrolls the
+       focused element into view, which is one of the ways the document ends up
+       scrolled under the gate. See releasePage() for why that mattered. */
+    if(window.matchMedia && window.matchMedia('(pointer: fine)').matches){
+      setTimeout(function(){
+        var first = gate ? gate.querySelector('.pin-key') : null;
+        if(first) first.focus();
+      }, 0);
+    }
   }
 
   var stored = readStored(ROLE_KEY, window.sessionStorage);
@@ -262,6 +302,14 @@
   window.p25Role    = function(){ return currentRole; };
   window.p25IsOwner = function(){ return currentRole === 'owner'; };
   window.p25IsGuest = function(){ return currentRole !== 'owner'; }; // unknown fails closed — rule 2
+  /* THE READ-ONLY POLICY, and the single definition of it. A guest may read everything (bar the
+     scratch page) and change nothing: no save to any of the four storage resources, no upload to
+     Storage, no Edge Function that writes or spends, no command to the local helper. It happens to
+     equal p25IsOwner() today, and it is still a separate name on purpose — the ~20 write paths
+     that call it are asking "may this session write?", not "who is this?", so the rule has one
+     place to change and one thing to grep for. Every caller phrases it as `!appCanWrite()` off the
+     wrapper in core.js, which is false when pin.js is missing entirely: fails closed, rule 2. */
+  window.p25CanWrite = function(){ return currentRole === 'owner'; };
   /* Shuts the door again. A reload rather than merely re-showing the gate:
      by now every tab's data is in memory and in this page's DOM, and drawing a
      panel over all of it would leave it one DevTools pane away. */

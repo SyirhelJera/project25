@@ -123,6 +123,16 @@
     // hiddenTabs are the tab keys kept out of the navbar entirely ('settings' is never hideable).
     // All three are applied by applyTabOrder()/applyTabIcons()/applyTabVisibility() in js/settings.js.
     tabOrder: [], hideTabIcons: false, hiddenTabs: [],
+    /* Per-tab navbar overrides (Settings > Navigation > Navbar tabs > ✎), all keyed by tab key
+       and all deliberately SPARSE: a key that isn't present means "keep whatever index.html and
+       styles.css already give this tab". That's what lets "reset to default" delete a key instead
+       of having to store a copy of the default, and it's why NAV_TAB_DEFAULTS in js/settings.js is
+       snapshotted from the DOM at load, before applyTabLooks() can overwrite it.
+         tabNames      key -> custom label
+         tabIcons      key -> { type:'preset'|'emoji', value }   (preset ids: TAB_ICON_PRESETS)
+         tabIconColors key -> any CSS colour, applied inline so it beats the per-tab rules in
+                              styles.css (.nav-item[data-tab="goals"] svg{color:var(--blue)} etc.) */
+    tabNames: {}, tabIcons: {}, tabIconColors: {},
     // pinned-countdown mosaic dot colors (Settings tab) — empty string means "use the theme default".
     // perfectGlow toggles whether 100%-completed ("perfect") days are highlighted differently;
     // perfectStyle picks how ('color' solid fill / 'rainbow' / 'golden' shimmer / 'emoji' overlay);

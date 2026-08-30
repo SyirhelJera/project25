@@ -484,6 +484,19 @@
        Valorant tab would find it back. Dedupe in case a save already carries both keys. */
     state.tabOrder = state.tabOrder.map(k=> k==='valorant' ? 'games' : k).filter((k,i,a)=>a.indexOf(k)===i);
     state.hiddenTabs = state.hiddenTabs.map(k=> k==='valorant' ? 'games' : k).filter((k,i,a)=>a.indexOf(k)===i);
+    /* Per-tab navbar overrides (name / icon / icon colour), applied by applyTabLooks(). Sparse by
+       design — see core.js. Kept as plain objects rather than defaulted per tab so a tab that has
+       never been customised carries nothing at all in the saved blob. */
+    const plainObj = v => (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+    state.tabNames = plainObj(parsed.tabNames);
+    state.tabIcons = plainObj(parsed.tabIcons);
+    state.tabIconColors = plainObj(parsed.tabIconColors);
+    // same valorant -> games rewrite as the two lists above: these are keyed by tab key too, so a
+    // rename or a custom icon saved against the old key would otherwise be silently orphaned
+    [state.tabNames, state.tabIcons, state.tabIconColors].forEach(map=>{
+      if(map.valorant !== undefined && map.games === undefined) map.games = map.valorant;
+      delete map.valorant;
+    });
     state.mosaicColors = parsed.mosaicColors || { filled:'', today:'', empty:'', perfect:'', perfectGlow:true, perfectStyle:'color', perfectEmoji:'⭐' };
     ['filled','today','empty','perfect'].forEach(k=>{ if(state.mosaicColors[k]===undefined) state.mosaicColors[k] = ''; });
     if(state.mosaicColors.perfectGlow === undefined) state.mosaicColors.perfectGlow = true;

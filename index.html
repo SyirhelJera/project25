@@ -402,6 +402,18 @@
     </div>
   </div>
 
+  <!-- CUSTOMISE TAB — opened by the ✎ on a row in Settings > Navigation > Navbar tabs. Everything
+       in it applies live to the sidebar behind it (js/settings.js, renderTabCustomize()). -->
+  <div id="tabCustomizeOverlay" class="struggle-overlay" style="display:none;">
+    <div class="struggle-overlay-card tabcust-card">
+      <div class="struggle-overlay-head">
+        <div class="struggle-overlay-title is-neutral" id="tabCustomizeTitle">Customise tab</div>
+        <button class="btn btn-ghost btn-sm" id="tabCustomizeCloseBtn" type="button">Close</button>
+      </div>
+      <div id="tabCustomizeBody"></div>
+    </div>
+  </div>
+
   <!-- EDIT ACCOUNT — opened by the "Edit Account" button inside an expanded account -->
   <div id="editAccountOverlay" class="struggle-overlay fin-scope" style="display:none;">
     <div class="struggle-overlay-card">
@@ -1916,7 +1928,7 @@
     <div class="settab" id="settab-navigation" style="display:none;">
       <div class="set-card">
         <div class="set-card-h">Navbar tabs</div>
-        <div class="set-card-sub">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put.</div>
+        <div class="set-card-sub">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put. ✎ opens a tab's own name, icon and icon colour; every one of those can be put back to the original from the same sheet.</div>
         <div id="tabOrderList" class="tab-order-list"></div>
       </div>
 

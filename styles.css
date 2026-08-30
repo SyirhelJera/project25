@@ -634,7 +634,7 @@
   .theme-swatch span{position:absolute;bottom:6px;left:6px;width:16px;height:16px;border-radius:999px;display:block;}
   .theme-option-label{font-size:11.5px;font-weight:700;color:var(--text);}
 
-  .tab-order-list{display:flex;flex-direction:column;gap:6px;max-width:360px;}
+  .tab-order-list{display:flex;flex-direction:column;gap:6px;max-width:400px;}
   .tab-order-row{display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:9px;}
   .tab-order-row.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .tab-order-icon{flex:none;width:18px;height:18px;color:var(--muted);}
@@ -646,6 +646,46 @@
   .tab-vis-btn.off{background:var(--surface-alt);border-color:var(--border);color:var(--muted);}
   .tab-vis-btn:hover:not(:disabled){border-color:var(--violet);}
   .tab-vis-btn:disabled{background:var(--surface-alt);border-color:var(--border);color:var(--muted);opacity:.5;cursor:not-allowed;}
+  .tab-order-edit-btn{flex:none;background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:6px;width:24px;height:22px;line-height:1;font-size:11px;cursor:pointer;padding:0;}
+  .tab-order-edit-btn:hover{color:var(--violet-dark);border-color:var(--violet);}
+
+  /* ---- Settings > Navigation > Navbar tabs > ✎ : the customise sheet ----
+     Lives in the shared .struggle-overlay modal shell (js/settings.js, renderTabCustomize()).
+     Everything in it applies live, so the sheet is deliberately narrow enough that the sidebar
+     stays visible beside it on a desktop — the real preview is the navbar behind the backdrop. */
+  .tabcust-card{max-width:460px;}
+  .tabcust-preview{display:flex;justify-content:center;margin-bottom:16px;}
+  .tabcust-preview-chip{display:inline-flex;align-items:center;gap:10px;padding:9px 14px;border-radius:9px;background:var(--violet-pale);color:var(--violet-dark);font-size:13.5px;font-weight:600;}
+  .tabcust-preview-chip svg{width:16px;height:16px;flex:none;}
+  .tabcust-field{margin-bottom:16px;}
+  .tabcust-field > label{display:block;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin-bottom:7px;}
+  .tabcust-hint{font-size:11.5px;color:var(--muted);margin-top:6px;}
+  .tabcust-name{width:100%;box-sizing:border-box;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13.5px;font-weight:600;padding:9px 11px;font-family:inherit;}
+  .tabcust-name:focus{outline:none;border-color:var(--violet);}
+  /* the icon grid scrolls rather than growing the sheet past .struggle-overlay-card's 80vh */
+  .tabcust-icons{display:grid;grid-template-columns:repeat(auto-fill,minmax(38px,1fr));gap:6px;max-height:142px;overflow-y:auto;padding:4px;background:var(--surface-alt);border:1px solid var(--border);border-radius:10px;}
+  .tabcust-ico{display:flex;align-items:center;justify-content:center;height:36px;border-radius:8px;border:2px solid transparent;background:var(--surface);color:var(--muted);cursor:pointer;padding:0;}
+  .tabcust-ico svg{width:19px;height:19px;}
+  .tabcust-ico:hover{color:var(--text);}
+  .tabcust-ico.selected{border-color:var(--violet);color:var(--violet-dark);}
+  .tabcust-emoji-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:9px;}
+  .tabcust-sub{font-size:11.5px;color:var(--muted);}
+  .tabcust-emoji-input{width:56px;text-align:center;background:var(--surface-alt);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;padding:6px 4px;font-family:inherit;}
+  .tabcust-emoji-input:focus{outline:none;border-color:var(--violet);}
+  /* a colour emoji placeholder reads as a chosen value at full opacity — the preset row is the
+     only thing that should look selected */
+  .tabcust-emoji-input::placeholder{opacity:.4;}
+  .tabcust-emoji-presets{display:flex;flex-wrap:wrap;gap:5px;}
+  .tabcust-colors{display:flex;flex-wrap:wrap;gap:7px;align-items:center;}
+  .tabcust-swatch{width:26px;height:26px;border-radius:8px;border:2px solid var(--border);cursor:pointer;padding:0;}
+  .tabcust-swatch.selected{border-color:var(--text);box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--violet);}
+  /* "theme default" is the absence of a colour, so it's drawn as a slash rather than as a swatch */
+  .tabcust-swatch.is-default{background:linear-gradient(135deg,var(--surface-alt) 45%,var(--danger) 45%,var(--danger) 55%,var(--surface-alt) 55%);}
+  .tabcust-swatch-any{position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--surface-alt);color:var(--muted);font-size:13px;line-height:1;}
+  .tabcust-swatch-any input[type=color]{position:absolute;inset:0;opacity:0;cursor:pointer;padding:0;border:0;}
+  /* sticky, because the card itself scrolls at 80vh and Done must never be below the fold */
+  .tabcust-actions{display:flex;justify-content:space-between;gap:10px;margin-top:18px;position:sticky;bottom:-24px;background:var(--surface);padding:12px 0;}
+
   .tab-order-move-btns{display:flex;flex-direction:column;gap:2px;flex:none;}
   .tab-order-move-btn{background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);border-radius:5px;width:22px;height:16px;line-height:1;font-size:9px;cursor:pointer;padding:0;}
   .tab-order-move-btn:hover:not(:disabled){color:var(--violet-dark);border-color:var(--violet);}

@@ -2,6 +2,7 @@
     applyTabOrder();
     applyTabIcons();
     applyTabVisibility();
+    applyTabLooks(); // per-tab name / icon / icon-colour overrides (Settings > Navigation)
     renderGoals(); renderHabits(); renderCountdowns(); renderMantras(); renderChecklists();
     renderFinance(); renderFitness(); renderValorant(); renderTft(); renderClock(); renderWishlist(); renderJobs(); renderNotes(); renderBoard();
     // re-renders whichever game the Games tab is showing — one code path decides which pane is

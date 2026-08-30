@@ -44,7 +44,7 @@
     return { advisers: seedBoardAdvisers(), sessions: [], prefs: { attach:{}, rules: BOARD_DEFAULT_RULES, tool:'chatgpt' } };
   }
 
-  let state = { goals: [], habits: [], habitSort: { mode:'none', dir:'desc' }, countdowns: [], mantras: [], motivation: { categories: [], pin: '', pinnedCategoryId: '', catOrder: 'added', speakMantra: false }, checklists: [], checklistExp: 0,
+  let state = { goals: [], habits: [], habitSort: { mode:'none', dir:'desc' }, countdowns: [], mantras: [], motivation: { categories: [], videos: [], pin: '', pinnedCategoryId: '', catOrder: 'added', speakMantra: false }, checklists: [], checklistExp: 0,
     // The level the user has already been congratulated for. Level itself is derived from exp on
     // every load, so without a remembered mark the level-up popup (js/goals.js) would replay on
     // every reload after a level-up. null = never marked; see noteLevelChange().

@@ -565,13 +565,17 @@
       // speakMantra = read each new mantra aloud (Web Speech API); see speakMantra() there.
       const catOrder = (typeof m.catOrder === 'string') ? m.catOrder : 'added';
       const speakMantra = m.speakMantra === true; // name kept local — the global speakMantra() is the reader in motivation.js
+      // Saved video links (the tab's Videos sub-tab — YouTube / Instagram Reels / TikTok). Read
+      // once up here because the three branches below each build state.motivation from named
+      // locals: a key missing from any ONE of them is silently dropped on load for that shape.
+      const videos = Array.isArray(m.videos) ? m.videos : [];
       if(Array.isArray(m.categories)){
-        state.motivation = { categories: m.categories, pin, pinnedCategoryId, catOrder, speakMantra };
+        state.motivation = { categories: m.categories, videos, pin, pinnedCategoryId, catOrder, speakMantra };
       } else if(Array.isArray(m.images) && m.images.length){
         // upgrade from the old flat single-slideshow shape into one "General" category
-        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], pin, pinnedCategoryId, catOrder, speakMantra };
+        state.motivation = { categories: [ { id: uid(), name: 'General', images: m.images } ], videos, pin, pinnedCategoryId, catOrder, speakMantra };
       } else {
-        state.motivation = { categories: [], pin, pinnedCategoryId, catOrder, speakMantra };
+        state.motivation = { categories: [], videos, pin, pinnedCategoryId, catOrder, speakMantra };
       }
       if(!state.motivation.categories.some(c=>c.id===state.motivation.pinnedCategoryId)) state.motivation.pinnedCategoryId = '';
       state.motivation.categories.forEach(c=>{
@@ -585,6 +589,22 @@
         if(typeof c.source !== 'string') c.source = '';
         if(typeof c.pinterestUser !== 'string') c.pinterestUser = '';
         if(typeof c.lastSync !== 'string') c.lastSync = '';
+      });
+      // A saved video link. `videoId` is the regex-validated id/shortcode parsed out of `url` by
+      // parseMotivationVideoUrl() in js/motivation.js, and it is the ONLY thing the embed src is
+      // built from — so a bad record here can't become a bad iframe. `vertical` picks the 9:16
+      // lightbox (Shorts / Reels / TikTok) over the 16:9 one.
+      state.motivation.videos = state.motivation.videos.filter(v => v && typeof v === 'object');
+      state.motivation.videos.forEach(v=>{
+        if(v.id===undefined) v.id = uid();
+        if(typeof v.platform !== 'string') v.platform = '';
+        if(typeof v.videoId !== 'string') v.videoId = '';
+        if(typeof v.url !== 'string') v.url = '';
+        if(typeof v.title !== 'string') v.title = '';
+        if(typeof v.note !== 'string') v.note = '';
+        v.fav = v.fav === true;
+        v.vertical = v.vertical === true;
+        if(typeof v.createdAt !== 'number') v.createdAt = 0;
       });
     }
   }

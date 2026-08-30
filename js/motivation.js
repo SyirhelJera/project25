@@ -23,6 +23,12 @@
     try{ localStorage.setItem(MOTIVATION_UNLOCK_KEY, JSON.stringify({ tab: motivationUnlocked, cats: motivationUnlockedCats })); }catch(e){}
   }
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
+  // Which pane of the tab is showing: 'slideshow' | 'videos'. A module-level variable rather than a
+  // state key, like tftActiveSubtab — these are two views of one concern (the Finance/Time ruling,
+  // not the Games one), so it RESETS to 'slideshow' on tab entry. That reset lives in js/nav.js and
+  // must not move into renderMotivation(), which renderAll() runs after every save and would snap
+  // you out of the Videos pane mid-edit.
+  let motivationActiveSubtab = 'slideshow';
   const MOTIVATION_INTERVAL_MS = 5000;
   // A video slide runs until the clip ends; this is only the ceiling, so one long pin can't park
   // the slideshow on itself indefinitely.
@@ -111,6 +117,11 @@
     el('motivationContent').style.display = locked ? 'none' : 'block';
     if(locked){ stopMotivationSlideshow(); stopMantraSpeech(); return; }
 
+    // The Videos pane lives outside everything below (it doesn't need a collection to exist), so
+    // it's refreshed here before any of the early returns. Skipped while something in it has focus:
+    // renderMotivationVideos() rebuilds the rows, and doing that under a caret would drop it.
+    if(motivationActiveSubtab === 'videos' && !el('motivationPaneVideos').contains(document.activeElement)) renderMotivationVideos();
+
     el('motivationPinBtn').textContent = state.motivation.pin ? 'Change PIN' : 'Set PIN';
     el('motivationLockBtn').style.display = state.motivation.pin ? '' : 'none';
     renderMotivationOrderChips();
@@ -173,9 +184,18 @@
     el('motivationThumbs').style.display = hasImages ? 'flex' : 'none';
 
     if(hasImages){
-      showMotivationSlide(!!animate);
       renderMotivationThumbsAndDots(cat);
-      startMotivationSlideshow();
+      // On the Videos pane the thumbs are still painted (so switching back is instant) but nothing
+      // is started: startMotivationSlideshow() would refuse anyway, and showMotivationSlide() is
+      // what presses play on a video clip — a hidden slideshow playing audio is exactly what
+      // switching pane has to stop.
+      if(motivationActiveSubtab === 'slideshow'){
+        showMotivationSlide(!!animate);
+        startMotivationSlideshow();
+      } else {
+        stopMotivationSlideshow();
+        hideMotivationVideo();
+      }
     } else {
       // hideMotivationVideo() as well as stopping: showMotivationSlide() is what normally clears
       // the video, and it isn't reached here — without this a clip from the previous category
@@ -459,6 +479,10 @@
   // also pauses the video, and this runs immediately after showMotivationSlide() has started it.
   function startMotivationSlideshow(){
     clearTimeout(motivationTimer); motivationTimer = null;
+    // The Videos pane is showing, so the slideshow isn't. Same clause tftActiveSubtab === 'lobby'
+    // carries for the TFT lobby poll: switching pane inside a tab has to stop the timer as surely
+    // as leaving the tab does, and this is the one chokepoint every caller goes through.
+    if(motivationActiveSubtab !== 'slideshow') return;
     const cat = activeMotivationCategory();
     if(!cat || cat.images.length < 2) return;
     // On a video slide this is only the ceiling — the `ended` handler below normally advances
@@ -858,6 +882,380 @@
     speakMantra(); // sample the voice you just picked
   });
 
+  /* ================= VIDEO LINKS ================= */
+  /* Saved links to motivational clips that live on YouTube, Instagram or TikTok. These are not
+     files — there is nothing to point the slideshow's <video> at — so each one plays in a
+     third-party <iframe>, which is why they get their own pane instead of joining a collection.
+
+     Two rules hold the whole thing up:
+       - An embed src is built ONLY from `videoId`, which parseMotivationVideoUrl() has already
+         matched against a strict character class. The raw URL is never interpolated into markup,
+         so an attribute can't be broken out of — the same discipline MD_SAFE_URL carries in
+         js/notes.js, and it matters here because this rides the shared unauthenticated row.
+       - Exactly one iframe is alive at a time, and closing the lightbox REMOVES it. An iframe
+         merely hidden keeps playing: you'd close the video and still hear it.
+
+     Instagram and TikTok embeds cannot be autoplayed or controlled from here — you press play in
+     their own player. That's a property of their embeds, not something to fix; it's also half the
+     reason every row carries an ↗ that opens the post where it actually lives. */
+
+  const MOT_VIDEO_PLATFORMS = {
+    youtube:   { label: 'YouTube',   badge: 'YT' },
+    instagram: { label: 'Instagram', badge: 'IG' },
+    tiktok:    { label: 'TikTok',    badge: 'TT' }
+  };
+
+  // YouTube refuses to embed into a file:// page outright (error 153, see js/music.js) because it
+  // checks the framing origin, which is the string "null" there. Instagram and TikTok do NOT —
+  // they render and play fine from disk — so this names YouTube rather than claiming no video
+  // works, which would be plainly contradicted by the reel playing next to the message.
+  const MOT_VIDEO_FILE_NOTE = 'Heads up: YouTube won’t play from a file:// page — run “node scripts/serve.mjs” and open http://localhost:8025 for those. Instagram and TikTok work either way.';
+
+  /* Returns { platform, videoId, vertical, error }. Mirrors parsePlaylistUrl()'s shape in
+     js/music.js, including its habit of returning a readable sentence instead of letting the
+     failure happen invisibly inside the frame. */
+  function parseMotivationVideoUrl(raw){
+    const s = (raw||'').trim();
+    const fail = msg => ({ platform:'', videoId:'', vertical:false, error: msg });
+    if(!s) return fail('');
+    let u;
+    try{ u = new URL(/^https?:\/\//i.test(s) ? s : 'https://' + s); }
+    catch(e){ return fail('That doesn’t look like a link. Paste the whole URL, starting with https://'); }
+    const host = u.hostname.replace(/^www\./, '').toLowerCase();
+    const path = u.pathname;
+
+    // ---- YouTube (incl. Shorts, youtu.be, and the m./music. hosts) ----
+    if(/(^|\.)youtube\.com$/.test(host) || host === 'youtu.be' || /(^|\.)youtube-nocookie\.com$/.test(host)){
+      let id = '', vertical = false;
+      if(host === 'youtu.be') id = path.slice(1).split('/')[0];
+      else {
+        const m = path.match(/^\/(shorts|embed|live|v)\/([^/?#]+)/);
+        if(m){ id = m[2]; vertical = m[1] === 'shorts'; }
+        else id = u.searchParams.get('v') || '';
+      }
+      // A YouTube id is exactly 11 of these characters; anything else is a channel//playlist/search
+      // URL that has no single video in it, and guessing would embed the wrong thing.
+      if(!/^[A-Za-z0-9_-]{11}$/.test(id)) return fail('No video id in that YouTube link. Use a link to one video — youtube.com/watch?v=…, youtu.be/… or youtube.com/shorts/…');
+      return { platform:'youtube', videoId:id, vertical, error:'' };
+    }
+
+    // ---- Instagram (reels and ordinary posts) ----
+    if(/(^|\.)instagram\.com$/.test(host)){
+      // /reel/, /reels/, /p/ and /tv/ — and the same shortcodes also appear one level deeper as
+      // /<user>/reel/<code>/, which is what the app's own share sheet hands you.
+      const m = path.match(/\/(reel|reels|p|tv)\/([^/?#]+)/);
+      if(!m) return fail('No post id in that Instagram link. Open the reel, tap ⋯ → Copy link, and paste that — it should have /reel/ or /p/ in it.');
+      if(!/^[A-Za-z0-9_-]{5,}$/.test(m[2])) return fail('That Instagram link’s post id doesn’t look right — try copying it again.');
+      // /reels/ is only ever a viewing route; the embed route is the singular one.
+      return { platform:'instagram', videoId:m[2], vertical:true, error:'', igKind: m[1] === 'p' ? 'p' : 'reel' };
+    }
+
+    // ---- TikTok ----
+    if(/(^|\.)tiktok\.com$/.test(host)){
+      const m = path.match(/\/(?:@[^/]+\/video|v|embed\/v2|embed)\/(\d{6,})/);
+      if(m) return { platform:'tiktok', videoId:m[1], vertical:true, error:'' };
+      // vm./vt. short links and /t/ redirects carry no video id at all, and the redirect can't be
+      // followed from a browser (TikTok sends no CORS headers), so there is nothing to resolve it
+      // with client-side. Saying so is better than saving a link that could never play.
+      if(/^(vm|vt)\./.test(u.hostname.toLowerCase()) || /^\/t\//.test(path))
+        return fail('TikTok short links don’t contain the video id. Open it in TikTok, then Share → Copy link and paste the long one — it has /video/ in it.');
+      return fail('No video id in that TikTok link. It should look like tiktok.com/@someone/video/1234567890.');
+    }
+
+    return fail('Only YouTube, Instagram and TikTok links can be played here.');
+  }
+
+  /* Built from the validated id alone — never from rec.url. */
+  function motVideoEmbedSrc(rec){
+    const id = encodeURIComponent(rec.videoId);
+    if(rec.platform === 'youtube') return 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&playsinline=1';
+    // The click that opened the lightbox is the user gesture, which is why autoplay above is
+    // allowed. Neither of the two below honours an autoplay param at all.
+    if(rec.platform === 'instagram') return 'https://www.instagram.com/' + (rec.igKind === 'p' ? 'p' : 'reel') + '/' + id + '/embed/';
+    if(rec.platform === 'tiktok') return 'https://www.tiktok.com/embed/v2/' + id;
+    return '';
+  }
+
+  /* Thumbnails, and why the three platforms differ.
+       YouTube  — derivable from the id alone, no request at all. i.ytimg.com is already exempt in
+                  sw.js, so it's a live fetch and never a stale cached frame.
+       TikTok   — not derivable, but its oEmbed returns thumbnail_url and is CORS-open, and we're
+                  already calling that endpoint for the title, so it costs nothing extra.
+       Instagram— there is no keyless route. The legacy api.instagram.com/oembed now 302s to an
+                  HTML page with no Access-Control-Allow-Origin, graph.facebook.com's
+                  instagram_oembed requires an app token, and /p/<code>/media/ is 404. So those
+                  rows keep the platform tile; don't add a scraper for it.
+
+     The TikTok URL is deliberately NOT persisted. It's signed and expires, which is exactly the
+     kind of volatile third-party value the rest of this app keeps out of the shared blob
+     (state.valorant.live, calEvents) — a stored one would rot into a broken image, and it would
+     be re-uploaded with every unrelated save until it did. Memory-only means it's simply fetched
+     again next session. */
+  const motVideoThumbCache = {};   // 'platform:id' -> url, this session only
+  const motVideoMetaPending = {};  // same key -> true while a lookup is in flight
+
+  function motVideoKey(rec){ return rec.platform + ':' + rec.videoId; }
+
+  function motVideoThumbUrl(rec){
+    if(rec.platform === 'youtube') return 'https://i.ytimg.com/vi/' + encodeURIComponent(rec.videoId) + '/hqdefault.jpg';
+    return motVideoThumbCache[motVideoKey(rec)] || '';
+  }
+
+  // The one place ordering happens — favourites first, then newest. Anything else sorting its own
+  // copy is how two views of one list start disagreeing (the tftSortedEntries() rule).
+  function motVideosSorted(){
+    return state.motivation.videos.slice().sort((a,b)=>{
+      if(!!a.fav !== !!b.fav) return a.fav ? -1 : 1;
+      return (b.createdAt||0) - (a.createdAt||0);
+    });
+  }
+
+  function setMotVideoHint(msg){
+    const hint = el('motVideoHint');
+    if(!hint) return;
+    const text = msg || (location.protocol === 'file:' ? MOT_VIDEO_FILE_NOTE : '');
+    hint.textContent = text;
+    hint.style.display = text ? 'block' : 'none';
+  }
+
+  /* ---------- the list ---------- */
+  function renderMotivationVideos(){
+    const list = el('motVideoList');
+    if(!list) return;
+    const vids = motVideosSorted();
+    el('motVideoEmpty').style.display = vids.length ? 'none' : 'block';
+    list.innerHTML = '';
+    vids.forEach(rec=>{
+      const meta = MOT_VIDEO_PLATFORMS[rec.platform] || { label:'Link', badge:'?' };
+      const row = document.createElement('div');
+      row.className = 'mot-video-row';
+      row.dataset.videoId = rec.id;
+
+      // Thumb — the click target for playback. A button so it's reachable by keyboard.
+      const thumb = document.createElement('button');
+      thumb.type = 'button';
+      thumb.className = 'mot-video-thumb pf-' + (rec.platform || 'other');
+      thumb.dataset.act = 'play';
+      thumb.title = 'Play';
+      thumb.setAttribute('aria-label', 'Play ' + (rec.title || meta.label + ' video'));
+      const badge = document.createElement('span');
+      badge.className = 'mot-video-badge';
+      badge.textContent = meta.badge;
+      thumb.appendChild(badge);
+      const thumbUrl = motVideoThumbUrl(rec);
+      if(thumbUrl){
+        const im = document.createElement('img');
+        im.loading = 'lazy'; im.alt = '';
+        // Falls back to the bare platform tile the badge is already sitting on, rather than
+        // leaving a broken-image frame where the picture should be.
+        im.addEventListener('error', ()=> im.remove());
+        im.src = thumbUrl;
+        thumb.appendChild(im);
+      }
+      row.appendChild(thumb);
+
+      const body = document.createElement('div');
+      body.className = 'mot-video-body';
+      // .value, never a value="…" attribute: escapeHtml() does not escape double quotes, so a
+      // title containing one would break out of the attribute (js/music.js carries the same note).
+      const title = document.createElement('input');
+      title.className = 'mot-video-title'; title.dataset.act = 'title';
+      title.value = rec.title || '';
+      title.placeholder = meta.label + ' video';
+      title.setAttribute('aria-label', 'Video title');
+      const note = document.createElement('input');
+      note.className = 'mot-video-note'; note.dataset.act = 'note';
+      note.value = rec.note || '';
+      note.placeholder = 'Add a note…';
+      note.setAttribute('aria-label', 'Note');
+      body.appendChild(title); body.appendChild(note);
+      row.appendChild(body);
+
+      const acts = document.createElement('div');
+      acts.className = 'mot-video-acts';
+      const fav = document.createElement('button');
+      fav.type = 'button'; fav.className = 'mot-video-act' + (rec.fav ? ' is-fav' : '');
+      fav.dataset.act = 'fav'; fav.textContent = rec.fav ? '★' : '☆';
+      fav.title = rec.fav ? 'Unpin from the top' : 'Pin to the top';
+      fav.setAttribute('aria-label', fav.title);
+      const open = document.createElement('a');
+      open.className = 'mot-video-act'; open.dataset.act = 'open';
+      open.target = '_blank'; open.rel = 'noopener noreferrer';
+      open.textContent = '↗';
+      open.title = 'Open in ' + meta.label;
+      open.setAttribute('aria-label', open.title);
+      open.href = rec.url || '#'; // .href, not an interpolated attribute — same reason as .value above
+      const del = document.createElement('button');
+      del.type = 'button'; del.className = 'mot-video-act danger';
+      del.dataset.act = 'del'; del.textContent = '🗑';
+      del.title = 'Remove'; del.setAttribute('aria-label', 'Remove');
+      acts.appendChild(fav); acts.appendChild(open); acts.appendChild(del);
+      row.appendChild(acts);
+
+      list.appendChild(row);
+    });
+  }
+
+  /* ---------- add / mutate ---------- */
+  function motVideoById(id){ return state.motivation.videos.find(v=>v.id===id) || null; }
+
+  function addMotivationVideo(){
+    const input = el('motVideoUrl');
+    const raw = input.value.trim();
+    if(!raw){ setMotVideoHint(''); return; }
+    const parsed = parseMotivationVideoUrl(raw);
+    if(parsed.error || !parsed.videoId){ setMotVideoHint(parsed.error || 'Couldn’t read that link.'); return; }
+    // Dedupe on platform + id rather than on the URL string: the same reel has half a dozen link
+    // forms (share link, /reels/ vs /reel/, tracking params), and they're all the same video.
+    if(state.motivation.videos.some(v=>v.platform===parsed.platform && v.videoId===parsed.videoId)){
+      setMotVideoHint('That one’s already saved.');
+      input.select();
+      return;
+    }
+    const rec = {
+      id: uid(),
+      platform: parsed.platform,
+      videoId: parsed.videoId,
+      url: raw,
+      title: '',
+      note: '',
+      fav: false,
+      vertical: !!parsed.vertical,
+      createdAt: Date.now()
+    };
+    if(parsed.igKind) rec.igKind = parsed.igKind;
+    state.motivation.videos.push(rec);
+    input.value = '';
+    setMotVideoHint('');
+    save();
+    renderMotivationVideos();
+    fetchMotVideoMeta(rec.id);
+  }
+
+  function deleteMotivationVideo(id){
+    const rec = motVideoById(id);
+    if(!rec) return;
+    if(!confirm('Remove "' + (rec.title || rec.url) + '"?')) return;
+    state.motivation.videos = state.motivation.videos.filter(v=>v.id!==id);
+    save();
+    renderMotivationVideos();
+  }
+
+  function toggleMotivationVideoFav(id){
+    const rec = motVideoById(id);
+    if(!rec) return;
+    rec.fav = !rec.fav;
+    save();
+    renderMotivationVideos(); // re-sorts — the whole point of the star
+  }
+
+  /* One oEmbed lookup fills both the title and (for TikTok) the thumbnail. Fire-and-forget,
+     modelled on resolvePinterestVideos(): the record is already saved and on screen before this
+     runs, nothing depends on it, and a failure just leaves the placeholder tile and title.
+     Patched back BY RECORD ID, never by index — a delete may have rewritten the list mid-flight.
+     Instagram has no CORS-open oEmbed at all, so it never gets here. */
+  function fetchMotVideoMeta(recId){
+    const rec = motVideoById(recId);
+    if(!rec) return;
+    const key = motVideoKey(rec);
+    if(motVideoMetaPending[key]) return;
+    const wantTitle = !rec.title;
+    // YouTube's thumbnail is derived, so a YouTube row with a title already has nothing to ask for.
+    const wantThumb = rec.platform === 'tiktok' && !motVideoThumbCache[key];
+    if(!wantTitle && !wantThumb) return;
+    let endpoint = '';
+    if(rec.platform === 'youtube') endpoint = 'https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + rec.videoId);
+    else if(rec.platform === 'tiktok') endpoint = 'https://www.tiktok.com/oembed?url=' + encodeURIComponent('https://www.tiktok.com/@x/video/' + rec.videoId);
+    if(!endpoint) return;
+    motVideoMetaPending[key] = true;
+    fetch(endpoint).then(r=> r.ok ? r.json() : null).then(j=>{
+      if(!j) return;
+      const live = motVideoById(recId); // re-read: it may have been deleted or renamed since
+      if(!live) return;
+      let changed = false;
+      const t = typeof j.title === 'string' ? j.title.trim() : '';
+      // Only if it's STILL untitled — you may have typed one while this was in flight.
+      if(t && !live.title){ live.title = t.length > 120 ? t.slice(0,120) : t; save(); changed = true; }
+      const th = typeof j.thumbnail_url === 'string' ? j.thumbnail_url : '';
+      // Cache only, never save() — see the note on motVideoThumbCache above.
+      if(th && /^https:\/\//.test(th) && !motVideoThumbCache[key]){ motVideoThumbCache[key] = th; changed = true; }
+      if(changed && !el('motivationPaneVideos').contains(document.activeElement)) renderMotivationVideos();
+    }).catch(()=>{}).then(()=>{ delete motVideoMetaPending[key]; });
+  }
+
+  /* Called when the pane is shown, so rows saved before this existed (or in an earlier session,
+     since thumbnails aren't persisted) fill themselves in. fetchMotVideoMeta() no-ops for anything
+     that already has what it needs, so this is cheap to call repeatedly. */
+  function ensureMotVideoMeta(){
+    state.motivation.videos.forEach(v=> fetchMotVideoMeta(v.id));
+  }
+
+  /* ---------- the lightbox ---------- */
+  function openMotVideoPlayer(id){
+    const rec = motVideoById(id);
+    if(!rec) return;
+    const src = motVideoEmbedSrc(rec);
+    if(!src) return;
+    const wrap = el('motVideoFrameWrap');
+    const card = el('motVideoCard');
+    wrap.innerHTML = ''; // never two players
+    card.classList.toggle('is-tall', !!rec.vertical);
+    // Drives the chrome-crop offsets in styles.css. Instagram and TikTok each wrap their player in
+    // their own header/like/caption bar, and a cross-origin iframe can't be styled from here — the
+    // only lever is to oversize the frame and clip theirs off, per platform.
+    card.dataset.platform = rec.platform;
+    const meta = MOT_VIDEO_PLATFORMS[rec.platform] || { label:'Video' };
+    el('motVideoBarTitle').textContent = rec.title || meta.label + ' video';
+    const openBtn = el('motVideoOpenBtn');
+    openBtn.href = rec.url || '#';
+    openBtn.title = 'Open in ' + meta.label;
+    const f = document.createElement('iframe');
+    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen');
+    f.setAttribute('allowfullscreen', '');
+    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    // Belt to the CSS's braces: the frames are sized past their own content so they never need to
+    // scroll, but a cross-origin document's overflow can't be reached from here, so ask as well.
+    f.setAttribute('scrolling', 'no');
+    f.setAttribute('title', el('motVideoBarTitle').textContent);
+    f.src = src;
+    wrap.appendChild(f);
+    el('motVideoOverlay').style.display = 'flex';
+  }
+
+  function closeMotVideoPlayer(){
+    const overlay = el('motVideoOverlay');
+    if(!overlay || overlay.style.display === 'none') return;
+    overlay.style.display = 'none';
+    // Removing the iframe, not just hiding the overlay: a hidden iframe carries on playing, so
+    // closing the video would leave its audio running with nothing on screen to stop it.
+    el('motVideoFrameWrap').innerHTML = '';
+  }
+
+  /* ---------- panes ---------- */
+  function showMotivationSubTab(which){
+    motivationActiveSubtab = (which === 'videos') ? 'videos' : 'slideshow';
+    document.querySelectorAll('#motivationContent [data-motsub]').forEach(b=>{
+      b.classList.toggle('active', b.dataset.motsub === motivationActiveSubtab);
+    });
+    const onVideos = motivationActiveSubtab === 'videos';
+    el('motivationPaneSlideshow').style.display = onVideos ? 'none' : '';
+    el('motivationPaneVideos').style.display = onVideos ? 'block' : 'none';
+    if(onVideos){
+      // Leaving the slideshow has to silence it as surely as leaving the tab does — and the menu
+      // is a slideshow-pane control, so a menu left open would float over the video list.
+      stopMotivationSlideshow();
+      stopMantraSpeech();
+      hideMotivationVideo();
+      closeMotivationMenu();
+      setMotVideoHint('');
+      renderMotivationVideos();
+      ensureMotVideoMeta();
+    } else {
+      closeMotVideoPlayer();
+      renderMotivation();
+    }
+  }
+
   /* ---------- options menu ---------- */
   // Everything that used to be a row of buttons above the slideshow. renderMotivation() runs on
   // open so labels ("Set" vs "Change PIN") and the Pinterest-only items are current.
@@ -939,6 +1337,47 @@
   el('motivationLockBtn').addEventListener('click', ()=>{ motivationUnlocked = false; persistMotivationUnlocks(); renderMotivation(); });
   el('motivationUnlockBtn').addEventListener('click', promptMotivationUnlock);
 
+  /* ---------- video links wiring ---------- */
+  document.querySelectorAll('#motivationContent [data-motsub]').forEach(b=>{
+    b.addEventListener('click', ()=> showMotivationSubTab(b.dataset.motsub));
+  });
+  el('motVideoAddBtn').addEventListener('click', addMotivationVideo);
+  el('motVideoUrl').addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); addMotivationVideo(); } });
+  // Typing dismisses a stale "already saved" / parse error rather than leaving it contradicting
+  // the box it's sitting under. Never re-renders — see the change-vs-input note below.
+  el('motVideoUrl').addEventListener('input', ()=> setMotVideoHint(''));
+
+  // Delegated from the list, which renderMotivationVideos() rebuilds wholesale on every change.
+  el('motVideoList').addEventListener('click', e=>{
+    const hit = e.target.closest('[data-act]');
+    const row = e.target.closest('.mot-video-row');
+    if(!hit || !row) return;
+    const id = row.dataset.videoId;
+    if(hit.dataset.act === 'play') openMotVideoPlayer(id);
+    else if(hit.dataset.act === 'fav') toggleMotivationVideoFav(id);
+    else if(hit.dataset.act === 'del') deleteMotivationVideo(id);
+    // 'open' is a real <a href> — let it navigate.
+  });
+  // 'change' (i.e. on blur / Enter), deliberately NOT 'input'. Two reasons: these ride the shared
+  // blob, which doSave() re-uploads in full, so a per-keystroke save would re-send every goal and
+  // habit in the app on every letter; and per the notes.js rule a live field must never trigger a
+  // re-render, which would rebuild the input mid-keystroke and drop the caret.
+  el('motVideoList').addEventListener('change', e=>{
+    const field = e.target.closest('[data-act="title"], [data-act="note"]');
+    const row = e.target.closest('.mot-video-row');
+    if(!field || !row) return;
+    const rec = motVideoById(row.dataset.videoId);
+    if(!rec) return;
+    const val = field.value.trim();
+    if(field.dataset.act === 'title'){ if(rec.title === val) return; rec.title = val; }
+    else { if(rec.note === val) return; rec.note = val; }
+    save(); // no re-render: the field already shows the value, and rebuilding it would fight focus
+  });
+
+  el('motVideoCloseBtn').addEventListener('click', closeMotVideoPlayer);
+  el('motVideoOverlay').addEventListener('click', e=>{ if(e.target === el('motVideoOverlay')) closeMotVideoPlayer(); });
+  document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeMotVideoPlayer(); });
+
   // Swiping switches between categories (not images — tap the image for that). Bound to the
   // always-visible wrapper, not #motivationSlideshow itself, since that's display:none whenever
   // the active category is locked or has no images — swiping still needs to work then too.
@@ -969,5 +1408,5 @@
     // showMotivationSlide() rather than only restarting the timer: stopMotivationSlideshow()
     // paused any video, and this is what presses play again. It's idempotent for a still, and
     // for a video it reuses the already-buffered src rather than re-fetching.
-    if(view && view.classList.contains('active')){ showMotivationSlide(false); startMotivationSlideshow(); }
+    if(view && view.classList.contains('active') && motivationActiveSubtab === 'slideshow'){ showMotivationSlide(false); startMotivationSlideshow(); }
   });

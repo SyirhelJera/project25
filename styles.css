@@ -1712,6 +1712,150 @@
   #motivationCatLock .empty{border:none;padding:0;background:none;}
   #motivationCatLock .btn{margin-top:14px;}
 
+  /* ---------- Motivation → Videos pane (js/motivation.js) ---------- */
+  .mot-video-add{display:flex;gap:8px;align-items:stretch;margin-bottom:4px;}
+  .mot-video-add input{flex:1 1 auto;min-width:0;background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px 12px;font-size:13px;font-family:'Inter',sans-serif;min-height:42px;}
+  .mot-video-add input:focus{outline:none;border-color:var(--violet);}
+  .mot-video-add .btn{flex:0 0 auto;min-height:42px;padding:0 16px;font-size:16px;line-height:1;}
+  #motVideoHint{margin-bottom:12px;}
+  .mot-video-list{display:flex;flex-direction:column;gap:10px;margin-top:12px;}
+
+  .mot-video-row{display:flex;align-items:center;gap:12px;background:var(--surface-alt);border:1px solid var(--border);border-radius:12px;padding:10px;}
+  /* The thumb is the play button — a real <button> so it's tab-reachable, and the platform tile
+     underneath doubles as the fallback when the <img> 404s or there is no thumbnail URL at all
+     (Instagram and TikTok publish none without a token). */
+  .mot-video-thumb{position:relative;flex:0 0 auto;width:92px;height:62px;border-radius:9px;border:none;padding:0;overflow:hidden;cursor:pointer;display:flex;align-items:center;justify-content:center;background:var(--border);}
+  .mot-video-thumb img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  .mot-video-thumb.pf-youtube{background:linear-gradient(135deg,#ff0000,#8b0000);}
+  .mot-video-thumb.pf-instagram{background:linear-gradient(135deg,#f9ce34,#ee2a7b 55%,#6228d7);}
+  .mot-video-thumb.pf-tiktok{background:linear-gradient(135deg,#25f4ee,#000 55%,#fe2c55);}
+  /* Sits above the artwork, so the platform is readable even on a busy frame. */
+  .mot-video-badge{position:relative;z-index:1;font-size:11px;font-weight:800;color:#fff;letter-spacing:.4px;text-shadow:0 1px 3px rgba(0,0,0,.75);}
+  .mot-video-thumb:hover::after,.mot-video-thumb:focus-visible::after{content:'▶';position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.42);color:#fff;font-size:20px;}
+  .mot-video-thumb:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  .mot-video-body{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
+  /* Borderless until focused: these are live fields, but a list of eight boxed inputs reads as a
+     form rather than as a list of videos. */
+  .mot-video-body input{width:100%;box-sizing:border-box;background:none;border:1px solid transparent;border-radius:7px;color:var(--text);font-family:'Inter',sans-serif;padding:4px 6px;}
+  .mot-video-body input:hover{border-color:var(--border);}
+  .mot-video-body input:focus{outline:none;border-color:var(--violet);background:var(--surface);}
+  .mot-video-title{font-size:13.5px;font-weight:700;}
+  .mot-video-note{font-size:11.5px;color:var(--muted);}
+
+  .mot-video-acts{flex:0 0 auto;display:flex;align-items:center;gap:4px;}
+  .mot-video-act{width:32px;height:32px;border-radius:8px;border:1px solid transparent;background:none;color:var(--muted);font-size:14px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+  .mot-video-act:hover{background:var(--surface);border-color:var(--border);color:var(--text);}
+  .mot-video-act.is-fav{color:var(--gold);}
+  .mot-video-act.danger:hover{color:var(--danger);border-color:var(--danger);}
+  .mot-video-act:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+
+  /* The lightbox. 1000 tier like every other modal — above the scratch mode (950) and the calendar
+     bubbles (920), because a dialog must never sit under a notification. */
+  .mot-video-overlay{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:16px;}
+  .mot-video-card{display:flex;flex-direction:column;gap:8px;width:min(94vw,900px);max-width:100%;}
+  .mot-video-bar{display:flex;align-items:center;gap:8px;color:#fff;}
+  .mot-video-bar-title{flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .mot-video-bar-btn{flex:0 0 auto;width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.28);background:rgba(255,255,255,.1);color:#fff;font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;text-decoration:none;}
+  .mot-video-bar-btn:hover{background:rgba(255,255,255,.22);}
+  .mot-video-bar-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+  /* 16:9 by default; .is-tall is the 9:16 one that Shorts, Reels and TikTok all want. Sized off
+     vh so a portrait clip fills the height rather than the width. */
+  .mot-video-frame-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;overflow:hidden;
+    /* How much of the embed to hide above and below the media. Zero for YouTube, whose
+       youtube-nocookie player is already just the video. */
+    --crop-top:0px; --crop-bottom:0px;}
+  .mot-video-card.is-tall{width:auto;}
+  .mot-video-card.is-tall .mot-video-frame-wrap{aspect-ratio:9/16;height:min(80vh,760px);width:auto;}
+
+  /* ---- cropping Instagram's and TikTok's own UI off the frame ----
+     Both wrap their player in chrome — a profile header, a like/comment/"View more on Instagram"
+     bar, a caption and music row. The frame is cross-origin, so none of it can be styled, hidden
+     or scripted from this page; the only lever available is geometry. So the iframe is laid out
+     at its natural size and the .mot-video-frame-wrap window is made SMALLER than it and offset,
+     with overflow:hidden clipping the chrome away on all four sides.
+
+     Instagram needs all four edges, not just top and bottom: it centres the reel's media box in a
+     card WIDER than the media, so cropping only vertically leaves white margins either side —
+     which is exactly what the first attempt here did. The numbers below are fractions of the
+     iframe's own width, measured off a rendered reel, because the media box scales with width
+     while the header does not (--crop-top is the one value in px for that reason).
+
+     Each is deliberately shaved a little past the true edge, so rounding can never let a sliver of
+     white back in; what it eats into instead is Instagram's own black letterbox bars, which are
+     invisible against this overlay. If their embed ever changes, these four numbers in one rule
+     are the whole fix — they are the one part of this file a third party can invalidate. */
+  .mot-video-card.is-tall[data-platform="instagram"] .mot-video-frame-wrap{
+    --ig-frame:min(94vw,430px);  /* the iframe's own width — everything below is a fraction of it */
+    --ig-media-w:0.70;           /* media box width, as a fraction of the frame (~0.718 measured) */
+    --ig-media-h:1.16;           /* media box height, ditto (~1.181 measured) */
+    --crop-top:63px;             /* profile header — a fixed height, so this one doesn't scale */
+    --crop-bottom:260px;         /* free to over-estimate: it only gives the embed room to lay out */
+    aspect-ratio:auto;
+    width:calc(var(--ig-frame) * var(--ig-media-w));
+    height:calc(var(--ig-frame) * var(--ig-media-h));
+  }
+  /* Pull the frame left by half the difference, so the centred media box lands in the window. */
+  .mot-video-card[data-platform="instagram"] .mot-video-frame-wrap iframe{
+    width:var(--ig-frame);
+    left:calc(var(--ig-frame) * (1 - var(--ig-media-w)) / -2);
+  }
+  /* TikTok is the easier of the two, because its embed does NOT scale the player to the frame:
+     measured at two frame widths (406px and 348px) the video came back ~320px and ~327px wide and
+     ~577px tall both times. So the player is a fixed ~325x577 box, centred, flush to the top —
+     which means the window can simply BE that box, with the iframe sized to it so there are no
+     side margins to crop in the first place, and --crop-top stays 0.
+
+     What that clips is everything below the video: the "Watch more exciting videos / Watch now"
+     bar, then @user, the hashtags and the music row.
+
+     What it CANNOT clip, and no amount of geometry could: the TikTok logo, the like/comment/share
+     counts and the follow button are drawn *on top of* the video by their player, not beside it.
+     They're inside the frame's own compositing, so cropping them would crop the video with them.
+
+     --tt-scale zooms the whole fixed-size player, since 325px is small on a desktop screen. It has
+     to be a plain number per breakpoint rather than something derived from the viewport: CSS calc()
+     cannot divide a length by a length, so there is no way to compute a unitless scale from vh. */
+  .mot-video-card.is-tall[data-platform="tiktok"] .mot-video-frame-wrap{
+    --tt-w:325px;      /* the player's own fixed width — do not derive this from the frame */
+    --tt-h:574px;      /* ~577 measured, shaved so the Watch-now bar can't peek in under it */
+    --tt-scale:1.25;
+    --tt-chrome:260px; /* everything below the video, over-estimated on purpose — see the iframe rule */
+    --crop-top:0px; --crop-bottom:0px;
+    aspect-ratio:auto;
+    width:calc(var(--tt-w) * var(--tt-scale));
+    height:calc(var(--tt-h) * var(--tt-scale));
+  }
+  /* The iframe is deliberately TALLER than the window, by more than the chrome below the video is
+     tall. Sizing it to --tt-h exactly made its own content (~727px: video, Watch-now bar, user,
+     hashtags, music) overflow a 574px frame, and TikTok's page answered that with a scrollbar down
+     the right. Nothing here can set overflow inside a cross-origin document, so the only fix is to
+     leave it enough room that it never needs to scroll — the surplus is clipped by the window. */
+  .mot-video-card[data-platform="tiktok"] .mot-video-frame-wrap iframe{
+    width:var(--tt-w);height:calc(var(--tt-h) + var(--tt-chrome));top:0;left:0;
+    transform:scale(var(--tt-scale));transform-origin:top left;
+  }
+  /* 574 * 1.25 = 718px tall, plus the title bar — too tall for a laptop, so step the zoom down
+     rather than letting the card run off the screen. */
+  @media (max-height:820px){ .mot-video-card.is-tall[data-platform="tiktok"] .mot-video-frame-wrap{--tt-scale:1.05;} }
+  @media (max-height:700px){ .mot-video-card.is-tall[data-platform="tiktok"] .mot-video-frame-wrap{--tt-scale:0.9;} }
+  /* Last, so it wins on a phone: the overlay keeps 16px of padding either side, so a 325*1.25
+     player would run off a 360px screen. 0.88 -> 286px, which still clears a 320px one. */
+  @media (max-width:480px){ .mot-video-card.is-tall[data-platform="tiktok"] .mot-video-frame-wrap{--tt-scale:0.88;} }
+  .mot-video-frame-wrap iframe{position:absolute;left:0;width:100%;border:0;
+    top:calc(-1 * var(--crop-top));
+    height:calc(100% + var(--crop-top) + var(--crop-bottom));}
+
+  @media (max-width:760px){
+    .mot-video-thumb{width:74px;height:52px;}
+    /* Actions drop under the text rather than squeezing a 3-button column onto a 360px line. */
+    .mot-video-row{flex-wrap:wrap;}
+    .mot-video-acts{width:100%;justify-content:flex-end;}
+    .mot-video-act{width:38px;height:38px;}
+    /* Instagram is sized off its width (4:5), so a vh-driven height would undo that. */
+    .mot-video-card.is-tall:not([data-platform="instagram"]):not([data-platform="tiktok"]) .mot-video-frame-wrap{height:min(72vh,620px);max-width:94vw;}
+  }
+
   /* mobile tab switcher (js/nav.js) — a floating button you hold and slide from. Desktop has the
      whole sidebar on screen, so the whole thing only exists below the mobile breakpoint. */
   /* iOS treats a long press as "select text / show the callout menu", which fires before any of

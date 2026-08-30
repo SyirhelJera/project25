@@ -1719,6 +1719,17 @@
     </div>
 
     <div id="motivationContent">
+      <!-- Two panes, one strip. Deliberately the app's ordinary .finance-subnav rather than
+           anything new: this is the same "two views of one concern" shape as Finance and Time,
+           and like those it RESETS to Slideshow on tab entry (showMotivationSubTab() is called
+           from js/nav.js, never from renderMotivation() — renderAll() runs that after every save
+           and would snap you out of the Videos pane mid-edit). -->
+      <div class="finance-subnav">
+        <button class="finance-subnav-btn active" data-motsub="slideshow" type="button">Slideshow</button>
+        <button class="finance-subnav-btn" data-motsub="videos" type="button">Videos</button>
+      </div>
+
+      <div id="motivationPaneSlideshow">
       <!-- Deliberately just the name and one ⋯ — every action lives in #motivationMenu below, so
            nothing competes with the image for attention. The head stays visible even with no
            collections, since the ⋯ is the only way to create the first one. -->
@@ -1764,6 +1775,25 @@
 
       <div class="motivation-bottom-row">
         <div class="img-row" id="motivationUploadRow" style="display:none;"><label>+ Upload<input type="file" accept="image/*" id="motivationUploadInput" style="display:none;"></label></div>
+      </div>
+      </div><!-- /#motivationPaneSlideshow -->
+
+      <!-- Saved video links. Paste-a-URL + ＋ + an editable list, the same shape as the Session
+           Music saved-playlists row (js/music.js) — including its rule that user text is assigned
+           via .value, never interpolated into an innerHTML attribute, since escapeHtml() does not
+           escape double quotes. Playback is the #motVideoOverlay lightbox at body level, NOT here:
+           these clips are third-party players, so one iframe is alive at a time and nothing
+           embeds until you click. -->
+      <div id="motivationPaneVideos" style="display:none;">
+        <div class="mot-video-add">
+          <input id="motVideoUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false"
+                 placeholder="Paste a YouTube, Instagram Reel or TikTok link">
+          <button class="btn btn-primary" id="motVideoAddBtn" type="button" title="Save this link">＋</button>
+        </div>
+        <!-- Parse errors, the duplicate notice, and the file:// warning all land here. -->
+        <div class="motivation-menu-hint" id="motVideoHint" style="display:none;"></div>
+        <div class="mot-video-list" id="motVideoList"></div>
+        <div class="empty" id="motVideoEmpty" style="display:none;">No videos yet — paste a link above.</div>
       </div>
 
       <!-- Everything that used to sit in a row above the slideshow. Same button ids as before, so
@@ -2212,6 +2242,25 @@
     </div>
   </div>
 
+</div>
+
+<!-- MOTIVATION VIDEO LIGHTBOX. Body level, a sibling of .main and NOT inside #view-motivation:
+     .view{display:none} would hide it whenever Motivation wasn't the active tab, the same trap the
+     #valItemPreviewOverlay / #view-games note in CLAUDE.md records, and it has to cover the sidebar.
+     #motVideoFrameWrap is left EMPTY on purpose — openMotVideoPlayer() builds a fresh <iframe> into
+     it per open and closeMotVideoPlayer() removes it again, because an iframe merely hidden keeps
+     playing audio behind the overlay. -->
+<div id="motVideoOverlay" class="mot-video-overlay" style="display:none;" role="dialog" aria-modal="true" aria-label="Video player">
+  <div class="mot-video-card" id="motVideoCard">
+    <div class="mot-video-bar">
+      <span class="mot-video-bar-title" id="motVideoBarTitle"></span>
+      <!-- The escape hatch: a private, age-gated or region-locked post refuses to embed, and no
+           code here can change that — opening it where it lives is the answer. -->
+      <a class="mot-video-bar-btn" id="motVideoOpenBtn" href="#" target="_blank" rel="noopener noreferrer" title="Open in the app it came from">↗</a>
+      <button class="mot-video-bar-btn" id="motVideoCloseBtn" type="button" title="Close" aria-label="Close">✕</button>
+    </div>
+    <div class="mot-video-frame-wrap" id="motVideoFrameWrap"></div>
+  </div>
 </div>
 
 <!-- SCRATCH — the napkin. ONE free-form page: no files, no tree, no titles, no preview. The Notes

@@ -8,7 +8,7 @@
       el('view-' + t.dataset.tab).classList.add('active');
       // stopMantraSpeech() too: a voice still reading a mantra from a tab you've left has nothing
       // on screen to explain where it's coming from.
-      if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); }
+      if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); closeMotVideoPlayer(); }
       // same idea for the Live Match poll loop: a timer hitting Riot every few seconds from a tab
       // you've navigated away from has nothing on screen to justify the traffic.
       if(t.dataset.tab!=='games'){ stopValLivePolling(); stopTftLobbyPolling(); }
@@ -24,7 +24,10 @@
       if(t.dataset.tab==='mantras') renderMantras();
       // maybeSyncPinterestCategories() here (not just at load) catches an app left open past
       // midnight — it's date-gated, so on any other open it does nothing.
-      if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); renderMotivation(); maybeSyncPinterestCategories(); }
+      // showMotivationSubTab('slideshow') BEFORE renderMotivation(), the same order showGameSubTab()
+      // uses for showTftSubTab('rank') — the pane reset is also what stops the Videos pane counting
+      // as visible from the last visit, and it renders whichever pane it reveals.
+      if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); showMotivationSubTab('slideshow'); renderMotivation(); maybeSyncPinterestCategories(); }
       if(t.dataset.tab==='checklists') renderChecklists();
       if(t.dataset.tab==='notes') renderNotes();
       // Board always opens on Ask. Unlike the Games tab's persisted choice, its three panes are

@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v52';
+const SHELL_CACHE = 'p25-shell-v53';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -91,9 +91,16 @@ self.addEventListener('fetch', (event) => {
   // The access log's IP-geolocation lookups (js/access.js). Listed for a sharper reason than the
   // rest: the cross-origin branch below is cache-FIRST, so a cached lookup would pin the answer to
   // whatever network the app was first opened on and every later session would claim that place.
+  // Instagram and TikTok are the Motivation tab's video links (js/motivation.js), and they are
+  // listed for a different reason again from the rest: a cross-origin IFRAME load is a
+  // `mode: 'navigate'` request, so without this it falls into the navigate branch below and gets
+  // networkFirst'd against the SHELL cache — which would write a third-party embed page into the
+  // app shell and, on any network blip, serve './index.html' INTO the video frame, rendering the
+  // whole app inside the player. This is also why youtube.com above already had to be here.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
     'api.metatft.com', 'ipwho.is', 'ipapi.co', 'get.geojs.io',
     'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
+    'instagram.com', 'cdninstagram.com', 'tiktok.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'ttwstatic.com',
     '127.0.0.1', 'localhost'];
   if (LIVE_DATA_HOSTS.some(h => url.hostname === h || url.hostname.endsWith(h))) return;
 

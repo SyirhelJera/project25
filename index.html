@@ -55,6 +55,14 @@
       <button class="pin-key" data-pin-key="0" type="button">0</button>
       <button class="pin-key pin-key-del" data-pin-key="del" type="button" aria-label="Delete last digit">⌫</button>
     </div>
+    <!-- TRUST THIS DEVICE — ticked by default, because the point of the feature is to stop asking
+         on your own machines. It only ever takes effect for the owner PIN: a guest session is meant
+         to end with the tab, so js/pin.js ignores this box on the guest path rather than growing a
+         second explanation here. Untick it on a machine that isn't yours. -->
+    <label class="pin-trust">
+      <input type="checkbox" id="pinTrust" checked>
+      <span>Trust this device<small>Don’t ask for the PIN here again</small></span>
+    </label>
   </div>
 </div>
 <script src="js/pin.js"></script>
@@ -2258,8 +2266,9 @@
            that nothing in the UI admits it exists (js/scratch.js). Wired in js/settings.js. -->
       <div class="set-card">
         <div class="set-card-h">Lock screen</div>
-        <div class="set-card-sub">This dashboard asks for a PIN before it opens. The owner PIN opens everything; the guest PIN opens a restricted version. Locking reloads to the PIN screen — it deletes nothing, and the PIN is asked for again by itself whenever this tab is closed.</div>
+        <div class="set-card-sub">This dashboard asks for a PIN before it opens. The owner PIN opens everything; the guest PIN opens a read-only, restricted version. A device you chose to trust isn’t asked again — locking undoes that here and goes back to the PIN screen. Locking deletes nothing.</div>
         <div class="set-sub-h">Opened with the <span id="lockRoleLbl">…</span> PIN</div>
+        <div class="set-card-sub" id="lockTrustLbl"></div>
         <button class="btn btn-ghost btn-sm" id="lockNowBtn" type="button">🔒 Lock now</button>
       </div>
 

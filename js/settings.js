@@ -692,4 +692,19 @@
   (window.p25GateReady || Promise.resolve(null)).then(role=>{
     const lbl = el('lockRoleLbl');
     if(lbl) lbl.textContent = role === 'owner' ? 'owner' : role === 'guest' ? 'guest' : 'unknown';
+    /* Read AFTER the gate resolves, never before: an owner unlock writes the trust record as part
+       of resolving, so asking any earlier would report "not trusted" on the very open that trusted
+       it. fmtDate() is core.js's, rather than a second date format invented here. */
+    const tl = el('lockTrustLbl');
+    if(!tl) return;
+    const t = (window.p25TrustInfo && window.p25TrustInfo()) || { trusted:false };
+    if(t.trusted){
+      tl.textContent = 'This device is trusted' + (t.since ? ', since ' + fmtDate(t.since) : '')
+        + ' — the PIN isn’t asked here. Locking below removes that.';
+    } else if(role === 'guest'){
+      // said plainly, because the ticked box on the way in gave no sign it would be ignored
+      tl.textContent = 'Guest sessions are never trusted — the PIN is asked again next time.';
+    } else {
+      tl.textContent = 'This device isn’t trusted — the PIN is asked each time the app is opened here.';
+    }
   });

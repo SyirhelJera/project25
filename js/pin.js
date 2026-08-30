@@ -38,8 +38,26 @@
    4. THE ROLE LIVES IN sessionStorage, not localStorage. Closing the tab shuts
       the door again, which is the whole point of a door; a reload does not,
       because re-typing a PIN after an accidental refresh mid-edit teaches you
-      to hate the gate. A lockout is the one thing kept in localStorage, so
-      reloading can't be the way past the wrong-PIN delay.
+      to hate the gate. The lockout and the trust record are the two things kept
+      in localStorage — the first so reloading can't be the way past the
+      wrong-PIN delay, the second because being remembered IS what a trusted
+      device is.
+
+   5. A TRUSTED DEVICE IS A LOCALSTORAGE RECORD AND NOTHING MORE. Ticking "trust
+      this device" on an owner unlock writes it; from then on that browser
+      profile opens straight through. localStorage is already per-origin and
+      per-profile, so it IS the device identity — nothing is fingerprinted and
+      nothing is sent anywhere. Only an owner unlock ever writes one, the idle
+      window slides on every visit rather than expiring on a fixed date, and
+      Lock deletes it (or the reload would walk straight back in).
+
+      Understand what this trades away: on a trusted device the gate no longer
+      asks, so it is no longer any protection against whoever picks that device
+      up. That is a deliberate choice — the owner's own machines shouldn't nag —
+      and it leaves the gate guarding devices that AREN'T yours. Which is worth
+      little by itself, since the data behind it is readable by anyone with the
+      URL (see "WHAT THIS IS NOT"), and is exactly why the answer to "is my data
+      safe" is still Supabase Auth + RLS rather than anything in this file.
    =========================================================================== */
 (function(){
   'use strict';
@@ -56,13 +74,21 @@
 
   var ROLE_KEY   = 'p25-gate-role';   // sessionStorage — cleared when the tab closes
   var LOCK_KEY   = 'p25-gate-lock';   // localStorage — survives the reload it exists to defeat
+  var TRUST_KEY  = 'p25-gate-trust';  // localStorage — the trusted-device record, see below
   var MAX_TRIES  = 5;
   var LOCKOUT_MS = 30000;
+  /* A trusted device stops being trusted after this long WITHOUT A VISIT, not this long since it
+     was trusted: every open slides the window forward, so a device in daily use is never asked
+     again, while a laptop that dropped out of the rotation for three months asks once. That's the
+     property worth having — a fixed expiry would interrupt the devices you actually use, which is
+     the thing this feature exists to stop. */
+  var TRUST_MAX_IDLE_MS = 90 * 24 * 60 * 60 * 1000;
 
-  var gate   = document.getElementById('pinGate');
-  var dotsEl = document.getElementById('pinDots');
-  var msgEl  = document.getElementById('pinGateMsg');
-  var padEl  = document.getElementById('pinPad');
+  var gate    = document.getElementById('pinGate');
+  var dotsEl  = document.getElementById('pinDots');
+  var msgEl   = document.getElementById('pinGateMsg');
+  var padEl   = document.getElementById('pinPad');
+  var trustEl = document.getElementById('pinTrust');
 
   var entry = '';
   var tries = 0;
@@ -97,6 +123,48 @@
     var t = raw ? parseInt(raw, 10) : 0;
     if(!t || isNaN(t) || t <= Date.now()){ if(raw) dropStored(LOCK_KEY, window.localStorage); return 0; }
     return t;
+  }
+
+  /* ---------- trusted devices ----------
+     A record here means "an owner PIN was typed into THIS browser profile, and asked not to be
+     asked again". localStorage is itself the device identity — it is already per-origin and
+     per-profile — so nothing is fingerprinted, nothing is sent anywhere, and no two devices can
+     be confused for one another.
+     Validated field by field on the way in, like the stored role: a record that isn't the exact
+     shape written by writeTrust() is treated as no record at all, so a half-written or
+     hand-edited value asks for the PIN rather than throwing on boot. */
+  function readTrust(){
+    var raw = readStored(TRUST_KEY, window.localStorage);
+    if(!raw) return null;
+    var rec = null;
+    try{ rec = JSON.parse(raw); }catch(e){ rec = null; }
+    if(!rec || rec.role !== 'owner' || typeof rec.at !== 'number' || typeof rec.seen !== 'number'){
+      dropTrust();
+      return null;
+    }
+    /* Idle expiry, checked on read so it applies wherever the record is consulted. A `seen` in the
+       FUTURE is treated as expired too: that means the clock moved backwards or the value was
+       edited, and a record that can never go stale is worse than one asked about once. */
+    var idle = Date.now() - rec.seen;
+    if(idle > TRUST_MAX_IDLE_MS || idle < -TRUST_MAX_IDLE_MS){ dropTrust(); return null; }
+    return rec;
+  }
+  function writeTrust(rec){
+    writeStored(TRUST_KEY, JSON.stringify(rec), window.localStorage);
+  }
+  function dropTrust(){
+    dropStored(TRUST_KEY, window.localStorage);
+  }
+  /* Slides the idle window forward on every visit that trust let in. `at` is left alone — it is
+     the "trusted since" the Settings card shows, and it should keep saying when the decision was
+     made, not when the app was last opened. */
+  function touchTrust(rec){
+    writeTrust({ role:'owner', at: rec.at, seen: Date.now() });
+  }
+  /* Default ON when the checkbox is missing: the markup could be an older cached index.html, and
+     the setting the user asked for is "stop asking me on my own devices". */
+  function trustWanted(){
+    return !trustEl || trustEl.checked !== false;
   }
 
   function setMsg(text, kind){
@@ -223,6 +291,16 @@
     open = false;
     entry = '';
     writeStored(ROLE_KEY, role, window.sessionStorage);
+    /* Trust is established ONLY here: on the interactive path, for the owner, with the box ticked.
+       Three conditions, each load-bearing.
+       `!silent` — the silent path is a session or a trust record being *replayed*, and letting it
+       write would refresh `at` on every reload, so "trusted since" would always read as today.
+       `role === 'owner'` — a guest PIN never trusts a device, however the box is set. A guest
+       session is meant to end with the tab, and a device that silently came back as a guest would
+       be a second, quieter way in that nobody chose. It is also why the box needs no guest-specific
+       UI: the guest path simply ignores it.
+       `trustWanted()` — an unticked box is the "I'm on someone else's computer" case. */
+    if(!silent && role === 'owner' && trustWanted()) writeTrust({ role:'owner', at: Date.now(), seen: Date.now() });
     dropStored(LOCK_KEY, window.localStorage);
     if(lockTimer){ clearInterval(lockTimer); lockTimer = null; }
     document.removeEventListener('keydown', onKeyDown, true);
@@ -290,8 +368,17 @@
     }
   }
 
+  /* Boot, in priority order.
+     1. A role already decided in THIS tab wins outright. It is the more specific answer, and it is
+        what lets a guest session survive a reload on a device that is itself trusted — otherwise
+        handing someone the laptop in guest mode would silently come back as the owner the first
+        time they refreshed.
+     2. Otherwise a trusted device opens straight through as the owner, sliding its idle window.
+     3. Otherwise ask. */
   var stored = readStored(ROLE_KEY, window.sessionStorage);
+  var trust = stored ? null : readTrust();
   if(stored === 'owner' || stored === 'guest') unlock(stored, true);
+  else if(trust){ touchTrust(trust); unlock('owner', true); }
   else show();
 
   /* ---- the only things the rest of the app may call ---- */
@@ -312,9 +399,21 @@
   window.p25CanWrite = function(){ return currentRole === 'owner'; };
   /* Shuts the door again. A reload rather than merely re-showing the gate:
      by now every tab's data is in memory and in this page's DOM, and drawing a
-     panel over all of it would leave it one DevTools pane away. */
+     panel over all of it would leave it one DevTools pane away.
+     It drops the device's trust as well as the session, and it has to — with the record left in
+     place the reload would walk straight back in and the button would do nothing at all. So Lock
+     means exactly one thing, "ask me for the PIN again", and re-trusting is one ticked box away on
+     the screen it takes you to. It is also how to hand the device over untrusted: Lock, then let
+     them in with the guest PIN. */
   window.p25Lock = function(){
     dropStored(ROLE_KEY, window.sessionStorage);
+    dropTrust();
     window.location.reload();
+  };
+  /* For the Settings card only — whether this device is trusted, and since when. Returns a copy,
+     never the record itself: a caller must not be able to extend its own trust by editing it. */
+  window.p25TrustInfo = function(){
+    var rec = readTrust();
+    return rec ? { trusted:true, since:rec.at, lastSeen:rec.seen } : { trusted:false, since:null, lastSeen:null };
   };
 })();

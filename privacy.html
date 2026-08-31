@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Privacy Policy — Project 25</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 42em; margin: 0 auto; padding: 48px 24px 96px;
+    color: #1c1c1e; background: #fbfbfd;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #e8e8ea; background: #131316; }
+    a { color: #8ab4f8; }
+  }
+  h1 { font-size: 1.8rem; margin: 0 0 .25em; letter-spacing: -.02em; }
+  h2 { font-size: 1.1rem; margin: 2.2em 0 .5em; letter-spacing: -.01em; }
+  .updated { opacity: .65; font-size: .9rem; margin: 0 0 2.5em; }
+  ul { padding-left: 1.3em; }
+  li { margin: .35em 0; }
+  code { font-size: .9em; background: rgba(128,128,128,.15); padding: .1em .35em; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Project 25 &middot; last updated 31 August 2026</p>
+
+<p>
+  Project 25 is a personal life-dashboard application built and operated by one
+  individual for their own private use. It is not a commercial product, it has no
+  user accounts, and it is not offered as a service to the public.
+</p>
+
+<h2>Google account data</h2>
+<p>
+  The application can display a read-only agenda from a single Google Calendar
+  account &mdash; the account belonging to the person who set it up. It requests one
+  Google API scope:
+</p>
+<ul>
+  <li><code>https://www.googleapis.com/auth/calendar.readonly</code></li>
+</ul>
+<p>
+  This scope grants read access only. The application cannot create, modify or
+  delete calendar events, and no code path in it attempts to.
+</p>
+
+<h2>How calendar data is handled</h2>
+<ul>
+  <li>
+    Calendar events are fetched on demand and held in browser memory only. They are
+    never written to a database, never cached to disk, and are discarded when the
+    page is closed.
+  </li>
+  <li>
+    Each event is trimmed on the server before it reaches the browser, to its title,
+    location, start and end times, and a link back to Google Calendar. Attendee email
+    addresses, event descriptions and conference join links are discarded and never
+    transmitted.
+  </li>
+  <li>
+    The only calendar-related information the application stores is a list of which
+    calendars to display, plus display preferences such as how many days ahead to look.
+  </li>
+  <li>
+    Google account data is never sold, never shared with third parties, and is never
+    used for advertising, profiling or analytics.
+  </li>
+  <li>
+    Project 25's use of information received from Google APIs adheres to the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.
+  </li>
+</ul>
+
+<h2>Other data</h2>
+<p>
+  Personal notes, goals, habits, finance records and similar content entered into the
+  application are stored in a private database belonging to the operator. None of it
+  is derived from Google account data, and none of it is shared with anyone.
+</p>
+
+<h2>Retention and revocation</h2>
+<p>
+  The application holds a Google authorization token so it can read the calendar
+  without prompting for sign-in each time. That authorization can be withdrawn at any
+  moment from
+  <a href="https://myaccount.google.com/permissions">Google Account &rsaquo; Third-party apps &amp; services</a>.
+  Revoking it immediately and permanently ends the application's access. Since no
+  calendar events are stored, revoking leaves nothing behind to delete.
+</p>
+
+<h2>Contact</h2>
+<p>
+  Questions about this policy can be directed to the operator of this application at:
+  <!-- Replace the line below with your contact email address before publishing. -->
+  <strong>[your contact email]</strong>
+</p>
+
+</body>
+</html>

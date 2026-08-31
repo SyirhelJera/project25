@@ -68,7 +68,14 @@ function waitForCode(server){
 // Chromium profile). Here any browser will do, so the default one is the right answer.
 function openBrowser(url){
   try{
-    if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    // The URL must be quoted, and quoted by US: cmd.exe treats & as a command separator and an
+    // OAuth URL is nothing but &-joined parameters, so an unquoted one is truncated at the first
+    // of them -- the browser then gets client_id alone and Google rejects it as "Required
+    // parameter is missing: response_type". Node's own quoting doesn't save us, since it only
+    // quotes arguments containing spaces. Hence windowsVerbatimArguments, which hands the line
+    // over untouched, and the explicit "" title -- start reads a lone quoted string as the
+    // window title rather than as the thing to open.
+    if (process.platform === 'win32') spawn('cmd', ['/c', 'start', '""', '"' + url + '"'], { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true }).unref();
     else if (process.platform === 'darwin') spawn('open', [url], { detached: true, stdio: 'ignore' }).unref();
     else spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
     return true;

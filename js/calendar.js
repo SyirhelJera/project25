@@ -656,9 +656,27 @@
       applyCalBubbleAccent(box, ev.color);
     }
 
-    const icon = document.createElement('div');
-    icon.className = 'cal-bubble-icon';
-    icon.setAttribute('aria-hidden', 'true');
+    // The card has TWO targets: the glyph opens the event in Google Calendar, everything else still
+    // deep-links into the Time tab. A real <a>, mirroring the agenda row's own ↗ rather than a
+    // click handler — it costs nothing and buys middle-click, "open in new tab" and Enter for free.
+    // A countdown is local and carries htmlLink:'', so it keeps the plain div and the whole card
+    // stays one target exactly as before; the https test is what stops a malformed link becoming a
+    // javascript: href, the same rule renderMarkdown() applies in notes.js.
+    const iconHref = (!isCd && typeof ev.htmlLink === 'string' && /^https:\/\//i.test(ev.htmlLink))
+      ? ev.htmlLink : '';
+    const icon = document.createElement(iconHref ? 'a' : 'div');
+    icon.className = 'cal-bubble-icon' + (iconHref ? ' is-link' : '');
+    if(iconHref){
+      icon.href = iconHref;
+      icon.target = '_blank'; icon.rel = 'noopener noreferrer';
+      // Focusable, so it must NOT be aria-hidden — an aria-hidden node in the tab order is one a
+      // screen reader is required to skip and then asked to focus. The label is to the icon what
+      // the card's title attribute is to the body.
+      icon.setAttribute('aria-label', 'Open in Google Calendar');
+      icon.title = 'Open in Google Calendar';
+    } else {
+      icon.setAttribute('aria-hidden', 'true');
+    }
     icon.innerHTML = isNow ? CAL_ICONS.now : (isCd ? CAL_ICONS.countdown : CAL_ICONS.calendar);
 
     const body = document.createElement('div');
@@ -797,6 +815,15 @@
       }
       return;
     }
+    // The icon is an <a>, so the browser is already opening Google Calendar — this only has to stop
+    // the card's own in-app navigation firing as well and yanking the Time tab up behind the new
+    // one. Taking the stack down is DEFERRED a tick on purpose: hideCalBubbles() detaches the cards
+    // synchronously under prefers-reduced-motion, and removing the anchor the browser is mid-way
+    // through following can cancel the navigation outright.
+    if(e.target.closest('.cal-bubble-icon.is-link')){
+      setTimeout(hideCalBubbles, 0);
+      return;
+    }
     openCalBubbleTarget(card.dataset.subtab);
   });
   // The cards are divs, so they get none of a button's keyboard behaviour for free. Space is
@@ -804,6 +831,10 @@
   el('calBubbleStack').addEventListener('keydown', e=>{
     if(e.key !== 'Enter' && e.key !== ' ') return;
     if(!e.target.closest('.cal-bubble')) return;
+    // The icon link is a real anchor and Enter already activates it — intercepting here would
+    // replace "open the event" with "open the tab", which is the opposite of what it was focused
+    // for. Left alone so the browser's own behaviour runs, preventDefault() included.
+    if(e.target.closest('.cal-bubble-icon.is-link')) return;
     e.preventDefault();
     if(e.target.closest('.cal-bubble-close')) e.target.click();
     else openCalBubbleTarget(e.target.closest('.cal-bubble').dataset.subtab);

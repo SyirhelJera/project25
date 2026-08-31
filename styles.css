@@ -5526,6 +5526,20 @@
      takes the corrected ink above. An emoji is drawn by the platform in its own colours and could
      take neither that ink nor the theme's. */
   .cal-bubble-icon svg{width:16px;height:16px;display:block;}
+  /* The glyph is its own target when there's a Google event behind it (see calBubbleCard) — so it
+     has to LOOK separable from the card it sits on, or a second target on one surface is a trap.
+     Deepening the wash on hover is enough: the card's own hover lift still runs underneath, and the
+     two together read as "this part, within that card". A countdown's icon has no .is-link and so
+     keeps the flat, unclickable chip. */
+  .cal-bubble-icon.is-link{cursor:pointer;text-decoration:none;
+    transition:background .15s ease, transform .15s ease;}
+  .cal-bubble-icon.is-link:hover{transform:scale(1.08);
+    background:color-mix(in srgb, var(--cal-accent) 34%, var(--surface));}
+  .cal-bubble-icon.is-link:active{transform:scale(.96);}
+  @media (prefers-reduced-motion: reduce){
+    .cal-bubble-icon.is-link{transition:none;}
+    .cal-bubble-icon.is-link:hover,.cal-bubble-icon.is-link:active{transform:none;}
+  }
   .cal-bubble-body{flex:1 1 auto;min-width:0;}
   .cal-bubble-title{font-size:13.5px;font-weight:700;color:var(--text);overflow-wrap:anywhere;}
   /* the countdown is the urgent half of the message, so it gets the accent rather than muted grey */
@@ -5544,7 +5558,8 @@
   @media (pointer:coarse){
     .cal-bubble-close{width:40px;height:40px;margin:-9px -8px -9px 0;}
   }
-  .cal-bubble:focus-visible,.cal-bubble-close:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
+  .cal-bubble:focus-visible,.cal-bubble-close:focus-visible,
+  .cal-bubble-icon.is-link:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
 
   @media (max-width:760px){
     /* Still a card pinned to the right, not a full-width band — a strip spanning the screen reads

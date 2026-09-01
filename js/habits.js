@@ -324,14 +324,16 @@
           state.checklists.forEach(c=>{ c.collapsed = (c.id !== targetId); });
           save(); renderChecklists();
           document.querySelector('.nav-item[data-tab="checklists"]').click();
-          setTimeout(()=>{
+          // afterNavPaint() rather than a 60ms guess: the ladder's renderChecklists() is queued
+          // there, and the card this scrolls to doesn't exist until it has run.
+          afterNavPaint(()=>{
             const targetCard = document.querySelector('.checklist-card[data-checklist-id="'+targetId+'"]');
             if(targetCard){
               targetCard.scrollIntoView({behavior:'smooth', block:'center'});
               targetCard.classList.add('checklist-flash');
               setTimeout(()=>targetCard.classList.remove('checklist-flash'), 1600);
             }
-          }, 60);
+          });
         });
       });
       card.addEventListener('click', e=>{

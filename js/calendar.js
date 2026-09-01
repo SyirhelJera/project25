@@ -792,8 +792,12 @@
     // showTimeSubTab('clock'), so anything set first is immediately overwritten.
     const item = document.querySelector('.nav-item[data-tab="time"]');
     if(item) item.click();
-    showTimeSubTab(subtab === 'countdowns' ? 'countdowns' : 'calendar');
-    window.scrollTo({ top:0 });
+    // through afterNavPaint(), because the ladder's showTimeSubTab('clock') is itself queued there
+    // now — see the note on that function in js/nav.js. Queue order keeps this the last word.
+    afterNavPaint(()=>{
+      showTimeSubTab(subtab === 'countdowns' ? 'countdowns' : 'calendar');
+      window.scrollTo({ top:0 });
+    });
   }
 
   /* Delegated from the stack, because the cards are rebuilt on every show — per-card listeners

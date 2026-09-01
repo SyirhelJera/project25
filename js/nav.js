@@ -1,55 +1,98 @@
-  /* ---------- nav ---------- */
+  /* ---------- nav ----------
+     A tab switch is split in two, and the split is the whole reason switching feels immediate.
+
+     Synchronous, in the clicked frame: the .active swap, and every TEARDOWN. A Live Match poll or
+     a voice reading a mantra from the tab you just left has to stop now — deferring a teardown by
+     a frame would let it run against a tab that is already gone.
+
+     Deferred to after the browser has painted that swap: everything that FILLS the tab you are
+     entering. Each render*() below rebuilds a section's innerHTML from state, and .view{display:none}
+     means revealing one also costs a full layout of that subtree — with both in front of the first
+     paint, the old tab stayed on screen for the sum of the two, which is what read as lag. Nothing
+     is torn down on exit, so the frame that paints first shows the pane's existing content, which
+     is current: renderAll() drew every tab at load and each tab re-renders itself after its own
+     mutations. The only things that visibly land a frame late are the deliberate resets below
+     (Goals' filter, the Jobs search), which is a frame nobody can see.
+
+     Two frames rather than one: the first commits the class swap, the second runs after it has
+     actually been painted. And navGen guards a fast double-switch — only the newest click's setup
+     may run, or a queued setup for a tab you abandoned would render over the one you asked for
+     (and, on Games, save() a game choice you never made). */
+  let navGen = 0;
+  /* Also the hook every deep link into a tab uses (insGoTo(), the calendar bubble, the habit ->
+     checklist jump). Those apply a sub-tab AFTER item.click(), because the ladder below resets
+     Finance to accounts and Time to clock — and now that the ladder's setup is itself queued here,
+     a sub-tab applied synchronously after the click would be overwritten a frame later. Queueing
+     it through the same function is what keeps "after the click" true: callbacks fire in the order
+     they were queued, so the ladder's setup still runs first. */
+  function afterNavPaint(fn){
+    requestAnimationFrame(()=> requestAnimationFrame(fn));
+  }
   document.querySelectorAll('.nav-item').forEach(t => {
     t.addEventListener('click', () => {
+      const tab = t.dataset.tab;
       const wasAlreadyOpen = t.classList.contains('active');
       document.querySelectorAll('.nav-item').forEach(x=>x.classList.remove('active'));
       document.querySelectorAll('.view').forEach(x=>x.classList.remove('active'));
       t.classList.add('active');
-      el('view-' + t.dataset.tab).classList.add('active');
+      el('view-' + tab).classList.add('active');
+
+      /* ---- teardown: synchronous ---- */
       // stopMantraSpeech() too: a voice still reading a mantra from a tab you've left has nothing
       // on screen to explain where it's coming from.
-      if(t.dataset.tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); closeMotVideoPlayer(); }
+      if(tab!=='motivation'){ stopMotivationSlideshow(); stopMantraSpeech(); closeMotVideoPlayer(); }
       // same idea for the Live Match poll loop: a timer hitting Riot every few seconds from a tab
       // you've navigated away from has nothing on screen to justify the traffic.
-      if(t.dataset.tab!=='games'){ stopValLivePolling(); stopTftLobbyPolling(); }
-      if(t.dataset.tab==='goals'){ goalFilter = 'working'; renderGoals(); }
+      if(tab!=='games'){ stopValLivePolling(); stopTftLobbyPolling(); }
+
+      /* ---- setup: once the swap is on screen ---- */
+      const gen = ++navGen;
+      afterNavPaint(()=>{ if(gen === navGen) enterTab(tab, wasAlreadyOpen); });
+    });
+  });
+
+  function enterTab(tab, wasAlreadyOpen){
+      if(tab==='goals'){ goalFilter = 'working'; renderGoals(); }
       // Settings always opens on Appearance. Its five categories are five views of one concern
       // (like Finance and Board below, unlike the Games tab's persisted game choice), so there's
       // nothing to remember and no new state key to default.
-      if(t.dataset.tab==='settings'){ showSettingsSubTab('appearance'); renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
+      if(tab==='settings'){ showSettingsSubTab('appearance'); renderSettings(); renderValLocalPanel(); renderProtectedDays(); }
       // Time holds both Clock and Countdowns — always land on Clock; showTimeSubTab() renders
       // whichever pane it reveals, and flipping the toggle renders the other one then
-      if(t.dataset.tab==='time') showTimeSubTab('clock');
-      if(t.dataset.tab==='habits') renderHabits();
-      if(t.dataset.tab==='mantras') renderMantras();
+      if(tab==='time') showTimeSubTab('clock');
+      if(tab==='habits') renderHabits();
+      if(tab==='mantras') renderMantras();
       // maybeSyncPinterestCategories() here (not just at load) catches an app left open past
       // midnight — it's date-gated, so on any other open it does nothing.
       // showMotivationSubTab('slideshow') BEFORE renderMotivation(), the same order showGameSubTab()
       // uses for showTftSubTab('rank') — the pane reset is also what stops the Videos pane counting
       // as visible from the last visit, and it renders whichever pane it reveals.
-      if(t.dataset.tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); showMotivationSubTab('slideshow'); renderMotivation(); maybeSyncPinterestCategories(); }
-      if(t.dataset.tab==='checklists') renderChecklists();
-      if(t.dataset.tab==='notes') renderNotes();
+      if(tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); showMotivationSubTab('slideshow'); renderMotivation(); maybeSyncPinterestCategories(); }
+      if(tab==='checklists') renderChecklists();
+      if(tab==='notes') renderNotes();
       // Board always opens on Ask. Unlike the Games tab's persisted choice, its three panes are
       // three views of one job — composing a consult — so the roster and history are places you
       // visit and come back from, not a mode you'd want the tab to remember.
-      if(t.dataset.tab==='board') showBoardSubTab('ask');
-      if(t.dataset.tab==='finance'){ showFinanceSubTab('accounts'); renderFinance(); }
+      if(tab==='board') showBoardSubTab('ask');
+      // showFinanceSubTab() BEFORE the renders, and the two renders rather than renderFinance():
+      // that helper draws all six panes, five of which the sub-tab reset has just hidden, and each
+      // of those panes already re-renders itself when its own sub-tab is revealed. Only the
+      // accounts pane and the chart above it are actually on screen on entry.
+      if(tab==='finance'){ showFinanceSubTab('accounts'); renderNetWorthChart(); renderFinanceAccounts(); }
       // Fitness always lands on Weight — the trend is what the tab is for, and the pane choice is
       // deliberately not persisted. showFitnessSubTab() also redraws that pane's chart now that it
       // has a real width to measure.
-      if(t.dataset.tab==='fitness'){ renderFitness(); showFitnessSubTab('weight'); }
+      if(tab==='fitness'){ renderFitness(); showFitnessSubTab('weight'); }
       // Games holds both Valorant and TFT. Unlike Time above it does NOT reset to the first pane —
       // showGameSubTab() reads the persisted choice and renders whichever game it reveals.
-      if(t.dataset.tab==='games') showGameSubTab(state.games.active);
+      if(tab==='games') showGameSubTab(state.games.active);
       // Jobs always opens on Prospect with a clean search — that's the pile that only moves if you
       // act on it (and what the nav badge counts). Mirrors Goals resetting to 'working' above.
-      if(t.dataset.tab==='jobs'){ resetJobsView(); renderJobs(); }
+      if(tab==='jobs'){ resetJobsView(); renderJobs(); }
       // force=true: renderInsights() no-ops unless the view is active, since renderAll() calls it
       // too and recomputing every tracker's aggregates after each unrelated save would be waste.
-      if(t.dataset.tab==='insights') renderInsights(true);
-    });
-  });
+      if(tab==='insights') renderInsights(true);
+  }
 
   /* ---------- mobile: sticky header shrink-on-scroll ---------- */
   (function(){

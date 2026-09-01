@@ -505,7 +505,7 @@
     // entirely, since flipping between the three panels within a visit still reads it. It also
     // means entering the tab can never start the Live Match poll on its own — syncValLivePolling()
     // below sees 'shop' and stays stopped until you actually ask for that panel.
-    if(key === 'valorant'){ state.valorant.activeSubtab = 'shop'; renderValSubtabs(); renderValorant(); }
+    if(key === 'valorant'){ state.valorant.activeSubtab = 'shop'; renderValorant(); }
     // showTftSubTab() before renderTft(), not after: it resets to Rank, and until it has, the
     // lobby pane may still count as visible from a previous visit — renderTft() would then start
     // the lobby poll for a panel that is about to be hidden again.

@@ -550,9 +550,14 @@
     if(!item) return;
     item.click();
     if(!sub) return;
-    if(tab === 'finance' && typeof showFinanceSubTab === 'function') showFinanceSubTab(sub);
-    else if(tab === 'games' && typeof showGameSubTab === 'function') showGameSubTab(sub);
-    else if(tab === 'time' && typeof showTimeSubTab === 'function') showTimeSubTab(sub);
+    // queued through nav.js's afterNavPaint(), not called straight after the click: the ladder's
+    // own sub-tab reset is deferred to after the swap paints, and would otherwise land last and
+    // overwrite this. Same ordering guarantee as before, one frame later.
+    afterNavPaint(()=>{
+      if(tab === 'finance' && typeof showFinanceSubTab === 'function') showFinanceSubTab(sub);
+      else if(tab === 'games' && typeof showGameSubTab === 'function') showGameSubTab(sub);
+      else if(tab === 'time' && typeof showTimeSubTab === 'function') showTimeSubTab(sub);
+    });
   }
 
   // delegated and wired once at script eval, so renderInsights() stays pure string-building and

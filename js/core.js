@@ -56,7 +56,9 @@
     valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, selectedStoreLabel:'', storeMode:'store', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlist:{},
       skinPrices:{},
       vp:{ currency:'', packages:[{vp:475,price:0},{vp:1000,price:0},{vp:2050,price:0},{vp:3650,price:0},{vp:5350,price:0},{vp:11000,price:0}], offers:[], useOffers:true },
-      live:{ enabled:true, label:'', regionOverride:'', historyDepth:10, showEnemyStats:true, showIncognito:false } },
+      live:{ enabled:true, label:'', regionOverride:'', historyDepth:10, showEnemyStats:true, showIncognito:false },
+      // VOD review mistake tally (js/valorant.js). Ordinary persisted state, unlike live above.
+      vod:{ mistakes:[], range:'all' } },
     // which game the Games tab is showing. Defined HERE and not only in applyLoadedState(), because
     // syncValLivePolling() reads it and can fire before a load finishes (the visibilitychange
     // listener in valorant.js) — it must never be undefined. See showGameSubTab() in js/tft.js.

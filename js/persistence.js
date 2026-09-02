@@ -331,6 +331,19 @@
     if(!(state.valorant.live.historyDepth >= 5 && state.valorant.live.historyDepth <= 20)) state.valorant.live.historyDepth = 10;
     if(state.valorant.live.showEnemyStats===undefined) state.valorant.live.showEnemyStats = true;
     if(state.valorant.live.showIncognito===undefined) state.valorant.live.showIncognito = false;
+    /* VOD review — a per-mistake tally, kept as { id, name, days:{'YYYY-MM-DD':n} }. The daily
+       buckets are what let the panel's range toggle answer "today" and "last 7 days" without
+       storing one record per button press; VOD_DAY_CAP in valorant.js trims the oldest keys so a
+       mistake tracked for years can't grow without bound inside the shared blob. */
+    if(!state.valorant.vod || typeof state.valorant.vod !== 'object') state.valorant.vod = {};
+    if(!Array.isArray(state.valorant.vod.mistakes)) state.valorant.vod.mistakes = [];
+    if(!['today','7','all'].includes(state.valorant.vod.range)) state.valorant.vod.range = 'all';
+    state.valorant.vod.mistakes.forEach(m=>{
+      if(!m.id) m.id = uid();
+      if(typeof m.name !== 'string') m.name = '';
+      if(!m.days || typeof m.days !== 'object') m.days = {};
+    });
+    state.valorant.vod.mistakes = state.valorant.vod.mistakes.filter(m=> m.name.trim());
     // gun/skin names the user wants a heads-up about when they rotate into the daily store —
     // one list per tracked account label, so a skin wishlisted on one account doesn't tick for
     // another; matched against that same label's dailyStores items in valWishlistMatchesForItem()

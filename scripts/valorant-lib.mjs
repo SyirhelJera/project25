@@ -352,7 +352,12 @@ async function resolveAccessoryReward(reward){
 // same posture as the featured-bundle lookup, since neither is worth failing a store check over.
 async function fetchEquippedIdentity(shard, puuid, headers){
   try {
-    const r = await fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers });
+    // Same move the storefront made: v2 now 404s with RESOURCE_NOT_FOUND and the loadout lives at
+    // v3. v2 is kept as a fallback in case that flips back.
+    let r = await fetch(`https://pd.${shard}.a.pvp.net/personalization/v3/players/${puuid}/playerloadout`, { headers });
+    if (!r.ok) {
+      r = await fetch(`https://pd.${shard}.a.pvp.net/personalization/v2/players/${puuid}/playerloadout`, { headers });
+    }
     if (!r.ok) {
       // noisy enough to notice if Riot moves this route (the tab would otherwise just quietly
       // stop drawing avatars), quiet enough that it can't be mistaken for a failed store check

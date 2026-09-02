@@ -381,7 +381,7 @@
      panels instead of one long scroll. Ordered by how often they're opened, not by urgency — the
      store is the daily reason to come here (and the pane the tab now always lands on, see
      showGameSubTab() in tft.js), while Live Match only has anything to show during a match. ---- */
-  const VAL_SUBTABS = ['shop','rr','live'];
+  const VAL_SUBTABS = ['shop','rr','live','vod'];
   function renderValSubtabs(){
     const active = VAL_SUBTABS.includes(state.valorant.activeSubtab) ? state.valorant.activeSubtab : 'shop';
     VAL_SUBTABS.forEach(key=>{
@@ -395,14 +395,13 @@
     if(!btn) return;
     state.valorant.activeSubtab = btn.dataset.subtab;
     save();
-    renderValSubtabs();
     // asking for the Live Match panel is asking to look at it, so let it re-centre on the way in
     // (centreValLiveCard() is otherwise once-per-lobby — see the comment on valLiveCentredFor)
     if(state.valorant.activeSubtab === 'live') valLiveCentredFor = '';
-    // the live poll loop only runs while its own panel is the one on screen; renderValLive()
-    // ends by re-evaluating that (this is deliberately not called from renderValSubtabs(),
-    // which runs once during load before the Live Match block below has initialized)
-    renderValLive();
+    // renderValorant() rather than renderValSubtabs() + renderValLive(): panels are now built
+    // lazily, so revealing one is the moment it has to be brought up to date. It still ends in
+    // syncValLivePolling() whichever panel won, so the live poll starts and stops as before.
+    renderValorant();
   });
   renderValSubtabs();
 
@@ -1617,7 +1616,7 @@
             + ' data-tile-title="'+escapeHtml(o.name+' — Night Market'+(off?' −'+off+'%':'')+(was?' — was '+was.toLocaleString()+' VP':'')+' — click to enlarge')+'">'
             + (off ? '<span class="val-night-discount">−'+off+'%</span>' : '')
             + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
-            + '<span class="val-store-item-img">'+(o.imageUrl ? '<img src="'+escapeHtml(o.imageUrl)+'" alt="">' : '')+'</span>'
+            + '<span class="val-store-item-img">'+(o.imageUrl ? '<img loading="lazy" decoding="async" src="'+escapeHtml(o.imageUrl)+'" alt="">' : '')+'</span>'
             + '<span class="val-store-item-footer">'
             + '<span class="val-store-item-name">'+escapeHtml(o.name)+'</span>'
             + '<span class="val-store-item-price" title="Valorant Points">'+(now||was).toLocaleString()+'</span>'
@@ -1637,7 +1636,7 @@
           + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
           + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
           + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
-          + '<span class="val-store-item-img">'+(it.imageUrl ? '<img src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
+          + '<span class="val-store-item-img">'+(it.imageUrl ? '<img loading="lazy" decoding="async" src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
           + '<span class="val-store-item-footer">'
           + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
           + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
@@ -1665,7 +1664,7 @@
             + '<span class="val-accessory-type" style="background:'+color+';">'+escapeHtml(ac.type||'Accessory')+'</span>'
             + '<span class="val-store-item-img">'
             + (ac.imageUrl
-                ? '<img src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
+                ? '<img loading="lazy" decoding="async" src="'+escapeHtml(ac.imageUrl)+'" alt="'+escapeHtml(ac.name)+'">'
                 // player titles have no art at all — show the actual in-game tag text instead
                 : '<span class="val-accessory-text">'+escapeHtml(ac.text || ac.name)+'</span>')
             + '</span>'
@@ -1859,7 +1858,7 @@
       return '<button type="button" class="val-store-item" style="--rarity-color:'+color+';"'
         + ' data-preview-kind="owned" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(s.uuid||'')+'"'
         + ' data-tile-title="'+escapeHtml(s.name+(sub?' — '+sub:'')+' — click to enlarge')+'">'
-        + '<span class="val-store-item-img">'+(s.imageUrl ? '<img src="'+escapeHtml(s.imageUrl)+'" alt="">' : '')+'</span>'
+        + '<span class="val-store-item-img">'+(s.imageUrl ? '<img loading="lazy" decoding="async" src="'+escapeHtml(s.imageUrl)+'" alt="">' : '')+'</span>'
         + '<span class="val-store-item-footer">'
         + '<span class="val-store-item-name">'+escapeHtml(s.name)+'</span>'
         + '</span></button>';
@@ -3491,25 +3490,47 @@
     el('valAddErr').style.display = 'none';
   });
 
+  /* Only the sub-panel that is actually on screen is built. renderValSubtabs() display:none's the
+     other two the moment it runs, so rendering them was work thrown away — and the Owned Skins
+     grid alone is one node and one <img> per skin, hundreds of them for a stocked account, torn
+     down and rebuilt by every one of this function's fifteen callers (and by renderAll() on load,
+     for a tab that may never be opened). Each hidden panel is instead brought up to date by
+     the #valSubtabToggle click handler at the moment it is revealed — the only moment it can be
+     seen — which now calls back into here rather than into renderValSubtabs() alone.
+
+     What must stay unconditional: everything that lives OUTSIDE the three panels (the Settings
+     mirrors below, renderValLocalPanel()'s helper slots), and every side effect that other parts
+     of the app read — the nav wishlist badge, and syncValLivePolling(), which is what stops the
+     Live Match poll and therefore must run even when its own panel is the one being skipped. */
   function renderValorant(){
     renderValSubtabs();
-    renderValWishlist();
-    renderValorantStore();
-    renderValOwnedSkins();
+    const active = VAL_SUBTABS.includes(state.valorant.activeSubtab) ? state.valorant.activeSubtab : 'shop';
+    // the wishlist is a modal, not a panel — it only needs drawing while it is open, but its badge
+    // is read by the nav and the account chips either way
+    const wishOpen = (el('valWishlistOverlay')||{}).style && el('valWishlistOverlay').style.display !== 'none';
+    if(wishOpen) renderValWishlist(); else updateValWishlistBadge();
+    if(active === 'shop'){
+      renderValorantStore();
+      renderValOwnedSkins();
+    }
     renderValLocalPanel();
-    renderValLive();
+    if(active === 'live') renderValLive(); else syncValLivePolling();
+    if(active === 'vod') renderValVod();
     // Live Match settings live over in the Settings view, so they're synced here rather than in
     // renderValLive() (which only owns the panel on the Valorant tab)
     el('valLiveRegionSelect').value = state.valorant.live.regionOverride || '';
     el('valLiveDepthSelect').value = String(state.valorant.live.historyDepth || 10);
     el('valLiveEnemyStats').checked = !!state.valorant.live.showEnemyStats;
     el('valLiveShowIncognito').checked = !!state.valorant.live.showIncognito;
-    el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const keyStateEl = el('valApiKeyState');
     if(keyStateEl){
       keyStateEl.textContent = state.valorant.apiKey ? 'Key saved' : 'No key set — rank lookups will fail';
       keyStateEl.className = 'val-key-state' + (state.valorant.apiKey ? ' ok' : ' warn');
     }
+
+    // ---- everything below is the RR panel and is skipped unless it is the visible one ----
+    if(active !== 'rr') return;
+    el('valApiBanner').style.display = state.valorant.apiKey ? 'none' : 'block';
     const listEl = el('valAccountList');
     const accounts = state.valorant.accounts;
     el('valAccountsEmpty').style.display = accounts.length ? 'none' : 'block';
@@ -4136,3 +4157,307 @@
     fetchValorantAccount(acc.id);
   });
   el('valNewRiotId').addEventListener('keydown', e=>{ if(e.key==='Enter') el('valAddAccountBtn').click(); });
+
+
+  /* ================= VOD REVIEW =================
+     A tally of the mistakes caught while reviewing your own demos: one row per mistake, a +1 you
+     tap as you spot it, and a range toggle answering "which do I make most" over today / the last
+     week / all time.
+
+     Three things hold it up. Counts are stored as PER-DAY buckets (m.days['YYYY-MM-DD']) rather
+     than a running total, which is what makes the range toggle possible at all without keeping one
+     record per press — a total alone can only ever answer "all time". Those buckets are trimmed to
+     VOD_DAY_CAP days on write, because this rides the shared blob that is re-uploaded in full on
+     every save from every tab (the state.access ACCESS_LOG_CAP reasoning). And a mistake is
+     identified by its id, never its name, so renaming one keeps its history — the suggestion chips
+     add by name, so they check for an existing row case-insensitively instead of stacking a
+     near-duplicate next to it. */
+  const VOD_DAY_CAP = 400;
+  // Seeds for the chip row, not a fixed taxonomy: they're one tap to add and then ordinary rows
+  // that can be renamed or deleted. Kept to the mistakes a review actually names out loud.
+  const VOD_SUGGESTIONS = ['Dry peeked','No trade','Wide swung','Over-aggro','Died first','Bad crosshair placement',
+    'Re-peeked same angle','Wasted util','No util before entry','Bad rotate','Over-rotated','No comms',
+    'Force bought','Saved when I should buy','Peeked without info','Tunnel vision','Ignored minimap',
+    'Lost ult tracking','Bad spacing','Reloaded in the open','Chased the kill','Planted in the open',
+    'Late defuse call','Panic sprayed'];
+
+  // Search text lives in a module variable, not in state: it's a way of looking at the list right
+  // now, and persisting it would hide most of the tally on the next visit with no clue why.
+  let valVodQuery = '';
+
+  function valVodMistakes(){ return (state.valorant.vod && state.valorant.vod.mistakes) || []; }
+  function valVodRange(){ return (state.valorant.vod && state.valorant.vod.range) || 'all'; }
+
+  // Sum a mistake's per-day buckets over the active range. 'today' is one key; '7' is the last
+  // seven CALENDAR days including today (localDateStr, never now-7*24h — a millisecond window cuts
+  // off mid-way through the oldest day, the calendar.js daysLeft() ruling).
+  function valVodCount(m, range){
+    const days = m.days || {};
+    if(range === 'all') return Object.keys(days).reduce((n,k)=> n + (days[k]||0), 0);
+    if(range === 'today') return days[localDateStr(new Date())] || 0;
+    let n = 0;
+    for(let i=0;i<7;i++){
+      const d = new Date(); d.setDate(d.getDate()-i);
+      n += days[localDateStr(d)] || 0;
+    }
+    return n;
+  }
+
+  function valVodBump(id, delta){
+    const m = valVodMistakes().find(x=> x.id === id);
+    if(!m) return;
+    const key = localDateStr(new Date());
+    if(!m.days) m.days = {};
+    const next = (m.days[key] || 0) + delta;
+    // a minus-one never goes below zero for the day and clears the key entirely at zero, so an
+    // untouched day leaves no bucket behind to spend cap space
+    if(next > 0) m.days[key] = next; else delete m.days[key];
+    const keys = Object.keys(m.days).sort();
+    if(keys.length > VOD_DAY_CAP) keys.slice(0, keys.length - VOD_DAY_CAP).forEach(k=> delete m.days[k]);
+    save(); renderValVod();
+  }
+
+  function valVodAdd(name){
+    const clean = (name||'').trim();
+    if(!clean) return;
+    const existing = valVodMistakes().find(m=> m.name.trim().toLowerCase() === clean.toLowerCase());
+    if(existing){
+      // adding a mistake you already track is almost always a mis-remembered name, not a request
+      // for a second row — bump the one that already holds the history instead
+      valVodBump(existing.id, 1);
+      return;
+    }
+    valVodMistakes().push({ id: uid(), name: clean, days: {} });
+    save(); renderValVod();
+  }
+
+  function valVodLastDay(m){
+    const keys = Object.keys(m.days || {}).sort();
+    const last = keys[keys.length-1];
+    if(!last) return 'never';
+    if(last === localDateStr(new Date())) return 'today';
+    const y = new Date(); y.setDate(y.getDate()-1);
+    if(last === localDateStr(y)) return 'yesterday';
+    return last;
+  }
+
+  function renderValVod(){
+    const range = valVodRange();
+    ['today','7','all'].forEach(r=>{
+      const btn = el('valVodRangeBtn' + (r === '7' ? '7' : r.charAt(0).toUpperCase() + r.slice(1)));
+      if(btn) btn.classList.toggle('active', r === range);
+    });
+
+    const list = valVodMistakes().map(m=> ({ m, n: valVodCount(m, range), total: valVodCount(m, 'all') }));
+    // ordered by the count being SHOWN, so the top row always answers the question the range asks;
+    // ties fall back to the all-time count and then to the name, so the order can't jitter
+    list.sort((a,b)=> b.n - a.n || b.total - a.total || a.m.name.localeCompare(b.m.name));
+    const top = list[0] && list[0].n ? list[0] : null;
+    const sum = list.reduce((n,r)=> n + r.n, 0);
+    const rangeLbl = range === 'today' ? 'today' : (range === '7' ? 'in the last 7 days' : 'all time');
+
+    // the summary and the meter scale are computed from the WHOLE list above, then the rows are
+    // filtered — a filtered row keeps the bar length it has in the real ranking
+    const q = valVodQuery.trim().toLowerCase();
+    const shown = q ? list.filter(r=> r.m.name.toLowerCase().includes(q)) : list;
+
+    el('valVodEmpty').style.display = list.length ? 'none' : 'block';
+    // Add turns on the moment the field holds something that isn't already a row: the field is the
+    // add form, so the button has to say so rather than waiting to be looked for
+    const dupe = q && valVodMistakes().some(m=> m.name.trim().toLowerCase() === q);
+    const addBtn = el('valVodAddBtn');
+    addBtn.hidden = !q || !!dupe;
+    addBtn.textContent = 'Add “' + valVodQuery.trim() + '”';
+    const noMatch = el('valVodNoMatch');
+    noMatch.style.display = (list.length && !shown.length) ? 'block' : 'none';
+    noMatch.textContent = 'Nothing tracked matches that yet — press Enter to add it.';
+
+    // one figure, one name: the count leads because it is the number that moves while you review,
+    // and the most-common name sits beside it as the thing that number is asking you to fix
+    el('valVodSummary').innerHTML = !list.length ? ''
+      : '<span class="val-vod-figure"><b>' + sum + '</b> <span>mistake' + (sum === 1 ? '' : 's') + ' ' + rangeLbl + '</span></span>'
+        + (top ? '<span class="val-vod-topmost">Most common <b>' + escapeHtml(top.m.name) + '</b></span>' : '');
+
+    el('valVodList').innerHTML = shown.map(r=>{
+      /* One line per mistake so a whole review's worth of them is on screen at once: the name, the
+         count and the two steppers are the line, and the share-of-the-busiest meter is a 2px rule
+         along the row's bottom edge rather than a block of its own. The all-time/last-logged detail
+         that used to be a second line is the row's title instead — it's reference, not something
+         read while tapping. */
+      const pct = top && top.n ? Math.round((r.n / top.n) * 100) : 0;
+      /* Heat: how red a row is IS its share of the worst one, so the list reads as a gradient from
+         the mistake to fix down to the ones that barely happen. It's emitted as two percentages
+         rather than one ratio because CSS color-mix() wants a percentage directly — the strong one
+         colours the count and the meter, the soft one is the wash behind the row. Both are 0 for a
+         row with no logs in this range, which is what keeps an untouched list plain. */
+      const heat = r.n ? pct : 0;
+      const tip = r.m.name + ' — ' + r.total + ' all time, last logged ' + valVodLastDay(r.m);
+      return '<div class="val-vod-row' + (r.n ? '' : ' is-zero') + '" data-vodid="' + escapeHtml(r.m.id) + '"'
+        + ' style="--vod-heat:' + heat + '%;--vod-heat-soft:' + (heat * 0.13).toFixed(1) + '%"'
+        + ' title="' + escapeHtml(tip).replace(/"/g,'&quot;') + '">'
+        + '<div class="val-vod-namewrap">'
+          + '<span class="val-vod-name" data-vodname tabindex="0" role="button" title="Rename"><span class="val-vod-nametxt"></span></span>'
+          + '<input type="text" class="val-vod-nameedit" data-vodedit maxlength="60" aria-label="Mistake name" hidden>'
+        + '</div>'
+        + '<div class="val-vod-tally"><b>' + r.n + '</b><span>&times;</span></div>'
+        + '<button type="button" class="val-vod-step" data-vodact="dec" title="Undo one" aria-label="Undo one ' + escapeHtml(r.m.name) + '">&minus;</button>'
+        + '<button type="button" class="val-vod-step val-vod-inc" data-vodact="inc" title="Log one" aria-label="Add one ' + escapeHtml(r.m.name) + '">+</button>'
+        + '<button type="button" class="val-vod-del" data-vodact="del" title="Delete mistake" aria-label="Delete ' + escapeHtml(r.m.name) + '">&#10005;</button>'
+        + '<div class="val-vod-meter"><span style="width:' + pct + '%"></span></div>'
+      + '</div>';
+    }).join('');
+    // names are ASSIGNED (textContent / .value), never interpolated into a value="..." attribute —
+    // escapeHtml() does not escape double quotes (the notes.js title-input rule)
+    Array.prototype.forEach.call(el('valVodList').children, (row, i)=>{
+      const view = row.querySelector('[data-vodname] .val-vod-nametxt');
+      if(view) view.textContent = shown[i].m.name;
+      const input = row.querySelector('[data-vodedit]');
+      if(input) input.value = shown[i].m.name;
+    });
+    markValVodClipped();
+
+    // Chips for anything not already tracked, filtered by the same query as the rows — typing
+    // "dry" narrows the rail to "Dry peeked", so the common case is three keystrokes and a tap.
+    // The rail empties itself once every suggestion has been added.
+    const have = {};
+    valVodMistakes().forEach(m=> { have[m.name.trim().toLowerCase()] = true; });
+    const chips = VOD_SUGGESTIONS.filter(name=> !have[name.toLowerCase()] && (!q || name.toLowerCase().includes(q)));
+    el('valVodSuggest').innerHTML = chips.map(name=>
+      '<button type="button" class="val-vod-chip" data-vodadd="' + escapeHtml(name) + '">+ ' + escapeHtml(name) + '</button>').join('');
+  }
+
+  /* A one-line row clips a long mistake name, so hovering (or focusing) one slides the text across
+     to show the rest of it and slides it back. The overflow can only be MEASURED, not expressed in
+     CSS, so each name gets its own --vod-shift/--vod-dur written here after every render and the
+     animation itself lives in the stylesheet; rows that fit are left completely alone, which is
+     most of them. Duration is proportional to the distance (a fixed one crawls across a two-word
+     overrun and races across a long one), and the whole thing is switched off under
+     prefers-reduced-motion in CSS — the row's title attribute already carries the full name, so
+     nothing is only available through the animation. */
+  function markValVodClipped(){
+    Array.prototype.forEach.call(el('valVodList').querySelectorAll('[data-vodname]'), name=>{
+      const txt = name.firstElementChild;
+      if(!txt) return;
+      const over = txt.scrollWidth - name.clientWidth;
+      if(over > 2){
+        name.classList.add('is-clipped');
+        name.style.setProperty('--vod-shift', (-over - 2) + 'px');
+        name.style.setProperty('--vod-dur', Math.min(9, Math.max(2.4, over / 26)).toFixed(2) + 's');
+      }else{
+        name.classList.remove('is-clipped');
+        name.style.removeProperty('--vod-shift');
+        name.style.removeProperty('--vod-dur');
+      }
+    });
+  }
+
+  /* Renaming is a swap rather than a permanently-live input: an input can't be made to slide its
+     own text, and a row of twelve boxed fields read as a form instead of a tally. The input is
+     already in the markup and merely unhidden, so the caret lands in the same place the text was
+     sitting. */
+  // the name as it stood when the edit began, so clearing the field and clicking away can be
+  // undone — m.name itself is overwritten on every keystroke
+  let valVodLastGoodName = '';
+  function openValVodRename(nameEl){
+    const wrap = nameEl.parentElement;
+    valVodLastGoodName = (nameEl.textContent || '').trim();
+    const input = wrap.querySelector('[data-vodedit]');
+    if(!input) return;
+    nameEl.hidden = true;
+    input.hidden = false;
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  }
+  // Deliberately does NOT re-render: a click on the same row's + is what usually ends the edit, and
+  // rebuilding the list on focusout would destroy that button between mousedown and click, eating
+  // the press. The view span is updated in place and re-measured instead.
+  function closeValVodRename(input){
+    const row = input.closest('[data-vodid]');
+    const m = valVodMistakes().find(x=> x.id === (row && row.dataset.vodid));
+    // an empty name would leave a row with nothing to click, so a blank commit reverts instead
+    // the per-keystroke handler above has already written every intermediate value, so a blank
+    // field has to be undone here rather than merely ignored
+    if(m && !input.value.trim()){ input.value = valVodLastGoodName || m.name; }
+    if(m && m.name !== input.value){ m.name = input.value; save(); }
+    const nameEl = row && row.querySelector('[data-vodname]');
+    if(nameEl && m){
+      nameEl.firstElementChild.textContent = m.name;
+      if(row.title) row.title = row.title.replace(/^[^—]*—/, m.name + ' —');
+    }
+    input.hidden = true;
+    if(nameEl){ nameEl.hidden = false; markValVodClipped(); }
+  }
+
+  /* Every control inside the panel is rebuilt by renderValVod(), so all of them are delegated from
+     the panel itself, which is not — the same arrangement as #valSubtabLive. */
+  el('valSubtabVod').addEventListener('click', e=>{
+    const chip = e.target.closest('[data-vodadd]');
+    if(chip){ valVodAdd(chip.dataset.vodadd); return; }
+    const nameEl = e.target.closest('[data-vodname]');
+    if(nameEl){ openValVodRename(nameEl); return; }
+    const btn = e.target.closest('[data-vodact]');
+    if(!btn) return;
+    const row = btn.closest('[data-vodid]');
+    if(!row) return;
+    const id = row.dataset.vodid;
+    if(btn.dataset.vodact === 'inc') valVodBump(id, 1);
+    else if(btn.dataset.vodact === 'dec') valVodBump(id, -1);
+    else if(btn.dataset.vodact === 'del'){
+      const m = valVodMistakes().find(x=> x.id === id);
+      if(!m) return;
+      if(!confirm('Delete "' + m.name + '" and its whole count history?')) return;
+      state.valorant.vod.mistakes = valVodMistakes().filter(x=> x.id !== id);
+      save(); renderValVod();
+    }
+  });
+  // renaming keeps the row's id and therefore its history; it never re-renders on input, or the
+  // field would be rebuilt mid-keystroke and drop the caret (the notes.js rule) — the re-render
+  // that re-measures the sliding text happens once, on the way out
+  el('valSubtabVod').addEventListener('input', e=>{
+    const input = e.target.closest('[data-vodedit]');
+    if(!input) return;
+    const row = input.closest('[data-vodid]');
+    const m = valVodMistakes().find(x=> x.id === (row && row.dataset.vodid));
+    if(!m) return;
+    m.name = input.value;
+    save();
+  });
+  // capture, because focusout/blur do not bubble
+  el('valSubtabVod').addEventListener('focusout', e=>{
+    const input = e.target.closest && e.target.closest('[data-vodedit]');
+    if(input && !input.hidden) closeValVodRename(input);
+  });
+  el('valSubtabVod').addEventListener('keydown', e=>{
+    const input = e.target.closest && e.target.closest('[data-vodedit]');
+    if(input){
+      if(e.key === 'Enter' || e.key === 'Escape'){ e.preventDefault(); input.blur(); }
+      return;
+    }
+    // the name is a span acting as a button, so it needs the keyboard path a button has for free
+    const nameEl = e.target.closest && e.target.closest('[data-vodname]');
+    if(nameEl && (e.key === 'Enter' || e.key === ' ')){ e.preventDefault(); openValVodRename(nameEl); }
+  });
+  /* The one field is the search AND the add form. Committing it clears the query too — leaving it
+     filtered would hide every row but the one just added, which reads as the rest having gone. */
+  function commitValVodField(){
+    const raw = el('valVodSearch').value;
+    if(!raw.trim()) return;
+    valVodQuery = '';
+    el('valVodSearch').value = '';
+    valVodAdd(raw);   // ends in renderValVod()
+  }
+  el('valVodAddBtn').addEventListener('click', commitValVodField);
+  // the field is static markup, so typing in it re-renders the list without rebuilding the field
+  // the caret is in
+  el('valVodSearch').addEventListener('input', e=>{ valVodQuery = e.target.value; renderValVod(); });
+  el('valVodSearch').addEventListener('keydown', e=>{
+    if(e.key === 'Enter'){ e.preventDefault(); commitValVodField(); return; }
+    if(e.key !== 'Escape') return;
+    valVodQuery = ''; e.target.value = ''; renderValVod();
+  });
+  el('valVodRangeToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-vodrange]');
+    if(!btn) return;
+    state.valorant.vod.range = btn.dataset.vodrange;
+    save(); renderValVod();
+  });

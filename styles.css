@@ -3847,6 +3847,174 @@
   .val-empty-title{font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px;}
   .val-empty-sub{font-size:12px;line-height:1.6;color:var(--muted);max-width:46ch;margin:0 auto;}
 
+
+  /* ---- VOD review mistake tally (#valSubtabVod) ----
+     Rows are one line and share a single bordered list rather than each carrying its own card: a
+     review turns up a dozen mistakes and the point of the pane is seeing which one repeats, which
+     you cannot do while three of them fill the screen. Everything that isn't the name, the count
+     or the two steppers is therefore off the line — the all-time/last-logged detail is the row's
+     title, and the share-of-the-busiest comparison is a 2px rule along the bottom edge. */
+  .val-vod-head{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    margin-bottom:10px;
+  }
+  .val-vod-headline{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0;}
+  .val-vod-figure{display:flex;align-items:baseline;gap:6px;min-width:0;}
+  .val-vod-figure b{font-family:'Manrope',sans-serif;font-size:20px;font-weight:800;line-height:1;color:var(--text);font-variant-numeric:tabular-nums;}
+  .val-vod-figure span{font-size:12px;color:var(--muted);}
+  .val-vod-topmost{
+    font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    padding-left:10px;border-left:1px solid var(--border);
+  }
+  .val-vod-topmost b{color:var(--danger);font-weight:700;}
+  .val-vod-range{flex:none;}
+
+  /* Search and add are one bar, always on screen: adding a mistake used to be folded into a
+     disclosure under the list, which is the wrong place for the thing a new user has to do first. */
+  .val-vod-bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;}
+  .val-vod-search{
+    flex:1;min-width:0;background:var(--surface);border:1px solid var(--border);border-radius:9px;
+    color:var(--text);font-size:12px;font-family:'Inter',sans-serif;padding:7px 10px;
+  }
+  .val-vod-search::placeholder{color:var(--muted);}
+  .val-vod-search:focus{outline:none;border-color:var(--violet);}
+  .val-vod-addbtn{flex:none;max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+  /* one scrolling line, not a wrapped wall: two dozen suggestions cost 32px this way, which is what
+     lets them stay visible instead of being folded behind a disclosure nobody opens */
+  .val-vod-suggest{
+    display:flex;gap:6px;align-items:center;overflow-x:auto;overflow-y:hidden;
+    padding-bottom:2px;margin-bottom:10px;scrollbar-width:none;
+  }
+  .val-vod-suggest::-webkit-scrollbar{display:none;}
+  .val-vod-suggest:empty{display:none;}
+  .val-vod-chip{
+    flex:none;white-space:nowrap;
+    background:none;border:1px dashed var(--border);color:var(--muted);
+    border-radius:999px;padding:4px 10px;font-size:11px;font-weight:600;font-family:'Inter',sans-serif;
+    cursor:pointer;transition:border-color .12s ease,color .12s ease,background-color .12s ease;
+  }
+  .val-vod-chip:hover{border-style:solid;border-color:var(--violet);color:var(--text);background:var(--surface-alt);}
+
+  /* one surface, hairline-divided — the gaps and twelve borders of a card list were most of the
+     vertical space the rows were spending */
+  .val-vod-list{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .val-vod-list:empty{display:none;}
+  .val-vod-row{
+    position:relative;display:flex;align-items:center;gap:6px;
+    padding:4px 8px 4px 10px;min-height:34px;
+    border-top:1px solid var(--border);
+    /* the wash fades out across the row rather than filling it: the count and the buttons on the
+       right keep a plain surface behind them at every heat. Plain declaration first, as the
+       fallback for engines without color-mix(). */
+    background:var(--surface);
+    background:linear-gradient(90deg,
+      color-mix(in srgb, var(--danger) var(--vod-heat-soft,0%), var(--surface)) 0%,
+      var(--surface) 78%);
+  }
+  .val-vod-row:first-child{border-top:none;}
+  .val-vod-row:hover{background:var(--surface-alt);}
+  .val-vod-namewrap{flex:1;min-width:0;display:flex;}
+  /* The name is a span, not a live input: an input cannot be made to slide its own overflowing
+     text, and twelve boxed fields in a row read as a form rather than a tally. Clicking it swaps
+     in .val-vod-nameedit, which is the same size and sits in the same place. */
+  .val-vod-name,.val-vod-nameedit{
+    flex:1;min-width:0;background:none;border:1px solid transparent;border-radius:6px;
+    color:var(--text);font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:700;letter-spacing:-.1px;
+    padding:2px 5px;margin-left:-5px;
+  }
+  .val-vod-name{
+    display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+    cursor:text;line-height:18px;
+  }
+  .val-vod-name:hover,.val-vod-name:focus-visible{border-color:var(--border);}
+  .val-vod-name:focus-visible{outline:none;}
+  .val-vod-nameedit:focus{border-color:var(--violet);background:var(--surface);outline:none;}
+  /* A clipped name slides across on hover/focus to show the rest and slides back. The distance and
+     the duration are measured per row by markValVodClipped() — CSS cannot know either — and the
+     ellipsis is dropped while it runs, since text that is being shown in full must not also claim
+     to be cut off. */
+  .val-vod-nametxt{display:inline-block;white-space:nowrap;}
+  .val-vod-name.is-clipped:hover,.val-vod-name.is-clipped:focus-visible{text-overflow:clip;}
+  .val-vod-row:hover .val-vod-name.is-clipped .val-vod-nametxt,
+  .val-vod-name.is-clipped:focus-visible .val-vod-nametxt{
+    animation:valVodSlide var(--vod-dur,4s) ease-in-out infinite alternate;
+    animation-delay:.35s;
+  }
+  @keyframes valVodSlide{
+    /* holds at each end for a beat, so the start and the finish of the name are both readable */
+    0%,14%{transform:translateX(0);}
+    86%,100%{transform:translateX(var(--vod-shift,0));}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .val-vod-row:hover .val-vod-name.is-clipped .val-vod-nametxt,
+    .val-vod-name.is-clipped:focus-visible .val-vod-nametxt{animation:none;}
+    .val-vod-name.is-clipped:hover,.val-vod-name.is-clipped:focus-visible{text-overflow:ellipsis;}
+  }
+  /* the ranking cue, on the row's own bottom edge: it costs no line of its own, and it sits under
+     the divider so a full-width bar can't be mistaken for the border */
+  .val-vod-meter{position:absolute;left:0;right:0;bottom:0;height:2px;pointer-events:none;}
+  /* the bar runs from the row's own heat colour into full danger at its tip, so the busiest row is
+     a long red line and a rare one a short cool stub */
+  .val-vod-meter span{
+    display:block;height:100%;opacity:.8;transition:width .18s ease;
+    background:var(--violet);
+    background:linear-gradient(90deg,
+      color-mix(in srgb, var(--danger) var(--vod-heat,0%), var(--violet)) 0%,
+      var(--danger) 100%);
+  }
+  /* a row with nothing logged in this range shows the track alone — no stub of colour to read as a
+     count of zero-point-something */
+  .val-vod-row.is-zero .val-vod-meter span{background:none;}
+
+  .val-vod-tally{display:flex;align-items:baseline;gap:1px;flex:none;margin-right:2px;}
+  .val-vod-tally b{
+    font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+    /* mixed into --text, never used raw: pure --danger on a small bold numeral is loud on the one
+       row you look at most, and the mix keeps every row above 4.5:1 in all four themes */
+    color:var(--text);
+    color:color-mix(in srgb, var(--danger) var(--vod-heat,0%), var(--text));
+  }
+  .val-vod-tally span{font-size:10px;color:var(--muted);}
+  .val-vod-row.is-zero .val-vod-tally b{color:var(--muted);}
+
+  /* +/− are one pair of round steppers rather than a primary button plus an icon button: they do
+     the same kind of thing to the same number, so they look like each other, and + carries the
+     colour because it is the one pressed dozens of times per review. */
+  .val-vod-step{
+    width:26px;height:26px;border-radius:50%;flex:none;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;line-height:1;
+    background:var(--surface-alt);border:1px solid var(--border);color:var(--muted);
+    font-size:13px;font-weight:700;font-family:'Inter',sans-serif;
+    transition:background-color .12s ease,color .12s ease,border-color .12s ease,transform .08s ease;
+  }
+  .val-vod-step:hover{color:var(--text);border-color:var(--violet);}
+  .val-vod-step:active{transform:scale(.9);}
+  .val-vod-inc{background:var(--violet);border-color:var(--violet);color:#fff;font-size:15px;}
+  .val-vod-inc:hover{color:#fff;filter:brightness(1.08);}
+  /* delete is the destructive one on a row full of taps, so it keeps its slot but stays invisible
+     until the row is hovered — and comes back where there is no hover to reveal it */
+  .val-vod-del{
+    width:20px;height:26px;flex:none;cursor:pointer;background:none;border:none;
+    color:var(--muted);font-size:10px;line-height:1;opacity:0;
+    transition:opacity .12s ease,color .12s ease;
+  }
+  .val-vod-row:hover .val-vod-del{opacity:.6;}
+  .val-vod-del:hover,.val-vod-del:focus-visible{opacity:1;color:var(--val-err-ink,var(--danger));}
+  @media (pointer:coarse){
+    .val-vod-row{min-height:42px;}
+    .val-vod-step{width:32px;height:32px;}
+    .val-vod-del{opacity:.45;width:26px;}
+  }
+
+  .val-vod-nomatch{font-size:12px;color:var(--muted);padding:14px 2px;}
+
+  @media (max-width:560px){
+    .val-vod-head{align-items:flex-start;}
+    .val-vod-range{width:100%;}
+    .val-vod-topmost{padding-left:0;border-left:none;}
+  }
+
   /* ---- RR history ----
      This has no chrome of its own: mountValChartPanel() puts it inside the selected account card,
      which supplies the surface, the border and the identity header. */

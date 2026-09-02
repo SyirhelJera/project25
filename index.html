@@ -889,6 +889,7 @@
       <button data-subtab="shop" id="valSubtabBtnShop">Shop Tracker</button>
       <button data-subtab="rr" id="valSubtabBtnRR">RR Tracker</button>
       <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
+      <button data-subtab="vod" id="valSubtabBtnVod">VOD Review</button>
     </div>
 
     <!-- Order here is deliberate: the ranks themselves come first, the chart for the selected
@@ -1072,6 +1073,47 @@
         </div>
         <div class="val-err" id="valLiveErr" style="display:none;"></div>
         <div id="valLiveBody"></div>
+      </div>
+    </div>
+
+    <!-- VOD REVIEW — a tally of the mistakes found while reviewing your own demos. Deliberately a
+         counter and not a journal: the question it answers is "which mistake do I make most", and
+         a per-clip note field would turn a five-second tap into writing. Each mistake keeps a
+         per-day tally (state.valorant.vod.mistakes[].days), which is what lets the range toggle
+         show "today" / "last 7 days" / "all time" without storing one record per press. The list
+         is rebuilt wholesale by renderValVod(), so every control here is delegated off the panel. -->
+    <div class="val-subtab-panel" id="valSubtabVod" style="display:none;">
+      <!-- The summary strip is the pane's headline: the one figure and the one name that answer
+           "what am I doing most", with the range control on the same line because it is what those
+           two numbers are a function of. -->
+      <div class="val-vod-head">
+        <div class="val-vod-headline" id="valVodSummary"></div>
+        <div class="unit-toggle val-vod-range" id="valVodRangeToggle">
+          <button data-vodrange="today" id="valVodRangeBtnToday">Today</button>
+          <button data-vodrange="7" id="valVodRangeBtn7">7 days</button>
+          <button data-vodrange="all" id="valVodRangeBtnAll">All time</button>
+        </div>
+      </div>
+
+      <!-- One field, both jobs. Typing filters the list; if nothing matches what you typed, the
+           same text is one Enter (or one click on Add) away from becoming a new mistake — which is
+           why there is no separate add form to find. Search filters the ROWS only: the summary and
+           the meter scale still come from the whole list, so filtering can't make a rare mistake
+           look like the worst one. -->
+      <div class="val-vod-bar">
+        <input type="search" id="valVodSearch" class="val-vod-search" placeholder="Search or add a mistake…" autocomplete="off" aria-label="Search or add a mistake" maxlength="60">
+        <button class="btn btn-primary btn-sm val-vod-addbtn" id="valVodAddBtn" hidden>Add</button>
+      </div>
+      <!-- The seed list, always on screen rather than folded away: a chip is the fastest way to add
+           the mistake you just spotted, and it filters with the field above it. One scrolling line,
+           so two dozen of them cost 32px rather than a wall. -->
+      <div class="val-vod-suggest" id="valVodSuggest"></div>
+
+      <div class="val-vod-list" id="valVodList"></div>
+      <div class="val-vod-nomatch" id="valVodNoMatch" style="display:none;"></div>
+      <div class="val-empty-accounts" id="valVodEmpty" style="display:none;">
+        <div class="val-empty-title">No mistakes listed yet</div>
+        <div class="val-empty-sub">Type one above — or tap a suggestion — then hit +1 each time it shows up in a review.</div>
       </div>
     </div>
     </div><!-- /#gametab-valorant -->

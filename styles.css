@@ -5824,3 +5824,48 @@
   @media (max-width:560px){
     .sleep-row-times{flex:1 1 100%;order:5;}
   }
+
+  /* ---- the sleep battery (renderSleepBattery() in js/fitness.js) --------------------------
+     It sits in the Sleep hero's rail slot, where the Weight hero carries a progress rail — so it
+     has to read as a DIFFERENT kind of object at a glance, or the two panes look like they are
+     saying the same thing about different numbers. Hence the nub on the right and the quarter
+     ticks: a battery, not a bar. Height and radius are the rail's, so the two still sit at the
+     same weight in the layout.
+     The three tones are the same three the app uses everywhere for a level, and each is paired
+     with words in the caption underneath — the percentage is inside the bar, so colour is never
+     the only thing carrying "how bad is this". */
+  .sleep-batt{display:flex;align-items:stretch;gap:3px;margin-top:2px;}
+  .sleep-batt-body{position:relative;flex:1 1 auto;min-width:0;height:30px;border-radius:9px;
+    background:var(--surface-alt);border:1.5px solid var(--border);overflow:hidden;}
+  .sleep-batt-nub{flex:none;width:5px;align-self:center;height:12px;border-radius:0 3px 3px 0;
+    background:var(--border);}
+  .sleep-batt-fill{position:absolute;left:0;top:0;bottom:0;border-radius:7px 0 0 7px;
+    transition:width .5s ease,background .3s ease;}
+  .sleep-batt.is-good .sleep-batt-fill{background:linear-gradient(90deg,var(--violet),var(--violet-dark));}
+  .sleep-batt.is-warn .sleep-batt-fill{background:var(--gold);}
+  .sleep-batt.is-low  .sleep-batt-fill{background:var(--danger);}
+  /* drawn over the fill, not under it, so the quarters stay readable on a charged battery too —
+     a tick that vanished as the bar passed it would be missing exactly when it is being used */
+  .sleep-batt-ticks{position:absolute;inset:0;display:flex;pointer-events:none;}
+  .sleep-batt-ticks i{flex:1 1 0;border-right:1px solid var(--border);opacity:.55;}
+  .sleep-batt-ticks i:last-child{border-right:none;}
+  /* --text on both sides of the fill edge: white would vanish on the empty half and dark ink on
+     the violet half, and the figure crosses that edge by design as the battery drains */
+  .sleep-batt-pct{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;color:var(--text);
+    font-variant-numeric:tabular-nums;letter-spacing:.2px;
+    /* the one place a shadow earns its keep: the numeral sits on both the fill and the track */
+    text-shadow:0 1px 2px var(--surface);}
+  .sleep-batt-bolt{font-size:11px;margin-left:2px;}
+  .sleep-batt.is-charging .sleep-batt-fill{animation:sleepBattPulse 2.8s ease-in-out infinite;}
+  @keyframes sleepBattPulse{0%,100%{opacity:1;}50%{opacity:.72;}}
+  .sleep-batt-cap{font-size:10.5px;color:var(--muted);line-height:1.4;}
+  .sleep-batt-cap.to{text-align:right;font-weight:700;color:var(--text);}
+  @media (max-width:560px){
+    .sleep-batt-body{height:28px;}
+    .sleep-batt-cap{font-size:9.8px;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .sleep-batt-fill{transition:none;animation:none;}
+    .sleep-batt.is-charging .sleep-batt-fill{animation:none;}
+  }

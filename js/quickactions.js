@@ -72,6 +72,9 @@
     state.fitness.sleepPending = { at: now.toISOString() };
     save();
     renderQuickActions();
+    // the Sleep pane's battery starts charging the moment this is pressed, so it has to be told —
+    // renderSleep() no-ops when its fields aren't on the page
+    if(typeof renderSleep === 'function') renderSleep();
     qaToast('Sleeping since <b>' + escapeHtml(fmtClock(now.getHours()*60 + now.getMinutes()))
       + '</b>. Tap again when you wake up.');
   }

@@ -558,6 +558,10 @@
     if(key === 'weight') renderWeightChart();
     if(key === 'calories') renderCalorieReview();
     if(key === 'sleep') renderSleepReview();
+    // and the battery's minute timer follows the pane either way — leaving this pane has to stop it
+    // as surely as entering starts it. (Leaving the whole TAB is caught one tick later, by the
+    // ticker's own visibility test; a minute of a hidden redraw is not worth a hook in nav.js.)
+    syncSleepBatteryTicker();
   }
   el('fitnessSubnav').addEventListener('click', e=>{
     const btn = e.target.closest('[data-fittab]');
@@ -2097,27 +2101,147 @@
     }
     chipsEl.innerHTML = chips.join('');
 
-    if(!latest){
-      railEl.innerHTML = '<p class="fit-rail-none">Log a night and this shows it against your '
-        + escapeHtml(String(sleepGoalHours())) + '-hour goal.</p>';
+    renderSleepBattery();
+  }
+
+  /* ---- the sleep battery ----------------------------------------------------------------------
+     How much of the night you are still running on, right now. A full night charges it to 100% and
+     it empties across the hours you would normally be awake, so a short night both starts lower AND
+     runs out earlier — which is the whole reading. A static "you slept 6h" tells you what happened;
+     this tells you what it is costing you at 4pm.
+
+     The maths is deliberately one line of physics rather than a model of anything: charge is last
+     night against the goal, the waking day is 24h minus the goal (16h on an 8h goal), and the level
+     is the charge minus how far into that day you are. Nothing here claims to be alertness — it is
+     the goal you set, spread over the day it was meant to cover. Four rules.
+
+       · It charges from the LAST FINISHED night, and while the quick-actions toggle is running it
+         is charging instead — a battery that ignored the night in progress would sit at 0% at the
+         exact moment you are doing the thing that fills it.
+       · The waking day is 24h − goal, not a typed figure. It is the only definition that makes 100%
+         mean "a full night ago" and 0% mean "you are due the next one", and it moves correctly when
+         the goal does.
+       · A night older than SLEEP_BATT_STALE_H is not drawn as a flat battery but as a prompt. A
+         reading of 0% is a claim about right now; if the last night on record is Tuesday's, the
+         honest answer is that there is no reading, not that you are empty.
+       · It re-renders on a minute timer, and only while this pane is the visible one — the calorie
+         chart's ResizeObserver reasoning: a redraw for a hidden pane is a redraw nobody can see. */
+  const SLEEP_BATT_STALE_H = 30;    // past this the last night can't describe now
+
+  // ms timestamp of the moment a night ended — the wake clock time applied to the date it is
+  // filed under, which is the wake date by definition, so no offset is needed
+  function sleepWakeTs(rec){
+    const w = clockMins(rec && rec.wake);
+    if(w == null) return null;
+    return parseLocalDateStr(rec.date).getTime() + w * 60000;
+  }
+
+  function sleepBattery(){
+    const goalMins = sleepGoalHours() * 60;
+    const pend = (typeof sleepPendingElapsed === 'function') ? sleepPendingElapsed() : null;
+    if(pend != null){
+      // asleep: filling toward the goal, and it can pass it — sleeping past the goal is not an
+      // error, so the bar caps at 100% while the caption keeps counting
+      return { state:'charging', level: Math.min(1, pend / (goalMins*60000)), elapsedMs: pend };
+    }
+    const log = sleepLog().slice().filter(e=> e.mins > 0 && clockMins(e.wake) != null)
+      .sort((a,b)=> a.date.localeCompare(b.date));
+    const last = log[log.length-1] || null;
+    if(!last) return { state:'none' };
+    const wokeAt = sleepWakeTs(last);
+    // a wake stamp in the future means a corrected clock or a hand-typed time, not a charged
+    // battery — treat the awake span as zero rather than drawing an over-full bar
+    const awakeMs = Math.max(0, Date.now() - wokeAt);
+    if(awakeMs > SLEEP_BATT_STALE_H * 3600000) return { state:'stale', last, awakeMs };
+    const charge = Math.min(1, last.mins / goalMins);
+    const dayMs = Math.max(1, (24 - sleepGoalHours()) * 3600000);
+    const level = Math.max(0, charge - awakeMs / dayMs);
+    return {
+      state:'draining', last, charge, level, awakeMs,
+      emptyAt: wokeAt + charge * dayMs
+    };
+  }
+
+  // one class for the bar and the figure, so the colour and the words can't disagree
+  function sleepBattTone(level){ return level >= 0.5 ? 'good' : level >= 0.2 ? 'warn' : 'low'; }
+
+  function renderSleepBattery(){
+    const railEl = el('sleepHeroRail'); if(!railEl) return;
+    const b = sleepBattery();
+    const goalH = sleepGoalHours();
+
+    if(b.state === 'none'){
+      railEl.innerHTML = '<p class="fit-rail-none">Log a night — or tap 🌙 in the corner on your way '
+        + 'to bed — and this becomes a battery that charges as you sleep and empties across the day.</p>';
+      syncSleepBatteryTicker();
       return;
     }
-    const pct = Math.min(100, Math.round((latest.mins / goalMins) * 100));
-    const done = latest.mins >= goalMins - 15;
-    const gapTxt = done ? 'Goal met' : fmtDuration(goalMins - latest.mins) + ' short';
+    if(b.state === 'stale'){
+      railEl.innerHTML = '<p class="fit-rail-none">'
+        + escapeHtml('Last night on record is ' + fmtDate(parseLocalDateStr(b.last.date).getTime())
+          + ' — too long ago to say anything about today. Log a night to bring the battery back.')
+        + '</p>';
+      syncSleepBatteryTicker();
+      return;
+    }
+
+    const pct = Math.round(b.level * 100);
+    const charging = b.state === 'charging';
+    const tone = charging ? 'good' : sleepBattTone(b.level);
+    let caption, right;
+    if(charging){
+      caption = 'Charging · ' + fmtDuration(Math.floor(b.elapsedMs/60000)) + ' of ' + goalH + 'h';
+      right = pct >= 100 ? 'Full' : fmtDuration(Math.max(0, Math.round(goalH*60 - b.elapsedMs/60000))) + ' to full';
+    } else if(b.level <= 0){
+      caption = 'Flat — running on ' + fmtDuration(b.last.mins) + ' from last night';
+      right = 'Due a night';
+    } else {
+      const leftMs = b.emptyAt - Date.now();
+      caption = 'Charged ' + Math.round(b.charge*100) + '% by ' + fmtDuration(b.last.mins) + ' last night';
+      right = 'Empty by ' + fmtClock(new Date(b.emptyAt).getHours()*60 + new Date(b.emptyAt).getMinutes())
+        + ' · ' + fmtDuration(Math.max(0, Math.round(leftMs/60000))) + ' left';
+    }
+
+    /* The nub on the right is what makes this read as a battery rather than as another progress
+       rail — the pane already has one of those on the Weight side, and the two mean different
+       things. The ticks are at the quarters, drawn inside the track so they show through the fill:
+       a bar with no marks on it can only be read as "roughly half". */
     railEl.innerHTML =
-      '<div class="fit-rail-track'+(done?' done':'')+'" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
-      + ' aria-valuenow="'+pct+'" aria-label="Last night against your sleep goal"'
-      + ' aria-valuetext="'+escapeHtml(pct+'% of the goal — '+gapTxt)+'">'
-      + '<span class="fit-rail-fill" style="width:'+pct+'%"></span>'
-      + '<span class="fit-rail-dot" style="left:'+pct+'%"></span>'
+      '<div class="sleep-batt is-'+tone+(charging?' is-charging':'')+'">'
+      + '<div class="sleep-batt-body" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+      +   ' aria-valuenow="'+pct+'" aria-label="Sleep battery"'
+      +   ' aria-valuetext="'+escapeHtml(pct+'% — '+caption+' · '+right)+'">'
+      +   '<span class="sleep-batt-fill" style="width:'+Math.max(0,Math.min(100,pct))+'%"></span>'
+      +   '<span class="sleep-batt-ticks" aria-hidden="true"><i></i><i></i><i></i></span>'
+      +   '<span class="sleep-batt-pct">'+pct+'%'+(charging?' <span class="sleep-batt-bolt" aria-hidden="true">⚡</span>':'')+'</span>'
+      + '</div>'
+      + '<span class="sleep-batt-nub" aria-hidden="true"></span>'
       + '</div>'
       + '<div class="fit-rail-ends">'
-      +   '<span class="fit-rail-end">'+escapeHtml(fmtDuration(latest.mins))+'<i>slept</i></span>'
-      +   '<span class="fit-rail-gap'+(done?' done':'')+'">'+escapeHtml(gapTxt)+'</span>'
-      +   '<span class="fit-rail-end to">'+escapeHtml(sleepGoalHours()+'h')+'<i>goal</i></span>'
+      +   '<span class="sleep-batt-cap">'+escapeHtml(caption)+'</span>'
+      +   '<span class="sleep-batt-cap to">'+escapeHtml(right)+'</span>'
       + '</div>';
+    syncSleepBatteryTicker();
   }
+
+  /* The battery moves without anything happening, so it has to redraw on a clock. Once a minute is
+     all the display can show — over a 16-hour day that is a tenth of a percent per tick — and the
+     timer exists only while the Sleep pane is the visible one and the tab is in front, which is the
+     same gate syncValLivePolling() and syncTftLobbyPolling() use for the same reason. */
+  let sleepBattTicker = null;
+  function sleepBatteryVisible(){
+    return !document.hidden && fitnessSubTab === 'sleep'
+      && document.querySelector('#view-fitness.active') != null;
+  }
+  function syncSleepBatteryTicker(){
+    const want = sleepBatteryVisible();
+    if(want && !sleepBattTicker) sleepBattTicker = setInterval(renderSleepBattery, 60000);
+    else if(!want && sleepBattTicker){ clearInterval(sleepBattTicker); sleepBattTicker = null; }
+  }
+  document.addEventListener('visibilitychange', ()=>{
+    if(!document.hidden && sleepBatteryVisible()) renderSleepBattery();
+    else syncSleepBatteryTicker();
+  });
 
   function renderSleepReview(){
     const rangeRow = el('slRangeRow'); if(!rangeRow) return;

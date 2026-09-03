@@ -1,0 +1,179 @@
+  /* ================= QUICK ACTIONS =============================================================
+     The bottom-right bar (#quickActions), which replaced the mobile tab-switcher FAB. It holds the
+     things that have to be doable from whatever tab you happen to be on, at the moment they need
+     doing — which today is one thing: the sleep toggle.
+
+     Why a toggle at all, when the Sleep pane already has bed/wake fields. Because those fields are
+     a form you fill in afterwards, from memory, and the two times they ask for are exactly the two
+     you are least able to type: you press "going to sleep" with the lights already off, and "awake"
+     before you are properly awake. So the toggle stamps both ends off the clock, and the pane's
+     fields stay for corrections and for backfilling a night the toggle missed.
+
+     Four things hold it up.
+       · The pending night is ONE timestamp in state (state.fitness.sleepPending), not a running
+         timer — the app is closed for the whole of the thing being measured, so anything held in
+         memory would be gone by morning. Elapsed is always (now − that stamp), which is also why a
+         phone that slept, a reload, and a different device all agree.
+       · It writes through fitness.js's own upsertSleepLog(), never straight into state.fitness
+         .sleepLog — the record shape (and the rule that a night is filed under the WAKE date) has
+         one owner, and a second writer is how the two would drift apart.
+       · Both ends confirm before writing an implausible night rather than silently recording one:
+         a stray tap and a toggle you forgot to end are the two failure modes this control actually
+         has, and both produce a number that would quietly poison every average in the pane.
+       · The bar is hidden outright for a read-only guest. Guest edits normally *look* applied until
+         reload (the standing cost documented in CLAUDE.md), but this control's whole state is one
+         write — a toggle that flips, counts up all night and then loses the night is worse than a
+         control that was never offered. */
+
+  function sleepPending(){
+    const p = state.fitness && state.fitness.sleepPending;
+    return (p && p.at) ? p : null;
+  }
+  // ms since the toggle was pressed, or null. Clamped at zero: a device whose clock was corrected
+  // backwards mid-sleep would otherwise render a negative duration in the pill.
+  function sleepPendingElapsed(){
+    const p = sleepPending(); if(!p) return null;
+    const t = Date.parse(p.at);
+    if(isNaN(t)) return null;
+    return Math.max(0, Date.now() - t);
+  }
+  // 'HH:MM', the shape sleepLog records store — local, and zero-padded, because clockMins() in
+  // fitness.js parses it back with a regex rather than with Date
+  function hhmm(d){
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+  function qaElapsedText(ms){
+    const mins = Math.floor(ms/60000);
+    return Math.floor(mins/60) + 'h ' + String(mins%60).padStart(2,'0') + 'm';
+  }
+
+  /* The one-line receipt under the bar. Session-only and never persisted — it says what the tap
+     just did, and by morning that is not news. Cleared on a timer rather than on an animation end,
+     the .cal-bubble rule: under prefers-reduced-motion the animation never runs and the event
+     would never fire. */
+  let qaToastTimer = null;
+  function qaToast(html){
+    const bar = el('quickActions'); if(!bar) return;
+    let box = bar.querySelector('.qa-toast');
+    if(!box){
+      box = document.createElement('div');
+      box.className = 'qa-toast';
+      box.setAttribute('role', 'status');
+      box.setAttribute('aria-live', 'polite');
+      bar.insertBefore(box, bar.firstChild);
+    }
+    box.innerHTML = html;
+    if(qaToastTimer) clearTimeout(qaToastTimer);
+    qaToastTimer = setTimeout(()=>{ if(box.parentNode) box.parentNode.removeChild(box); qaToastTimer = null; }, 6000);
+  }
+
+  function startSleep(){
+    const now = new Date();
+    state.fitness.sleepPending = { at: now.toISOString() };
+    save();
+    renderQuickActions();
+    qaToast('Sleeping since <b>' + escapeHtml(fmtClock(now.getHours()*60 + now.getMinutes()))
+      + '</b>. Tap again when you wake up.');
+  }
+
+  /* Ending is where the judgement is. Two implausible cases, each confirmed rather than refused —
+     both really happen (a nap logged on purpose; a toggle left running through a whole day) and
+     only the person pressing it knows which. Cancelling DISCARDS the timer rather than leaving it
+     running, because the alternative is a pill that stays stuck on a number you have already
+     declined once, with no other way to clear it. */
+  const SLEEP_MIN_MS = 20 * 60000;      // under this and it reads as a mis-tap
+  const SLEEP_MAX_MS = 16 * 3600000;    // over this and the toggle was almost certainly forgotten
+
+  function endSleep(){
+    const ms = sleepPendingElapsed();
+    if(ms == null){ state.fitness.sleepPending = null; renderQuickActions(); return; }
+    const bedAt = new Date(Date.parse(sleepPending().at));
+    const wokeAt = new Date();
+    const txt = qaElapsedText(ms);
+    if(ms < SLEEP_MIN_MS || ms > SLEEP_MAX_MS){
+      const why = ms < SLEEP_MIN_MS
+        ? 'Only ' + txt + ' since you tapped Sleep.'
+        : 'That timer has been running for ' + txt + '.';
+      if(!confirm(why + '\n\nOK records it as a night. Cancel discards the timer without logging.')){
+        state.fitness.sleepPending = null;
+        save(); renderQuickActions();
+        qaToast('Timer discarded — nothing logged.');
+        return;
+      }
+    }
+    // Filed under the date you WOKE on, which is the rule the whole sleep log is keyed by — so a
+    // night crossing midnight lands on one date and a nap ending the same afternoon lands on that
+    // day. upsertSleepLog() overwrites a night already recorded for that date rather than twinning.
+    const date = localDateStr(wokeAt);
+    const mins = Math.round(ms / 60000);
+    upsertSleepLog(date, { bed: hhmm(bedAt), wake: hhmm(wokeAt), mins });
+    state.fitness.sleepPending = null;
+    save();
+    // the pane is very likely not the visible tab, and renderSleep() no-ops when its fields are
+    // absent — calling it keeps the hero and the chart true if you do walk over there
+    if(typeof renderSleep === 'function') renderSleep();
+    renderQuickActions();
+    const goalMins = (typeof sleepGoalHours === 'function' ? sleepGoalHours() : 8) * 60;
+    qaToast('Logged <b>' + escapeHtml(fmtDuration(mins)) + '</b> · '
+      + escapeHtml(fmtClock(clockMins(hhmm(bedAt))) + ' → ' + fmtClock(clockMins(hhmm(wokeAt))))
+      + (mins >= goalMins - 15 ? ' · goal met' : ''));
+  }
+
+  function renderQuickActions(){
+    const bar = el('quickActions'); if(!bar) return;
+    // a guest can't write, so the control is not offered — see the header note
+    if(typeof appCanWrite === 'function' && !appCanWrite()){ bar.innerHTML = ''; return; }
+
+    const ms = sleepPendingElapsed();
+    const running = ms != null;
+    const btn = bar.querySelector('[data-qa="sleep"]');
+    const html = running
+      ? '<span class="qa-live-dot" aria-hidden="true"></span>'
+        + '<span class="qa-ico" aria-hidden="true">☀️</span>'
+        + '<span class="qa-lbl">Awake</span>'
+        + '<span class="qa-sub">' + escapeHtml(qaElapsedText(ms)) + '</span>'
+      : '<span class="qa-ico" aria-hidden="true">🌙</span><span class="qa-lbl">Sleep</span>';
+    const label = running
+      ? 'Wake up — ' + qaElapsedText(ms) + ' asleep so far. Logs the night.'
+      : 'Going to sleep — starts the night';
+
+    // The button is reused rather than rebuilt while it is only its contents changing: this
+    // re-renders once a minute all night, and replacing the node would drop focus and restart the
+    // dot's animation on every tick.
+    if(btn){
+      btn.className = 'qa-btn' + (running ? ' is-running' : '');
+      btn.innerHTML = html;
+      btn.setAttribute('aria-label', label);
+      btn.setAttribute('title', label);
+    } else {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.dataset.qa = 'sleep';
+      b.className = 'qa-btn' + (running ? ' is-running' : '');
+      b.innerHTML = html;
+      b.setAttribute('aria-label', label);
+      b.setAttribute('title', label);
+      bar.appendChild(b);
+    }
+    syncQaTicker();
+  }
+
+  /* The pill counts up, so it has to redraw without anything happening. Once a minute is the whole
+     of what the display can show, and the interval exists only while a night is actually running —
+     a permanent timer on every page in the app to serve a state that is false most of the day is
+     the kind of thing that shows up in a battery report. */
+  let qaTicker = null;
+  function syncQaTicker(){
+    const want = sleepPendingElapsed() != null && !document.hidden;
+    if(want && !qaTicker) qaTicker = setInterval(renderQuickActions, 60000);
+    else if(!want && qaTicker){ clearInterval(qaTicker); qaTicker = null; }
+  }
+  // A backgrounded tab's interval is throttled or stopped outright, so the elapsed figure is stale
+  // by however long the phone was in a pocket — redraw on the way back rather than waiting a minute
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) renderQuickActions(); else syncQaTicker(); });
+
+  document.addEventListener('click', e=>{
+    const btn = e.target && e.target.closest ? e.target.closest('[data-qa="sleep"]') : null;
+    if(!btn) return;
+    if(sleepPending()) endSleep(); else startSleep();
+  });

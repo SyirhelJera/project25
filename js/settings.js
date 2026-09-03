@@ -178,9 +178,8 @@
   }
 
   /* Settings > Show Tabs. Hiding is presentation only — the view and its data stay put, the tab is
-     just marked .nav-hidden so it drops out of the sidebar and the mobile switcher sheet (which
-     reads visibleNavItems()). Settings can never be hidden; it's the only way back to this
-     control. */
+     just marked .nav-hidden so it drops out of the sidebar. Settings can never be hidden; it's the
+     only way back to this control. */
   function applyTabVisibility(){
     const nav = el('navList'); if(!nav) return;
     const hidden = Array.isArray(state.hiddenTabs) ? state.hiddenTabs : [];

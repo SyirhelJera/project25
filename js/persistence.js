@@ -262,6 +262,16 @@
     if(!state.fitness.measureLog) state.fitness.measureLog = [];
     // the goal physique: one photo, same Drive-metadata-only shape as a progressPhotos entry
     if(state.fitness.dreamPhoto === undefined) state.fitness.dreamPhoto = null;
+    // One record per NIGHT, filed under the date you woke up on — a sleep crossing midnight belongs
+    // to one date or it would be split across two and neither would hold the whole of it. Same flat
+    // dated-array shape as weightLog/calorieLog: {date,bed:'HH:MM',wake:'HH:MM',mins,quality?}.
+    if(!state.fitness.sleepLog) state.fitness.sleepLog = [];
+    if(!(state.fitness.sleepGoal > 0)) state.fitness.sleepGoal = 8;
+    if(typeof state.fitness.sleepBedGoal !== 'string') state.fitness.sleepBedGoal = '';
+    // The night currently being slept, as ONE timestamp — the quick-actions sleep toggle stamps it
+    // on the way to bed and clears it on waking (js/quickactions.js). It is persisted rather than
+    // held in memory for the obvious reason: the app is shut for the whole of what it measures.
+    if(!state.fitness.sleepPending || !state.fitness.sleepPending.at) state.fitness.sleepPending = null;
     state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:{} };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];

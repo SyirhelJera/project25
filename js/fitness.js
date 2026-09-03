@@ -353,6 +353,7 @@
     renderWeightChart();
     renderCalorieReview();
     renderComparePhotos();
+    renderSleep();
     updateFitnessReminder();
   }
   el('fitCurrent').addEventListener('input', ()=>{
@@ -539,7 +540,7 @@
      concern rather than three separate things, so the choice is NOT persisted and resets to Weight
      on entry — the Time tab's rule, not the Games tab's. You open this tab to see the trend, and
      landing on whichever pane you happened to leave last would bury it. */
-  const FITNESS_SUBTABS = ['weight','photos','calories'];
+  const FITNESS_SUBTABS = ['weight','photos','calories','sleep'];
   let fitnessSubTab = 'weight';
   function showFitnessSubTab(key){
     if(FITNESS_SUBTABS.indexOf(key) < 0) key = 'weight';
@@ -556,6 +557,7 @@
        eventually, but only once something else changed size — this makes it immediate. */
     if(key === 'weight') renderWeightChart();
     if(key === 'calories') renderCalorieReview();
+    if(key === 'sleep') renderSleepReview();
   }
   el('fitnessSubnav').addEventListener('click', e=>{
     const btn = e.target.closest('[data-fittab]');
@@ -1909,4 +1911,432 @@
       + '</svg>';
     observeCalorieChartWidth(wrap);
     return !!targetSvg;
+  }
+
+  /* ================= SLEEP =====================================================================
+     A night is stored as the two clock times it actually was — {date, bed, wake, mins, quality} —
+     and filed under the date you WOKE UP on, so a sleep crossing midnight belongs to exactly one
+     date. `mins` is derived from bed/wake at write time rather than at read time: the times are
+     what the consistency figure is measured from, and the duration is what every other figure
+     wants, so caching it keeps the chart from re-deriving a wrap-around on every repaint.
+
+     Same flat dated-array shape as weightLog and calorieLog, and it rides the shared blob with
+     them — which is why nothing here writes per keystroke except through debouncedSave(). */
+  function sleepLog(){
+    if(!state.fitness.sleepLog) state.fitness.sleepLog = [];
+    return state.fitness.sleepLog;
+  }
+  function sleepGoalHours(){
+    const g = parseFloat(state.fitness.sleepGoal);
+    return (!isNaN(g) && g > 0) ? g : 8;
+  }
+  // 'HH:MM' -> minutes past midnight, or null for anything that isn't one
+  function clockMins(hhmm){
+    const m = /^(\d{1,2}):(\d{2})$/.exec(String(hhmm||''));
+    if(!m) return null;
+    const h = +m[1], mi = +m[2];
+    if(h > 23 || mi > 59) return null;
+    return h*60 + mi;
+  }
+  function fmtClock(mins){
+    const m = ((mins % 1440) + 1440) % 1440;
+    const d = new Date(2000, 0, 1, Math.floor(m/60), m%60);
+    return d.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+  }
+  /* Wrapping is the normal case here, not the edge one: a bed time later in the clock than the wake
+     time simply means the night crossed midnight, which almost every night does. Equal times are
+     rejected rather than read as 24 hours. */
+  function sleepDuration(bed, wake){
+    const b = clockMins(bed), w = clockMins(wake);
+    if(b == null || w == null || b === w) return null;
+    return w > b ? w - b : (1440 - b) + w;
+  }
+  function fmtDuration(mins){
+    const h = Math.floor(mins/60), m = Math.round(mins%60);
+    return h + 'h' + (m ? ' ' + m + 'm' : '');
+  }
+  function sleepOn(dateStr){ return sleepLog().find(e=>e.date===dateStr) || null; }
+  function upsertSleepLog(dateStr, rec){
+    const log = sleepLog();
+    const existing = log.find(e=>e.date===dateStr);
+    if(existing) Object.assign(existing, rec);
+    else log.push(Object.assign({date:dateStr}, rec));
+  }
+  /* Bedtimes placed on an axis centred on midnight — 23:30 is −30 and 00:30 is +30 — so the spread
+     of a person who goes to bed either side of midnight reads as an hour rather than as 23. Times
+     from 18:00 on are the previous evening; anything earlier is that morning. */
+  function bedAxis(bed){
+    const b = clockMins(bed);
+    return b == null ? null : (b >= 18*60 ? b - 1440 : b);
+  }
+
+  /* ---- the review ---------------------------------------------------------------------------
+     Same contract as calorieReview(): one place works out everything the verdict, the stat cards
+     and the chart state, so the three can never disagree about the same window. Averages are over
+     the nights actually logged, never over the window — a missing night is unknown, and counting
+     it as zero would invent an all-nighter that never happened. */
+  const SLEEP_RANGES = [
+    {key:'7',  label:'7D',  days:7},
+    {key:'14', label:'14D', days:14},
+    {key:'30', label:'30D', days:30},
+    {key:'90', label:'90D', days:90}
+  ];
+  let sleepRange = '7';   // not persisted, the kcalRange rule — the most current answer first
+
+  function sleepReview(days){
+    const today = localDateStr(new Date());
+    const start = shiftDateStr(today, -(days-1));
+    const nights = sleepLog()
+      .filter(e => e.date >= start && e.date <= today && e.mins > 0)
+      .sort((a,b)=> a.date.localeCompare(b.date));
+    const goalMins = sleepGoalHours() * 60;
+    const r = {
+      days, start, today, nights, goalMins,
+      avgMins:null, avgBed:null, bedSpread:null, avgQuality:null, hitNights:0, debtMins:0
+    };
+    if(!nights.length) return r;
+    r.avgMins = nights.reduce((a,b)=> a + b.mins, 0) / nights.length;
+    r.hitNights = nights.filter(n=> n.mins >= goalMins - 15).length;
+    // Debt is only ever counted from the nights that fell SHORT: a long lie-in does not give back
+    // the sleep an earlier night lost, so letting surplus cancel shortfall would read a wrecked
+    // week with one 11-hour Sunday as a week with no debt at all.
+    r.debtMins = nights.reduce((a,n)=> a + Math.max(0, goalMins - n.mins), 0);
+    const beds = nights.map(n=> bedAxis(n.bed)).filter(v=> v != null);
+    if(beds.length){
+      const mb = beds.reduce((a,b)=>a+b,0)/beds.length;
+      r.avgBed = mb;
+      r.bedSpread = Math.sqrt(beds.reduce((a,b)=> a + (b-mb)*(b-mb), 0) / beds.length);
+    }
+    const q = nights.filter(n=> n.quality > 0);
+    if(q.length) r.avgQuality = q.reduce((a,b)=> a + b.quality, 0) / q.length;
+    return r;
+  }
+
+  const SLEEP_QUALITY = [
+    {v:1, emoji:'😩', label:'Awful'},
+    {v:2, emoji:'😕', label:'Poor'},
+    {v:3, emoji:'😐', label:'OK'},
+    {v:4, emoji:'🙂', label:'Good'},
+    {v:5, emoji:'😴', label:'Great'}
+  ];
+  let sleepQualityDraft = 0;   // what the chips are showing before Log is pressed
+
+  function sleepNightDate(){ return shiftDateStr(localDateStr(new Date()), -(+(el('slNight').value || 0))); }
+
+  function renderSleepQualityChips(){
+    const row = el('slQualRow'); if(!row) return;
+    row.innerHTML = SLEEP_QUALITY.map(q =>
+      '<button type="button" class="sleep-qchip'+(sleepQualityDraft===q.v?' active':'')+'"'
+      + ' data-sq="'+q.v+'" aria-pressed="'+(sleepQualityDraft===q.v)+'"'
+      + ' title="'+escapeHtml(q.label)+'"><span aria-hidden="true">'+q.emoji+'</span>'
+      + '<span class="sleep-qchip-lbl">'+escapeHtml(q.label)+'</span></button>'
+    ).join('');
+  }
+
+  function updateSleepHint(){
+    const hint = el('slAddHint'); if(!hint) return;
+    const ds = sleepNightDate();
+    const mins = sleepDuration(el('slBed').value, el('slWake').value);
+    const woke = fmtDate(parseLocalDateStr(ds).getTime());
+    hint.textContent = mins == null
+      ? 'Filed under the morning you woke up — ' + woke + '.'
+      : fmtDuration(mins) + ' asleep, filed under ' + woke + '.';
+  }
+
+  function addSleepEntry(){
+    const bed = el('slBed').value, wake = el('slWake').value;
+    const mins = sleepDuration(bed, wake);
+    if(mins == null){ el('slAddHint').textContent = 'Enter both a bed time and a wake time.'; return; }
+    const rec = {bed, wake, mins};
+    // an unrated night is a night with no rating, not a night rated zero — so the key is only
+    // written when there is one, and re-logging without a rating leaves an earlier one alone
+    if(sleepQualityDraft) rec.quality = sleepQualityDraft;
+    upsertSleepLog(sleepNightDate(), rec);
+    sleepQualityDraft = 0;
+    el('slBed').value = ''; el('slWake').value = '';
+    save(); renderSleep();
+  }
+
+  function renderSleepHero(){
+    const valEl = el('sleepHeroVal'); if(!valEl) return;
+    const asEl = el('sleepHeroAs'), chipsEl = el('sleepHeroChips'), railEl = el('sleepHeroRail');
+    const log = sleepLog().slice().filter(e=>e.mins > 0).sort((a,b)=> a.date.localeCompare(b.date));
+    const latest = log[log.length-1] || null;
+    const goalMins = sleepGoalHours() * 60;
+
+    valEl.innerHTML = latest
+      ? escapeHtml(String(Math.floor(latest.mins/60))) + '<span class="fit-hero-unit">h</span>'
+        + (latest.mins%60 ? escapeHtml(String(Math.round(latest.mins%60))) + '<span class="fit-hero-unit">m</span>' : '')
+      : '<span class="fit-hero-none">—</span>';
+
+    const todayStr = localDateStr(new Date());
+    asEl.textContent = !latest ? 'No nights logged yet — the fields below start the log.'
+      // textContent, so no escaping here — escapeHtml would print the entities literally
+      : latest.date === todayStr ? fmtClock(clockMins(latest.bed)) + ' → ' + fmtClock(clockMins(latest.wake))
+      : 'Last logged ' + fmtDate(parseLocalDateStr(latest.date).getTime());
+
+    const chips = [];
+    /* A night in progress is the first thing the pane should say — the quick-actions toggle is
+       running, so last night's figure beside it would read as tonight's. It is a chip rather than
+       a replacement for the reading, because the reading is still true of the last night that
+       finished, and the elapsed time is deliberately not live here: this pane isn't the ticker,
+       the bar is. */
+    const pend = (typeof sleepPendingElapsed === 'function') ? sleepPendingElapsed() : null;
+    if(pend != null){
+      chips.push('<span class="fit-chip fit-chip-tier"><span aria-hidden="true">🌙</span> '
+        + escapeHtml('Asleep — ' + fmtDuration(Math.floor(pend/60000)) + ' so far') + '</span>');
+    }
+    if(latest){
+      const off = latest.mins - goalMins;
+      const tone = off >= -15 ? 'good' : off >= -75 ? 'neutral' : 'bad';
+      chips.push('<span class="fit-chip fit-chip-'+tone+'">'
+        + (off >= -15 ? 'Hit the goal' : fmtDuration(Math.abs(off)) + ' short') + '</span>');
+      const q = SLEEP_QUALITY.find(x=>x.v === latest.quality);
+      if(q) chips.push('<span class="fit-chip fit-chip-tier"><span aria-hidden="true">'+q.emoji+'</span> '
+        + escapeHtml(q.label) + '</span>');
+    }
+    chipsEl.innerHTML = chips.join('');
+
+    if(!latest){
+      railEl.innerHTML = '<p class="fit-rail-none">Log a night and this shows it against your '
+        + escapeHtml(String(sleepGoalHours())) + '-hour goal.</p>';
+      return;
+    }
+    const pct = Math.min(100, Math.round((latest.mins / goalMins) * 100));
+    const done = latest.mins >= goalMins - 15;
+    const gapTxt = done ? 'Goal met' : fmtDuration(goalMins - latest.mins) + ' short';
+    railEl.innerHTML =
+      '<div class="fit-rail-track'+(done?' done':'')+'" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+      + ' aria-valuenow="'+pct+'" aria-label="Last night against your sleep goal"'
+      + ' aria-valuetext="'+escapeHtml(pct+'% of the goal — '+gapTxt)+'">'
+      + '<span class="fit-rail-fill" style="width:'+pct+'%"></span>'
+      + '<span class="fit-rail-dot" style="left:'+pct+'%"></span>'
+      + '</div>'
+      + '<div class="fit-rail-ends">'
+      +   '<span class="fit-rail-end">'+escapeHtml(fmtDuration(latest.mins))+'<i>slept</i></span>'
+      +   '<span class="fit-rail-gap'+(done?' done':'')+'">'+escapeHtml(gapTxt)+'</span>'
+      +   '<span class="fit-rail-end to">'+escapeHtml(sleepGoalHours()+'h')+'<i>goal</i></span>'
+      + '</div>';
+  }
+
+  function renderSleepReview(){
+    const rangeRow = el('slRangeRow'); if(!rangeRow) return;
+    rangeRow.innerHTML = SLEEP_RANGES.map(z=>
+      '<button type="button" class="chart-zoom-btn'+(sleepRange===z.key?' active':'')+'"'
+      + (sleepRange===z.key?' aria-current="true"':'')+' data-slrange="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    rangeRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ sleepRange = btn.dataset.slrange; renderSleepReview(); });
+    });
+
+    const opt = SLEEP_RANGES.find(z=>z.key===sleepRange) || SLEEP_RANGES[0];
+    const r = sleepReview(opt.days);
+
+    /* The verdict answers the one question the panel is for — am I sleeping enough — and the note
+       under it carries the evidence, so the sentence still works in greyscale. Consistency is
+       reported as a second clause rather than as its own verdict: a steady 5 hours is not a good
+       week, so the bedtime spread only ever qualifies the duration. */
+    let chip = '', tone = 'flat', note = '';
+    if(!r.nights.length){
+      chip = 'Nothing logged yet';
+      note = 'Log a night above and this reads your average, your debt and how steady your bedtime is.';
+    } else {
+      const off = r.avgMins - r.goalMins;
+      if(off >= -15){ tone = 'good'; chip = 'Sleeping enough'; }
+      else if(off >= -60){ tone = 'neutral'; chip = fmtDuration(Math.round(-off)) + ' under most nights'; }
+      else { tone = 'bad'; chip = 'Short by ' + fmtDuration(Math.round(-off)) + ' a night'; }
+      note = 'Averaged ' + fmtDuration(Math.round(r.avgMins)) + ' across '
+        + r.nights.length + ' of ' + r.days + ' nights · hit the goal ' + r.hitNights + ' time'
+        + (r.hitNights===1?'':'s')
+        + (r.bedSpread != null
+            ? ' · bedtime varies by about ' + Math.round(r.bedSpread) + ' min'
+            : '');
+    }
+    el('slVerdict').innerHTML = '<span class="wt-delta-val '+tone+'">'+escapeHtml(chip)+'</span>'
+      + '<span class="wt-delta-note">'+escapeHtml(note)+'</span>';
+
+    const cards = [];
+    if(r.avgMins != null){
+      cards.push(kcalStatCard(fmtDuration(Math.round(r.avgMins)), 'Avg sleep',
+        r.nights.length + ' of ' + r.days + ' nights logged'));
+      cards.push(kcalStatCard(r.hitNights + '/' + r.nights.length, 'Nights on goal',
+        sleepGoalHours() + 'h or more', r.hitNights >= r.nights.length/2 ? 'pos' : ''));
+      cards.push(kcalStatCard(r.debtMins ? fmtDuration(Math.round(r.debtMins)) : '0h', 'Sleep debt',
+        'summed shortfall, surplus never repays it', r.debtMins > 0 ? 'neg' : 'pos'));
+    }
+    if(r.avgBed != null){
+      /* Against the target bedtime when there is one, and only the spread when there isn't —
+         "±20 min" is the useful half of the answer either way, since a steady bedtime is what
+         actually moves the duration, and a target with no spread beside it says nothing about
+         whether you keep it. */
+      const targetBed = bedAxis(state.fitness.sleepBedGoal);
+      const spread = r.bedSpread != null ? '±' + Math.round(r.bedSpread) + ' min' : '';
+      let sub = spread;
+      if(targetBed != null){
+        const off = Math.round(r.avgBed - targetBed);
+        sub = (Math.abs(off) <= 10 ? 'on your ' + fmtClock(targetBed) + ' target'
+              : Math.abs(off) + ' min ' + (off > 0 ? 'later than' : 'earlier than') + ' ' + fmtClock(targetBed))
+            + (spread ? ' · ' + spread : '');
+      }
+      cards.push(kcalStatCard(fmtClock(r.avgBed), 'Usual bedtime', sub));
+    }
+    if(r.avgQuality != null){
+      const near = SLEEP_QUALITY[Math.max(0, Math.min(4, Math.round(r.avgQuality) - 1))];
+      cards.push(kcalStatCard(Math.round(r.avgQuality*10)/10 + '/5', 'Avg quality', near ? near.label : ''));
+    }
+    el('slStats').innerHTML = cards.join('');
+
+    renderSleepChart(r);
+    el('slChartLegend').innerHTML = !r.nights.length ? ''
+      : '<span><span class="dot" style="background:var(--violet);"></span>On goal</span>'
+        + '<span><span class="dot" style="background:var(--gold);"></span>Short</span>'
+        + '<span><span class="dot dash" style="color:var(--muted);"></span>Nightly goal</span>';
+  }
+
+  /* Hours per night as bars against the goal line — the calorie chart's shape and, for the same
+     reason, its geometry: bars because nights are separate quantities and an unlogged night has to
+     read as a gap rather than as a line drawn straight across it. */
+  function renderSleepChart(r){
+    const wrap = el('slChartWrap');
+    if(!r.nights.length){
+      wrap.innerHTML = '<div class="wt-chart-empty">Log a night to start the chart.</div>';
+      return;
+    }
+    const wrapW = Math.max(260, wrap.clientWidth || 780);
+    const k = 780 / wrapW;
+    const W = 780;
+    const H = Math.round((wrapW < 560 ? 150 : 200) * k);
+    const fs = +(11 * k).toFixed(1);
+    const padL = Math.round(fs * 2.4 + 10 * k);
+    const padR = Math.round(14 * k), padT = Math.round(16 * k), padB = Math.round(fs + 16 * k);
+
+    const goalH = r.goalMins / 60;
+    // zero-based like the intake chart: a truncated baseline would draw six hours as half of eight
+    const maxH = Math.max(...r.nights.map(n=> n.mins/60), goalH) * 1.12;
+    const yOf = h => padT + (1 - h/maxH) * (H - padT - padB);
+    const floor = H - padB;
+    const slot = (W - padL - padR) / r.days;
+    const barW = Math.max(2 * k, Math.min(slot * 0.72, 26 * k));
+    const xOf = ds => padL + (daysBetween(r.start, ds) + 0.5) * slot;
+
+    let gridSvg = '';
+    for(let i=0;i<=3;i++){
+      const v = maxH * (i/3), y = yOf(v);
+      gridSvg += '<line x1="'+padL+'" y1="'+y.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+y.toFixed(1)+'" stroke="var(--border)" stroke-width="'+k.toFixed(2)+'" opacity=".7"/>'
+        + '<text x="'+(padL-Math.round(8*k))+'" y="'+(y+fs*0.34).toFixed(1)+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'+Math.round(v)+'h</text>';
+    }
+
+    let barsSvg = '';
+    r.nights.forEach(n=>{
+      const y = yOf(n.mins/60);
+      const short = n.mins < r.goalMins - 15;
+      barsSvg += '<rect x="'+(xOf(n.date)-barW/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'"'
+        + ' height="'+Math.max(0, floor-y).toFixed(1)+'" rx="'+(2*k).toFixed(1)+'"'
+        + ' fill="'+(short ? 'var(--gold)' : 'var(--violet)')+'" opacity=".85">'
+        + '<title>'+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime())+' · '+fmtDuration(n.mins)
+            + ' · ' + fmtClock(clockMins(n.bed)) + ' → ' + fmtClock(clockMins(n.wake)))+'</title></rect>';
+    });
+
+    const gy = yOf(goalH);
+    const goalSvg = '<line x1="'+padL+'" y1="'+gy.toFixed(1)+'" x2="'+(W-padR)+'" y2="'+gy.toFixed(1)+'" stroke="var(--text)" stroke-width="'+(1.1*k).toFixed(2)+'" stroke-dasharray="'+(2.5*k).toFixed(1)+','+(3.5*k).toFixed(1)+'" opacity=".45"/>'
+      + '<text x="'+(W-padR)+'" y="'+(gy-4*k).toFixed(1)+'" font-size="'+(fs*0.9).toFixed(1)+'" fill="var(--muted)" text-anchor="end" font-weight="700">Goal '+goalH+'h</text>';
+
+    const narrow = wrapW < 560;
+    const axisDate = ds => narrow
+      ? parseLocalDateStr(ds).toLocaleDateString(undefined,{month:'short',day:'numeric'})
+      : fmtDate(parseLocalDateStr(ds).getTime());
+    const xLabelSvg = '<text x="'+padL+'" y="'+(H-Math.round(5*k))+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="start">'+escapeHtml(axisDate(r.start))+'</text>'
+      + '<text x="'+(W-padR)+'" y="'+(H-Math.round(5*k))+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'+escapeHtml(axisDate(r.today))+'</text>';
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Hours slept per night over the last '+r.days+' nights">'
+      + gridSvg + xLabelSvg + barsSvg + goalSvg
+      + '</svg>';
+    observeSleepChartWidth(wrap);
+  }
+
+  // its own observer for the same reason the calorie chart has one: this pane can be the one being
+  // resized while the other two are display:none, and a hidden wrapper measures zero
+  let slChartLastWidth = 0, slChartObserver = null;
+  function observeSleepChartWidth(wrap){
+    slChartLastWidth = wrap.clientWidth || 0;
+    if(slChartObserver || typeof ResizeObserver === 'undefined') return;
+    slChartObserver = new ResizeObserver(entries=>{
+      const w = Math.round(entries[0].contentRect.width);
+      if(!w || Math.abs(w - slChartLastWidth) < 12) return;
+      slChartLastWidth = w;
+      renderSleepReview();
+    });
+    slChartObserver.observe(wrap);
+  }
+
+  /* The nights themselves, newest first — the log a chart summarises, and the only place a wrong
+     entry can be corrected or removed. Capped at 30 rows: the ranges above answer "how has the
+     month gone", so a list past a month is scrolling for its own sake in a section that rides the
+     shared blob. */
+  function renderSleepList(){
+    const box = el('slList'); if(!box) return;
+    const log = sleepLog().slice().sort((a,b)=> b.date.localeCompare(a.date)).slice(0, 30);
+    if(!log.length){
+      box.innerHTML = '<p class="fit-rail-none">Nothing logged yet.</p>';
+      return;
+    }
+    const goalMins = sleepGoalHours() * 60;
+    box.innerHTML = log.map(n=>{
+      const short = n.mins < goalMins - 15;
+      const q = SLEEP_QUALITY.find(x=>x.v === n.quality);
+      return '<div class="sleep-row'+(short?' short':'')+'">'
+        + '<span class="sleep-row-date">'+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime()))+'</span>'
+        + '<span class="sleep-row-dur">'+escapeHtml(fmtDuration(n.mins))+'</span>'
+        + '<span class="sleep-row-times">'+escapeHtml(fmtClock(clockMins(n.bed))+' → '+fmtClock(clockMins(n.wake)))+'</span>'
+        + '<span class="sleep-row-q" title="'+escapeHtml(q?q.label:'')+'">'+(q?q.emoji:'')+'</span>'
+        + '<button type="button" class="sleep-row-del" data-sldel="'+escapeHtml(n.date)+'"'
+        + ' aria-label="Delete the night of '+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime()))+'">✕</button>'
+        + '</div>';
+    }).join('');
+  }
+
+  function renderSleep(){
+    if(!el('slBed')) return;
+    el('slGoal').value = sleepGoalHours();
+    el('slBedGoal').value = state.fitness.sleepBedGoal || '';
+    renderSleepQualityChips();
+    updateSleepHint();
+    renderSleepHero();
+    renderSleepReview();
+    renderSleepList();
+  }
+
+  // Delegated from the containers, which are rebuilt on every render — the chips and the rows are
+  // both innerHTML, so a handler bound to a node would die with it.
+  if(el('slQualRow')){
+    el('slQualRow').addEventListener('click', e=>{
+      const btn = e.target.closest('[data-sq]'); if(!btn) return;
+      const v = +btn.dataset.sq;
+      sleepQualityDraft = (sleepQualityDraft === v) ? 0 : v;   // clicking the active chip clears it
+      renderSleepQualityChips();
+    });
+    el('slList').addEventListener('click', e=>{
+      const btn = e.target.closest('[data-sldel]'); if(!btn) return;
+      const ds = btn.dataset.sldel;
+      if(!confirm('Delete the night of ' + fmtDate(parseLocalDateStr(ds).getTime()) + '?')) return;
+      state.fitness.sleepLog = sleepLog().filter(e2=> e2.date !== ds);
+      save(); renderSleep();
+    });
+    el('slAddBtn').addEventListener('click', addSleepEntry);
+    ['slBed','slWake'].forEach(id=>{
+      el(id).addEventListener('input', updateSleepHint);
+      // Enter from either field logs, so a night can be entered without reaching for the mouse
+      el(id).addEventListener('keydown', e=>{ if(e.key === 'Enter') addSleepEntry(); });
+    });
+    el('slNight').addEventListener('change', updateSleepHint);
+    el('slGoal').addEventListener('input', ()=>{
+      const v = parseFloat(el('slGoal').value);
+      // an out-of-range goal is ignored rather than clamped mid-typing, which would fight the caret
+      if(!isNaN(v) && v >= 3 && v <= 14){ state.fitness.sleepGoal = v; debouncedSave(); }
+      renderSleepHero(); renderSleepReview(); renderSleepList();
+    });
+    el('slBedGoal').addEventListener('input', ()=>{
+      state.fitness.sleepBedGoal = el('slBedGoal').value || '';
+      debouncedSave();
+    });
   }

@@ -634,6 +634,7 @@
       <button class="finance-subnav-btn active" data-fittab="weight" type="button"><span>Weight</span></button>
       <button class="finance-subnav-btn" data-fittab="photos" type="button"><span>Photos</span></button>
       <button class="finance-subnav-btn" data-fittab="calories" type="button"><span>Calories</span></button>
+      <button class="finance-subnav-btn" data-fittab="sleep" type="button"><span>Sleep</span></button>
     </div>
 
     <div class="fittab" id="fittab-weight">
@@ -845,6 +846,77 @@
     <!-- the same sentence, for the state where there is no results block to hang it inside yet.
          calcFitness() shows exactly one of the two. -->
     <div class="fitness-note" id="fitnessNoteEmpty">Fill in current weight, height, and age to calculate your calorie targets.</div>
+    </div>
+
+    <!-- SLEEP — a night is two clock times, so it is logged as bed + wake rather than as a number of
+         hours: typing "7.5" is a calculation the person has already had to do, and the two times are
+         also what the consistency reading below is measured from. A night is filed under the date you
+         WOKE UP on, which is why the log row says "last night" — a session crossing midnight would
+         otherwise land on two dates and neither would hold the whole of it.
+         Everything variable in here is built by renderSleep() in js/fitness.js. -->
+    <div class="fittab" id="fittab-sleep" style="display:none;">
+    <section class="fit-hero" aria-labelledby="sleepHeroLbl">
+      <div class="fit-hero-top">
+        <div class="fit-hero-read">
+          <h2 class="fit-hero-lbl" id="sleepHeroLbl">Last night</h2>
+          <div class="fit-hero-val" id="sleepHeroVal">—</div>
+          <div class="fit-hero-as" id="sleepHeroAs"></div>
+        </div>
+        <div class="fit-hero-chips" id="sleepHeroChips"></div>
+      </div>
+
+      <!-- goal rail: last night against the nightly target, the same shape as the weight hero's -->
+      <div class="fit-hero-rail" id="sleepHeroRail"></div>
+
+      <div class="fit-hero-log">
+        <div class="weight-log-row-add">
+          <span class="wl-fields sleep-fields">
+            <label class="sleep-fld"><span>Bed</span><input type="time" id="slBed" aria-label="Time you went to bed"></label>
+            <label class="sleep-fld"><span>Wake</span><input type="time" id="slWake" aria-label="Time you woke up"></label>
+          </span>
+          <span class="wl-when">
+            <select id="slNight" aria-label="Which night this was">
+              <option value="0">last night</option>
+              <option value="1">the night before</option>
+            </select>
+            <button class="btn btn-primary" id="slAddBtn">Log</button>
+          </span>
+        </div>
+        <!-- quality is optional and deliberately separate from the Log button: hours are the thing
+             being tracked, and a night with no rating still counts in every figure below. -->
+        <div class="sleep-qual-row" id="slQualRow" role="group" aria-label="How well you slept"></div>
+        <div class="wl-add-hint" id="slAddHint"></div>
+      </div>
+    </section>
+
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Sleep review</h2>
+      <div class="chart-zoom-row" id="slRangeRow"></div>
+    </div>
+    <div class="chart-card kcal-card">
+      <div class="wt-delta" id="slVerdict"></div>
+      <div class="kcal-stats" id="slStats"></div>
+      <div id="slChartWrap"></div>
+      <div class="chart-legend" id="slChartLegend"></div>
+    </div>
+
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Nightly goal</h2>
+    </div>
+    <div class="fit-calc">
+      <fieldset class="fit-calc-group">
+        <legend>Target</legend>
+        <div class="fitness-fields">
+          <div class="fitness-field"><label for="slGoal">Hours per night</label><input type="number" id="slGoal" min="3" max="14" step="0.25"></div>
+          <div class="fitness-field"><label for="slBedGoal">Target bedtime</label><input type="time" id="slBedGoal"></div>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Recent nights</h2>
+    </div>
+    <div class="sleep-list" id="slList"></div>
     </div>
   </div>
 
@@ -2580,16 +2652,15 @@
   <button type="button" id="scratchImgViewClose" class="scratch-imgview-close" aria-label="Close image">&times;</button>
 </div>
 
-<!-- MOBILE TAB SWITCHER — press and hold the button, slide onto a tab, release to open it.
-     A plain tap opens the same sheet and keeps it up so tabs can be tapped instead.
-     Built from the sidebar's .nav-item list by js/nav.js; hidden above the mobile breakpoint. -->
-<button id="tabSwitcherFab" class="tab-switcher-fab" type="button" aria-label="Switch tab" title="Hold and slide to switch tabs">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>
-</button>
-<div id="tabSwitcherOverlay" class="tab-switcher-overlay" style="display:none;">
-  <div class="tab-switcher-sheet" id="tabSwitcherSheet"></div>
-  <div class="tab-switcher-hint" id="tabSwitcherHint">Slide onto a tab, then let go</div>
-</div>
+<!-- QUICK ACTIONS — the one control that has to be reachable from every tab, so it is fixed
+     bottom-right at body level for the #calBubbleStack reason: a .view would hide it whenever its
+     host tab wasn't the active one.
+     This replaced the mobile tab-switcher FAB that used to sit here. The switcher was a second way
+     to do what the navbar already does; the sleep toggle is a thing that can be done from nowhere
+     else at the moment it needs doing — you press it with the lights already off.
+     EMPTY on purpose: renderQuickActions() in js/quickactions.js fills it, because every button in
+     it is stateful (the sleep toggle alternates bed/wake and counts up while you're asleep). -->
+<div id="quickActions" class="quick-actions" role="group" aria-label="Quick actions"></div>
 
 <!-- CALENDAR "COMING UP" BUBBLE — opened once per page load by maybeShowCalendarBubble() in
      js/calendar.js when a Google Calendar event starts within the lead time.
@@ -2651,6 +2722,7 @@
 <script src="js/wishlist.js"></script>
 <script src="js/jobs.js"></script>
 <script src="js/fitness.js"></script>
+<script src="js/quickactions.js"></script>
 <script src="js/valorant.js"></script>
 <script src="js/clock.js"></script>
 <!-- the Time tab's third pane, kept next to clock.js; showTimeSubTab() in countdowns.js reveals it -->

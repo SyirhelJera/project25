@@ -1952,43 +1952,66 @@
     .mot-video-card.is-tall:not([data-platform="instagram"]):not([data-platform="tiktok"]) .mot-video-frame-wrap{height:min(72vh,620px);max-width:94vw;}
   }
 
-  /* mobile tab switcher (js/nav.js) — a floating button you hold and slide from. Desktop has the
-     whole sidebar on screen, so the whole thing only exists below the mobile breakpoint. */
-  /* iOS treats a long press as "select text / show the callout menu", which fires before any of
-     the JS below and leaves the page highlighted mid-gesture — the whole control has to opt out */
-  .tab-switcher-fab,.tab-switcher-overlay,.tab-switcher-sheet,.tab-switcher-item,.tab-switcher-hint{
+  /* ---------- quick actions (js/quickactions.js) ----------
+     The bottom-right corner, which the mobile tab-switcher FAB used to hold. A pill rather than a
+     circle, because a bar can grow a second action later and a FAB can only grow a menu.
+     z-index 900 is inherited from the control it replaced and the ladder still reads the same way:
+     above the mobile sticky sidebar (40), below the scratch mode (950) and the 1000 modal tier —
+     a quick action must never sit over a dialog. It is BELOW .cal-bubble-stack (920) too, which is
+     right: the stack is top-right and transient, this is bottom-right and permanent. */
+  /* iOS treats a long press as "select text / show the callout menu", which lands mid-tap on a
+     control this small and leaves the page highlighted — the whole bar opts out. */
+  .quick-actions{position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:900;
+    display:flex;flex-direction:column;align-items:flex-end;gap:8px;
     -webkit-touch-callout:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;}
-  .tab-switcher-fab{display:none;position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:900;
-    width:48px;height:48px;border-radius:50%;border:none;cursor:pointer;touch-action:none;
+  /* the container never eats clicks in the gaps between its buttons — the .cal-bubble-stack rule */
+  .quick-actions{pointer-events:none;}
+  .quick-actions > *{pointer-events:auto;}
+  .qa-btn{display:inline-flex;align-items:center;gap:9px;border:none;cursor:pointer;
+    height:48px;padding:0 16px;border-radius:999px;font-family:'Inter',sans-serif;
+    font-size:12.5px;font-weight:800;letter-spacing:.2px;
     background:linear-gradient(135deg,var(--violet),var(--violet-dark));color:#fff;
-    align-items:center;justify-content:center;box-shadow:0 6px 20px rgba(0,0,0,.28);}
-  .tab-switcher-fab svg{width:20px;height:20px;pointer-events:none;}
-  .tab-switcher-fab.active{transform:scale(0.92);}
-  .tab-switcher-overlay{display:none;position:fixed;inset:0;z-index:899;background:rgba(0,0,0,.45);
-    flex-direction:column;justify-content:flex-end;align-items:stretch;
-    padding:0 10px calc(74px + env(safe-area-inset-bottom));touch-action:none;}
-  .tab-switcher-sheet{display:grid;grid-template-columns:repeat(3,1fr);gap:9px;max-height:64vh;overflow-y:auto;
-    background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:12px;
-    box-shadow:0 18px 50px rgba(0,0,0,.4);}
-  .tab-switcher-item{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
-    padding:13px 5px;border-radius:14px;background:var(--surface-alt);color:var(--muted);cursor:pointer;}
-  .tab-switcher-item svg{width:22px;height:22px;}
-  .tab-switcher-label{font-size:11.5px;font-weight:700;text-align:center;line-height:1.2;}
-  .tab-switcher-item.active{color:var(--violet-dark);box-shadow:inset 0 0 0 1px var(--violet);}
-  /* what the finger is currently over — deliberately louder than .active, since it's the thing
-     that will open when you let go */
-  .tab-switcher-item.hover{background:var(--violet);color:#fff;transform:scale(1.06);}
-  .tab-switcher-badge{position:absolute;top:4px;right:4px;background:var(--danger);color:#fff;font-size:9px;font-weight:800;
-    border-radius:999px;min-width:15px;height:15px;display:inline-flex;align-items:center;justify-content:center;padding:0 4px;line-height:1;}
-  .tab-switcher-hint{margin-top:10px;text-align:center;color:#fff;font-size:11.5px;font-weight:600;opacity:.85;}
+    box-shadow:0 6px 20px rgba(0,0,0,.28);transition:transform .12s ease,box-shadow .12s ease;}
+  .qa-btn:hover{transform:translateY(-1px);box-shadow:0 9px 24px rgba(0,0,0,.32);}
+  .qa-btn:active{transform:scale(0.96);}
+  .qa-btn:focus-visible{outline:2px solid #fff;outline-offset:2px;}
+  .qa-btn .qa-ico{font-size:17px;line-height:1;}
+  .qa-btn .qa-lbl{white-space:nowrap;}
+  /* While asleep the bar carries a running clock, so it is a surface with text on it rather than
+     an accent button — a violet pill counting upward all night reads as an alert. The dot is the
+     one coloured thing left, which is enough to say "something is running". */
+  .qa-btn.is-running{background:var(--surface);color:var(--text);box-shadow:0 6px 20px rgba(0,0,0,.20);
+    border:1px solid var(--border);}
+  .qa-btn.is-running .qa-sub{color:var(--muted);font-weight:700;font-variant-numeric:tabular-nums;}
+  .qa-live-dot{width:7px;height:7px;border-radius:50%;background:var(--violet);flex:none;
+    animation:qaPulse 2.4s ease-in-out infinite;}
+  @keyframes qaPulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  /* What the toggle just did, said in words — a bar that silently swallowed a tap is the one thing
+     this control cannot afford, since the whole point is pressing it with the lights off. It is
+     aria-live, so it is also how the action is announced. */
+  .qa-toast{max-width:min(72vw,280px);background:var(--surface);border:1px solid var(--border);
+    color:var(--text);border-radius:12px;padding:9px 13px;font-size:11.5px;line-height:1.45;
+    box-shadow:0 10px 30px rgba(0,0,0,.22);}
+  .qa-toast b{font-weight:800;}
+  @media (max-width:760px){
+    /* on a phone the label is spent for reach: the bar sits under the thumb and the icon plus the
+       running clock already say which state it is in */
+    .qa-btn{padding:0 14px;height:46px;}
+    .qa-btn .qa-lbl{display:none;}
+    .qa-btn.is-running .qa-lbl{display:none;}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .qa-btn,.qa-btn:hover{transition:none;transform:none;}
+    .qa-live-dot{animation:none;}
+  }
 
   .confirm-banner{background:#EEF0FF;border:1px solid #C7CCF5;border-radius:11px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .confirm-banner span{flex:1;font-size:12.5px;color:#3730A3;min-width:200px;}
 
   /* ---------- scratch (js/scratch.js) — the napkin ----------
      A MODE, not a modal. It replaces the whole screen including the sidebar, so it sits at 950 in
-     the ladder: above the mobile sticky sidebar (40) and above the tab-switcher FAB/overlay
-     (900/899 — both position:fixed, so without this a violet floating button would hover over an
+     the ladder: above the mobile sticky sidebar (40) and above the quick-actions bar
+     (900 — position:fixed, so without this a violet floating pill would hover over an
      otherwise-bare page and wreck the whole point), and below the 1000 modal tier
      (.struggle-overlay, .play-overlay, .mosaic-overlay) so anything genuinely modal that is
      already up still wins. Above that: 1400 level-up, 2000 confetti, 9999 boot splash — all
@@ -2458,13 +2481,7 @@
     .scratch-imgbox-grip svg,.scratch-imgbox-lift svg{width:17px;height:17px;}
   }
 
-  /* the switcher only exists on mobile; !important beats the inline display:flex nav.js sets on
-     the overlay, so a rotate/resize to desktop width can't leave a stray sheet on screen */
-  @media (min-width:761px){
-    .tab-switcher-overlay{display:none !important;}
-  }
   @media (max-width:760px){
-    .tab-switcher-fab{display:flex;}
     body{flex-direction:column;}
     .sidebar{
       width:100%;height:auto;position:sticky;top:0;z-index:40;
@@ -2602,7 +2619,10 @@
   /* Goals opted into the same shell (radii, shadow depths, focus ring) rather than growing a
      parallel set of tokens — the two tabs are one app, and a second scale would show. Its own
      names live under the GOALS TAB block; only the primitives are shared here. */
-  #view-finance, .fin-scope, #view-goals, .goal-scope{
+  /* Games opted in for the same reason Goals did, plus a concrete one: .tft-rank-card already asked
+     for var(--fin-shadow) and var(--fin-r-card,14px) while sitting outside this selector, so the
+     shadow resolved to nothing at all and the radius only ever got its fallback. */
+  #view-finance, .fin-scope, #view-goals, .goal-scope, #view-games, .games-scope{
     --fin-r-pill:999px;
     --fin-r-ctl:10px;
     --fin-r-card:14px;
@@ -2621,7 +2641,9 @@
   body[data-theme="dark"] #view-finance, body[data-theme="ios-dark"] #view-finance,
   body[data-theme="dark"] .fin-scope, body[data-theme="ios-dark"] .fin-scope,
   body[data-theme="dark"] #view-goals, body[data-theme="ios-dark"] #view-goals,
-  body[data-theme="dark"] .goal-scope, body[data-theme="ios-dark"] .goal-scope{
+  body[data-theme="dark"] .goal-scope, body[data-theme="ios-dark"] .goal-scope,
+  body[data-theme="dark"] #view-games, body[data-theme="ios-dark"] #view-games,
+  body[data-theme="dark"] .games-scope, body[data-theme="ios-dark"] .games-scope{
     --fin-pos:#34D399;
     --fin-neg:#F87171;
     /* on a dark surface the theme's own gold already clears 4.5:1, so use the real thing */
@@ -3717,14 +3739,16 @@
     --tier-ink:color-mix(in srgb, var(--tier) 88%, #FFFFFF);
   }
   .val-account-card{
-    background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 11px 11px;
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-card);padding:10px 11px 11px;
+    box-shadow:var(--fin-shadow);
     transition:border-color .16s ease,box-shadow .16s ease;cursor:pointer;
     position:relative;overflow:hidden;
   }
   body[data-theme="dark"] .val-account-card,
   body[data-theme="ios-dark"] .val-account-card{--tier-ink:color-mix(in srgb, var(--tier) 88%, #FFFFFF);}
-  /* one soft shadow, downward, matching the rest of the app */
-  .val-account-card:hover{box-shadow:0 1px 2px rgba(16,20,34,.05),0 8px 20px rgba(16,20,34,.07);}
+  /* the shared lift depth, which unlike the literal it replaced also darkens under the two dark
+     themes — a light-theme rgba shadow is invisible on a #14161F ground */
+  .val-account-card:hover{box-shadow:var(--fin-shadow-lift);}
   .val-account-card.selected{border-color:var(--violet);box-shadow:0 0 0 1px var(--violet);}
   .val-account-card.drag-over{outline:2px dashed var(--violet);outline-offset:-2px;}
   .val-account-card > *{position:relative;z-index:1;}
@@ -3849,7 +3873,7 @@
   .val-group-input.mini-input:hover,
   .val-group-input.mini-input:focus{background:var(--surface-alt);border-color:var(--border);}
 
-  .val-empty-accounts{text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:14px;}
+  .val-empty-accounts{text-align:center;padding:36px 20px;border:1px dashed var(--border);border-radius:var(--fin-r-card);}
   .val-empty-title{font-size:14px;font-weight:800;color:var(--text);margin-bottom:6px;}
   .val-empty-sub{font-size:12px;line-height:1.6;color:var(--muted);max-width:46ch;margin:0 auto;}
 
@@ -3904,7 +3928,7 @@
 
   /* one surface, hairline-divided — the gaps and twelve borders of a card list were most of the
      vertical space the rows were spending */
-  .val-vod-list{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  .val-vod-list{border:1px solid var(--border);border-radius:var(--fin-r-card);overflow:hidden;background:var(--surface);box-shadow:var(--fin-shadow);}
   .val-vod-list:empty{display:none;}
   .val-vod-row{
     position:relative;display:flex;align-items:center;gap:6px;
@@ -4038,7 +4062,9 @@
 
   /* the chart's headline in words — also the only readable form of its content without a pointer */
   .val-chart-stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 2px;}
-  .val-chart-stat{flex:1 1 100px;min-width:0;background:var(--surface-alt);border-radius:10px;padding:9px 11px;}
+  /* a hairline as well as the fill: on ios-light the --surface-alt tint is only a few percent off
+     --surface, so the tiles had no edge at all and read as loose text rather than as figures */
+  .val-chart-stat{flex:1 1 100px;min-width:0;background:var(--surface-alt);border:var(--fin-hairline);border-radius:var(--fin-r-ctl);padding:9px 11px;}
   .val-chart-stat-num{font-family:'Manrope',sans-serif;font-size:16px;font-weight:800;line-height:1.1;color:var(--text);}
   .val-chart-stat-num.up{color:#0F7A38;}
   .val-chart-stat-num.down{color:#C2262B;}
@@ -4060,8 +4086,8 @@
 
   .val-chart-tip{
     position:absolute;z-index:2;pointer-events:none;min-width:106px;
-    background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 10px;
-    box-shadow:0 1px 2px rgba(16,20,34,.06),0 8px 22px rgba(16,20,34,.14);
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-ctl);padding:7px 10px;
+    box-shadow:var(--fin-shadow-lift);
   }
   .val-chart-tip[hidden]{display:none;}
   .val-chart-tip-date{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
@@ -4170,7 +4196,7 @@
   .val-local-info-modal .view-sub:last-child{margin-bottom:0;}
   .val-local-info-modal code{background:var(--surface-alt);border-radius:4px;padding:1px 5px;font-size:11px;}
 
-  .val-local-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:16px;}
+  .val-local-panel{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--fin-r-card);padding:14px 16px;margin-bottom:16px;}
   .val-local-status{font-size:12px;color:var(--muted);font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
   .val-local-panel code{background:#00000010;border-radius:4px;padding:1px 5px;font-size:11px;}
   .val-local-dot{width:8px;height:8px;border-radius:50%;flex:none;background:var(--faint);}
@@ -4775,7 +4801,7 @@
   .val-vp-price-row input:hover,.val-vp-price-row input:focus{border-color:var(--violet);}
   /* one block per seller: a header that names and switches the whole group, then its tiers */
   .val-vp-offer-rows{display:flex;flex-direction:column;gap:10px;margin-bottom:10px;}
-  .val-vp-offer-group{background:var(--surface-alt);border:1px solid var(--border);border-radius:11px;padding:9px 11px;}
+  .val-vp-offer-group{background:var(--surface-alt);border:1px solid var(--border);border-radius:var(--fin-r-card);padding:9px 11px;}
   /* a switched-off seller stays legible but visibly out of the running */
   .val-vp-offer-group.is-off{opacity:.55;}
   .val-vp-offer-group-hdr{display:flex;align-items:center;gap:9px;}
@@ -4959,7 +4985,7 @@
   /* wishlist search-as-you-type dropdown (see renderValWishlistSuggest() in valorant.js) */
   .val-wishlist-input-wrap{position:relative;flex:1;min-width:200px;}
   .val-wishlist-input-wrap input{width:100%;box-sizing:border-box;}
-  .val-wishlist-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:10px;max-height:260px;overflow-y:auto;box-shadow:0 10px 26px rgba(0,0,0,.18);}
+  .val-wishlist-suggest{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:var(--fin-r-ctl);max-height:260px;overflow-y:auto;box-shadow:var(--fin-shadow-lift);}
   .val-wishlist-suggest-item{display:flex;align-items:center;gap:9px;padding:7px 10px;cursor:pointer;font-size:12.5px;}
   .val-wishlist-suggest-item:hover{background:var(--surface-alt);}
   .val-wishlist-suggest-item img{width:28px;height:28px;object-fit:contain;flex:none;border-radius:5px;background:var(--surface-alt);}
@@ -5131,7 +5157,7 @@
 
   .tft-sync-row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:6px;}
   .tft-sync-row select,
-  .tft-sync-id{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
+  .tft-sync-id{background:var(--surface-alt);border:1px solid var(--border);color:var(--text);border-radius:var(--fin-r-ctl);padding:8px 10px;font-size:12.5px;font-family:'Inter',sans-serif;}
   .tft-sync-id{flex:1 1 220px;min-width:0;}
   .tft-sync-auto{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted);white-space:nowrap;flex:none;}
   /* the status line and the auto-sync toggle sit on one row — one says when it last ran, the other
@@ -5757,4 +5783,44 @@
        The 2px border and the accent wash stay: those aren't motion, and they're what carries the
        distinction once the rings are gone. */
     .cal-bubble.is-now::after{animation:none;}
+  }
+
+  /* ---- sleep tracker (Fitness -> Sleep) ---------------------------------------------------
+     Reuses the weight hero, the kcal stat cards and the chart card wholesale — a night is the
+     same shape of reading as a weigh-in, and giving it its own visual language would say the two
+     panes were unrelated. Only the parts with no existing equivalent are below: the two labelled
+     time fields, the quality chips, and the night list. */
+  .weight-log-row-add input[type=time]{background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:9px;padding:10px 11px;font-size:13px;outline:none;font-family:'Inter',sans-serif;min-width:0;}
+  /* The two time inputs carry a word each, because "23:30" and "07:15" side by side are two
+     identical-looking fields and the placeholder a time input would need is not available to it. */
+  .sleep-fld{display:flex;flex-direction:column;gap:4px;min-width:0;}
+  .sleep-fld > span{font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+  .sleep-fields{align-items:flex-end;}
+
+  .sleep-qual-row{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;}
+  .sleep-qchip{display:inline-flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);color:var(--muted);border-radius:999px;padding:6px 11px;font-size:11px;font-weight:700;cursor:pointer;font-family:'Inter',sans-serif;transition:border-color .15s,color .15s,background .15s;}
+  .sleep-qchip:hover{border-color:var(--violet);color:var(--text);}
+  /* a wash plus --text, never white on the raw accent — the calendar chip ruling: half of these
+     sit at a contrast the label could not survive */
+  .sleep-qchip.active{border-color:var(--violet);color:var(--text);background:color-mix(in srgb, var(--violet) 14%, var(--surface));}
+  .sleep-qchip .sleep-qchip-lbl{font-size:10.5px;}
+  @media (max-width:560px){
+    /* five chips plus five words overflow a 360px line and wrap into two rows that read as ten
+       controls; the emoji alone still carries the scale, and the title/aria-label carry the word */
+    .sleep-qchip .sleep-qchip-lbl{display:none;}
+    .sleep-qchip{padding:6px 10px;font-size:14px;}
+  }
+
+  .sleep-list{border:1px solid var(--border);border-radius:12px;background:var(--surface);overflow:hidden;}
+  .sleep-row{display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);font-size:12px;min-width:0;}
+  .sleep-row:last-child{border-bottom:none;}
+  .sleep-row-date{color:var(--muted);flex:0 0 auto;min-width:74px;}
+  .sleep-row-dur{font-family:'Manrope',sans-serif;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums;flex:0 0 auto;}
+  .sleep-row.short .sleep-row-dur{color:var(--wt-neg);}
+  .sleep-row-times{color:var(--faint);flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .sleep-row-q{flex:0 0 auto;}
+  .sleep-row-del{background:none;border:none;color:var(--faint);cursor:pointer;font-size:12px;padding:2px 4px;line-height:1;flex:0 0 auto;}
+  .sleep-row-del:hover{color:var(--danger);}
+  @media (max-width:560px){
+    .sleep-row-times{flex:1 1 100%;order:5;}
   }

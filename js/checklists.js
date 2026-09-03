@@ -207,11 +207,14 @@
     state.dailyActivity[todayKey] = { done, total };
   }
 
-  // if a checklist is linked to a habit and every item on it is checked, mark that habit done for today too
+  // if a checklist is linked to a habit and completion meets the checklist's leniency
+  // threshold (default 100%), mark that habit done for today too
   function syncChecklistHabitLink(c){
     if(!c.linkedHabitId || !c.items.length) return;
-    const allDone = c.items.every(it=>it.done);
-    if(!allDone) return;
+    const doneCt = c.items.filter(it=>it.done).length;
+    const pct = (doneCt / c.items.length) * 100;
+    const threshold = c.linkedHabitThreshold || 100;
+    if(pct + 1e-9 < threshold) return;
     const h = state.habits.find(x=>x.id===c.linkedHabitId);
     if(h){ if(!h.completions) h.completions={}; h.completions[localDateStr(new Date())] = true; }
   }
@@ -256,10 +259,31 @@
      whenever the selected group no longer exists (last checklist in it renamed or deleted). */
   let checklistGroupFilter = 'all';
 
+  // an item that's been skipped (Play's ⏭) or manually unchecked after being checked, GATE_STRIKES+
+  // times, gates the rest of its checklist — every other still-open item refuses to be checked off
+  // until this one is done, so the easy tasks stop being a way to avoid the annoying one.
+  const GATE_STRIKES = 3;
+  function isItemStruggling(it){
+    return ((it.skipCount||0) + (it.undoCount||0)) >= GATE_STRIKES;
+  }
+  // the item (if any) currently blocking the rest of its checklist. Locked (failed-today) items
+  // are excluded — they can't be resolved except by a reset, which clears every other item too,
+  // so letting one gate the checklist would just be a permanent deadlock.
+  function getGateItem(c){
+    return c.items.find(it => isItemStruggling(it) && !it.done && !isItemLocked(it)) || null;
+  }
+
   /* shared done/undone toggle so the normal checklist row and the Play overlay's ✓ button
-     apply the same XP + habit-link side effects instead of duplicating them */
+     apply the same XP + habit-link side effects instead of duplicating them.
+     Returns false (and does nothing) if a gated item is blocking this checklist and `it` isn't it. */
   function setItemDone(c, it, done){
-    if(it.done === done) return;
+    if(it.done === done) return true;
+    if(done){
+      const gate = getGateItem(c);
+      if(gate && gate.id !== it.id) return false;
+    } else {
+      it.undoCount = (it.undoCount||0) + 1;
+    }
     it.done = done;
     state.checklistExp = done
       ? (state.checklistExp||0) + CHECKLIST_ITEM_EXP
@@ -278,6 +302,7 @@
     if(done && !c.items.every(i=>i.done)) playItemTick();
     syncChecklistHabitLink(c);
     save();
+    return true;
   }
 
   /* "Failed" (Play overlay only) — unlike Skip, a failed item locks as undone until the
@@ -480,7 +505,13 @@
     if(!refs) return;
     const { c, it } = refs;
     const elapsedSec = Math.round((Date.now() - state.playSession.startedAt)/1000);
-    setItemDone(c, it, true);
+    if(!setItemDone(c, it, true)){
+      // this task got queued ahead of a gated one (e.g. via the combined-checklists queue) —
+      // bounce back to the gate item instead of silently completing something else first.
+      const gate = getGateItem(c);
+      if(gate){ state.playSession.itemId = gate.id; renderChecklists(); }
+      return;
+    }
     renderChecklists(); renderHabits(); updateExpUI();
     advancePlaySession(c, it, { text: it.text, elapsedSec, checklistId: c.id });
   }
@@ -720,7 +751,7 @@
   el('struggleResetBtn').addEventListener('click', ()=>{
     if(!window.confirm('Clear struggle history for every task? This resets miss/skip/fail counts to zero.')) return;
     state.checklists.forEach(c=>{
-      c.items.forEach(it=>{ it.missStreak = 0; it.skipCount = 0; it.failCount = 0; });
+      c.items.forEach(it=>{ it.missStreak = 0; it.skipCount = 0; it.failCount = 0; it.undoCount = 0; });
     });
     save(); renderChecklists();
   });
@@ -802,10 +833,11 @@
         + '<span class="checklist-count-chip">'+doneCt+'/'+c.items.length+'</span>'
         + (c.collapsed ? '' :
             '<input type="text" class="mini-input checklist-group-input" placeholder="Subgroup…" maxlength="40" value="'+escapeHtml(c.group||'')+'" style="width:100px;flex:none;padding:5px 8px;font-size:11.5px;" title="Organize this checklist into a subgroup">'
-          + '<select class="checklist-habit-link" title="Mark a habit done when this checklist is fully completed">'
+          + '<select class="checklist-habit-link" title="Mark a habit done when this checklist reaches its completion threshold">'
             + '<option value="">🔗 Link a habit…</option>'
             + state.habits.map(h=>'<option value="'+h.id+'" '+(c.linkedHabitId===h.id?'selected':'')+'>🔗 '+escapeHtml(h.name)+'</option>').join('')
           + '</select>'
+          + (c.linkedHabitId ? '<input type="number" class="mini-input checklist-habit-threshold" min="1" max="100" step="1" value="'+(c.linkedHabitThreshold||100)+'" style="width:56px;flex:none;padding:5px 6px;font-size:11.5px;" title="Percentage of items that must be checked off to count towards the linked habit\'s streak">%' : '')
           + '<select class="checklist-freq">' + Object.keys(FREQ_LABELS).map(f=>'<option value="'+f+'" '+(c.resetFreq===f?'selected':'')+'>'+FREQ_LABELS[f]+'</option>').join('') + '</select>'
           + '<button class="reset-chk-btn" data-act="reset" title="Reset all items now">↺</button>')
         + (c.items.some(i=>!i.done && !isItemLocked(i)) ? '<button class="btn btn-primary" data-act="play">▶ Play</button>' : '')
@@ -839,6 +871,13 @@
         syncChecklistHabitLink(c);
         save(); renderChecklists(); renderHabits();
       });
+      const habitThresholdInput = top.querySelector('.checklist-habit-threshold');
+      if(habitThresholdInput) habitThresholdInput.addEventListener('change', e=>{
+        const v = Math.max(1, Math.min(100, parseInt(e.target.value,10) || 100));
+        c.linkedHabitThreshold = v;
+        syncChecklistHabitLink(c);
+        save(); renderChecklists(); renderHabits();
+      });
       const freqSel = top.querySelector('.checklist-freq');
       if(freqSel) freqSel.addEventListener('change', e=>{
         c.resetFreq = e.target.value;
@@ -868,19 +907,31 @@
 
       if(!c.collapsed){
         const itemsWrap = document.createElement('div');
+        const gateItem = getGateItem(c);
         c.items.forEach(it=>{
           if(it.durationMin === undefined) it.durationMin = 5;
           const locked = isItemLocked(it);
+          const isGate = !!gateItem && gateItem.id === it.id;
+          const gated = !!gateItem && gateItem.id !== it.id && !it.done;
           const row = document.createElement('div'); row.className='sub-row'; row.dataset.itemId = it.id;
           if(locked) row.title = 'Failed today — locked until this checklist resets, or day\'s end';
+          else if(isGate) row.title = 'Skipped or undone too many times — do this one before anything else in this checklist';
+          else if(gated) row.title = 'Blocked until you finish "'+gateItem.text+'" above';
           row.innerHTML = '<span class="drag-handle sub-drag-handle" draggable="true" title="Drag to reorder">⠿</span>'
-            + '<div class="sub-check '+(it.done?'checked':'')+(locked?' failed-locked':'')+'">'+(it.done?'✓':locked?'✗':'')+'</div><div class="sub-title '+(it.done?'done':'')+(locked?' failed-locked':'')+'">'+escapeHtml(it.text)+'</div>'
+            + '<div class="sub-check '+(it.done?'checked':'')+(locked?' failed-locked':'')+'">'+(it.done?'✓':locked?'✗':'')+'</div><div class="sub-title '+(it.done?'done':'')+(locked?' failed-locked':'')+(isGate?' gate-item':'')+'">'+(isGate?'🔒 ':'')+escapeHtml(it.text)+'</div>'
             + '<input type="number" class="mini-input sub-duration" min="1" max="180" value="'+it.durationMin+'" title="Minutes for Play timer">'
             + '<button class="sub-del">✕</button>';
+          if(gated) row.classList.add('sub-row-gated');
           row.querySelector('.sub-check').addEventListener('click', ()=>{
             if(locked) return;
             const wasAllDone = c.items.length>0 && c.items.every(i=>i.done);
-            setItemDone(c, it, !it.done);
+            const ok = setItemDone(c, it, !it.done);
+            if(!ok){
+              row.classList.remove('gate-shake'); void row.offsetWidth; row.classList.add('gate-shake');
+              const gateRow = itemsWrap.querySelector('.sub-row[data-item-id="'+gateItem.id+'"]');
+              if(gateRow){ gateRow.classList.remove('gate-shake'); void gateRow.offsetWidth; gateRow.classList.add('gate-shake'); }
+              return;
+            }
             const isAllDoneNow = c.items.length>0 && c.items.every(i=>i.done);
             if(!wasAllDone && isAllDoneNow) celebrateChecklistComplete();
             renderChecklists(); renderHabits(); updateExpUI();

@@ -226,6 +226,15 @@
       if(!v) doomed.push(n);
     }
     for(let i = 0; i < doomed.length; i++) if(doomed[i].parentNode) doomed[i].parentNode.removeChild(doomed[i]);
+    /* A pasted section is a NEW section, so it must not arrive wearing the original's identity.
+       cleanScratchInto() preserves data-sid — it has to, that's the LOAD path, where the id is the
+       whole point — so it's stripped here instead, on the one path where the content is a copy
+       rather than the same section coming back. Two reasons it matters: repairScratchSections()
+       reads two adjacent sections sharing a sid as one the browser split and merges them, and
+       moveScratchSectionToPage() looks a section up BY sid, so a duplicate makes it a coin flip
+       which one moves. decorateScratchSections() hands the paste a fresh id on the next pass. */
+    const pastedSecs = out.querySelectorAll('.scratch-section[data-sid]');
+    for(let i = 0; i < pastedSecs.length; i++) pastedSecs[i].removeAttribute('data-sid');
     return out.innerHTML;
   }
 
@@ -335,6 +344,12 @@
           if(node.getAttribute('data-collapsed') === '1') sdiv.setAttribute('data-collapsed', '1');
           const sid = (node.getAttribute('data-sid') || '').trim();
           if(/^[a-z0-9]{4,24}$/i.test(sid)) sdiv.setAttribute('data-sid', sid);
+          /* The pinned header name. Free text rather than a validated token, which is safe because
+             it is written with setAttribute and only ever read back out into textContent — it is
+             never parsed as markup, never interpolated into HTML, and never becomes a URL or a
+             style. Capped only so a pathological paste can't park a novel in an attribute. */
+          const stitle = (node.getAttribute('data-title') || '').replace(/\s+/g, ' ').trim();
+          if(stitle) sdiv.setAttribute('data-title', stitle.slice(0, SCRATCH_SECTITLE_MAX));
           cleanScratchInto(node, sdiv);
           dest.appendChild(sdiv);
           continue;
@@ -384,22 +399,50 @@
      belong to a page that isn't live anymore. */
   function scratchSectionId(){ return Math.random().toString(36).slice(2, 10); }
 
-  // The child whose text the header's title is read from — the first one under the section (the
-  // header itself skipped) that has any. Shared by the title text and by the "don't show it twice"
-  // hiding below, so the two can never name a different node.
-  function scratchSectionTitleSource(sec){
+  const SCRATCH_SECTITLE_MAX = 200;
+
+  function scratchSectionText(n){ return ((n && n.textContent) || '').replace(/\s+/g, ' ').trim(); }
+
+  // The first child with any text. This is what a section's title is taken from ONCE, when it is
+  // first made — never again after that; see data-title below for why that distinction is the
+  // whole fix.
+  function scratchFirstTextChild(sec){
     for(let i=0; i<sec.childNodes.length; i++){
       const n = sec.childNodes[i];
       if(n.nodeType === 1 && n.classList && n.classList.contains('scratch-section-head')) continue;
-      if((n.textContent || '').replace(/\s+/g, ' ').trim()) return n;
+      if(scratchSectionText(n)) return n;
     }
     return null;
   }
 
+  /* Which child the header's title came from — PINNED to the text it was taken from (data-title on
+     the section), not re-derived as "whichever child happens to be first right now".
+
+     Re-deriving is what this used to do, and it had a nasty consequence, because the title source
+     is also the element that gets hidden (.scratch-section-titlesrc, so the same words aren't shown
+     twice). Add a tickbox at the top of an existing section and type its label, and that new line
+     became the first child with text — so it became the title, the header changed to it, AND it
+     vanished from the content. Typing a row into a section swallowed it into the header.
+
+     Pinned, the header keeps the title it was made with, and only the child still carrying exactly
+     that text is hidden. A new first line is now just a new first line. Editing the title line
+     itself makes it stop matching, so it simply reappears in the content while the header keeps the
+     name — visible and self-explanatory, rather than content silently disappearing. */
+  function scratchSectionTitleSource(sec){
+    const pinned = sec.getAttribute('data-title') || '';
+    if(!pinned) return scratchFirstTextChild(sec);
+    for(let i=0; i<sec.childNodes.length; i++){
+      const n = sec.childNodes[i];
+      if(n.nodeType === 1 && n.classList && n.classList.contains('scratch-section-head')) continue;
+      if(scratchSectionText(n) === pinned) return n;
+    }
+    return null; // the line it was named after is gone or was edited; the name stays
+  }
+
   function scratchSectionTitle(sec){
-    const src = scratchSectionTitleSource(sec);
-    if(!src) return sec.querySelector('img') ? 'Image' : 'Section';
-    const t = (src.textContent || '').replace(/\s+/g, ' ').trim();
+    let t = sec.getAttribute('data-title') || '';
+    if(!t) t = scratchSectionText(scratchFirstTextChild(sec));
+    if(!t) return sec.querySelector('img') ? 'Image' : 'Section';
     return t.length > 34 ? t.slice(0, 34) + '…' : t;
   }
 
@@ -412,9 +455,17 @@
       toggle.textContent = collapsed ? '▸' : '▾';
       toggle.setAttribute('aria-label', collapsed ? 'Expand section' : 'Minimize section');
     }
-    /* Cleared before re-deriving rather than left standing — an edit can change which child the
-       title now comes from (or remove it entirely), and the OLD source must not stay hidden once
-       it's no longer what the header is showing. Only an ELEMENT can carry the class; a title read
+    /* Pin the title the first time this section is seen, and never again — that one-time-ness is
+       what stops a line added later from taking the header over. Also the migration path for every
+       section made before data-title existed: the first pass over one derives the name it already
+       had on screen, writes it down, and it is fixed from then on. */
+    if(!sec.getAttribute('data-title')){
+      const t0 = scratchSectionText(scratchFirstTextChild(sec));
+      if(t0) sec.setAttribute('data-title', t0.slice(0, SCRATCH_SECTITLE_MAX));
+    }
+    /* Cleared before re-deriving rather than left standing — the child holding the pinned text can
+       still change (it gets edited, or deleted), and the OLD source must not stay hidden once it is
+       no longer the one the header is named after. Only an ELEMENT can carry the class; a title read
        straight off a bare text node (typed with no Enter yet) is left showing in both places, since
        there's nothing to hang display:none off without wrapping text nodes no one asked for. */
     const prev = sec.querySelector(':scope > .scratch-section-titlesrc');
@@ -566,6 +617,7 @@
       parent: sec.parentNode,
       collapsed: sec.getAttribute('data-collapsed') === '1',
       sid: sec.getAttribute('data-sid') || '',
+      title: sec.getAttribute('data-title') || '',
       kids: kids
     };
   }
@@ -581,6 +633,7 @@
     div.className = 'scratch-section';
     if(u.sid) div.setAttribute('data-sid', u.sid);
     if(u.collapsed) div.setAttribute('data-collapsed', '1');
+    if(u.title) div.setAttribute('data-title', u.title); // or the restored section renames itself
     u.parent.insertBefore(div, u.kids[0]);
     for(let i=0; i<u.kids.length; i++) div.appendChild(u.kids[i]); // same nodes, back in their own wrapper
     decorateScratchSections(el('scratchText'));
@@ -633,7 +686,52 @@
 
   // Idempotent and cheap-ish (a querySelectorAll per call), so it's safe to call after every
   // innerHTML replacement — reload, page turn, paste, or a fresh section just created.
+  /* Sections get SPLIT by the browser, and there is no single culprit to go and fix. Any editing
+     operation that restructures blocks can do it: execCommand('insertHTML') behind the "[] " tick
+     shorthand and execCommand('createLink') behind autolink — both of which run on SPACE, which is
+     how this is usually noticed — plus Enter, a paste, a drag. Fighting each one individually would
+     mean reimplementing them without execCommand, which this file deliberately won't do (see
+     scratchExec(): execCommand is what keeps the browser's own Ctrl+Z working, and hand-rolled
+     Range surgery silently breaks it).
+
+     So it's repaired instead of prevented, the same self-healing-invariant call repairNoteTree()
+     makes in notes.js. What makes that possible rather than guesswork: when a browser splits a
+     block it CLONES the element, attributes and all, so both halves come out carrying the same
+     data-sid — and a sid is a random token handed out exactly once per section, so two ADJACENT
+     sections sharing one is not something that can arise any other way. Merging them back is then
+     deterministic, not a heuristic.
+
+     Called from onScratchInput() as well as from decorateScratchSections(), which is the important
+     half: the split happens mid-typing, and onScratchInput() is what commits the surface to state,
+     so repairing there is what stops a split section from ever being SAVED as two. Moving a node
+     carries any caret inside it along, so a merge mid-keystroke doesn't strand the cursor. */
+  function repairScratchSections(root){
+    const secs = root.querySelectorAll('.scratch-section');
+    let merged = false;
+    for(let i = 0; i < secs.length; i++){
+      const sec = secs[i];
+      if(!sec.parentNode) continue; // already absorbed by an earlier iteration
+      const sid = sec.getAttribute('data-sid');
+      if(!sid) continue;            // nothing to match on; decorate() below gives it one
+      let next = sec.nextElementSibling;
+      while(next && next.classList.contains('scratch-section') && next.getAttribute('data-sid') === sid){
+        const after = next.nextElementSibling;
+        while(next.firstChild){
+          const kid = next.firstChild;
+          // a split can hand the offcut a cloned header; one section never keeps two
+          if(kid.nodeType === 1 && kid.classList && kid.classList.contains('scratch-section-head')) kid.remove();
+          else sec.appendChild(kid);
+        }
+        next.remove();
+        merged = true;
+        next = after;
+      }
+    }
+    return merged;
+  }
+
   function decorateScratchSections(root){
+    repairScratchSections(root);
     const secs = root.querySelectorAll('.scratch-section');
     for(let i=0; i<secs.length; i++){
       const sec = secs[i];
@@ -1336,6 +1434,12 @@
   function onScratchInput(){
     const surf = el('scratchText');
     if(!surf) return;
+    /* Before the surface is read into state, never after: a section the browser has just split in
+       two has to be put back together while it is still only a DOM accident, or this line commits
+       it and the next save makes it permanent. Only re-decorates when something actually merged —
+       the check itself is a querySelectorAll over a handful of elements, but rebuilding titles on
+       every keystroke would not be. */
+    if(repairScratchSections(surf)) decorateScratchSections(surf);
     let html = surf.innerHTML;
     if(html.length > SCRATCH_MAX_CHARS){
       surf.innerHTML = sanitizeScratchHtml(html.slice(0, SCRATCH_MAX_CHARS)); // truncation can cut mid-tag; re-parse to close it

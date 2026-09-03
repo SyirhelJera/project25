@@ -2228,7 +2228,15 @@
      margin would. */
   .scratch-section-head{display:flex;align-items:center;gap:6px;margin:-8px -10px 8px;padding:6px 9px;
     background:var(--surface-alt);border-bottom:1px solid var(--border);
-    user-select:none;cursor:grab;touch-action:none;}
+    user-select:none;cursor:grab;touch-action:none;transition:background .15s ease;}
+  /* the header is both a button (click toggles) and a handle (drag reorders), so it earns hover
+     feedback the content under it doesn't. Mixed toward --text rather than to a fixed lighter or
+     darker grey: --text is dark on the light themes and light on the dark ones, so one declaration
+     moves AWAY from the page in all four rather than washing out in half of them. The plain
+     declaration is the fallback for engines without color-mix(). */
+  .scratch-section-head:hover{
+    background:var(--border);
+    background:color-mix(in srgb, var(--text) 9%, var(--surface-alt));}
   .scratch-section.is-dragging{opacity:.55;}
   .scratch-section.is-dragging .scratch-section-head{cursor:grabbing;}
   .scratch-section-title{flex:1;min-width:0;color:var(--text);font-size:12.5px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}

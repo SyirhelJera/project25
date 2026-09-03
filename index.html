@@ -900,6 +900,22 @@
       <div class="chart-legend" id="slChartLegend"></div>
     </div>
 
+    <!-- CIRCADIAN RHYTHM — an actogram: one row per day, a bar wherever you were actually asleep,
+         positioned on the clock rather than counted into a total. The review above answers "how
+         much/how long"; this answers "when" — a person who averages 8h a night by sleeping 11pm-7am
+         one day and 3am-11am the next has a perfectly good average and no rhythm at all, and the
+         bar chart above cannot show that, only this can. Built by renderCircadianRhythm() /
+         renderCircadianChart() in js/fitness.js. -->
+    <div class="fit-sec-head">
+      <h2 class="fit-sec-title">Circadian rhythm</h2>
+      <div class="chart-zoom-row" id="circRangeRow"></div>
+    </div>
+    <div class="chart-card kcal-card">
+      <div class="wt-delta" id="circVerdict"></div>
+      <div id="circChartWrap" class="circ-chart-wrap"></div>
+      <div class="chart-legend" id="circChartLegend"></div>
+    </div>
+
     <div class="fit-sec-head">
       <h2 class="fit-sec-title">Nightly goal</h2>
     </div>
@@ -2541,6 +2557,7 @@
     </label>
     <span class="scratch-fmt-pick"><select class="scratch-fmt-sel" id="scratchHiliteSel" title="Highlight" aria-label="Highlight"></select></span>
     <span class="scratch-fmt-sep" aria-hidden="true"></span>
+    <button type="button" class="scratch-fmt" data-act="section" title="Wrap the selection in a collapsible section" aria-label="Make section">▤</button>
     <button type="button" class="scratch-fmt" data-act="clear" title="Clear formatting" aria-label="Clear formatting">⌫</button>
   </div>
   <!-- page dots + the add/remove controls. Built by renderScratchPages(); each dot's tooltip is the

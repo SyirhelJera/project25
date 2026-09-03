@@ -2194,6 +2194,55 @@
      a save landing mid-upload can't persist the word "uploading…" into the page. */
   .scratch-uploading{color:var(--faint);font-style:italic;}
   .scratch-uperr{color:var(--danger);font-style:italic;}
+  /* a section: a header, and below it a plain filled background — nothing ringing the whole thing,
+     which is what a box-shadow spread (the previous version of this rule) still read as, because a
+     shadow painted on every side of the element sits right above the header too and looks exactly
+     like a border there. A flat `background` instead only ever fills the section's OWN box, never
+     spills past its edges, and needs no padding to be visible — so it can't widen the surface's
+     scrollable area (the original reason box-shadow got reached for) while also not drawing
+     anything that reads as an outline.
+     A DIFFERENT grey from the header's own --surface-alt on purpose, or the two would be visually
+     one undifferentiated block — the header needs to read as its own row sitting ON the tint, not
+     be part of it. The plain declaration is the fallback for engines without color-mix().
+     padding, not the edge-to-edge fill this used to be: content butted straight against the tint's
+     own left/right edge looked cramped, and a checklist's own tick boxes made it worse (their own
+     border sits right on top of the section's). The PARENT carries the padding rather than every
+     child, which is what keeps this to one declaration regardless of what the section wraps — and
+     it's why the header below cancels it right back out with a matching negative margin, since the
+     header is meant to still span the full width as a bar, not sit inset like the content under it. */
+  .scratch-section{position:relative;margin:8px 0;padding:8px 10px;
+    border-radius:0 0 8px 8px;
+    background:var(--border);
+    background:color-mix(in srgb, var(--border) 45%, var(--surface));
+    transition:opacity .15s ease;}
+  /* being dragged: touch-action:none on the HEADER (not the whole section, which still has to
+     scroll normally when you're not holding it) is what keeps the browser from claiming a vertical
+     touch-drag as a page scroll before pointermove ever gets a chance to see it — the same call the
+     page-sheet's own reorder grip makes.
+     Square corners and a negative margin equal to the section's own padding, both deliberate: a
+     rounded header sitting on top of a now DIFFERENTLY-coloured section background let that
+     background peek through at the rounded corners, and the negative margin is what lets the header
+     still reach the section's outer edge (a full-width bar) despite the parent now padding its
+     content — cancelling out rather than being removed, so it doesn't push past the section's own
+     outer edge and can't add to the surface's scrollable width the way an uncancelled negative
+     margin would. */
+  .scratch-section-head{display:flex;align-items:center;gap:6px;margin:-8px -10px 8px;padding:6px 9px;
+    background:var(--surface-alt);border-bottom:1px solid var(--border);
+    user-select:none;cursor:grab;touch-action:none;}
+  .scratch-section.is-dragging{opacity:.55;}
+  .scratch-section.is-dragging .scratch-section-head{cursor:grabbing;}
+  .scratch-section-title{flex:1;min-width:0;color:var(--text);font-size:12.5px;font-weight:700;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scratch-section-btn{flex:none;background:none;border:none;padding:3px 6px;margin:0;color:var(--faint);font-family:inherit;font-size:12.5px;line-height:1;cursor:pointer;border-radius:5px;transition:color .15s ease,background .15s ease;}
+  .scratch-section-btn:hover{color:var(--text);background:var(--surface);}
+  .scratch-section-btn:focus-visible{outline:2px solid var(--violet);outline-offset:-1px;}
+  /* minimized: only the header bar shows, everything else the section wraps is hidden — the header
+     itself is exempt since it's what's left standing. */
+  .scratch-section[data-collapsed="1"] > :not(.scratch-section-head){display:none;}
+  .scratch-section[data-collapsed="1"] .scratch-section-head{border-bottom:none;margin-bottom:-8px;}
+  /* whichever child's text the header's title was taken FROM — see scratchSectionTitleSource() —
+     is hidden so it isn't shown twice. A rendering-only class: it lives on the live DOM the same
+     way the header itself does and is never part of what gets saved. */
+  .scratch-section-titlesrc{display:none;}
   /* the only chrome, and deliberately at --faint: it should read as a margin note, never as a bar */
   /* Page dots. background-clip:content-box is what lets the visual dot stay 8px while the button
      itself is ~18px — a real thumb target on a phone without a row of fat circles on desktop. */
@@ -2235,6 +2284,8 @@
   .scratch-sheet-row:hover{background:var(--surface-alt);}
   .scratch-sheet-row.is-on{background:var(--violet-pale);}
   .scratch-sheet-row.is-dragging{background:var(--surface-alt);opacity:.55;}
+  /* the same sheet, repurposed to pick a section's new page: nothing here is reorderable */
+  .scratch-sheet.is-move .scratch-sheet-grip{visibility:hidden;}
   /* touch-action:none on the GRIP alone. The sheet scrolls vertically and so does the drag, so
      putting it on the whole row would make the list unscrollable by thumb. */
   .scratch-sheet-grip{flex:none;width:22px;height:30px;cursor:grab;touch-action:none;
@@ -5869,3 +5920,14 @@
     .sleep-batt-fill{transition:none;animation:none;}
     .sleep-batt.is-charging .sleep-batt-fill{animation:none;}
   }
+
+  /* ---- circadian rhythm actogram (renderCircadianChart() in js/fitness.js) ----------------
+     Deliberately no bespoke bar/row classes: every row and bar is drawn straight into the SVG's
+     viewBox with its geometry computed per render (row height shrinks as the window widens), the
+     same reasoning the weight/calorie/sleep charts already use — a CSS class can't express "this
+     row is 5px tall because the window is 60 days" the way an inline attribute can. This block is
+     only the wrapper's sizing and the one thing genuinely worth a class: SVG text has no browser
+     minimum font size, and rendered pixels can round to sub-1px at the far end of a 60-day window
+     on a narrow phone — antialiasing keeps it legible, but not by an accessibility guideline. */
+  .circ-chart-wrap{width:100%;}
+  .circ-chart-wrap svg{display:block;width:100%;height:auto;}

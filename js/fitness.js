@@ -557,7 +557,7 @@
        eventually, but only once something else changed size — this makes it immediate. */
     if(key === 'weight') renderWeightChart();
     if(key === 'calories') renderCalorieReview();
-    if(key === 'sleep') renderSleepReview();
+    if(key === 'sleep'){ renderSleepReview(); renderCircadianRhythm(); }
     // and the battery's minute timer follows the pane either way — leaving this pane has to stop it
     // as surely as entering starts it. (Leaving the whole TAB is caught one tick later, by the
     // ticker's own visibility test; a minute of a hidden redraw is not worth a hook in nav.js.)
@@ -1918,14 +1918,25 @@
   }
 
   /* ================= SLEEP =====================================================================
-     A night is stored as the two clock times it actually was — {date, bed, wake, mins, quality} —
-     and filed under the date you WOKE UP on, so a sleep crossing midnight belongs to exactly one
-     date. `mins` is derived from bed/wake at write time rather than at read time: the times are
-     what the consistency figure is measured from, and the duration is what every other figure
-     wants, so caching it keeps the chart from re-deriving a wrap-around on every repaint.
+     A night is stored as the two clock times it actually was — {id, date, bed, wake, mins,
+     quality} — and filed under the date you WOKE UP on, so a sleep crossing midnight belongs to
+     exactly one date. `mins` is derived from bed/wake at write time rather than at read time: the
+     times are what the consistency figure is measured from, and the duration is what every other
+     figure wants, so caching it keeps the chart from re-deriving a wrap-around on every repaint.
 
-     Same flat dated-array shape as weightLog and calorieLog, and it rides the shared blob with
-     them — which is why nothing here writes per keystroke except through debouncedSave(). */
+     UNLIKE weightLog/calorieLog, `date` is not unique here — a day can hold more than one session
+     (a nap, then a full night), and both have to survive. Identity is `id` (recordSleepLog()
+     always appends a fresh one; nothing here ever writes onto an existing record by matching its
+     date), which is what fixes the toggle silently erasing an earlier nap the moment a second
+     sleep the same day was logged. Anything that asks "how did the DAY go" — the review's
+     averages, the goal-hit count, sleep debt, the chart — reads sleepDayAgg()'s per-date sums
+     instead of the raw array, so a nap on top of a full night correctly adds to the day's total
+     rather than counting as its own separate short "night". The hero and the battery stay
+     session-level on purpose: they answer "what is the state of the charge right now", which is
+     whichever session most recently ended, not a day-blended figure.
+
+     Same flat array shape as weightLog and calorieLog otherwise, and it rides the shared blob
+     with them — which is why nothing here writes per keystroke except through debouncedSave(). */
   function sleepLog(){
     if(!state.fitness.sleepLog) state.fitness.sleepLog = [];
     return state.fitness.sleepLog;
@@ -1959,12 +1970,39 @@
     const h = Math.floor(mins/60), m = Math.round(mins%60);
     return h + 'h' + (m ? ' ' + m + 'm' : '');
   }
-  function sleepOn(dateStr){ return sleepLog().find(e=>e.date===dateStr) || null; }
-  function upsertSleepLog(dateStr, rec){
-    const log = sleepLog();
-    const existing = log.find(e=>e.date===dateStr);
-    if(existing) Object.assign(existing, rec);
-    else log.push(Object.assign({date:dateStr}, rec));
+  // Always inserts — never looks for an existing record to overwrite. See the header note
+  // above: that overwrite is exactly the bug where a second sleep the same day erased the first.
+  function recordSleepLog(dateStr, rec){
+    sleepLog().push(Object.assign({ id: uid(), date: dateStr }, rec));
+  }
+  // ms timestamp of the moment a session ended — the wake clock time applied to the date it is
+  // filed under, which is the wake date by definition, so no day offset is needed
+  function sleepWakeTs(rec){
+    const w = clockMins(rec && rec.wake);
+    if(w == null) return null;
+    return parseLocalDateStr(rec.date).getTime() + w * 60000;
+  }
+  // date first, then chronological within a date — a nap and a later full night share a date but
+  // must still sort nap-then-night, so "the latest session" (the hero, the battery) and "newest
+  // first" (the list) both read true even when two sessions land on the same day
+  function sleepChronoCompare(a, b){
+    const d = a.date.localeCompare(b.date);
+    return d || ((sleepWakeTs(a)||0) - (sleepWakeTs(b)||0));
+  }
+  /* One row per calendar day, built from every session filed under it — the total minutes slept
+     that day, and `main` (the longest session) standing in for "the night" wherever a day can
+     only sensibly have one bed/wake pair, such as the bedtime-consistency figure: a nap's bed
+     time would otherwise add noise to a reading about when you actually go down for the night. */
+  function sleepDayAgg(sortedNights){
+    const byDate = new Map();
+    sortedNights.forEach(n=>{
+      let d = byDate.get(n.date);
+      if(!d){ d = { date:n.date, mins:0, sessions:[], main:n }; byDate.set(n.date, d); }
+      d.mins += n.mins;
+      d.sessions.push(n);
+      if(n.mins > d.main.mins) d.main = n;
+    });
+    return Array.from(byDate.values()).sort((a,b)=> a.date.localeCompare(b.date));
   }
   /* Bedtimes placed on an axis centred on midnight — 23:30 is −30 and 00:30 is +30 — so the spread
      of a person who goes to bed either side of midnight reads as an hour rather than as 23. Times
@@ -1990,28 +2028,36 @@
   function sleepReview(days){
     const today = localDateStr(new Date());
     const start = shiftDateStr(today, -(days-1));
-    const nights = sleepLog()
+    const raw = sleepLog()
       .filter(e => e.date >= start && e.date <= today && e.mins > 0)
-      .sort((a,b)=> a.date.localeCompare(b.date));
+      .sort(sleepChronoCompare);
+    // `nights` is one row per DAY, not per session — see sleepDayAgg()'s note above. avgMins,
+    // hitNights and debtMins all read this, so a nap stacked on a full night correctly adds to
+    // that day's total instead of counting as its own separate short night.
+    const nights = sleepDayAgg(raw);
     const goalMins = sleepGoalHours() * 60;
     const r = {
       days, start, today, nights, goalMins,
       avgMins:null, avgBed:null, bedSpread:null, avgQuality:null, hitNights:0, debtMins:0
     };
     if(!nights.length) return r;
-    r.avgMins = nights.reduce((a,b)=> a + b.mins, 0) / nights.length;
-    r.hitNights = nights.filter(n=> n.mins >= goalMins - 15).length;
-    // Debt is only ever counted from the nights that fell SHORT: a long lie-in does not give back
+    r.avgMins = nights.reduce((a,d)=> a + d.mins, 0) / nights.length;
+    r.hitNights = nights.filter(d=> d.mins >= goalMins - 15).length;
+    // Debt is only ever counted from the days that fell SHORT: a long lie-in does not give back
     // the sleep an earlier night lost, so letting surplus cancel shortfall would read a wrecked
     // week with one 11-hour Sunday as a week with no debt at all.
-    r.debtMins = nights.reduce((a,n)=> a + Math.max(0, goalMins - n.mins), 0);
-    const beds = nights.map(n=> bedAxis(n.bed)).filter(v=> v != null);
+    r.debtMins = nights.reduce((a,d)=> a + Math.max(0, goalMins - d.mins), 0);
+    // the day's MAIN session only — a nap's bed time would otherwise pollute a figure that is
+    // meant to answer "how steady is your actual bedtime"
+    const beds = nights.map(d=> bedAxis(d.main.bed)).filter(v=> v != null);
     if(beds.length){
       const mb = beds.reduce((a,b)=>a+b,0)/beds.length;
       r.avgBed = mb;
       r.bedSpread = Math.sqrt(beds.reduce((a,b)=> a + (b-mb)*(b-mb), 0) / beds.length);
     }
-    const q = nights.filter(n=> n.quality > 0);
+    // quality is rated per session (the chips show on every Log), so this reads every rated
+    // session in the window rather than only each day's main one
+    const q = raw.filter(n=> n.quality > 0);
     if(q.length) r.avgQuality = q.reduce((a,b)=> a + b.quality, 0) / q.length;
     return r;
   }
@@ -2052,10 +2098,14 @@
     const mins = sleepDuration(bed, wake);
     if(mins == null){ el('slAddHint').textContent = 'Enter both a bed time and a wake time.'; return; }
     const rec = {bed, wake, mins};
-    // an unrated night is a night with no rating, not a night rated zero — so the key is only
-    // written when there is one, and re-logging without a rating leaves an earlier one alone
+    // an unrated session is a session with no rating, not a session rated zero, so the key is
+    // only written when there is one
     if(sleepQualityDraft) rec.quality = sleepQualityDraft;
-    upsertSleepLog(sleepNightDate(), rec);
+    // recordSleepLog() always creates a new record — logging a nap and, later the same day, a
+    // full night no longer overwrites the first one; both survive as separate rows in the list
+    // and both count toward that day's total in the review. Correcting a session already typed
+    // in is done from the list below (delete and re-log) rather than by retyping over it here.
+    recordSleepLog(sleepNightDate(), rec);
     sleepQualityDraft = 0;
     el('slBed').value = ''; el('slWake').value = '';
     save(); renderSleep();
@@ -2064,7 +2114,7 @@
   function renderSleepHero(){
     const valEl = el('sleepHeroVal'); if(!valEl) return;
     const asEl = el('sleepHeroAs'), chipsEl = el('sleepHeroChips'), railEl = el('sleepHeroRail');
-    const log = sleepLog().slice().filter(e=>e.mins > 0).sort((a,b)=> a.date.localeCompare(b.date));
+    const log = sleepLog().slice().filter(e=>e.mins > 0).sort(sleepChronoCompare);
     const latest = log[log.length-1] || null;
     const goalMins = sleepGoalHours() * 60;
 
@@ -2125,16 +2175,15 @@
          reading of 0% is a claim about right now; if the last night on record is Tuesday's, the
          honest answer is that there is no reading, not that you are empty.
        · It re-renders on a minute timer, and only while this pane is the visible one — the calorie
-         chart's ResizeObserver reasoning: a redraw for a hidden pane is a redraw nobody can see. */
-  const SLEEP_BATT_STALE_H = 30;    // past this the last night can't describe now
-
-  // ms timestamp of the moment a night ended — the wake clock time applied to the date it is
-  // filed under, which is the wake date by definition, so no offset is needed
-  function sleepWakeTs(rec){
-    const w = clockMins(rec && rec.wake);
-    if(w == null) return null;
-    return parseLocalDateStr(rec.date).getTime() + w * 60000;
-  }
+         chart's ResizeObserver reasoning: a redraw for a hidden pane is a redraw nobody can see.
+       · It reads the LATEST SESSION, not the latest day — a nap logged mid-afternoon and a full
+         night logged that evening both file under the same date now (recordSleepLog() never
+         overwrites), and the battery has to pick the one that actually just ended, which
+         sleepChronoCompare()'s within-day tiebreak by wake time is what guarantees. */
+  const SLEEP_BATT_STALE_H = 30;    // past this the last session can't describe now
+  // sleepWakeTs() / sleepChronoCompare() are defined once, up by recordSleepLog() — this is the
+  // one other place in the file that needs "which session ended most recently" on a day that may
+  // hold more than one.
 
   function sleepBattery(){
     const goalMins = sleepGoalHours() * 60;
@@ -2145,7 +2194,7 @@
       return { state:'charging', level: Math.min(1, pend / (goalMins*60000)), elapsedMs: pend };
     }
     const log = sleepLog().slice().filter(e=> e.mins > 0 && clockMins(e.wake) != null)
-      .sort((a,b)=> a.date.localeCompare(b.date));
+      .sort(sleepChronoCompare);
     const last = log[log.length-1] || null;
     if(!last) return { state:'none' };
     const wokeAt = sleepWakeTs(last);
@@ -2336,7 +2385,7 @@
 
     const goalH = r.goalMins / 60;
     // zero-based like the intake chart: a truncated baseline would draw six hours as half of eight
-    const maxH = Math.max(...r.nights.map(n=> n.mins/60), goalH) * 1.12;
+    const maxH = Math.max(...r.nights.map(d=> d.mins/60), goalH) * 1.12;
     const yOf = h => padT + (1 - h/maxH) * (H - padT - padB);
     const floor = H - padB;
     const slot = (W - padL - padR) / r.days;
@@ -2350,15 +2399,21 @@
         + '<text x="'+(padL-Math.round(8*k))+'" y="'+(y+fs*0.34).toFixed(1)+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'+Math.round(v)+'h</text>';
     }
 
+    // r.nights is one bar per DAY (sleepDayAgg()), so a nap stacked on a full night draws as ONE
+    // taller bar rather than two overlapping ones at the same x — the tooltip lists every session
+    // that day rather than naming just the bed/wake of whichever one happens to be `main`.
     let barsSvg = '';
-    r.nights.forEach(n=>{
-      const y = yOf(n.mins/60);
-      const short = n.mins < r.goalMins - 15;
-      barsSvg += '<rect x="'+(xOf(n.date)-barW/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'"'
+    r.nights.forEach(d=>{
+      const y = yOf(d.mins/60);
+      const short = d.mins < r.goalMins - 15;
+      const title = d.sessions.length > 1
+        ? fmtDate(parseLocalDateStr(d.date).getTime()) + ' · ' + fmtDuration(d.mins) + ' across ' + d.sessions.length + ' sessions'
+        : fmtDate(parseLocalDateStr(d.date).getTime()) + ' · ' + fmtDuration(d.mins)
+          + ' · ' + fmtClock(clockMins(d.main.bed)) + ' → ' + fmtClock(clockMins(d.main.wake));
+      barsSvg += '<rect x="'+(xOf(d.date)-barW/2).toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'"'
         + ' height="'+Math.max(0, floor-y).toFixed(1)+'" rx="'+(2*k).toFixed(1)+'"'
         + ' fill="'+(short ? 'var(--gold)' : 'var(--violet)')+'" opacity=".85">'
-        + '<title>'+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime())+' · '+fmtDuration(n.mins)
-            + ' · ' + fmtClock(clockMins(n.bed)) + ' → ' + fmtClock(clockMins(n.wake)))+'</title></rect>';
+        + '<title>'+escapeHtml(title)+'</title></rect>';
     });
 
     const gy = yOf(goalH);
@@ -2372,7 +2427,7 @@
     const xLabelSvg = '<text x="'+padL+'" y="'+(H-Math.round(5*k))+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="start">'+escapeHtml(axisDate(r.start))+'</text>'
       + '<text x="'+(W-padR)+'" y="'+(H-Math.round(5*k))+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'+escapeHtml(axisDate(r.today))+'</text>';
 
-    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Hours slept per night over the last '+r.days+' nights">'
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Hours slept per day over the last '+r.days+' days">'
       + gridSvg + xLabelSvg + barsSvg + goalSvg
       + '</svg>';
     observeSleepChartWidth(wrap);
@@ -2399,7 +2454,10 @@
      shared blob. */
   function renderSleepList(){
     const box = el('slList'); if(!box) return;
-    const log = sleepLog().slice().sort((a,b)=> b.date.localeCompare(a.date)).slice(0, 30);
+    // session-level and deliberately not day-aggregated, unlike the review/chart above — this is
+    // the only place a specific session (a nap versus that night's main sleep) can be told apart
+    // and deleted, so collapsing it to one row per day would hide the very thing it exists to show.
+    const log = sleepLog().slice().sort((a,b)=> sleepChronoCompare(b,a)).slice(0, 30);
     if(!log.length){
       box.innerHTML = '<p class="fit-rail-none">Nothing logged yet.</p>';
       return;
@@ -2408,15 +2466,209 @@
     box.innerHTML = log.map(n=>{
       const short = n.mins < goalMins - 15;
       const q = SLEEP_QUALITY.find(x=>x.v === n.quality);
+      const durTxt = fmtDuration(n.mins);
       return '<div class="sleep-row'+(short?' short':'')+'">'
         + '<span class="sleep-row-date">'+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime()))+'</span>'
-        + '<span class="sleep-row-dur">'+escapeHtml(fmtDuration(n.mins))+'</span>'
+        + '<span class="sleep-row-dur">'+escapeHtml(durTxt)+'</span>'
         + '<span class="sleep-row-times">'+escapeHtml(fmtClock(clockMins(n.bed))+' → '+fmtClock(clockMins(n.wake)))+'</span>'
         + '<span class="sleep-row-q" title="'+escapeHtml(q?q.label:'')+'">'+(q?q.emoji:'')+'</span>'
-        + '<button type="button" class="sleep-row-del" data-sldel="'+escapeHtml(n.date)+'"'
-        + ' aria-label="Delete the night of '+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime()))+'">✕</button>'
+        // identity is the record's id, not its date — a date can now hold more than one session,
+        // and deleting "the night of the 4th" used to delete whichever one matched the date first
+        + '<button type="button" class="sleep-row-del" data-sldel="'+escapeHtml(n.id)+'"'
+        + ' aria-label="Delete the '+escapeHtml(durTxt)+' session on '+escapeHtml(fmtDate(parseLocalDateStr(n.date).getTime()))+'">✕</button>'
         + '</div>';
     }).join('');
+  }
+
+  /* ---- circadian rhythm ------------------------------------------------------------------------
+     Everything above answers "how much" and "how long" — this answers "when". A person who
+     averages 8h a night by sleeping 11pm-7am one day and 3am-11am the next has a perfectly good
+     average and no rhythm at all, and a duration bar chart cannot show that; only plotting bed and
+     wake times ON THE CLOCK can. So this is an actogram: one row per calendar day, a bar wherever
+     you were actually asleep, positioned by clock time rather than stacked into a total.
+
+     circadianStats() is the review panel's contract again — one function works out the verdict and
+     the chart's average-time markers, so the two can never disagree. It deliberately reads each
+     day's LONGEST session only (sleepDayAgg()'s `main`), the same choice sleepReview() makes for
+     bedtime consistency: a nap's bed and wake time are real but are not "when you sleep", and
+     mixing them into the average would blur a genuinely late chronotype with someone who merely
+     naps at odd hours. */
+  function circMean(arr){ return arr.reduce((a,b)=>a+b,0) / arr.length; }
+  function circStdev(arr, m){ return Math.sqrt(arr.reduce((a,b)=> a + (b-m)*(b-m), 0) / arr.length); }
+
+  function circadianStats(days){
+    const today = localDateStr(new Date());
+    const start = shiftDateStr(today, -(days-1));
+    const raw = sleepLog()
+      .filter(e=> e.mins > 0 && e.date >= start && e.date <= today)
+      .sort(sleepChronoCompare);
+    const agg = sleepDayAgg(raw);
+    const r = { days, dayCount: agg.length, avgBed:null, bedSpread:null, avgWake:null, wakeSpread:null, tone:'flat' };
+    const beds = agg.map(d=> bedAxis(d.main.bed)).filter(v=> v != null);
+    if(beds.length){ r.avgBed = circMean(beds); r.bedSpread = circStdev(beds, r.avgBed); }
+    const wakes = agg.map(d=> clockMins(d.main.wake)).filter(v=> v != null);
+    if(wakes.length){ r.avgWake = circMean(wakes); r.wakeSpread = circStdev(wakes, r.avgWake); }
+    if(r.bedSpread != null && r.wakeSpread != null){
+      const avgSpread = (r.bedSpread + r.wakeSpread) / 2;
+      r.tone = avgSpread <= 30 ? 'good' : avgSpread <= 75 ? 'neutral' : 'bad';
+    }
+    return r;
+  }
+
+  const CIRC_RANGES = [
+    {key:'14', label:'14D', days:14},
+    {key:'30', label:'30D', days:30},
+    {key:'60', label:'60D', days:60}
+  ];
+  let circRange = '14';   // not persisted, the review panel's rule — opens on the tightest window
+
+  function renderCircadianRhythm(){
+    const rangeRow = el('circRangeRow'); if(!rangeRow) return;
+    rangeRow.innerHTML = CIRC_RANGES.map(z=>
+      '<button type="button" class="chart-zoom-btn'+(circRange===z.key?' active':'')+'"'
+      + (circRange===z.key?' aria-current="true"':'')+' data-crange="'+z.key+'">'+z.label+'</button>'
+    ).join('');
+    rangeRow.querySelectorAll('.chart-zoom-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ circRange = btn.dataset.crange; renderCircadianRhythm(); });
+    });
+
+    const opt = CIRC_RANGES.find(z=>z.key===circRange) || CIRC_RANGES[0];
+    const stats = circadianStats(opt.days);
+
+    let chip = '', tone = 'flat', note = '';
+    if(!stats.dayCount){
+      chip = 'Nothing logged yet';
+      note = 'Log a few nights and this reads how steady your rhythm actually is, not just how long you slept.';
+    } else if(stats.avgBed == null || stats.avgWake == null){
+      chip = 'Not enough logged yet';
+      note = stats.dayCount + ' day' + (stats.dayCount===1?'':'s') + ' logged — needs a bed and a wake time on more of them to read a pattern.';
+    } else {
+      tone = stats.tone;
+      chip = tone === 'good' ? 'Regular rhythm' : tone === 'neutral' ? 'Somewhat irregular' : 'Irregular rhythm';
+      note = 'Usual bedtime ' + fmtClock(stats.avgBed) + ' (±' + Math.round(stats.bedSpread) + ' min) · usual wake '
+        + fmtClock(stats.avgWake) + ' (±' + Math.round(stats.wakeSpread) + ' min), across '
+        + stats.dayCount + ' of ' + opt.days + ' days';
+    }
+    el('circVerdict').innerHTML = '<span class="wt-delta-val '+tone+'">'+escapeHtml(chip)+'</span>'
+      + '<span class="wt-delta-note">'+escapeHtml(note)+'</span>';
+
+    const drewChart = renderCircadianChart(opt.days, stats);
+    el('circChartLegend').innerHTML = !drewChart ? ''
+      : '<span><span class="dot" style="background:var(--violet);"></span>Sleep</span>'
+        + '<span><span class="dot" style="background:var(--gold);"></span>Nap (under 3h)</span>'
+        + '<span><span class="dot dash" style="color:var(--violet);"></span>Usual bedtime</span>'
+        + '<span><span class="dot dash" style="color:var(--gold);"></span>Usual wake</span>';
+  }
+
+  // the last `days` calendar dates, oldest first — one actogram row per date, logged or not, so a
+  // gap in the middle of the window shows as an empty row rather than silently compressing the rest
+  function circWindowDates(days){
+    const today = localDateStr(new Date());
+    const dates = [];
+    for(let i = days-1; i >= 0; i--) dates.push(shiftDateStr(today, -i));
+    return dates;
+  }
+
+  /* The x-axis is hours relative to each ROW's own midnight, using bedAxis()'s midnight-centred
+     convention for the bed edge (18:00+ reads negative, i.e. "the evening before") and plain clock
+     hours for the wake edge — the same asymmetry sleepReview() already relies on, because a bed
+     time clusters in the evening and a wake time clusters in the morning, so the two need different
+     zero points to both land inside one comfortable, non-wrapping row. The domain defaults to
+     16:00-the-evening-before through 16:00-same-day and only widens for data that actually needs
+     it, so a normal week's rows aren't stretched thin to make room for one outlier nap. */
+  function renderCircadianChart(days, stats){
+    const wrap = el('circChartWrap');
+    const dates = circWindowDates(days);
+    const raw = sleepLog().filter(e=> e.mins > 0 && dates.indexOf(e.date) >= 0);
+    if(!raw.length){
+      wrap.innerHTML = '<div class="wt-chart-empty">Log a few nights to see your rhythm.</div>';
+      return false;
+    }
+    const byDate = new Map();
+    raw.forEach(n=>{
+      const arr = byDate.get(n.date); if(arr) arr.push(n); else byDate.set(n.date, [n]);
+    });
+
+    const wrapW = Math.max(260, wrap.clientWidth || 780);
+    const k = 780 / wrapW;
+    const W = 780;
+    // rows compress as the window widens rather than growing the chart without bound — 14D reads
+    // as a comfortable week-and-a-half of thick bars, 60D as a thin but still legible two months
+    const rowH = Math.max(4, Math.min(18, Math.floor(300 / dates.length))) * k;
+    const gapH = Math.max(1 * k, rowH * 0.18);
+    const fs = +(10.5 * k).toFixed(1);
+    const padL = Math.round(fs * 2.6 + 8 * k);
+    const padR = Math.round(10 * k), padT = Math.round(fs + 10 * k), padB = Math.round(fs + 8 * k);
+    const H = Math.round(padT + dates.length * (rowH + gapH) - gapH + padB);
+
+    let lo = -8, hi = 16;
+    raw.forEach(n=>{
+      const b = bedAxis(n.bed); if(b != null) lo = Math.min(lo, b/60 - 0.5);
+      const w = clockMins(n.wake); if(w != null) hi = Math.max(hi, w/60 + 0.5);
+    });
+    const span = hi - lo;
+    const xOf = h => padL + ((h - lo)/span) * (W - padL - padR);
+
+    let gridSvg = '';
+    for(let h = Math.ceil(lo/4)*4; h <= hi; h += 4){
+      const x = xOf(h);
+      const clock = ((Math.round(h) % 24) + 24) % 24;
+      gridSvg += '<line x1="'+x.toFixed(1)+'" y1="'+padT+'" x2="'+x.toFixed(1)+'" y2="'+H+'" stroke="var(--border)" stroke-width="'+k.toFixed(2)+'" opacity=".5"/>'
+        + '<text x="'+x.toFixed(1)+'" y="'+(padT - 4*k).toFixed(1)+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="middle">'+escapeHtml(fmtClock(clock*60))+'</text>';
+    }
+
+    let avgSvg = '';
+    if(stats && stats.avgBed != null){
+      const x = xOf(stats.avgBed/60);
+      avgSvg += '<line x1="'+x.toFixed(1)+'" y1="'+padT+'" x2="'+x.toFixed(1)+'" y2="'+H+'" stroke="var(--violet)" stroke-width="'+(1.1*k).toFixed(2)+'" stroke-dasharray="'+(2.5*k).toFixed(1)+','+(3.5*k).toFixed(1)+'" opacity=".6"/>';
+    }
+    if(stats && stats.avgWake != null){
+      const x = xOf(stats.avgWake/60);
+      avgSvg += '<line x1="'+x.toFixed(1)+'" y1="'+padT+'" x2="'+x.toFixed(1)+'" y2="'+H+'" stroke="var(--gold)" stroke-width="'+(1.1*k).toFixed(2)+'" stroke-dasharray="'+(2.5*k).toFixed(1)+','+(3.5*k).toFixed(1)+'" opacity=".6"/>';
+    }
+
+    // a day label on every row past ~20 of them is unreadable noise, so the window thins them out
+    const labelEvery = dates.length <= 20 ? 1 : dates.length <= 40 ? 2 : 4;
+    let rowsSvg = '', labelSvg = '';
+    dates.forEach((ds, i)=>{
+      const y = padT + i * (rowH + gapH);
+      if(i % labelEvery === 0){
+        labelSvg += '<text x="'+(padL - 6*k).toFixed(1)+'" y="'+(y + rowH*0.75).toFixed(1)+'" font-size="'+fs+'" fill="var(--muted)" text-anchor="end">'
+          + escapeHtml(parseLocalDateStr(ds).toLocaleDateString(undefined,{month:'short',day:'numeric'})) + '</text>';
+      }
+      (byDate.get(ds) || []).forEach(n=>{
+        const b = bedAxis(n.bed), w = clockMins(n.wake);
+        if(b == null || w == null) return;
+        const x1 = xOf(b/60), x2 = xOf(w/60);
+        const isNap = n.mins < 180;
+        rowsSvg += '<rect x="'+Math.min(x1,x2).toFixed(1)+'" y="'+y.toFixed(1)+'"'
+          + ' width="'+Math.max(1.5*k, Math.abs(x2-x1)).toFixed(1)+'" height="'+rowH.toFixed(1)+'"'
+          + ' rx="'+(rowH*0.3).toFixed(1)+'" fill="'+(isNap ? 'var(--gold)' : 'var(--violet)')+'" opacity="'+(isNap?'.7':'.88')+'">'
+          + '<title>'+escapeHtml(fmtDate(parseLocalDateStr(ds).getTime()) + ' · '
+              + fmtClock(clockMins(n.bed)) + ' → ' + fmtClock(clockMins(n.wake)) + ' · ' + fmtDuration(n.mins))+'</title></rect>';
+      });
+    });
+
+    wrap.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="Bed and wake times over the last '+days+' days">'
+      + gridSvg + avgSvg + rowsSvg + labelSvg
+      + '</svg>';
+    observeCircChartWidth(wrap);
+    return true;
+  }
+
+  // its own observer, the calorie/sleep chart rule: this section can be the one being resized
+  // while its siblings are display:none, and a hidden wrapper measures zero
+  let circChartLastWidth = 0, circChartObserver = null;
+  function observeCircChartWidth(wrap){
+    circChartLastWidth = wrap.clientWidth || 0;
+    if(circChartObserver || typeof ResizeObserver === 'undefined') return;
+    circChartObserver = new ResizeObserver(entries=>{
+      const w = Math.round(entries[0].contentRect.width);
+      if(!w || Math.abs(w - circChartLastWidth) < 12) return;
+      circChartLastWidth = w;
+      renderCircadianRhythm();
+    });
+    circChartObserver.observe(wrap);
   }
 
   function renderSleep(){
@@ -2427,6 +2679,7 @@
     updateSleepHint();
     renderSleepHero();
     renderSleepReview();
+    renderCircadianRhythm();
     renderSleepList();
   }
 
@@ -2441,9 +2694,11 @@
     });
     el('slList').addEventListener('click', e=>{
       const btn = e.target.closest('[data-sldel]'); if(!btn) return;
-      const ds = btn.dataset.sldel;
-      if(!confirm('Delete the night of ' + fmtDate(parseLocalDateStr(ds).getTime()) + '?')) return;
-      state.fitness.sleepLog = sleepLog().filter(e2=> e2.date !== ds);
+      const id = btn.dataset.sldel;
+      const rec = sleepLog().find(e2=> e2.id === id); if(!rec) return;
+      if(!confirm('Delete the ' + fmtDuration(rec.mins) + ' session on '
+        + fmtDate(parseLocalDateStr(rec.date).getTime()) + '?')) return;
+      state.fitness.sleepLog = sleepLog().filter(e2=> e2.id !== id);
       save(); renderSleep();
     });
     el('slAddBtn').addEventListener('click', addSleepEntry);

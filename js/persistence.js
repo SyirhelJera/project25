@@ -262,10 +262,15 @@
     if(!state.fitness.measureLog) state.fitness.measureLog = [];
     // the goal physique: one photo, same Drive-metadata-only shape as a progressPhotos entry
     if(state.fitness.dreamPhoto === undefined) state.fitness.dreamPhoto = null;
-    // One record per NIGHT, filed under the date you woke up on — a sleep crossing midnight belongs
-    // to one date or it would be split across two and neither would hold the whole of it. Same flat
-    // dated-array shape as weightLog/calorieLog: {date,bed:'HH:MM',wake:'HH:MM',mins,quality?}.
+    // One record per SESSION, filed under the date you woke up on — a sleep crossing midnight
+    // belongs to one date or it would be split across two and neither would hold the whole of it.
+    // {id,date,bed:'HH:MM',wake:'HH:MM',mins,quality?}. `date` is deliberately not unique: a day can
+    // hold more than one session (a nap, then a full night), and `id` is what tells them apart —
+    // recordSleepLog() in fitness.js always appends rather than overwriting by date. A row saved
+    // before `id` existed is given one here rather than left to collide with the next thing that
+    // reads it by identity (the sleep list's delete button).
     if(!state.fitness.sleepLog) state.fitness.sleepLog = [];
+    state.fitness.sleepLog.forEach(rec=>{ if(!rec.id) rec.id = uid(); });
     if(!(state.fitness.sleepGoal > 0)) state.fitness.sleepGoal = 8;
     if(typeof state.fitness.sleepBedGoal !== 'string') state.fitness.sleepBedGoal = '';
     // The night currently being slept, as ONE timestamp — the quick-actions sleep toggle stamps it

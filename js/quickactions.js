@@ -14,9 +14,13 @@
          timer — the app is closed for the whole of the thing being measured, so anything held in
          memory would be gone by morning. Elapsed is always (now − that stamp), which is also why a
          phone that slept, a reload, and a different device all agree.
-       · It writes through fitness.js's own upsertSleepLog(), never straight into state.fitness
-         .sleepLog — the record shape (and the rule that a night is filed under the WAKE date) has
-         one owner, and a second writer is how the two would drift apart.
+       · It writes through fitness.js's own recordSleepLog(), never straight into state.fitness
+         .sleepLog — the record shape (and the rule that a session is filed under the WAKE date)
+         has one owner, and a second writer is how the two would drift apart. recordSleepLog()
+         always APPENDS: a nap tapped off at 4pm and a full night tapped off at 7am the same day
+         both survive as their own record, rather than the second overwriting the first — which is
+         also why the toggle never needs to ask "log this as a nap or a night", there is no
+         difference in the storage, only in how many sessions a day happens to have.
        · Both ends confirm before writing an implausible night rather than silently recording one:
          a stray tap and a toggle you forgot to end are the two failure modes this control actually
          has, and both produce a number that would quietly poison every average in the pane.
@@ -106,10 +110,11 @@
     }
     // Filed under the date you WOKE on, which is the rule the whole sleep log is keyed by — so a
     // night crossing midnight lands on one date and a nap ending the same afternoon lands on that
-    // day. upsertSleepLog() overwrites a night already recorded for that date rather than twinning.
+    // day. recordSleepLog() always appends a new record, so a second sleep the same day (a nap,
+    // then the real thing) can never overwrite the first one's data.
     const date = localDateStr(wokeAt);
     const mins = Math.round(ms / 60000);
-    upsertSleepLog(date, { bed: hhmm(bedAt), wake: hhmm(wokeAt), mins });
+    recordSleepLog(date, { bed: hhmm(bedAt), wake: hhmm(wokeAt), mins });
     state.fitness.sleepPending = null;
     save();
     // the pane is very likely not the visible tab, and renderSleep() no-ops when its fields are

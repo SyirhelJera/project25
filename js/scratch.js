@@ -307,6 +307,39 @@
         dest.appendChild(img);
         continue;
       }
+      /* Sections: a DIV can carry the one class the format bar's "make section" command emits, plus
+         a stable id and its collapsed flag — the three things a section needs to survive a reload.
+         The HEADER (title + minimize/move buttons) is UI chrome, not content: it is injected fresh
+         by decorateScratchSections() on every render and is never what's typed, so it is dropped
+         subtree and all here rather than rebuilt — the same call the in-flight upload marker above
+         makes, for the same reason. Persisting it would round-trip stale button markup that no
+         longer has a live click handler attached to it. (A per-section tint colour used to live
+         here too, as data-tint; it was tried and dropped — a flat grey on every section, in the CSS
+         below, replaced it, so there's no longer a colour to validate or persist.)
+         Matched with classList.contains(), NOT an exact string match on the whole attribute — that
+         used to be `cls === 'scratch-section'`, and it was the actual bug behind "a section
+         sometimes doesn't persist": is-dragging (mid-reorder), has-caret / has-tint (both since
+         removed, but any future transient class hits the same trap), or even just different class
+         ORDER after a browser normalizes the attribute — any of those makes an exact match fail
+         silently. It doesn't throw or warn, it just falls through to the generic branch below, which
+         strips class/data-sid/data-collapsed outright — a section quietly degrading into an
+         ordinary, unwrapped div the next time it's saved or reloaded, with no error to explain why.
+         classList.contains() only asks "is this ONE class present", so any other class riding along
+         can't break identification — and the output below still hard-resets to exactly
+         class="scratch-section" regardless, so nothing extra leaks into what's actually persisted. */
+      if(tag === 'DIV' && node.classList){
+        if(node.classList.contains('scratch-section-head')) continue;
+        if(node.classList.contains('scratch-section')){
+          const sdiv = document.createElement('div');
+          sdiv.className = 'scratch-section';
+          if(node.getAttribute('data-collapsed') === '1') sdiv.setAttribute('data-collapsed', '1');
+          const sid = (node.getAttribute('data-sid') || '').trim();
+          if(/^[a-z0-9]{4,24}$/i.test(sid)) sdiv.setAttribute('data-sid', sid);
+          cleanScratchInto(node, sdiv);
+          dest.appendChild(sdiv);
+          continue;
+        }
+      }
       /* Everything else: the tag is kept, and the ONLY attribute that can survive is a style
          rebuilt property-by-property by safeScratchStyle() — class, id, every event handler and
          every other attribute are still dropped outright. That narrow opening is what lets the
@@ -334,6 +367,423 @@
     box.checked = !!done;
     if(done) box.setAttribute('checked', '');
     return box;
+  }
+
+  /* ---------- sections ----------
+     A selection — text, an image, a tickbox, any run of the above — can be wrapped in a
+     `.scratch-section`: a plain DIV that can be minimized to its header, or moved bodily onto
+     another page. It rides the sheet's own contenteditable rather than being a separate widget
+     (the image-lift/resize-box design would need a second overlay per section, and sections are
+     block content, not a floating photo), which is why the ONE rule everywhere else on this page
+     applies here too: the surface's innerHTML IS the document, so the header — title, minimize,
+     move — is UI, and UI never gets to be content. decorateScratchSections() injects it fresh
+     after every innerHTML replacement (syncScratchSurface()); the sanitizer drops it subtree and
+     all on the way out (see cleanScratchInto()'s DIV branch) and it never touches state directly.
+     A section's identity is its `data-sid`, generated here and validated by the sanitizer — that
+     is what a move targets, since by the time it runs the header (and its click handler) may
+     belong to a page that isn't live anymore. */
+  function scratchSectionId(){ return Math.random().toString(36).slice(2, 10); }
+
+  // The child whose text the header's title is read from — the first one under the section (the
+  // header itself skipped) that has any. Shared by the title text and by the "don't show it twice"
+  // hiding below, so the two can never name a different node.
+  function scratchSectionTitleSource(sec){
+    for(let i=0; i<sec.childNodes.length; i++){
+      const n = sec.childNodes[i];
+      if(n.nodeType === 1 && n.classList && n.classList.contains('scratch-section-head')) continue;
+      if((n.textContent || '').replace(/\s+/g, ' ').trim()) return n;
+    }
+    return null;
+  }
+
+  function scratchSectionTitle(sec){
+    const src = scratchSectionTitleSource(sec);
+    if(!src) return sec.querySelector('img') ? 'Image' : 'Section';
+    const t = (src.textContent || '').replace(/\s+/g, ' ').trim();
+    return t.length > 34 ? t.slice(0, 34) + '…' : t;
+  }
+
+  function updateScratchSectionHead(sec, head){
+    head = head || sec.querySelector(':scope > .scratch-section-head');
+    if(!head) return;
+    const collapsed = sec.getAttribute('data-collapsed') === '1';
+    const toggle = head.querySelector('.scratch-section-toggle');
+    if(toggle){
+      toggle.textContent = collapsed ? '▸' : '▾';
+      toggle.setAttribute('aria-label', collapsed ? 'Expand section' : 'Minimize section');
+    }
+    /* Cleared before re-deriving rather than left standing — an edit can change which child the
+       title now comes from (or remove it entirely), and the OLD source must not stay hidden once
+       it's no longer what the header is showing. Only an ELEMENT can carry the class; a title read
+       straight off a bare text node (typed with no Enter yet) is left showing in both places, since
+       there's nothing to hang display:none off without wrapping text nodes no one asked for. */
+    const prev = sec.querySelector(':scope > .scratch-section-titlesrc');
+    if(prev) prev.classList.remove('scratch-section-titlesrc');
+    const src = scratchSectionTitleSource(sec);
+    if(src && src.nodeType === 1) src.classList.add('scratch-section-titlesrc');
+    const title = head.querySelector('.scratch-section-title');
+    if(title) title.textContent = scratchSectionTitle(sec);
+  }
+
+  function buildScratchSectionHead(sec){
+    const head = document.createElement('div');
+    head.className = 'scratch-section-head';
+    head.setAttribute('contenteditable', 'false');
+    const title = document.createElement('span');
+    title.className = 'scratch-section-title';
+    head.appendChild(title);
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'scratch-section-btn scratch-section-toggle';
+    head.appendChild(toggle);
+    const move = document.createElement('button');
+    move.type = 'button';
+    move.className = 'scratch-section-btn scratch-section-move';
+    move.setAttribute('aria-label', 'Move section to another page');
+    move.textContent = '⇥';
+    head.appendChild(move);
+    const unwrap = document.createElement('button');
+    unwrap.type = 'button';
+    unwrap.className = 'scratch-section-btn scratch-section-unwrap';
+    unwrap.setAttribute('aria-label', 'Remove section, keep its content');
+    unwrap.setAttribute('title', 'Unsection — keeps the content, removes the wrapper');
+    unwrap.textContent = '✕';
+    head.appendChild(unwrap);
+    return head;
+  }
+
+  /* The inverse of scratchMakeSection(): dissolves the wrapper and the header, leaving the content
+     exactly where it was in the flow — expanded first if it was minimized, or its own children
+     would vanish along with a section nobody meant to delete. No confirm and no onScratchInput()/
+     focus of its own: it's the mechanism, called both by a deliberate click (which asks first) and
+     by the Backspace guard below (which doesn't need to — unwrapping loses nothing). */
+  function doUnwrapScratchSection(sec){
+    const surf = el('scratchText');
+    if(!surf || !sec || !sec.parentNode) return;
+    const head = sec.querySelector(':scope > .scratch-section-head');
+    if(head) head.remove();
+    // the hidden-because-it's-the-title child must not stay hidden once there's no header showing
+    // that title anymore
+    const src = sec.querySelector(':scope > .scratch-section-titlesrc');
+    if(src) src.classList.remove('scratch-section-titlesrc');
+    sec.removeAttribute('data-collapsed');
+    const parent = sec.parentNode;
+    while(sec.firstChild) parent.insertBefore(sec.firstChild, sec);
+    parent.removeChild(sec);
+  }
+
+  // ✕ is one click with no undo once the debounced save fires, the same reasoning
+  // deleteScratchPage() confirms on — so it asks too, by name, before it acts.
+  function unwrapScratchSection(sec){
+    if(!sec || !sec.parentNode) return;
+    if(!window.confirm('Remove the "' + scratchSectionTitle(sec) + '" section? Its content stays on the page, only the section itself goes.')) return;
+    doUnwrapScratchSection(sec);
+    onScratchInput();
+    focusScratchSurface();
+  }
+
+  /* A minimized section's body is display:none, so there is nothing FOR the caret to step into at
+     its edge — Backspace/Delete there doesn't merge into hidden content the way it would into a
+     visible paragraph, it deletes the block outright, silently. That's the bug: real content loss
+     with no warning, from a key everybody rests a finger on. The fix DEFAULTS to unsectioning
+     rather than deleting: doUnwrapScratchSection() drops the wrapper and leaves every bit of the
+     section's content sitting in the flow where it was, so there is nothing to lose and therefore
+     nothing to confirm — unlike ✕, which really does remove something (the section identity itself,
+     silently, is not nothing to a section someone meant to keep minimized) and asks first. An
+     EXPANDED section is exempt from all of this, because it has visible content for the caret to
+     land in and Backspace there is already the ordinary, safe, undo-able edit it always was. */
+  /* Is a minimized section sitting immediately on the other side of the caret? Answered by
+     MEASURING THE GAP between the two, not by walking the tree — which is what the first two
+     attempts at this got wrong, twice, for three separate structural reasons:
+       - a section is not necessarily a child of the surface. scratchMakeSection() inserts at the
+         selection, so it can land inside whatever block held the selected line, and a walk up to
+         surface level then returns an ancestor that CONTAINS the section rather than one beside it;
+       - the node next to it is often a whitespace text node, not the element, since the sanitizer
+         re-creates every text node verbatim on the way back in, so an Element-only sibling lookup
+         finds nothing;
+       - the caret's own block may be nested to any depth for the same reason.
+     A Range from the section's edge to the caret answers all three at once and asks the only
+     question that actually matters: is there anything between them? Depth, node types and
+     whitespace all stop mattering, because emptiness is emptiness however it's spelled.
+     `br` disqualifies alongside img/input on purpose: a blank line between the caret and the
+     section IS something, and Backspace on it means "take the blank line out", not "reach past it
+     and unsection the thing two rows up". */
+  function scratchCollapsedSectionAtCaret(r, dir){
+    const surf = el('scratchText');
+    if(!surf) return null;
+    const secs = surf.querySelectorAll('.scratch-section[data-collapsed="1"]');
+    for(let i = 0; i < secs.length; i++){
+      const sec = secs[i];
+      /* Which side of the caret is it on? Compared as BOUNDARY POINTS via comparePoint(), never as
+         nodes via compareDocumentPosition(): a caret is a container+offset pair, not a node, and
+         comparing its container alone is wrong in the single most common shape there is — a caret
+         sitting directly in the surface beside a block-level section. The surface is that section's
+         ANCESTOR, so compareDocumentPosition reports CONTAINS|PRECEDING and never FOLLOWING, and an
+         ordering test built on it skips the very section the caret is resting against. comparePoint
+         returns -1/0/1 for a point before/inside/after the section's own span, which is exactly the
+         question, and 0 (the caret is within the section) correctly falls through both branches. */
+      const secR = document.createRange();
+      let side;
+      try{
+        secR.selectNode(sec);
+        side = secR.comparePoint(r.startContainer, r.startOffset);
+      }catch(err){ continue; }
+      if(dir === -1 ? side !== 1 : side !== -1) continue;
+      const gap = document.createRange();
+      try{
+        if(dir === -1){ gap.setStartAfter(sec); gap.setEnd(r.startContainer, r.startOffset); }
+        else { gap.setStart(r.startContainer, r.startOffset); gap.setEndBefore(sec); }
+      }catch(err){ continue; }
+      if(gap.toString() !== '') continue;                          // real text in the way
+      if(gap.cloneContents().querySelector('img, input, br')) continue; // a photo, a tick, a blank line
+      return sec;
+    }
+    return null;
+  }
+
+  /* A one-shot undo for the Backspace/Delete guard specifically — NOT a ride on the browser's own
+     undo stack, which is what execCommand() is for elsewhere in this file (see scratchExec()'s own
+     comment). That stack only knows about edits made through execCommand; doUnwrapScratchSection()
+     is a plain DOM splice, so Ctrl+Z would never see it and would instead undo whatever unrelated
+     typing happens to be sitting on top of the browser's buffer — confusing at best.
+     What's captured is the section's LIVE CHILD NODES themselves (not a re-parsed HTML clone), so
+     restoring is exact and loses nothing an HTML round-trip could: a checkbox's checked state, an
+     image mid-resize, anything. Overwritten by the next guarded unwrap and cleared whenever the
+     page underneath it changes (syncScratchSurface()) — restoring into a node whose parent no
+     longer exists in the live document would be nonsense, so scratchUndoSectionUnwrap() also
+     revalidates every node's parentage right before acting, in case ordinary typing moved things
+     around in between. */
+  let scratchSectionUndo = null;
+
+  function scratchCaptureSectionUndo(sec){
+    const kids = [];
+    for(let n = sec.firstChild; n; n = n.nextSibling){
+      if(n.nodeType === 1 && n.classList && n.classList.contains('scratch-section-head')) continue;
+      kids.push(n);
+    }
+    if(!kids.length){ scratchSectionUndo = null; return; }
+    scratchSectionUndo = {
+      parent: sec.parentNode,
+      collapsed: sec.getAttribute('data-collapsed') === '1',
+      sid: sec.getAttribute('data-sid') || '',
+      kids: kids
+    };
+  }
+
+  function scratchUndoSectionUnwrap(){
+    const u = scratchSectionUndo;
+    if(!u || !u.parent) return false;
+    for(let i=0; i<u.kids.length; i++){
+      if(!u.kids[i] || u.kids[i].parentNode !== u.parent) return false; // moved since — refuse rather than guess
+    }
+    scratchSectionUndo = null;
+    const div = document.createElement('div');
+    div.className = 'scratch-section';
+    if(u.sid) div.setAttribute('data-sid', u.sid);
+    if(u.collapsed) div.setAttribute('data-collapsed', '1');
+    u.parent.insertBefore(div, u.kids[0]);
+    for(let i=0; i<u.kids.length; i++) div.appendChild(u.kids[i]); // same nodes, back in their own wrapper
+    decorateScratchSections(el('scratchText'));
+    // restoring a MINIMIZED section wraps hidden content back around nodes the caret may well be
+    // sitting in — the same trap minimizing by hand sets, reached a different way
+    scratchEjectCaretFromMinimized();
+    onScratchInput();
+    focusScratchSurface();
+    return true;
+  }
+
+  function scratchMaybeGuardSectionDelete(e){
+    if(e.key !== 'Backspace' && e.key !== 'Delete') return false;
+    const sel = window.getSelection();
+    if(!sel || !sel.rangeCount) return false;
+    const r = sel.getRangeAt(0);
+    const surf = el('scratchText');
+    if(!surf || !surf.contains(r.startContainer)) return false;
+    if(r.collapsed){
+      const sec = scratchCollapsedSectionAtCaret(r, e.key === 'Backspace' ? -1 : 1);
+      if(!sec) return false;
+      e.preventDefault();
+      if(!window.confirm('Ungroup this section? The content stays on the page — press Ctrl+Z right after if that wasn’t what you meant.')) return true;
+      scratchCaptureSectionUndo(sec);
+      doUnwrapScratchSection(sec);
+      onScratchInput();
+      return true;
+    }
+    // A non-collapsed selection that touches a minimized section anywhere along it — the same risk,
+    // whether the section sits wholly inside the selection or only its edge does. Every touched
+    // section is unwrapped and the key stops there: it does NOT go on to delete the rest of the
+    // selection, since "unsection, not delete" is the point, not "unsection, then delete anyway."
+    const secs = surf.querySelectorAll('.scratch-section[data-collapsed="1"]');
+    const hits = [];
+    for(let i=0; i<secs.length; i++) if(r.intersectsNode(secs[i])) hits.push(secs[i]);
+    if(!hits.length) return false;
+    e.preventDefault();
+    const label = hits.length === 1 ? 'this section' : ('these ' + hits.length + ' sections');
+    if(!window.confirm('Ungroup ' + label + '? The content stays on the page — press Ctrl+Z right after if that wasn’t what you meant.')) return true;
+    // Only the LAST one is kept for undo — a single Ctrl+Z restoring several at once would need a
+    // multi-step undo this guard doesn't otherwise need, for a case (backspacing over more than one
+    // minimized section in one go) rare enough not to earn it.
+    for(let i=0; i<hits.length; i++){
+      if(i === hits.length - 1) scratchCaptureSectionUndo(hits[i]);
+      doUnwrapScratchSection(hits[i]);
+    }
+    onScratchInput();
+    return true;
+  }
+
+  // Idempotent and cheap-ish (a querySelectorAll per call), so it's safe to call after every
+  // innerHTML replacement — reload, page turn, paste, or a fresh section just created.
+  function decorateScratchSections(root){
+    const secs = root.querySelectorAll('.scratch-section');
+    for(let i=0; i<secs.length; i++){
+      const sec = secs[i];
+      if(!sec.getAttribute('data-sid')) sec.setAttribute('data-sid', scratchSectionId());
+      const first = sec.firstElementChild;
+      const head = (first && first.classList.contains('scratch-section-head')) ? first : null;
+      if(!head) sec.insertBefore(buildScratchSectionHead(sec), sec.firstChild);
+      updateScratchSectionHead(sec);
+    }
+  }
+
+  /* Wraps the current selection. Selections that already cross a section boundary, or start
+     inside one, are refused rather than half-handled — nesting sections would need the sanitizer,
+     the title deriver and the move logic to all understand depth, for a case ("a section inside a
+     section") nobody asked for. */
+  function scratchMakeSection(){
+    const surf = el('scratchText');
+    const sel = window.getSelection();
+    if(!surf || !sel || !sel.rangeCount || !document.activeElement || !surf.contains(document.activeElement)) return;
+    const r = sel.getRangeAt(0);
+    if(r.collapsed || !surf.contains(r.commonAncestorContainer)) return;
+    let anc = r.commonAncestorContainer;
+    if(anc.nodeType === 3) anc = anc.parentNode;
+    if(anc.closest && anc.closest('.scratch-section')) return;
+    const div = document.createElement('div');
+    div.className = 'scratch-section';
+    div.setAttribute('data-sid', scratchSectionId());
+    div.appendChild(r.extractContents());
+    r.insertNode(div);
+    sel.removeAllRanges();
+    decorateScratchSections(surf);
+    onScratchInput();
+    focusScratchSurface();
+  }
+
+  /* Find has to see through a minimized section — scratchFindAll() reads the page's text
+     regardless of what's on screen, so a hit can land inside a section whose body is display:none.
+     Walked from the hit's own range rather than queried up front, so it also covers a section
+     nested inside another's title text (the search text, not the DOM, decides what "around" the
+     hit means). Expanding is a real edit — same as clicking ▾ by hand — so it's saved the same way. */
+  function expandScratchSectionsAround(node){
+    const surf = el('scratchText');
+    if(!surf || !node) return;
+    let n = node.nodeType === 3 ? node.parentNode : node;
+    let changed = false;
+    while(n && n !== surf){
+      if(n.nodeType === 1 && n.classList && n.classList.contains('scratch-section') && n.getAttribute('data-collapsed') === '1'){
+        n.removeAttribute('data-collapsed');
+        updateScratchSectionHead(n);
+        changed = true;
+      }
+      n = n.parentNode;
+    }
+    if(changed) onScratchInput();
+  }
+
+  /* ---------- dragging a section within the page ----------
+     Pointer events, not HTML5 drag-and-drop, for the same reason the page sheet and the floating
+     image already use them: dragstart/dragover never fire on touch. A small movement threshold is
+     what tells a drag apart from the plain click that toggles collapse — mirrored on the way out by
+     a short window that swallows the trailing click, the same trick scratchImgMoveAt plays for a
+     dragged image. Capture goes on the SURFACE rather than the header: decorateScratchSections()
+     never re-renders mid-drag (unlike the page sheet's rows, which are rebuilt on every crossing),
+     so this is simpler than that one — the header element never dies under the pointer — but
+     capturing on the larger, stationary container is still the safer target if the drag ever
+     carries the pointer outside the header's own small box. */
+  let scratchSecDragCandidate = null, scratchSecDragEl = null, scratchSecDragPointerId = null;
+  let scratchSecDragStartX = 0, scratchSecDragStartY = 0, scratchSecDragMoved = false;
+  let scratchSecDragAt = 0; // when a drag last ENDED, so the trailing click can be swallowed
+
+  // Which top-level child of the surface the dragged section should land BEFORE, by vertical
+  // midpoint — sheetIndexAt()'s test, generalised from array rows to arbitrary sibling nodes,
+  // since a section can sit beside plain paragraphs and images rather than only other sections.
+  function scratchSecDropTarget(clientY){
+    const surf = el('scratchText');
+    if(!surf) return null;
+    const kids = surf.children;
+    for(let i=0; i<kids.length; i++){
+      if(kids[i] === scratchSecDragEl) continue;
+      const r = kids[i].getBoundingClientRect();
+      if(clientY < r.top + r.height / 2) return kids[i];
+    }
+    return null; // past every sibling: the end of the page
+  }
+
+  function scratchSecDragTo(clientY){
+    const surf = el('scratchText');
+    if(!surf || !scratchSecDragEl) return;
+    const target = scratchSecDropTarget(clientY);
+    if(target === scratchSecDragEl || target === scratchSecDragEl.nextSibling) return; // already there
+    if(target) surf.insertBefore(scratchSecDragEl, target); else surf.appendChild(scratchSecDragEl);
+  }
+
+  function endScratchSecDrag(){
+    if(!scratchSecDragCandidate) return;
+    const moved = scratchSecDragMoved;
+    if(scratchSecDragEl) scratchSecDragEl.classList.remove('is-dragging');
+    const surf = el('scratchText');
+    try{ if(surf && scratchSecDragPointerId !== null) surf.releasePointerCapture(scratchSecDragPointerId); }catch(err){}
+    scratchSecDragCandidate = null; scratchSecDragEl = null; scratchSecDragPointerId = null; scratchSecDragMoved = false;
+    if(moved){
+      scratchSecDragAt = Date.now();
+      onScratchInput();
+    }
+  }
+
+  // 'nav': the ordinary page list. 'move': the same sheet repurposed to pick a section's new home
+  // — same visual object (a list of pages you jump to), so it costs nothing new on screen, only a
+  // branch in what a row-click does. Neither rides state.scratch; which panel is up, and what a
+  // move is currently targeting, isn't a setting.
+  let scratchSheetMode = 'nav';
+  let scratchMoveSectionSid = null;
+
+  function openScratchSectionMovePicker(sec){
+    const sid = sec && sec.getAttribute('data-sid');
+    if(!sid) return;
+    commitScratchSurface(); // the section about to be picked up must exist in state, not just the live DOM
+    closeScratchHelp();
+    scratchSheetMode = 'move';
+    scratchMoveSectionSid = sid;
+    scratchSheetOn = true;
+    renderScratchPageSheet();
+    const btn = el('scratchPageListBtn');
+    if(btn) btn.setAttribute('aria-expanded', 'true');
+  }
+
+  // Detaches the section from the page it's on (leaving that page saved without it) and appends
+  // its sanitized markup onto the TARGET page's stored html directly — the target usually isn't
+  // the live surface, so this edits the string rather than the DOM, the same way a page reorder
+  // edits the array rather than anything on screen.
+  function moveScratchSectionToPage(sid, targetIndex){
+    ensureScratchPages();
+    const target = state.scratch.pages[targetIndex];
+    if(!target || target.id === state.scratch.activeId) return;
+    const surf = el('scratchText');
+    const sec = surf && surf.querySelector('.scratch-section[data-sid="' + sid.replace(/"/g, '') + '"]');
+    if(!sec) return;
+    const clone = sec.cloneNode(true);
+    const head = clone.querySelector('.scratch-section-head');
+    if(head) head.remove();
+    const html = sanitizeScratchHtml(clone.outerHTML);
+    sec.remove();
+    onScratchInput(); // persists the source page without the section
+    target.html = (target.html || '') + html;
+    target.updatedAt = Date.now();
+    state.scratch.updatedAt = target.updatedAt;
+    scratchPageCache.delete(target.id); // the cached title/output is now stale
+    renderScratchPages();
+    setScratchStatus('dirty');
+    debouncedSaveScratch();
   }
 
   /* ---------- pages ----------
@@ -788,6 +1238,9 @@
     ensureScratchPages();
     const next = scratchActivePage().html || '';
     if(force || surf.innerHTML !== next) surf.innerHTML = next;
+    // whatever the guard's one-shot Ctrl+Z was holding is about to be replaced wholesale
+    scratchSectionUndo = null;
+    decorateScratchSections(surf);
     markScratchEmpty();
     /* Free-floating images carry their position as data-x/data-y percentages+pixels, never as the
        inline left/top the browser lays out from (that pair is stripped by the sanitizer on the way
@@ -1254,6 +1707,8 @@
     ['touch', 'press and hold an image',         'lift it out of the text'],
     ['',      'drag an image’s corner',          'resize it'],
     ['',      'click an image',                  'crop it, or cut its background out'],
+    ['',      'select text, then ▤ in Aa',       'wrap it in a section — ▾ minimizes it, ⇥ moves it, ✕ unwraps it'],
+    ['',      'drag a section’s header',         'reorder it on the page'],
     ['',      'click the page count',            'every page, drag to reorder']
     // no `esc` row: the footer says "esc to exit" permanently, and only on the same screens where
     // these keyboard rows are shown at all
@@ -1312,6 +1767,8 @@
     if(!sheet) return;
     if(!scratchSheetOn){ sheet.style.display = 'none'; sheet.innerHTML = ''; return; }
     ensureScratchPages();
+    sheet.classList.toggle('is-move', scratchSheetMode === 'move');
+    sheet.setAttribute('aria-label', scratchSheetMode === 'move' ? 'Move section to a page' : 'Pages');
     const pages = state.scratch.pages, active = scratchActiveIndex();
     let h = '';
     for(let i=0; i<pages.length; i++){
@@ -1344,6 +1801,8 @@
 
   function closeScratchPageSheet(){
     scratchSheetOn = false;
+    scratchSheetMode = 'nav';
+    scratchMoveSectionSid = null;
     scratchSheetDragId = null; scratchSheetFrom = -1; scratchSheetMoved = false;
     const sheet = el('scratchPageSheet');
     if(sheet){ sheet.style.display = 'none'; sheet.innerHTML = ''; }
@@ -2461,6 +2920,7 @@
     if(moved) scratchGoTo(hit.page, { keepFocus: true });
     const land = ()=>{
       const range = scratchPaintHits();
+      expandScratchSectionsAround(range && range.startContainer);
       scratchScrollToHit(range, moved);
       if(opts && opts.focus) placeScratchCaretAtHit(range);
       renderScratchFindPanel();
@@ -2812,6 +3272,7 @@
       const b = e.target && e.target.closest && e.target.closest('.scratch-fmt');
       if(!b) return;
       if(b.getAttribute('data-act') === 'clear'){ clearScratchFormat(); return; }
+      if(b.getAttribute('data-act') === 'section'){ scratchMakeSection(); return; }
       const cmd = b.getAttribute('data-cmd');
       if(cmd) scratchFmtCmd(cmd);
     });
@@ -2836,13 +3297,57 @@
     });
   }
 
+  /* The caret must never sit INSIDE a minimized section's body — that hidden, invisible location is
+     exactly where the disappearing-section bug lived: Backspace/Delete there wasn't a boundary case
+     the guard above could catch (it only watches the caret's OWN edge against a section beside it),
+     it was ordinary in-place editing of content nobody could see happening. A click can't land
+     there (display:none isn't hit-testable), but the arrow keys can walk a caret straight into it
+     from an adjacent line, same as any other hidden-content quirk of contenteditable. So it's
+     ejected the instant it happens, to just past the section — same "unsection, don't lose
+     anything" posture the Backspace guard takes, except here there is nothing to unsection: the
+     section stays exactly as minimized as it was, only the caret moves.
+     The header is explicitly exempt — contenteditable="false" already keeps a caret from ever
+     landing there, but if it somehow did, ejecting it would just be wrong: not hidden, not a bug.
+
+     Two ways in, which is why this is called from two places rather than only from selectionchange:
+     the caret can WALK into a section that was already minimized (arrow keys, selectionchange
+     fires), or the section can be MINIMIZED AROUND a caret that was already sitting in it (the ▾
+     click, where the selection never moves and so selectionchange never fires at all — that second
+     one is the case where typing kept going into the hidden body until you clicked out by hand).
+
+     Deliberately does NOT require document.activeElement to be the surface. Clicking ▾ is a click
+     on a <button> inside the editing host, and whether that moves DOM focus off the surface is an
+     engine-by-engine detail — but the SELECTION is trapped either way, so the meaningful
+     precondition is that the caret is inside the surface, which is what's checked. Setting a
+     Selection doesn't move focus, so relaxing this can't steal it from anywhere else. */
+  function scratchEjectCaretFromMinimized(){
+    const surf = el('scratchText');
+    if(!surf) return;
+    const sel = window.getSelection();
+    if(!sel || !sel.rangeCount) return;
+    const r = sel.getRangeAt(0);
+    if(!r.collapsed || !surf.contains(r.startContainer)) return;
+    const n = r.startContainer.nodeType === 3 ? r.startContainer.parentNode : r.startContainer;
+    if(!n || !n.closest) return;
+    if(n.closest('.scratch-section-head')) return;
+    const sec = n.closest('.scratch-section[data-collapsed="1"]');
+    if(!sec) return;
+    const out = document.createRange();
+    out.setStartAfter(sec);
+    out.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(out); // re-fires selectionchange; the check above finds nothing the second time
+  }
+
   /* selectionchange is document-wide and fires constantly, so it bails immediately unless this page
-     is open. It does two jobs: keeping scratchSavedRange fresh for the controls that lose focus,
-     and keeping the bar's own on/off state honest as the caret moves. */
+     is open. It does three jobs: keeping scratchSavedRange fresh for the controls that lose focus,
+     keeping the bar's own on/off state honest as the caret moves, and keeping the caret out of any
+     minimized section's hidden body. */
   document.addEventListener('selectionchange', ()=>{
     if(!scratchOpen) return;
     rememberScratchRange();
     scheduleScratchFormatState();
+    scratchEjectCaretFromMinimized();
   });
 
   initScratchFormatBar();
@@ -3531,6 +4036,12 @@
       const go = e.target && e.target.closest && e.target.closest('.scratch-sheet-go');
       if(!go) return;
       const i = parseInt(go.getAttribute('data-i'), 10);
+      if(scratchSheetMode === 'move'){
+        const sid = scratchMoveSectionSid;
+        closeScratchPageSheet();
+        if(!isNaN(i) && sid) moveScratchSectionToPage(sid, i);
+        return;
+      }
       closeScratchPageSheet();
       if(!isNaN(i)) scratchGoTo(i);
     });
@@ -3549,6 +4060,7 @@
        reason: every crossing re-renders the list's innerHTML, so a captured grip would be destroyed
        mid-gesture and the drag would die after one step. The sheet element survives every render. */
     sheet.addEventListener('pointerdown', e=>{
+      if(scratchSheetMode === 'move') return; // picking a target, not reordering
       const grip = e.target && e.target.closest && e.target.closest('.scratch-sheet-grip');
       if(!grip) return;
       const row = grip.closest('.scratch-sheet-row');
@@ -3626,10 +4138,19 @@
   });
 
   scratchSurface.addEventListener('keydown', e=>{
+    if(scratchMaybeGuardSectionDelete(e)) return;
     if((e.ctrlKey || e.metaKey) && !e.altKey){
       const k = e.key.toLowerCase();
       if(k === 'k'){ e.preventDefault(); promptScratchLink(); return; }
       if(e.shiftKey && k === 'c'){ e.preventDefault(); insertScratchTick(false); onScratchInput(); return; }
+      /* One shot, and consumed on the way out: this only ever answers "put back the section that
+         guard just ungrouped", never a general redo/undo for anything else typed since — that's
+         still the browser's own Ctrl+Z, on its own stack, untouched below. */
+      if(!e.shiftKey && k === 'z' && scratchSectionUndo){
+        e.preventDefault();
+        scratchUndoSectionUnwrap();
+        return;
+      }
     }
     if(e.key === ' '){
       if(maybeScratchTickShorthand()){ e.preventDefault(); onScratchInput(); return; }
@@ -3638,6 +4159,37 @@
     }
     if(e.key === 'Enter') maybeScratchAutolink();
   });
+
+  /* Pointerdown starts only from the header and never from one of its own buttons — ▾/⇥/✕ must
+     keep acting on a plain click, not on the first pixel of an aborted drag. Nothing happens yet;
+     scratchSecDragEl is only set once movement clears the threshold, in pointermove, which is also
+     what lets a tap-and-release still fall through to the click handler's toggle below. */
+  scratchSurface.addEventListener('pointerdown', e=>{
+    const head = e.target && e.target.closest && e.target.closest('.scratch-section-head');
+    if(!head) return;
+    if(e.target.closest && e.target.closest('.scratch-section-btn')) return;
+    const sec = head.closest('.scratch-section');
+    if(!sec) return;
+    scratchSecDragCandidate = sec;
+    scratchSecDragStartX = e.clientX; scratchSecDragStartY = e.clientY;
+    scratchSecDragMoved = false;
+    scratchSecDragPointerId = e.pointerId;
+  });
+
+  scratchSurface.addEventListener('pointermove', e=>{
+    if(!scratchSecDragCandidate || e.pointerId !== scratchSecDragPointerId) return;
+    if(!scratchSecDragMoved){
+      if(Math.abs(e.clientX - scratchSecDragStartX) < 6 && Math.abs(e.clientY - scratchSecDragStartY) < 6) return;
+      scratchSecDragMoved = true;
+      scratchSecDragEl = scratchSecDragCandidate;
+      scratchSecDragEl.classList.add('is-dragging');
+      try{ scratchSurface.setPointerCapture(e.pointerId); }catch(err){}
+    }
+    e.preventDefault();
+    scratchSecDragTo(e.clientY);
+  });
+  scratchSurface.addEventListener('pointerup', endScratchSecDrag);
+  scratchSurface.addEventListener('pointercancel', endScratchSecDrag);
 
   scratchSurface.addEventListener('click', e=>{
     const t = e.target;
@@ -3650,6 +4202,39 @@
        above every branch below so it happens whatever was clicked — the panel is just as much in
        the way when the thing you reached for was an image or a tickbox. */
     if(scratchFindOn) closeScratchFind(true);
+    const secMove = t.closest('.scratch-section-move');
+    if(secMove){
+      const sec = secMove.closest('.scratch-section');
+      if(sec) openScratchSectionMovePicker(sec);
+      return;
+    }
+    const secUn = t.closest('.scratch-section-unwrap');
+    if(secUn){
+      const sec = secUn.closest('.scratch-section');
+      if(sec) unwrapScratchSection(sec);
+      return;
+    }
+    /* Anything else in the header — the ▾ button itself, or just the title/whitespace beside it —
+       toggles. Checked after move/unwrap specifically so those two keep their own behaviour rather
+       than being swallowed by the header's own catch-all. The drag guard sits here rather than at
+       the top of the function because only THIS gesture — the toggle — shares a trigger with the
+       drag; move/unwrap only ever fire from their own buttons, which pointerdown above never arms. */
+    const secHead = t.closest('.scratch-section-head');
+    if(secHead){
+      if(Date.now() - scratchSecDragAt < 400) return; // that click was the tail of a drag, not a choice
+      const sec = secHead.closest('.scratch-section');
+      if(sec){
+        if(sec.getAttribute('data-collapsed') === '1') sec.removeAttribute('data-collapsed');
+        else sec.setAttribute('data-collapsed', '1');
+        updateScratchSectionHead(sec);
+        // minimizing AROUND a caret that was already inside it: the selection never moved, so
+        // selectionchange never fires and the caret would stay in the hidden body, quietly taking
+        // everything typed next
+        scratchEjectCaretFromMinimized();
+        onScratchInput();
+      }
+      return;
+    }
     const box = t.closest(SCRATCH_TICK_SEL);
     if(box){
       /* Let the browser's own activation do the toggling, and mirror the result into the

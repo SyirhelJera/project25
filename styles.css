@@ -2844,6 +2844,19 @@
   .fin-net-val.down{color:var(--fin-neg);}
   .fin-net-val.flat{color:var(--text);}
 
+  /* transaction search — same panel furniture as .fin-flow so it reads as part of the overview
+     strip, but stacked: the results list underneath is the point of the control. */
+  .fin-search{background:var(--surface);border-radius:var(--fin-r-panel);box-shadow:var(--fin-shadow);padding:10px 12px;margin-bottom:18px;}
+  .fin-search-bar{display:flex;align-items:center;gap:8px;}
+  .fin-search-bar input{flex:1;min-width:0;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:8px 11px;font-size:13.5px;font-family:inherit;}
+  .fin-search-bar input:focus{outline:2px solid var(--accent);outline-offset:1px;}
+  .fin-search-summary{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:9px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);}
+  .fin-search-fig{font-family:'Manrope',sans-serif;font-weight:800;font-size:14px;letter-spacing:0;text-transform:none;font-variant-numeric:tabular-nums;color:var(--text);}
+  .fin-search-fig.pos{color:var(--fin-pos);}
+  .fin-search-fig.neg{color:var(--fin-neg);}
+  .fin-search-results{max-height:340px;overflow-y:auto;}
+  .fin-search-results:not(:empty){margin-top:6px;}
+
   /* ---- shared tab furniture ---- */
   /* a group heading that carries its own subtotal, so the list answers "how much is in savings?"
      without the user adding the cards up. Finance's own class, not .finance-group-lbl, because

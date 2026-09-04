@@ -51,6 +51,7 @@
     renderFinanceSubs();
     renderFinanceConverter();
     renderMoneyGoals();
+    renderTxSearch();
   }
 
   /* ---- net worth trend chart: line chart over state.finance.netWorthHistory, zoomable ----
@@ -478,6 +479,86 @@
         : dir === 'up' ? 'You kept ' + money + ' of what came in this period.'
         : money + ' more went out than came in this period.';
     }
+  }
+
+  /* ---- transaction search: "how much did I spend on McDonalds?" ----------------------------
+     Spans every account and all of history, deliberately ignoring the period stepper above it —
+     the question this answers is a lifetime one, and a search that silently only looked at this
+     month would under-report by an amount the user has no way to notice. Transfers are dropped
+     for the same reason the category breakdown drops them (isTransferTx: moving your own money
+     between accounts is neither spending nor earning), so the totals here agree with the tiles.
+     The query is a module variable, never state — a search box is a lens, not a saved setting
+     (the VOD tally's rule). */
+  let txSearchQuery = '';
+  const TX_SEARCH_CAP = 200;
+
+  // every term must appear somewhere in note/category/account, so "mcdo jan" narrows rather than
+  // widening — the substring match is what makes a partial brand name work
+  function txSearchMatches(hay, terms){ return terms.every(t=> hay.indexOf(t) !== -1); }
+
+  function renderTxSearch(){
+    const input = el('txSearchInput');
+    const summary = el('txSearchSummary'), listEl = el('txSearchResults'), clearBtn = el('txSearchClearBtn');
+    if(!input || !summary || !listEl) return;
+    if(clearBtn) clearBtn.style.display = txSearchQuery ? '' : 'none';
+    const terms = txSearchQuery.toLowerCase().split(/\s+/).filter(Boolean);
+    if(!terms.length){ summary.style.display = 'none'; listEl.innerHTML = ''; return; }
+
+    const nwCcy = state.profile.netWorthCurrency || 'USD';
+    const rows = [];
+    let outUsd = 0, inUsd = 0;
+    (state.finance.accounts||[]).forEach(a=>{
+      (a.transactions||[]).forEach(tx=>{
+        if(isTransferTx(tx)) return;
+        const hay = ((tx.note||'') + ' ' + (tx.category||'Other') + ' ' + (a.name||'')).toLowerCase();
+        if(!txSearchMatches(hay, terms)) return;
+        const usd = convertAmt(Math.abs(tx.amount), a.currency||'USD', 'USD');
+        if(tx.amount >= 0) inUsd += usd; else outUsd += usd;
+        rows.push({ tx, account: a });
+      });
+    });
+    rows.sort((x,y)=> y.tx.createdAt - x.tx.createdAt);
+
+    summary.style.display = '';
+    if(!rows.length){
+      summary.innerHTML = '<span class="fin-search-count">No matches for &ldquo;'+escapeHtml(txSearchQuery)+'&rdquo;</span>';
+      listEl.innerHTML = '';
+      return;
+    }
+    const parts = ['<span class="fin-search-count">'+rows.length+' transaction'+(rows.length===1?'':'s')+'</span>'];
+    // both directions are shown when both exist — a keyword like a shop name is usually pure
+    // spending, but a refund on it would otherwise vanish from a total called "spent"
+    if(outUsd > 0) parts.push('<span class="fin-search-fig neg">Out '+escapeHtml(fmtMoney(convertAmt(outUsd,'USD',nwCcy), nwCcy))+'</span>');
+    if(inUsd > 0) parts.push('<span class="fin-search-fig pos">In '+escapeHtml(fmtMoney(convertAmt(inUsd,'USD',nwCcy), nwCcy))+'</span>');
+    if(outUsd > 0 && inUsd > 0){
+      const netUsd = outUsd - inUsd;
+      parts.push('<span class="fin-search-fig">Net '+escapeHtml(fmtMoney(convertAmt(Math.abs(netUsd),'USD',nwCcy), nwCcy))+(netUsd>=0?' out':' in')+'</span>');
+    }
+    summary.innerHTML = parts.join('');
+
+    const shown = rows.slice(0, TX_SEARCH_CAP);
+    listEl.innerHTML = shown.map(({tx, account})=>{
+      const isPos = tx.amount >= 0;
+      return '<div class="tx-row">'
+        + '<span class="tx-date">'+fmtDate(tx.createdAt)+'</span>'
+        + '<span class="tx-note">'+escapeHtml(tx.note||'')
+          + ' <span class="chip">'+escapeHtml(account.name)+'</span>'
+          + ' <span class="chip">'+escapeHtml(tx.category||'Other')+'</span></span>'
+        + '<span class="tx-amt '+(isPos?'positive':'negative')+'">'+(isPos?'+':'-')+fmtMoney(Math.abs(tx.amount), account.currency||'USD')+'</span>'
+      + '</div>';
+    }).join('');
+    if(rows.length > shown.length){
+      listEl.insertAdjacentHTML('beforeend', '<div class="fin-none">Showing the '+shown.length+' most recent of '+rows.length+' — the totals above cover all of them.</div>');
+    }
+  }
+
+  if(el('txSearchInput')){
+    el('txSearchInput').addEventListener('input', e=>{ txSearchQuery = e.target.value.trim(); renderTxSearch(); });
+  }
+  if(el('txSearchClearBtn')){
+    el('txSearchClearBtn').addEventListener('click', ()=>{
+      txSearchQuery = ''; el('txSearchInput').value = ''; renderTxSearch(); el('txSearchInput').focus();
+    });
   }
 
   /* ---- period breakdown modal — opened by clicking "Total Earnings/Spending This Period";

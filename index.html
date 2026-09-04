@@ -302,6 +302,19 @@
         </div>
         <div class="fin-seg" id="spendPeriodRow" role="group" aria-label="Period length"></div>
       </section>
+
+      <!-- TRANSACTION SEARCH — "how much have I spent on McDonalds?". Searches every account's
+           transaction notes (and categories) across all history, not just the period above, since
+           the question it answers is a lifetime one; transfers stay excluded exactly as they are
+           from the breakdown, because moving your own money is neither spending nor earning. -->
+      <section class="fin-search" aria-label="Search transactions">
+        <div class="fin-search-bar">
+          <input type="search" id="txSearchInput" placeholder="Search transactions — e.g. McDonalds" aria-label="Search transactions by note or category" autocomplete="off">
+          <button class="btn btn-ghost btn-sm" id="txSearchClearBtn" type="button" style="display:none;">Clear</button>
+        </div>
+        <div id="txSearchSummary" class="fin-search-summary" style="display:none;"></div>
+        <div id="txSearchResults" class="fin-search-results"></div>
+      </section>
     </div>
 
     <!-- ACCOUNTS -->

@@ -4141,30 +4141,39 @@
   function insertScratchTick(done){
     const surf = el('scratchText');
     if(!surf) return;
-    /* execCommand inserts at the current selection — but only when that selection is genuinely
-       inside THIS editable. When it isn't, browsers quietly append at the end of the element
-       instead, which is how a tick ends up beside the last line rather than the one you're on.
+    /* The insertion below acts on the current selection — but only when that selection is
+       genuinely inside THIS editable. When it isn't, there is no valid range to splice into,
+       which is how a tick ends up beside the last line rather than the one you're on.
        Put the caret somewhere real before asking. */
     const sel0 = window.getSelection();
     if(!(sel0 && sel0.rangeCount && surf.contains(sel0.getRangeAt(0).commonAncestorContainer))){
       surf.focus({ preventScroll:true });
       placeScratchCaretAtEnd(surf);
     }
-    const marker = 'sc' + uid();
-    scratchExec('insertHTML', '<span id="' + marker + '"></span>');
-    const slot = document.getElementById(marker);
-    if(!slot) return;
+    const sel = window.getSelection();
+    if(!sel || !sel.rangeCount) return;
+    /* Deliberately NOT execCommand('insertHTML') here. That command replaces a selection through
+       the browser's own paragraph-aware fragment logic, which is built for pasting multi-block
+       HTML \u2014 and mid-line (a non-collapsed selection sitting inside one text node, e.g. the "[]"
+       token the shorthand just selected), some browsers run that same logic and split the line's
+       remaining text into a new block, so anything after the tick got shoved to the next line.
+       Range.insertNode() is a plain DOM splice: it can only ever split the text node the caret is
+       in and insert siblings, never introduce a new block, so the rest of the line always stays
+       exactly where it was. */
+    const range = sel.getRangeAt(0);
+    range.deleteContents();
     const box = makeScratchTick(done);
     // a non-breaking space: a plain trailing space collapses at the end of a line, leaving the
     // caret jammed against the box with no gap to type into
     const sp = document.createTextNode('\u00A0');
-    slot.replaceWith(box, sp);
-    const sel = window.getSelection();
-    if(sel){
-      const r = document.createRange();
-      r.setStartAfter(sp); r.collapse(true);
-      sel.removeAllRanges(); sel.addRange(r);
-    }
+    const frag = document.createDocumentFragment();
+    frag.appendChild(box);
+    frag.appendChild(sp);
+    range.insertNode(frag);
+    range.setStartAfter(sp);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   // "[] " / "[x] " at the start of a line becomes a tickbox — the same shorthand the Notes bodies

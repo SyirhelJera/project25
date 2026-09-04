@@ -862,6 +862,22 @@
     try{ motivationTTS.speak(u); }catch(e){}
   }
 
+  // ElevenLabs answers a refusal with its own reason in the body (`detail.message` / `detail.status`),
+  // and the reasons are not interchangeable: a *scoped* key missing "Voices: read" or "Text to
+  // Speech" 401s exactly like a wrong key, and an exhausted quota reads as a failure of the key too.
+  // Reporting a flat "rejected the API key" for all three sends you off to regenerate a key that was
+  // never the problem, so the body is what gets shown and the status is only the fallback.
+  function elevenError(res){
+    return res.text().then(body=>{
+      let detail = null;
+      try{ detail = (JSON.parse(body) || {}).detail; }catch(e){}
+      const msg = detail && (detail.message || detail.status || (typeof detail === 'string' ? detail : ''));
+      if(msg) return new Error('ElevenLabs: ' + msg);
+      if(res.status === 401 || res.status === 403) return new Error('ElevenLabs rejected the API key');
+      return new Error('ElevenLabs error ' + res.status);
+    }, ()=> new Error('ElevenLabs error ' + res.status));
+  }
+
   function elevenAudioUrl(text){
     const cacheKey = elevenKey.slice(-6) + '|' + elevenVoiceId + '|' + text;
     const hit = elevenAudioCache.get(cacheKey);
@@ -871,7 +887,7 @@
       headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
       body: JSON.stringify({ text, model_id: ELEVEN_MODEL, voice_settings: { stability: 0.45, similarity_boost: 0.8 } })
     }).then(res=>{
-      if(!res.ok) throw new Error(res.status === 401 ? 'ElevenLabs rejected the API key' : 'ElevenLabs error ' + res.status);
+      if(!res.ok) return elevenError(res).then(e=>{ throw e; });
       return res.blob();
     }).then(blob=>{
       const url = URL.createObjectURL(blob);
@@ -920,7 +936,7 @@
     if(elevenVoices && elevenVoicesKey === elevenKey) return; // already have this account's list
     elevenLoading = true; elevenNote = 'Loading voices…'; renderMantraSpeechControls();
     fetch(ELEVEN_API + '/voices', { headers: { 'xi-api-key': elevenKey } })
-      .then(res=>{ if(!res.ok) throw new Error(res.status === 401 ? 'ElevenLabs rejected the API key' : 'ElevenLabs error ' + res.status); return res.json(); })
+      .then(res=>{ if(!res.ok) return elevenError(res).then(e=>{ throw e; }); return res.json(); })
       .then(data=>{
         elevenVoices = Array.isArray(data && data.voices) ? data.voices : [];
         elevenVoicesKey = elevenKey;

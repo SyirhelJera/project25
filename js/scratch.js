@@ -139,6 +139,21 @@
   const SCRATCH_FLOAT_Z = /^\d{1,3}$/;                // stacking order among the floats
   const SCRATCH_FLOAT_ZMAX = 999;
 
+  /* ---------- inline countdown timers ----------
+     A chip typed as "@30:00" (see the timer section further down). Same call as the width and the
+     float coordinates above, and for the same reason: the whole state of a countdown is three
+     small integers, so it rides as three data attributes with three tiny regexes rather than by
+     widening anything. data-dur is the length it was set to, data-end is the epoch ms it finishes
+     at WHILE RUNNING, data-left the seconds remaining while paused — which is what lets a running
+     timer survive a reload, a page switch and a closed tab without anything ticking in the
+     background: the wall clock does that for free.
+     The chip's CHILDREN — the digits, the icon, the reset glyph — are dropped here, exactly like a
+     section's header, because they are UI repainted four times a second and the surface's
+     innerHTML is the saved document. decorateScratchTimers() builds them back on the way in. */
+  const SCRATCH_TIMER_DUR = /^\d{1,6}$/;
+  const SCRATCH_TIMER_END = /^\d{10,16}$/;
+  const SCRATCH_TIMER_MAX = 359999;   // 99:59:59
+
   function safeScratchStyle(node){
     const src = node.style;
     if(!src || !src.length) return '';
@@ -157,6 +172,79 @@
     }
     return out.join(';');
   }
+  /* Is a background-color OPAQUE — i.e. does it paint a solid rectangle rather than tint what is
+     behind it? Used on the paste path only (see stripPastedScratchFills), and the answer is what
+     tells this page's own highlighter apart from the browser's copy serialization.
+     Every value in SCRATCH_HILITES is an rgba() well under full alpha, deliberately: the app has
+     four themes and a highlight has to composite against whichever one is on, which a solid colour
+     cannot do (the reasoning is written out beside that list). So a translucent background is
+     something a person picked in here; an opaque one is the page colour the text was copied from.
+     Reads NaN and anything unparseable as opaque — that is the safe way round, since the only cost
+     is dropping a fill on a paste, while the other way round is the bug this exists to fix. */
+  function scratchOpaqueBg(v){
+    const s = (v || '').trim().toLowerCase();
+    if(!s || s === 'transparent') return false;
+    // #rgba and #rrggbbaa carry their alpha in the last digit or two
+    let m = /^#([0-9a-f]{4}|[0-9a-f]{8})$/.exec(s);
+    if(m){
+      const hex = m[1];
+      const a = hex.length === 4 ? hex.slice(3).repeat(2) : hex.slice(6);
+      return parseInt(a, 16) >= 255;
+    }
+    // rgba()/hsla(), in both the comma form and the modern slash form
+    m = /^(?:rgba?|hsla?)\(([^)]*)\)$/.exec(s);
+    if(m){
+      const slash = m[1].split('/');
+      const a = slash.length > 1 ? slash[1] : m[1].split(',')[3];
+      if(a === undefined) return true;                 // three components, no alpha: opaque
+      const t = a.trim();
+      const n = /%$/.test(t) ? parseFloat(t) / 100 : parseFloat(t);
+      return !(n < 1);
+    }
+    return true;   // a named colour or a plain #rgb/#rrggbb
+  }
+
+  /* PASTE ONLY, and for the same reason the whitespace pass above is paste-only: this undoes
+     something the BROWSER added, not something the user wrote.
+
+     Copying inside a contenteditable puts an HTML fragment on the clipboard in which the selection
+     is wrapped in a span carrying its COMPUTED style — including the background it happened to be
+     sitting on. Paste that anywhere the page colour is different and the rectangle becomes
+     visible: the reported case is pasting ordinary page text into a .scratch-section, which has a
+     fill of its own, so the old page colour lands on top of it as a solid block behind the words.
+     On a dark theme that block is near-black, which is what it looks like — a black highlight
+     nobody applied.
+
+     Only OPAQUE fills go. A real highlight from this page's own control is translucent by design
+     and survives a copy/paste unchanged, which is the behaviour anyone would expect from it.
+     Running this inside safeScratchStyle() instead would be wrong twice over: that function is the
+     STORAGE boundary, so it would also strip fills off pages that already hold them, and it can't
+     tell a paste from a load — the same reason sanitizePastedScratchHtml() exists at all. */
+  function stripPastedScratchFills(root){
+    const styled = root.querySelectorAll('[style]');
+    for(let i = 0; i < styled.length; i++){
+      const node = styled[i];
+      /* Split on ";" is safe here and only here: by this point the attribute has already been
+         rebuilt by safeScratchStyle() out of a validated table, and every regex in it is narrow
+         enough that no value can contain a ";" — which is the property that made reassembling
+         them safe in the first place. */
+      const decls = (node.getAttribute('style') || '').split(';');
+      const kept = [];
+      for(let j = 0; j < decls.length; j++){
+        const d = decls[j];
+        const at = d.indexOf(':');
+        if(at < 0) continue;
+        const prop = d.slice(0, at).trim();
+        const val = d.slice(at + 1).trim();
+        if(!prop || !val) continue;
+        if(prop === 'background-color' && scratchOpaqueBg(val)) continue;
+        kept.push(prop + ':' + val);
+      }
+      if(kept.length) node.setAttribute('style', kept.join(';'));
+      else node.removeAttribute('style');   // nothing left worth an attribute
+    }
+  }
+
   /* Dropped SUBTREE AND ALL, rather than unwrapped. Unwrapping is right for a merely unknown tag
      (<marquee>hi</marquee> should leave you the word "hi"), but these hold source code or widget
      innards rather than prose: unwrapping <style> would paste a stylesheet's text into the page and
@@ -233,6 +321,8 @@
        reads two adjacent sections sharing a sid as one the browser split and merges them, and
        moveScratchSectionToPage() looks a section up BY sid, so a duplicate makes it a coin flip
        which one moves. decorateScratchSections() hands the paste a fresh id on the next pass. */
+    // the browser's own copy wrapper paints the page it was copied from; see the note above
+    stripPastedScratchFills(out);
     const pastedSecs = out.querySelectorAll('.scratch-section[data-sid]');
     for(let i = 0; i < pastedSecs.length; i++) pastedSecs[i].removeAttribute('data-sid');
     return out.innerHTML;
@@ -251,6 +341,32 @@
         // the only <input> that survives is a tickbox
         if((node.getAttribute('type') || '').toLowerCase() !== 'checkbox') continue;
         dest.appendChild(makeScratchTick(node.hasAttribute('checked')));
+        continue;
+      }
+      if(tag === 'SPAN' && node.classList && node.classList.contains('scratch-timer')){
+        /* A countdown chip. Rebuilt from its attributes and NOT recursed into, so the face inside
+           it never round-trips. A chip with no valid length isn't a timer and is dropped whole
+           rather than unwrapped — the digits it was showing were UI, so unwrapping would leave a
+           stray "12:30" sitting in the middle of a sentence. */
+        const dur = (node.getAttribute('data-dur') || '').trim();
+        if(!SCRATCH_TIMER_DUR.test(dur)) continue;
+        const n = parseInt(dur, 10);
+        if(!(n >= 1) || n > SCRATCH_TIMER_MAX) continue;
+        const chip = document.createElement('span');
+        chip.className = 'scratch-timer';
+        chip.setAttribute('contenteditable', 'false');
+        chip.setAttribute('data-dur', String(n));
+        /* data-end wins when it's there, because its presence IS "running" — and a paused
+           remainder is clamped to the length, so a hand-edited row can't come back showing more
+           time left than the timer was ever set for. */
+        const end = (node.getAttribute('data-end') || '').trim();
+        if(SCRATCH_TIMER_END.test(end)){
+          chip.setAttribute('data-end', end);
+        } else {
+          const left = (node.getAttribute('data-left') || '').trim();
+          chip.setAttribute('data-left', SCRATCH_TIMER_DUR.test(left) ? String(Math.min(n, parseInt(left, 10))) : String(n));
+        }
+        dest.appendChild(chip);
         continue;
       }
       if(tag === 'SPAN'){
@@ -382,6 +498,314 @@
     box.checked = !!done;
     if(done) box.setAttribute('checked', '');
     return box;
+  }
+
+  /* ---------- inline countdown timers ----------
+     Typing "@30:00" — or @25m, @1:30:00, @90s, or a bare @25 for minutes — offers a chip, and
+     Enter drops it into the line you are on. It is a SPAN with contenteditable="false", so it sits
+     in the text as one atomic character: the caret steps over it and one backspace removes the
+     whole thing, exactly like the tickbox above.
+
+     The truth is the three data attributes the sanitizer validates, never the digits on screen.
+     The face is UI rebuilt by decorateScratchTimers() after every innerHTML assignment, which is
+     the same rule a section's header lives by — and it is why the ticker below only ever writes
+     into that face and never calls onScratchInput(). A running timer that committed its own text
+     would re-upload the whole page stack every second, which is exactly the write pattern
+     state.valorant.live and the calendar's events exist to avoid.
+
+     The one exception is the moment a timer reaches zero: data-end goes and data-left becomes 0,
+     which is a real state change, so that single transition IS committed. */
+
+  function parseScratchDuration(tok){
+    const s = (tok || '').trim().toLowerCase();
+    if(!s) return 0;
+    let m;
+    if((m = /^(\d{1,3}):([0-5]\d):([0-5]\d)$/.exec(s))) return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+    if((m = /^(\d{1,4}):([0-5]\d)$/.exec(s))) return (+m[1]) * 60 + (+m[2]);
+    if((m = /^(\d{1,3})h(?:(\d{1,2})m?)?$/.exec(s))) return (+m[1]) * 3600 + (m[2] ? (+m[2]) * 60 : 0);
+    if((m = /^(\d{1,5})m$/.exec(s))) return (+m[1]) * 60;
+    if((m = /^(\d{1,6})s$/.exec(s))) return (+m[1]);
+    /* A bare number is MINUTES. "@25" is overwhelmingly a pomodoro rather than 25 seconds, and the
+       suffix forms are right there for anyone who meant otherwise. */
+    if((m = /^(\d{1,4})$/.exec(s))) return (+m[1]) * 60;
+    return 0;
+  }
+
+  function clampScratchDur(n){
+    n = Math.round(n || 0);
+    return (n >= 1 && n <= SCRATCH_TIMER_MAX) ? n : 0;
+  }
+
+  function scratchTimerText(sec){
+    sec = Math.max(0, Math.ceil(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const p = n => (n < 10 ? '0' : '') + n;
+    return h ? (h + ':' + p(m) + ':' + p(s)) : (m + ':' + p(s));
+  }
+
+  /* The one constructor, the makeScratchTick() rule: the shape can't drift between the sanitizer,
+     the insert and the suggestion. Born PAUSED — a timer that started itself would already be half
+     gone by the time you looked up from typing the line it was meant to sit in. */
+  function makeScratchTimer(sec){
+    const chip = document.createElement('span');
+    chip.className = 'scratch-timer';
+    chip.setAttribute('contenteditable', 'false');
+    chip.setAttribute('data-dur', String(sec));
+    chip.setAttribute('data-left', String(sec));
+    return chip;
+  }
+
+  // Seconds remaining — derived while running rather than stored, see the section note above.
+  function scratchTimerLeft(chip){
+    const dur = parseInt(chip.getAttribute('data-dur'), 10) || 0;
+    const end = parseInt(chip.getAttribute('data-end'), 10) || 0;
+    if(end) return Math.max(0, (end - Date.now()) / 1000);
+    const raw = chip.getAttribute('data-left');
+    const n = raw === null ? dur : parseFloat(raw);
+    return Math.max(0, Math.min(dur, isNaN(n) ? dur : n));
+  }
+
+  function paintScratchTimer(chip){
+    const left = scratchTimerLeft(chip);
+    const running = !!chip.getAttribute('data-end');
+    const done = left <= 0.0001;
+    const t = chip.querySelector('.scratch-timer-t');
+    const txt = scratchTimerText(done ? 0 : left);
+    if(t && t.textContent !== txt) t.textContent = txt;
+    /* The ▶/⏸/✓ and the ↺ are drawn by CSS ::before off these two classes, and are deliberately
+       NOT text nodes. The chip sits inside the page's own prose, so anything written as text here
+       lands in surf.textContent — which is the word count, the dot row's page name and, worse, the
+       body that find searches across every page. The digits are meant to be all three of those
+       things; a pair of control glyphs is not. */
+    chip.classList.toggle('is-running', running && !done);
+    chip.classList.toggle('is-done', done);
+    /* A title rather than an aria-label: the chip is inline content read as part of a sentence,
+       and the digits inside it already say what it is. */
+    const tip = done ? 'Finished · click to run it again' : (running ? 'Running · click to pause' : 'Paused · click to start');
+    if(chip.getAttribute('title') !== tip) chip.setAttribute('title', tip);
+  }
+
+  // Called after every innerHTML assignment, exactly like decorateScratchSections().
+  function decorateScratchTimers(root){
+    if(!root) return;
+    const chips = root.querySelectorAll('.scratch-timer');
+    for(let i = 0; i < chips.length; i++){
+      const chip = chips[i];
+      chip.setAttribute('contenteditable', 'false');
+      if(!chip.querySelector('.scratch-timer-t')){
+        // both icon spans are EMPTY: their glyphs come from CSS, see paintScratchTimer()
+        chip.innerHTML = '<span class="scratch-timer-ic" aria-hidden="true"></span>'
+                       + '<span class="scratch-timer-t"></span>'
+                       + '<span class="scratch-timer-x" aria-hidden="true"></span>';
+      }
+      paintScratchTimer(chip);
+    }
+    syncScratchTimerTick();
+  }
+
+  /* One interval for the whole page, started only while a timer is actually running and stopped
+     the moment none is — a paused chip needs no clock, and neither does a page with none on it.
+     250ms rather than 1000: at exactly one second the displayed digit visibly stutters, because
+     the tick and the second boundary drift against each other. */
+  let scratchTimerInt = null;
+
+  function syncScratchTimerTick(){
+    const surf = el('scratchText');
+    const need = scratchOpen && surf && surf.querySelector('.scratch-timer[data-end]');
+    if(need && !scratchTimerInt){ scratchTimerInt = setInterval(tickScratchTimers, 250); }
+    else if(!need && scratchTimerInt){ clearInterval(scratchTimerInt); scratchTimerInt = null; }
+  }
+
+  function tickScratchTimers(){
+    const surf = el('scratchText');
+    if(!surf || !scratchOpen){ syncScratchTimerTick(); return; }
+    const chips = surf.querySelectorAll('.scratch-timer[data-end]');
+    let finished = 0;
+    for(let i = 0; i < chips.length; i++){
+      const chip = chips[i];
+      if(scratchTimerLeft(chip) <= 0.0001){
+        chip.removeAttribute('data-end');
+        chip.setAttribute('data-left', '0');
+        finished++;
+      }
+      paintScratchTimer(chip);
+    }
+    /* The ONLY write this loop makes. Reaching zero is a state change; the other 3.99 ticks a
+       second are a repaint, and committing those would re-upload the page stack continuously. */
+    if(finished){ playScratchTimerChime(); onScratchInput(); }
+    syncScratchTimerTick();
+  }
+
+  function toggleScratchTimer(chip){
+    const dur = parseInt(chip.getAttribute('data-dur'), 10) || 0;
+    if(!dur) return;
+    if(chip.getAttribute('data-end')){
+      const left = Math.max(0, Math.round(scratchTimerLeft(chip)));
+      chip.removeAttribute('data-end');
+      chip.setAttribute('data-left', String(left));
+    } else {
+      let left = Math.round(scratchTimerLeft(chip));
+      if(left <= 0) left = dur;   // a finished chip runs again rather than sitting at zero
+      chip.removeAttribute('data-left');
+      chip.setAttribute('data-end', String(Date.now() + left * 1000));
+    }
+    paintScratchTimer(chip);
+    syncScratchTimerTick();
+    onScratchInput();
+  }
+
+  function resetScratchTimer(chip){
+    const dur = parseInt(chip.getAttribute('data-dur'), 10) || 0;
+    chip.removeAttribute('data-end');
+    chip.setAttribute('data-left', String(dur));
+    paintScratchTimer(chip);
+    syncScratchTimerTick();
+    onScratchInput();
+  }
+
+  /* Two soft notes rather than a buzzer. Built from raw nodes on the SHARED context via
+     sfxOutput() — the js/goals.js rule: never a second AudioContext — and silenced by the same ♪
+     switch the page turn uses, since one mute for one page is the whole of that control. */
+  function playScratchTimerChime(){
+    if(state.scratch && state.scratch.mute) return;
+    if(typeof sfxOutput !== 'function') return;
+    const out = sfxOutput();
+    if(!out) return;
+    try{
+      const ctx = sfxCtx, t0 = ctx.currentTime;
+      const notes = [[0, 784], [0.17, 1046.5]];   // G5 then C6: an upward pair reads as "finished"
+      for(let i = 0; i < notes.length; i++){
+        const d = notes[i][0], hz = notes[i][1];
+        const o = ctx.createOscillator();
+        o.type = 'sine';
+        o.frequency.setValueAtTime(hz, t0 + d);
+        const g = ctx.createGain();
+        g.gain.setValueAtTime(0.0001, t0 + d);
+        g.gain.exponentialRampToValueAtTime(0.06, t0 + d + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + 0.5);
+        o.connect(g); g.connect(out);
+        o.start(t0 + d); o.stop(t0 + d + 0.55);
+      }
+    }catch(e){ /* a chime is never worth throwing over */ }
+  }
+
+  /* insertScratchTick()'s ladder, for the reason it documents: execCommand only acts on a
+     selection genuinely inside THIS editable, and quietly appends at the very end when it isn't. */
+  function insertScratchTimer(sec){
+    const surf = el('scratchText');
+    if(!surf || !sec) return;
+    const sel0 = window.getSelection();
+    if(!(sel0 && sel0.rangeCount && surf.contains(sel0.getRangeAt(0).commonAncestorContainer))){
+      surf.focus({ preventScroll:true });
+      placeScratchCaretAtEnd(surf);
+    }
+    const marker = 'sc' + uid();
+    scratchExec('insertHTML', '<span id="' + marker + '"></span>');
+    const slot = document.getElementById(marker);
+    if(!slot) return;
+    const chip = makeScratchTimer(sec);
+    /* A non-breaking space, the tickbox's reason exactly: a plain trailing space collapses at the
+       end of a line and leaves the caret jammed against the chip with no gap to type into. */
+    const sp = document.createTextNode('\u00A0');
+    slot.replaceWith(chip, sp);
+    decorateScratchTimers(surf);
+    const sel = window.getSelection();
+    if(sel){
+      const r = document.createRange();
+      r.setStartAfter(sp); r.collapse(true);
+      sel.removeAllRanges(); sel.addRange(r);
+    }
+  }
+
+  /* ---------- the "@30:00" offer ----------
+     A suggestion, never an autocorrect. "@30" is a perfectly ordinary thing to write on a napkin,
+     so nothing is transformed behind your back: the chip appears only on Enter, and Escape puts
+     the offer away for that exact token — remembered as the token's own text, so typing one more
+     digit is a fresh offer rather than a dismissal that sticks to everything after it.
+     The token has to START a word (the regex's leading class), or "you@30" would offer one. */
+  const SCRATCH_TIMER_TOKEN = /(?:^|[\s\u00A0(\[>])@([0-9][0-9hms:]{0,11})$/i;
+  let scratchTimerTip = null;      // { secs, node, tok, from, to } — the offer on screen
+  let scratchTimerTipOff = '';     // the one token Escape dismissed
+
+  function scratchTimerTokenAtCaret(){
+    const surf = el('scratchText');
+    const sel = window.getSelection();
+    if(!surf || !sel || !sel.rangeCount) return null;
+    const r = sel.getRangeAt(0);
+    if(!r.collapsed || r.startContainer.nodeType !== 3) return null;
+    if(!surf.contains(r.startContainer)) return null;
+    const node = r.startContainer, off = r.startOffset;
+    const m = SCRATCH_TIMER_TOKEN.exec((node.nodeValue || '').slice(0, off));
+    if(!m) return null;
+    const secs = clampScratchDur(parseScratchDuration(m[1]));
+    if(!secs) return null;
+    const tok = '@' + m[1];
+    return { secs, node, tok, from: off - tok.length, to: off };
+  }
+
+  function updateScratchTimerTip(){
+    if(!scratchOpen) return;
+    const hit = scratchTimerTokenAtCaret();
+    /* No token under the caret clears the dismissal as well as the offer. Escape means "not this
+       one", and the token it named is gone the moment you type on somewhere else — leaving the
+       suppression standing would silently refuse to ever offer that same duration again. */
+    if(!hit){ scratchTimerTipOff = ''; hideScratchTimerTip(); return; }
+    if(scratchTimerTipOff === hit.tok){ hideScratchTimerTip(); return; }
+    scratchTimerTip = hit;
+    const box = el('scratchTimerTip');
+    if(!box) return;
+    box.innerHTML = '<span class="scratch-timertip-ic" aria-hidden="true">\u23F1</span>'
+                  + '<span class="scratch-timertip-t">' + escapeHtml(scratchTimerText(hit.secs)) + ' timer</span>'
+                  + '<span class="scratch-timertip-k">enter</span>';
+    box.style.display = 'flex';
+    /* Placed from the caret's own rect in VIEWPORT coordinates, because the box is position:fixed
+       — so nothing here has to know how far the sheet has scrolled. A collapsed range measures as
+       all zeros in some engines, and the sheet's own rect is the fallback, which puts the offer
+       somewhere sane rather than in the top-left corner of the window. */
+    let rect = null;
+    try{ rect = window.getSelection().getRangeAt(0).getBoundingClientRect(); }catch(e){}
+    const surf = el('scratchText');
+    if((!rect || (!rect.top && !rect.left && !rect.height)) && surf) rect = surf.getBoundingClientRect();
+    if(!rect) return;
+    const w = box.offsetWidth || 150, h = box.offsetHeight || 30;
+    box.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, rect.left)) + 'px';
+    // above the caret by preference, below it when there is no room up there
+    const above = rect.top - h - 8;
+    box.style.top = (above >= 8 ? above : Math.min(window.innerHeight - h - 8, rect.bottom + 8)) + 'px';
+  }
+
+  function hideScratchTimerTip(){
+    scratchTimerTip = null;
+    const box = el('scratchTimerTip');
+    if(box && box.style.display !== 'none'){ box.style.display = 'none'; box.innerHTML = ''; }
+  }
+
+  function acceptScratchTimerTip(){
+    const shown = scratchTimerTip;
+    if(!shown) return false;
+    hideScratchTimerTip();
+    /* Answered against the caret as it stands NOW rather than against the offer's own remembered
+       offsets, and only if the two still name the same token. The offer is drawn on input and the
+       caret can have moved since without typing anything — an arrow key, a click further up the
+       page, an undo that replaced the text node under it — and inserting a chip back at a position
+       nobody is looking at is worse than not inserting one. Returning false there is what lets the
+       keydown handler fall through to an ordinary newline. */
+    const hit = scratchTimerTokenAtCaret();
+    if(!hit || hit.tok !== shown.tok || hit.secs !== shown.secs) return false;
+    const sel = window.getSelection();
+    if(!sel) return false;
+    /* The token is SELECTED and left in place for execCommand to replace, never deleted first:
+       deleting it empties the line's own text node, the browser drops that node, and the range is
+       left pointing at something detached — so the selection is no longer inside the editable and
+       execCommand appends at the very end of the page instead. That is the exact bug
+       maybeScratchTickShorthand() documents. */
+    const rr = document.createRange();
+    rr.setStart(hit.node, hit.from);
+    rr.setEnd(hit.node, hit.to);
+    sel.removeAllRanges(); sel.addRange(rr);
+    insertScratchTimer(hit.secs);
+    onScratchInput();
+    return true;
   }
 
   /* ---------- sections ----------
@@ -992,7 +1416,8 @@
   function scratchPageIsEmpty(p){
     if(!p) return true;
     const h = p.html || '';
-    if(/<(img|input)\b/i.test(h)) return false; // a page holding only a photo or a tick isn't blank
+    // a page holding only a photo, a tick or a running countdown isn't blank
+    if(/<(img|input)\b/i.test(h) || /scratch-timer/.test(h)) return false;
     return !scratchHtmlToText(h).trim(); // JS trim() already treats &nbsp; as whitespace
   }
 
@@ -1339,6 +1764,9 @@
     // whatever the guard's one-shot Ctrl+Z was holding is about to be replaced wholesale
     scratchSectionUndo = null;
     decorateScratchSections(surf);
+    // the digits inside a countdown chip are UI, exactly like a section's header: the sanitizer
+    // dropped them on the way in, so they are painted back here
+    decorateScratchTimers(surf);
     markScratchEmpty();
     /* Free-floating images carry their position as data-x/data-y percentages+pixels, never as the
        inline left/top the browser lays out from (that pair is stripped by the sanitizer on the way
@@ -1353,7 +1781,7 @@
      sit on the keystroke path, and scratchPageIsEmpty() spins up a DOMParser every time it is
      asked — fine for the handful of pages a sweep looks at, wasteful once per character typed. */
   function scratchSurfaceIsBlank(surf){
-    return !surf.textContent.trim() && !surf.querySelector('img, input, a');
+    return !surf.textContent.trim() && !surf.querySelector('img, input, a, .scratch-timer');
   }
 
   function markScratchEmpty(){
@@ -1606,6 +2034,7 @@
     // would reject it anyway, but leaving a detached node hanging around serves nothing
     scratchSavedRange = null;
     hideScratchImgBox();   // it was drawn around an image on the page that just left
+    hideScratchTimerTip();  // and the "@30:00" offer belonged to a line that is no longer on screen
     updateScratchFormatState();
     // the hits on screen belong to the page that just left; repaint against the one that arrived
     if(scratchFindOn) scheduleScratchFind();
@@ -1803,6 +2232,7 @@
      there is exactly one place to correct when a gesture changes. */
   const SCRATCH_HELP_ROWS = [
     ['',      'type <b>[]</b> then space',       'a tickbox'],
+    ['',      'type <b>@30:00</b> then enter',   'a countdown you can pause — also @25m, @1h30m, @90s'],
     ['key',   '<kbd>ctrl</kbd> + <kbd>K</kbd>',  'link the selection'],
     ['key',   '<kbd>tab</kbd> <kbd>tab</kbd>',   'find on every page'],
     ['key',   'hold <kbd>tab</kbd> + scroll',    'turn the page'],
@@ -3452,6 +3882,11 @@
     rememberScratchRange();
     scheduleScratchFormatState();
     scratchEjectCaretFromMinimized();
+    /* The "@30:00" offer belongs to the token under the caret, so moving the caret off it takes it
+       down — otherwise it hangs over a spot nobody is typing at, and Enter there would mean
+       something other than what it looks like. Cheap: no token under the caret is a regex against
+       the few characters before it, and re-showing is the same call. */
+    if(scratchTimerTip) updateScratchTimerTip();
   });
 
   initScratchFormatBar();
@@ -3965,6 +4400,9 @@
       placeScratchCaretAtEnd(surf);
     }
     surf.scrollTop = surf.scrollHeight;
+    // scratchOpen has only just become true, so the sync above could not have started the clock:
+    // a page whose countdown was left running has to pick it back up here
+    syncScratchTimerTick();
   }
 
   function placeScratchCaretAtEnd(surf){
@@ -3989,6 +4427,9 @@
     const swept = sweepTrailingEmptyScratchPages();
     sweepDeletedScratchImages();          // after the commit, so the last edit counts
     scratchOpen = false;
+    hideScratchTimerTip();
+    scratchTimerTipOff = '';
+    syncScratchTimerTick();   // reads scratchOpen, so this clears the interval now it is false
     scratchTabHeld = false; scratchTabUsed = false; scratchTabTapAt = 0;
     scratchWheelAcc = 0; scratchWheelDir = 0; scratchWheelStepAt = 0;
     if(swept){
@@ -4034,7 +4475,13 @@
     // Find is a layer INSIDE the page, so Escape peels that off first and the napkin stays open —
     // the same one-layer-per-press rule this capture guard exists to enforce against the app's
     // other overlays.
-    // innermost layer first: the lightbox, then find, then the page itself
+    /* innermost layer first: the "@30:00" offer, then the lightbox, then find, then the page.
+       The offer goes at the very top even though it is the smallest thing on screen, and it has to
+       be handled HERE rather than on the surface's own keydown — this listener is in the CAPTURE
+       phase, so it runs first and would close the whole napkin for a press that meant "not that
+       suggestion". It can only ever be up while the caret is in the writing, so nothing below it
+       can be open at the same time. */
+    if(scratchTimerTip){ scratchTimerTipOff = scratchTimerTip.tok; hideScratchTimerTip(); return; }
     if(scratchImgViewOn){ closeScratchImgView(); return; }
     if(scratchHelpOn){ closeScratchHelp(); focusScratchSurface(); return; }
     if(scratchSheetOn){ closeScratchPageSheet(); focusScratchSurface(); return; }
@@ -4216,7 +4663,10 @@
 
   const scratchSurface = el('scratchText');
 
-  scratchSurface.addEventListener('input', onScratchInput);
+  /* onScratchInput() is called from a dozen places that aren't a keystroke (a tick toggling, a
+     section moving, a timer reaching zero); the "@30:00" offer belongs to typing alone, so it
+     hangs off the input EVENT rather than off that function. */
+  scratchSurface.addEventListener('input', ()=>{ onScratchInput(); updateScratchTimerTip(); });
 
   /* The slide class is otherwise left on until the NEXT page turn removes it, which would leave the
      will-change hint (styles.css) permanently promoting a large scrolling element long after there
@@ -4242,6 +4692,16 @@
   });
 
   scratchSurface.addEventListener('keydown', e=>{
+    /* The "@30:00" offer takes Enter while it is up, and nothing else — every other key goes on
+       typing the token as ordinary text, which is what keeps this a suggestion rather than an
+       autocorrect. Its Escape lives in the capture-phase guard near the bottom of this file
+       instead, because that one runs before this handler ever sees the key.
+       Guarded on acceptScratchTimerTip() succeeding, so an offer whose text node has been replaced
+       under it falls through to an ordinary newline rather than swallowing the keystroke. */
+    if(scratchTimerTip && e.key === 'Enter' && !e.shiftKey && acceptScratchTimerTip()){
+      e.preventDefault();
+      return;
+    }
     if(scratchMaybeGuardSectionDelete(e)) return;
     if((e.ctrlKey || e.metaKey) && !e.altKey){
       const k = e.key.toLowerCase();
@@ -4339,6 +4799,16 @@
       }
       return;
     }
+    /* A countdown chip: the reset glyph first, then the chip itself. preventDefault because the
+       chip is contenteditable="false" and a click on one otherwise drops the caret inside it — the
+       same reason the image branch below prevents its own. */
+    const chip = t.closest('.scratch-timer');
+    if(chip){
+      e.preventDefault();
+      if(t.closest('.scratch-timer-x')) resetScratchTimer(chip);
+      else toggleScratchTimer(chip);
+      return;
+    }
     const box = t.closest(SCRATCH_TICK_SEL);
     if(box){
       /* Let the browser's own activation do the toggling, and mirror the result into the
@@ -4393,6 +4863,9 @@
         scratchExec('insertText', text);
       }
     }
+    // a pasted countdown comes through the sanitizer, which drops the digits inside it the same
+    // way it drops a section's header — so the face has to be painted back on
+    decorateScratchTimers(scratchSurface);
     onScratchInput();
   });
 

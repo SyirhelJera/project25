@@ -568,6 +568,7 @@
     if(state.mosaicColors.perfectStyle === undefined) state.mosaicColors.perfectStyle = 'color';
     if(state.mosaicColors.perfectEmoji === undefined) state.mosaicColors.perfectEmoji = '⭐';
     state.dailyActivity = parsed.dailyActivity || {};
+    state.habitDayTasks = parsed.habitDayTasks || {};
     state.protectedDays = parsed.protectedDays || [];
     state.protectedDays.forEach(p=>{
       if(p.type === undefined) p.type = 'event';
@@ -683,6 +684,7 @@
   let savePromise = Promise.resolve();
   function save(force){
     recomputeDailyActivity();
+    if(typeof recordHabitDayTasks === 'function') recordHabitDayTasks();
     snapshotNetWorth();
     savePromise = savePromise.then(()=> doSave(force));
     return savePromise;

@@ -144,6 +144,10 @@
     // per-day tally of "dailies"-group checklist completion: { "YYYY-MM-DD": { done, total } } —
     // drives the mosaic's GitHub-style intensity coloring; see recomputeDailyActivity()
     dailyActivity: {},
+    // per-day snapshot of each habit's linked-checklist tasks: { "YYYY-MM-DD": { habitId:
+    // [{t:text, d:0|1}] } } — only today's key is ever written, so past days are frozen; drives
+    // the habit calendar's day detail panel (see recordHabitDayTasks() in js/habits.js)
+    habitDayTasks: {},
     // vacation/sick/event date ranges (Settings tab) — excuses habit streaks and checklist
     // miss-streaks for any day they cover; see js/protecteddays.js
     protectedDays: [],

@@ -1482,6 +1482,33 @@
   .month-cell.checked{background:var(--violet);border-color:var(--violet);color:#fff;}
   .month-cell.protected{border-color:var(--protected-day, var(--violet));color:var(--protected-day, var(--violet));}
   .month-cell.today{box-shadow:0 0 0 2px var(--gold) inset;}
+  /* habit day detail modal - what a clicked day looked like, and where a past day's tasks are
+     ticked in by hand (see renderHabitDayModal, js/habits.js). Rides .struggle-overlay's shell. */
+  .habit-day-card{max-width:460px;}
+  .habit-day-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px;}
+  .habit-day-date{font-size:12px;font-weight:700;flex:1;min-width:140px;}
+  .habit-day-status{font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted);}
+  .habit-day-status.is-done{color:var(--violet);border-color:var(--violet);}
+  .habit-day-status.is-protected{color:var(--protected-day, var(--violet));border-color:var(--protected-day, var(--violet));}
+  .habit-day-status.is-missed{color:var(--danger);border-color:var(--danger);}
+  .habit-day-note{font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .habit-day-count{font-size:11px;color:var(--muted);margin-bottom:6px;}
+  .habit-day-tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px;}
+  .habit-day-tasks li{font-size:12.5px;line-height:1.35;}
+  /* the whole row is the tick target - the modal exists to change these, so a small checkbox
+     would be the wrong hit area on a phone */
+  .habit-day-task{display:flex;align-items:flex-start;gap:8px;width:100%;text-align:left;background:none;border:none;padding:5px 6px;border-radius:7px;cursor:pointer;color:inherit;font:inherit;}
+  .habit-day-task:hover{background:var(--surface-alt);}
+  .habit-day-text{flex:1;}
+  .habit-day-tasks li.is-undone{color:var(--muted);}
+  .habit-day-tasks li.is-done .habit-day-text{text-decoration:line-through;text-decoration-color:var(--faint);}
+  .habit-day-mark{flex:none;font-size:11px;font-weight:700;width:13px;text-align:center;line-height:1.35;}
+  .habit-day-tasks li.is-done .habit-day-mark{color:var(--violet);}
+  .habit-day-tasks li.is-undone .habit-day-mark{color:var(--danger);}
+  .habit-day-empty{font-size:11.5px;color:var(--muted);line-height:1.4;}
+  .habit-day-actions{margin-top:9px;}
+  .habit-day-toggle{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 11px;font-size:11.5px;}
+  .habit-day-toggle:hover{border-color:var(--violet);color:var(--violet);}
 
   /* countdowns */
   .cd-card{background:var(--surface);border:1px solid var(--border);border-radius:13px;padding:14px 16px;margin-bottom:9px;display:flex;align-items:center;gap:12px;}
@@ -2190,6 +2217,51 @@
   /* the tickbox: sized up from the browser default because this gets tapped on a phone, and
      vertical-align keeps it sitting on the text baseline rather than riding above it */
   .scratch-text input.scratch-tick{width:15px;height:15px;margin:0 7px 0 0;vertical-align:-2px;accent-color:var(--violet);cursor:pointer;flex:none;}
+  /* an inline countdown chip. contenteditable="false", so it sits in the line as one atomic
+     character; the digits inside it are painted by js/scratch.js and are never content — the
+     sanitizer drops them, the same call the section header and the upload marker below make.
+     tabular-nums so the chip doesn't breathe in and out as the seconds tick past. */
+  .scratch-text .scratch-timer{display:inline-flex;align-items:center;gap:5px;vertical-align:-3px;
+    margin:0 2px;padding:1px 8px 1px 7px;border-radius:999px;border:1px solid var(--border);
+    background:var(--surface-alt);color:var(--text);cursor:pointer;user-select:none;
+    white-space:nowrap;font-size:.85em;font-weight:600;font-variant-numeric:tabular-nums;}
+  .scratch-text .scratch-timer:hover{border-color:var(--violet);}
+  /* The state glyph and the reset glyph are CSS content, never text nodes — a chip lives inside
+     the page's own prose, so a character written into the DOM here would land in the word count,
+     in the dot row's page name and in what find searches. The digits beside them are meant to be
+     all three of those; these two are not. */
+  .scratch-timer-ic{font-size:.8em;line-height:1;color:var(--muted);}
+  .scratch-timer-ic::before{content:"\25B6";}
+  .scratch-text .scratch-timer.is-running .scratch-timer-ic::before{content:"\23F8";}
+  .scratch-text .scratch-timer.is-done .scratch-timer-ic::before{content:"\2713";}
+  .scratch-timer-x::before{content:"\21BA";}
+  /* running and finished are the two states worth colouring, and they use the app's own two
+     signal colours rather than a third: violet is "this is live", danger is "look at me". */
+  .scratch-text .scratch-timer.is-running{border-color:var(--violet);color:var(--violet);}
+  .scratch-text .scratch-timer.is-running .scratch-timer-ic{color:var(--violet);}
+  .scratch-text .scratch-timer.is-done{border-color:var(--danger);color:var(--danger);
+    background:var(--danger-pale);}
+  .scratch-text .scratch-timer.is-done .scratch-timer-ic{color:var(--danger);}
+  /* the reset glyph. Hidden until the chip is hovered on a fine pointer — it is the rarer of the
+     two actions and a permanent second icon makes the chip read as a control rather than as a
+     word in the sentence. Always shown on touch, where there is no hover to reveal it with. */
+  .scratch-timer-x{font-size:.9em;line-height:1;color:var(--faint);opacity:0;
+    transition:opacity .12s ease;margin-right:-2px;}
+  .scratch-timer:hover .scratch-timer-x{opacity:1;}
+  .scratch-timer-x:hover{color:var(--text);}
+  @media (hover: none){ .scratch-timer-x{opacity:.75;} }
+  @media (prefers-reduced-motion: reduce){ .scratch-timer-x{transition:none;} }
+  /* the "@30:00 → timer" offer, floating over the caret. Inside #scratchOverlay, which carries its
+     own stacking context at z-index 950, so this number only has to beat the format bar and the
+     find panel beside it — never the 1000 modal tier, which it could not reach from in here. */
+  .scratch-timertip{position:fixed;z-index:6;display:none;align-items:center;gap:8px;
+    padding:5px 10px;border-radius:10px;border:1px solid var(--border);background:var(--surface);
+    box-shadow:0 8px 24px rgba(0,0,0,.20);font-size:12px;color:var(--text);pointer-events:none;
+    max-width:min(80vw,260px);}
+  .scratch-timertip-ic{color:var(--violet);}
+  .scratch-timertip-t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .scratch-timertip-k{flex:none;padding:1px 6px;border-radius:5px;background:var(--surface-alt);
+    border:1px solid var(--border);color:var(--muted);font-size:10px;letter-spacing:.04em;}
   /* an in-flight image upload. Both of these are UI, never content — the sanitizer drops them, so
      a save landing mid-upload can't persist the word "uploading…" into the page. */
   .scratch-uploading{color:var(--faint);font-style:italic;}

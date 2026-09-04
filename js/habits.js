@@ -2,6 +2,46 @@
   const DAY_LABELS = ['M','T','W','T','F','S','S'];
   // tracks which month each habit's calendar is currently showing (0 = current month, negative = past); not persisted
   const habitMonthOffset = {};
+  // how many days of per-day task snapshots are kept - these ride the shared blob (the
+  // ACCESS_LOG_CAP reasoning), so the log is trimmed rather than grown forever
+  const HABIT_DAY_LOG_CAP = 180;
+
+  /* ---- per-day task log ---------------------------------------------------------------------
+     Clicking a day opens a read-out of which linked-checklist tasks were done that day, and the
+     only moment that is knowable for a day is while it is still today - a checklist's items are
+     wiped by its own reset (applyChecklistResets, js/checklists.js), so nothing about yesterday
+     can be reconstructed afterwards. Hence a snapshot, written from save() alongside
+     recomputeDailyActivity() and, exactly like it, only ever under *today's* key: past days are
+     structurally frozen. Habits with no linked checklist record nothing, so the log stays small.
+     Tasks are stored by their text, not their id, because the panel is a record of what that day
+     looked like - renaming a task later must not rewrite history. */
+  function habitLinkedTasks(h){
+    const out = [];
+    state.checklists.filter(c=>c.linkedHabitId===h.id).forEach(c=>{
+      c.items.forEach(it=>out.push({ t: it.text, d: it.done ? 1 : 0 }));
+    });
+    return out;
+  }
+  function recordHabitDayTasks(){
+    if(!state.habitDayTasks) state.habitDayTasks = {};
+    const ds = localDateStr(new Date());
+    const day = {};
+    state.habits.forEach(h=>{
+      const tasks = habitLinkedTasks(h);
+      if(tasks.length) day[h.id] = tasks;
+    });
+    if(Object.keys(day).length) state.habitDayTasks[ds] = day;
+    else delete state.habitDayTasks[ds];
+    const keys = Object.keys(state.habitDayTasks).sort();
+    if(keys.length > HABIT_DAY_LOG_CAP) keys.slice(0, keys.length - HABIT_DAY_LOG_CAP).forEach(k=>{ delete state.habitDayTasks[k]; });
+  }
+  // Today reads from the live checklists rather than the snapshot - the snapshot is only as fresh
+  // as the last save(), and a tick made a moment ago should show here immediately.
+  function habitDayTasksFor(h, ds){
+    if(ds === localDateStr(new Date())) return habitLinkedTasks(h);
+    const day = (state.habitDayTasks || {})[ds];
+    return (day && day[h.id]) || null;
+  }
 
   // Walks backward from `startDate` (inclusive): a real completion counts and continues; a
   // protected-but-uncompleted day (js/protecteddays.js) is skipped — doesn't count, doesn't break
@@ -231,6 +271,149 @@
     requestAnimationFrame(()=> scrollCardIntoCenter(habitListEl.querySelector('.habit-card[data-habit-id="'+h.id+'"]')));
   }
 
+  /* ---- day detail modal ---------------------------------------------------------------------
+     Clicking a day opens this rather than toggling the day, and rather than growing the card:
+     the card is already a wall of stats and calendars, and the read-out is a detour, not part of
+     the card. It rides the shared .struggle-overlay modal shell (1000 tier) and is built at body
+     level, so renderHabits() rebuilding every card underneath can't take it down with them --
+     which is why the overlay is refreshed by renderHabitDayModal() rather than re-created.
+
+     Tasks are editable for any day, and the two directions are not the same write. TODAY goes
+     through checklists.js's setItemDone(), so ticking here carries the same XP, gate and
+     habit-link side effects as ticking on the Checklists tab -- there is no second definition of
+     what checking a box means. A PAST day has no live item to tick (its checklist was wiped by
+     its own reset long ago), so it writes the snapshot in state.habitDayTasks, which is the only
+     record that day has. Filling in a past day therefore never touches today's checklist. */
+  let habitDayModal = null;      // {habitId, ds} while open
+
+  // The unified row list the modal renders. For today the rows carry live {c,it} refs; for a past
+  // day they carry the snapshot index instead, and `live` says which write path applies.
+  function habitDayRows(h, ds){
+    if(ds === localDateStr(new Date())){
+      const rows = [];
+      state.checklists.filter(c=>c.linkedHabitId===h.id).forEach(c=>{
+        c.items.forEach(it=>rows.push({ text: it.text, done: !!it.done, c, it, live:true }));
+      });
+      return rows;
+    }
+    const log = ((state.habitDayTasks || {})[ds] || {})[h.id];
+    if(!log) return null;
+    return log.map((t,i)=>({ text: t.t, done: !!t.d, idx:i, live:false }));
+  }
+  // Seeds a past day's record from the habit's linked checklist as it stands now, so a day that
+  // predates the log (or one whose checklist gained tasks since) can still be filled in by hand.
+  // Everything starts unticked -- this creates a record to edit, it never claims a day was done.
+  function seedHabitDayTasks(h, ds){
+    const items = [];
+    state.checklists.filter(c=>c.linkedHabitId===h.id).forEach(c=>{ c.items.forEach(it=>items.push({ t: it.text, d: 0 })); });
+    if(!items.length) return false;
+    if(!state.habitDayTasks) state.habitDayTasks = {};
+    if(!state.habitDayTasks[ds]) state.habitDayTasks[ds] = {};
+    state.habitDayTasks[ds][h.id] = items;
+    return true;
+  }
+
+  function openHabitDayModal(h, ds){
+    habitDayModal = { habitId: h.id, ds };
+    if(!el('habitDayOverlay')){
+      const ov = document.createElement('div');
+      ov.id = 'habitDayOverlay'; ov.className = 'struggle-overlay';
+      ov.innerHTML = '<div class="struggle-overlay-card habit-day-card"></div>';
+      // backdrop click closes; clicks inside the card must not
+      ov.addEventListener('click', e=>{ if(e.target === ov) closeHabitDayModal(); });
+      document.body.appendChild(ov);
+    }
+    renderHabitDayModal();
+  }
+  function closeHabitDayModal(){
+    habitDayModal = null;
+    const ov = el('habitDayOverlay');
+    if(ov) ov.remove();
+    document.removeEventListener('keydown', habitDayKeydown);
+  }
+  function habitDayKeydown(e){ if(e.key === 'Escape') closeHabitDayModal(); }
+
+  function renderHabitDayModal(){
+    const ov = el('habitDayOverlay');
+    if(!ov || !habitDayModal) return;
+    const h = state.habits.find(x=>x.id === habitDayModal.habitId);
+    if(!h){ closeHabitDayModal(); return; }   // habit deleted underneath the modal
+    const ds = habitDayModal.ds;
+    const todayStr = localDateStr(new Date());
+    if(!h.completions) h.completions = {};
+    const done = !!h.completions[ds];
+    const pd = done ? null : protectedDayFor(ds);
+    const rows = habitDayRows(h, ds);
+    const hasLink = state.checklists.some(c=>c.linkedHabitId===h.id);
+    const dateLbl = new Date(ds+'T00:00:00').toLocaleDateString(undefined,{weekday:'long', day:'numeric', month:'long', year:'numeric'});
+
+    let body;
+    if(rows && rows.length){
+      const doneCt = rows.filter(r=>r.done).length;
+      body = '<div class="habit-day-count">'+doneCt+' of '+rows.length+' tasks done'+(ds===todayStr?'':' \u00b7 tap a task to change it')+'</div>'
+        + '<ul class="habit-day-tasks">'
+        + rows.map((r,i)=>'<li class="'+(r.done?'is-done':'is-undone')+'"><button class="habit-day-task" data-act="task" data-i="'+i+'">'
+            + '<span class="habit-day-mark">'+(r.done?'\u2713':'\u2717')+'</span><span class="habit-day-text">'+escapeHtml(r.text)+'</span></button></li>').join('')
+        + '</ul>';
+    } else if(rows){
+      body = '<div class="habit-day-empty">The linked checklist has no tasks.</div>';
+    } else {
+      body = '<div class="habit-day-empty">'+(hasLink
+        ? 'No task record for this day \u2014 per-day history only goes back as far as the first save after this was added. You can start one from the habit\'s current checklist and tick it in by hand.'
+        : 'No checklist is linked to this habit, so there are no tasks to show. Link one from the Checklists tab.')+'</div>'
+        + (hasLink ? '<div class="habit-day-actions"><button class="btn habit-day-toggle" data-act="seed">Start a record for this day</button></div>' : '');
+    }
+
+    ov.querySelector('.habit-day-card').innerHTML =
+        '<div class="struggle-overlay-head">'
+        + '<div class="struggle-overlay-title is-neutral">'+escapeHtml(h.name)+'</div>'
+        + '<button class="g-icon-btn" data-act="close" title="Close">\u2715</button>'
+      + '</div>'
+      + '<div class="habit-day-head">'
+        + '<div class="habit-day-date">'+dateLbl+(ds===todayStr?' \u00b7 today':'')+'</div>'
+        + '<span class="habit-day-status '+(done?'is-done':(pd?'is-protected':'is-missed'))+'">'+(done?'\u2713 Marked done':(pd?'\u2022 Protected day':'\u2717 Not marked done'))+'</span>'
+      + '</div>'
+      + (pd ? '<div class="habit-day-note"></div>' : '')
+      + body
+      + '<div class="habit-day-actions"><button class="btn habit-day-toggle" data-act="toggle">'+(done?'Unmark this day':'Mark this day done')+'</button></div>';
+
+    // set, not interpolated - a protected day's note is free user text and escapeHtml() leaves
+    // double quotes alone
+    if(pd) ov.querySelector('.habit-day-note').textContent = 'Protected day \u2014 ' + protectedDayLabel(pd);
+
+    const card = ov.querySelector('.habit-day-card');
+    card.querySelector('[data-act="close"]').addEventListener('click', closeHabitDayModal);
+    const toggleBtn = card.querySelector('[data-act="toggle"]');
+    if(toggleBtn) toggleBtn.addEventListener('click', ()=>{
+      if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;
+      save(); renderHabits(); renderHabitDayModal();
+    });
+    const seedBtn = card.querySelector('[data-act="seed"]');
+    if(seedBtn) seedBtn.addEventListener('click', ()=>{
+      if(seedHabitDayTasks(h, ds)){ save(); renderHabitDayModal(); }
+    });
+    card.querySelectorAll('[data-act="task"]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const r = rows[parseInt(btn.dataset.i, 10)];
+        if(!r) return;
+        if(r.live){
+          // gated items can refuse the tick (getGateItem, js/checklists.js) - setItemDone() saves
+          // and syncs the habit link itself, so nothing else to do but repaint
+          setItemDone(r.c, r.it, !r.done);
+          if(typeof renderChecklists === 'function') renderChecklists();
+        } else {
+          const log = ((state.habitDayTasks || {})[ds] || {})[h.id];
+          if(!log || !log[r.idx]) return;
+          log[r.idx].d = log[r.idx].d ? 0 : 1;
+          save();
+        }
+        renderHabits(); renderHabitDayModal();
+      });
+    });
+    document.removeEventListener('keydown', habitDayKeydown);
+    document.addEventListener('keydown', habitDayKeydown);
+  }
+
   function renderHabits(){
     const list = el('habitList'); list.innerHTML = '';
     el('habitEmpty').style.display = state.habits.length===0 ? 'block':'none';
@@ -386,10 +569,9 @@
           // set, not interpolated — the protected day's note is free user text and escapeHtml()
           // leaves double quotes alone
           if(pd) cell.querySelector('.day-box').title = 'Protected day — ' + protectedDayLabel(pd);
-          cell.querySelector('.day-box').addEventListener('click', ()=>{
-            if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;
-            save(); renderHabits();
-          });
+          // clicking a day opens its detail panel - marking the day done/undone moved into that
+          // panel's own button, so a stray tap on the calendar can't silently rewrite a streak
+          cell.querySelector('.day-box').addEventListener('click', ()=> openHabitDayModal(h, ds));
           wgrid.appendChild(cell);
         });
         card.appendChild(wgrid);
@@ -425,10 +607,7 @@
           cell.className = 'month-cell' + (checked?' checked':(pd?' protected':'')) + (isToday?' today':'');
           if(pd) cell.title = 'Protected day — ' + protectedDayLabel(pd);
           cell.textContent = day;
-          cell.addEventListener('click', ()=>{
-            if(h.completions[ds]) delete h.completions[ds]; else h.completions[ds] = true;
-            save(); renderHabits();
-          });
+          cell.addEventListener('click', ()=> openHabitDayModal(h, ds));
           mgrid.appendChild(cell);
         }
         card.appendChild(mgrid);

@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v66';
+const SHELL_CACHE = 'p25-shell-v67';
 const RUNTIME_CACHE = 'p25-runtime-v1';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
@@ -101,7 +101,7 @@ self.addEventListener('fetch', (event) => {
   // app shell and, on any network blip, serve './index.html' INTO the video frame, rendering the
   // whole app inside the player. This is also why youtube.com above already had to be here.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
-    'api.metatft.com', 'ipwho.is', 'ipapi.co', 'get.geojs.io',
+    'api.metatft.com', 'api.elevenlabs.io', 'ipwho.is', 'ipapi.co', 'get.geojs.io',
     'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
     'instagram.com', 'cdninstagram.com', 'tiktok.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'ttwstatic.com',
     '127.0.0.1', 'localhost'];

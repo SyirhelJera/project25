@@ -978,6 +978,23 @@ Settings → Data → **Access log**: every device this dashboard has been opene
 
 Device identification prefers `navigator.userAgentData` where it exists — it names Edge, Opera and Brave properly, which UA-string sniffing cannot, since every Chromium browser puts "Chrome" in its UA — and falls back to ordered UA regexes for Safari and Firefox. An iPad reports the Macintosh UA verbatim, so `maxTouchPoints` is the only thing separating the two and is checked first. The browser *version* is deliberately left out of the fingerprint that merges sessions: a background update mid-session must not split one sitting into two rows.
 
+### Mantra voice
+
+The 🔊 on the mantra overlay reads the line currently on screen; **⋯ → Mantra → Read mantra aloud** makes it also read each *new* one, i.e. on the tap that rerolls it (the slideshow auto-advancing deliberately does not reroll, so nothing ever starts talking on its own). Two engines sit behind one `speakMantra()` in `js/motivation.js`:
+
+- **Browser voice** (default) — the Web Speech API. No key, no network, nothing uploaded.
+- **ElevenLabs** — a real voice, at the cost of one paid API call per new line. Paste an API key in the same menu and pick from the voices on that account.
+
+Both the browser voice choice and the ElevenLabs key/voice live in **localStorage, never `state`**: the browser voice list belongs to the device, and the API key is *spendable*, so it must not ride the shared unauthenticated row the way `state.valorant.apiKey` does. That also means the key is per-device — set it again on the phone.
+
+Five things hold the ElevenLabs half up, and each is load-bearing:
+
+- It is **spend, not data**, so it goes through `appCanWrite()` like the AI subtask suggestion: a read-only guest silently gets the browser voice rather than a request billed to somebody else's account.
+- **Any failure falls back to the browser voice**, with the reason shown under the picker. The point of the button is that the mantra gets read; a key that expired mid-week must not make it silent.
+- Rendered audio is **memoized per key+voice+text for the session** (capped, object URLs revoked on eviction), so tapping the same mantra twice is free — and it is memory-only, since an mp3 per mantra must never reach the shared blob.
+- **One utterance at a time across both engines.** `stopMantraSpeech()` cancels the browser queue, pauses the `<audio>` *and* bumps `mantraSpeakToken`, which is what makes an already-in-flight fetch discard its own result instead of talking over the mantra you have moved on to.
+- `api.elevenlabs.io` is called **straight from the page** (permissive CORS, the `api.metatft.com` ruling) — so no Edge Function is involved, and its host must stay in `sw.js`'s `LIVE_DATA_HOSTS`: the cross-origin branch is cache-*first*, and a cached audio response would pin one mantra's recording over every later line.
+
 ### External APIs used
 
 | API | Used for | Auth |
@@ -987,6 +1004,7 @@ Device identification prefers `navigator.userAgentData` where it exists — it n
 | Community Dragon (`raw.communitydragon.org`) | TFT rank crest art | No key. Immutable, so cached offline by `sw.js` |
 | valorant-api.com | Rank tier icons, agent art, skin/bundle names & images, accessory-shop item names & art (sprays/buddies/player cards/titles), weapon skin catalog + content tiers (reference data) | None (public) |
 | open.er-api.com | Live currency exchange rates ("Fetch Live Rates" button) | None (public) |
+| ElevenLabs (`api.elevenlabs.io`) | Reading the mantra aloud in a real voice, when the Motivation tab’s voice engine is set to ElevenLabs | Paid key, user-supplied, stored in **localStorage on that device only** — never in `state`, because the shared row is unauthenticated and this key is spendable |
 | ipwho.is, ipapi.co, get.geojs.io | City-level location for the Settings access log (whichever answers first) | No key. Permissive CORS, called straight from the browser |
 | Pinterest RSS (`pinterest.com/<user>/feed.rss` + each `/<user>/<board>.rss`, via the `pinterest-feed` function) | The daily 25 random pins in a Motivation "Pinterest collection" | None (public profile + board feeds) |
 | Pinterest pin pages + `v*.pinimg.com` (via the `pinterest-feed` function's `resolve` action) | Finding which of the 25 picked pins are videos, and their mp4 URL — the clip itself then streams from the CDN to the browser, not through the function | None (public pin pages) |

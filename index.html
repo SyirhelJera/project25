@@ -2009,7 +2009,16 @@
           <div class="motivation-menu-group" id="motivationSpeechGroup">
             <div class="motivation-menu-label">Mantra</div>
             <button class="motivation-menu-item" id="motivationSpeakMantraBtn" data-keep-menu title="Read each new mantra aloud when you tap the photo">🔇 Read mantra aloud: Off</button>
+            <select class="motivation-voice-select" id="mantraEngineSelect" aria-label="Mantra voice engine">
+              <option value="browser">Browser voice (free)</option>
+              <option value="elevenlabs">ElevenLabs voice</option>
+            </select>
             <select class="motivation-voice-select" id="mantraVoiceSelect" aria-label="Mantra voice"></select>
+            <div class="motivation-eleven" id="mantraElevenGroup" style="display:none;">
+              <input class="motivation-voice-input" id="mantraElevenKey" type="password" autocomplete="off" spellcheck="false" placeholder="ElevenLabs API key" aria-label="ElevenLabs API key">
+              <select class="motivation-voice-select" id="mantraElevenVoice" aria-label="ElevenLabs voice"></select>
+              <div class="motivation-menu-hint" id="mantraElevenHint"></div>
+            </div>
           </div>
 
           <div class="motivation-menu-group">

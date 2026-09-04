@@ -776,17 +776,55 @@
   }
 
   /* ---------- mantra text-to-speech ----------
-     The browser's own Web Speech API — no dependency, no network, nothing uploaded. The 🔊 on the
-     mantra overlay reads whatever mantra is currently shown; state.motivation.speakMantra makes it
-     additionally read each *new* one, which means on the tap that rerolls it. Auto-advancing the
-     slideshow deliberately doesn't reroll the mantra, so this never starts talking on its own.
-     The chosen voice is localStorage, not state: the voice list belongs to the device/browser, so
-     a name picked on the phone would mean nothing on the desktop (same reasoning as the unlocks
-     above). Everything here no-ops when speechSynthesis is missing. */
+     Two engines sit behind one speakMantra(): the browser's own Web Speech API (the default — no
+     dependency, no network, nothing uploaded) and ElevenLabs (a real voice, at the cost of a paid
+     API call per line). The 🔊 on the mantra overlay reads whatever mantra is currently shown;
+     state.motivation.speakMantra makes it additionally read each *new* one, which means on the tap
+     that rerolls it. Auto-advancing the slideshow deliberately doesn't reroll the mantra, so this
+     never starts talking on its own.
+
+     Everything the engines need is localStorage, never `state` — the browser voice list belongs to
+     the device (a name picked on the phone would mean nothing on the desktop, the same reasoning as
+     the unlocks above), and the ElevenLabs API key is *spendable*, so it must not ride the shared
+     unauthenticated row the way state.valorant.apiKey does. Five rules hold the ElevenLabs half up:
+       - It is spend, not data, so it goes through appCanWrite() like the AI suggestion call — a
+         read-only guest gets the browser voice, never a request billed to somebody else's account.
+       - Any failure falls back to the browser voice rather than going silent: the point of the
+         button is that the mantra gets read, and a key that expired mid-week must not break it.
+       - Rendered audio is memoized per key+voice+text for the session, so tapping the same mantra
+         twice is free. Memory only, capped — an mp3 per mantra must never reach the shared blob.
+       - One utterance at a time, across both engines: stopMantraSpeech() cancels the browser queue,
+         pauses the <audio>, AND bumps mantraSpeakToken, which is what makes an in-flight fetch
+         discard its own result instead of talking over the mantra you moved on to.
+       - api.elevenlabs.io is called straight from the page (it sends permissive CORS, the
+         api.metatft.com ruling) so there is no Edge Function here — which is exactly why its host
+         must stay in sw.js's LIVE_DATA_HOSTS: the cross-origin branch is cache-FIRST, and a cached
+         audio response would pin one mantra's recording over every later line. */
   const motivationTTS = ('speechSynthesis' in window) ? window.speechSynthesis : null;
   const MANTRA_VOICE_KEY = 'motivation-mantra-voice';
-  let mantraVoiceURI = '';
-  try{ mantraVoiceURI = localStorage.getItem(MANTRA_VOICE_KEY) || ''; }catch(e){}
+  const MANTRA_ENGINE_KEY = 'motivation-mantra-engine';
+  const MANTRA_11_KEY_KEY = 'motivation-mantra-11-key';
+  const MANTRA_11_VOICE_KEY = 'motivation-mantra-11-voice';
+  const ELEVEN_API = 'https://api.elevenlabs.io/v1';
+  const ELEVEN_MODEL = 'eleven_multilingual_v2'; // the quality model; a mantra is one short line, so latency isn't the constraint
+  const ELEVEN_CACHE_CAP = 24;
+  function mantraLS(k){ try{ return localStorage.getItem(k) || ''; }catch(e){ return ''; } }
+  function mantraLSSet(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+
+  let mantraVoiceURI = mantraLS(MANTRA_VOICE_KEY);
+  let mantraEngine = mantraLS(MANTRA_ENGINE_KEY) === 'elevenlabs' ? 'elevenlabs' : 'browser';
+  let elevenKey = mantraLS(MANTRA_11_KEY_KEY);
+  let elevenVoiceId = mantraLS(MANTRA_11_VOICE_KEY);
+  let elevenVoices = null;      // null = never loaded; [] = loaded and the account has none
+  let elevenVoicesKey = '';     // which API key the loaded list belongs to
+  let elevenLoading = false;
+  let elevenNote = '';          // last error/status line shown under the picker
+  const elevenAudioCache = new Map(); // 'key|voice|text' -> object URL (session only)
+  let mantraAudio = null;
+  let mantraSpeakToken = 0;
+
+  function elevenReady(){ return mantraEngine === 'elevenlabs' && !!elevenKey && !!elevenVoiceId && appCanWrite(); }
+  function mantraSpeechAvailable(){ return !!motivationTTS || (mantraEngine === 'elevenlabs' && !!elevenKey); }
 
   function mantraVoices(){
     if(!motivationTTS) return [];
@@ -803,25 +841,72 @@
   }
 
   function stopMantraSpeech(){
-    if(!motivationTTS) return;
-    try{ motivationTTS.cancel(); }catch(e){}
+    mantraSpeakToken++; // anything already in flight now belongs to a mantra nobody is looking at
+    if(motivationTTS){ try{ motivationTTS.cancel(); }catch(e){} }
+    if(mantraAudio){ try{ mantraAudio.pause(); }catch(e){} mantraAudio = null; }
   }
 
-  function speakMantra(){
-    if(!motivationTTS || !state.mantras.length) return;
+  function currentMantraText(){
     // Read from the element rather than state.mantras[mantraIdx]: what should be spoken is
     // definitionally the line on screen, whoever last wrote it there.
     const node = el('mantraText');
-    const text = node ? (node.textContent || '').trim() : '';
-    if(!text) return;
-    // cancel() first, never queue — a second tap replaces what's being read. Queueing would let
-    // tapping through a collection back up a minute of speech behind the image you're looking at.
-    stopMantraSpeech();
+    return node ? (node.textContent || '').trim() : '';
+  }
+
+  function speakMantraBrowser(text){
+    if(!motivationTTS) return;
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 0.92; // a mantra read at the default rate sounds hurried
     const voice = pickMantraVoice();
     if(voice){ u.voice = voice; u.lang = voice.lang; }
     try{ motivationTTS.speak(u); }catch(e){}
+  }
+
+  function elevenAudioUrl(text){
+    const cacheKey = elevenKey.slice(-6) + '|' + elevenVoiceId + '|' + text;
+    const hit = elevenAudioCache.get(cacheKey);
+    if(hit) return Promise.resolve(hit);
+    return fetch(ELEVEN_API + '/text-to-speech/' + encodeURIComponent(elevenVoiceId), {
+      method: 'POST',
+      headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+      body: JSON.stringify({ text, model_id: ELEVEN_MODEL, voice_settings: { stability: 0.45, similarity_boost: 0.8 } })
+    }).then(res=>{
+      if(!res.ok) throw new Error(res.status === 401 ? 'ElevenLabs rejected the API key' : 'ElevenLabs error ' + res.status);
+      return res.blob();
+    }).then(blob=>{
+      const url = URL.createObjectURL(blob);
+      elevenAudioCache.set(cacheKey, url);
+      if(elevenAudioCache.size > ELEVEN_CACHE_CAP){
+        const oldest = elevenAudioCache.keys().next().value;
+        const dead = elevenAudioCache.get(oldest);
+        elevenAudioCache.delete(oldest);
+        try{ URL.revokeObjectURL(dead); }catch(e){}
+      }
+      return url;
+    });
+  }
+
+  function speakMantra(){
+    if(!state.mantras.length) return;
+    const text = currentMantraText();
+    if(!text) return;
+    // cancel() first, never queue — a second tap replaces what's being read. Queueing would let
+    // tapping through a collection back up a minute of speech behind the image you're looking at.
+    stopMantraSpeech();
+    if(!elevenReady()){ speakMantraBrowser(text); return; }
+    const token = mantraSpeakToken;
+    elevenAudioUrl(text).then(url=>{
+      if(token !== mantraSpeakToken) return; // superseded while the request was in flight
+      const audio = new Audio(url);
+      mantraAudio = audio;
+      if(elevenNote){ elevenNote = ''; renderMantraSpeechControls(); }
+      return audio.play();
+    }).catch(err=>{
+      if(token !== mantraSpeakToken) return;
+      elevenNote = (err && err.message) ? err.message : 'ElevenLabs is unreachable';
+      renderMantraSpeechControls();
+      speakMantraBrowser(text); // the mantra still gets read
+    });
   }
 
   // The tap on the slideshow both rerolls the mantra and, if enabled, reads the new one.
@@ -830,8 +915,29 @@
     if(state.motivation.speakMantra) speakMantra();
   }
 
+  function loadElevenVoices(){
+    if(elevenLoading || !elevenKey || !appCanWrite()) return;
+    if(elevenVoices && elevenVoicesKey === elevenKey) return; // already have this account's list
+    elevenLoading = true; elevenNote = 'Loading voices…'; renderMantraSpeechControls();
+    fetch(ELEVEN_API + '/voices', { headers: { 'xi-api-key': elevenKey } })
+      .then(res=>{ if(!res.ok) throw new Error(res.status === 401 ? 'ElevenLabs rejected the API key' : 'ElevenLabs error ' + res.status); return res.json(); })
+      .then(data=>{
+        elevenVoices = Array.isArray(data && data.voices) ? data.voices : [];
+        elevenVoicesKey = elevenKey;
+        elevenNote = elevenVoices.length ? '' : 'That account has no voices.';
+        // A saved voice the account no longer has would 404 on every line, so adopt the first one
+        // instead of leaving a dead id selected.
+        if(!elevenVoices.some(v=>v.voice_id === elevenVoiceId)){
+          elevenVoiceId = elevenVoices.length ? elevenVoices[0].voice_id : '';
+          mantraLSSet(MANTRA_11_VOICE_KEY, elevenVoiceId);
+        }
+      })
+      .catch(err=>{ elevenVoices = null; elevenNote = (err && err.message) ? err.message : 'Could not reach ElevenLabs'; })
+      .then(()=>{ elevenLoading = false; renderMantraSpeechControls(); });
+  }
+
   function renderMantraSpeechControls(){
-    const supported = !!motivationTTS;
+    const supported = mantraSpeechAvailable();
     el('motivationSpeechGroup').style.display = supported ? '' : 'none';
     el('mantraSpeakBtn').style.display = supported ? '' : 'none';
     if(!supported) return;
@@ -840,6 +946,11 @@
     const toggle = el('motivationSpeakMantraBtn');
     toggle.textContent = on ? '🔊 Read mantra aloud: On' : '🔇 Read mantra aloud: Off';
     toggle.classList.toggle('active', on);
+
+    const usingEleven = mantraEngine === 'elevenlabs';
+    el('mantraEngineSelect').value = mantraEngine;
+    el('mantraVoiceSelect').style.display = usingEleven ? 'none' : '';
+    el('mantraElevenGroup').style.display = usingEleven ? '' : 'none';
 
     const sel = el('mantraVoiceSelect');
     const voices = mantraVoices();
@@ -860,6 +971,34 @@
       });
     }
     sel.value = voices.some(v=>v.voiceURI === mantraVoiceURI) ? mantraVoiceURI : '';
+
+    // The key field is live, so never write into it while it holds the caret (the notes.js rule).
+    const keyInput = el('mantraElevenKey');
+    if(document.activeElement !== keyInput) keyInput.value = elevenKey;
+
+    const vsel = el('mantraElevenVoice');
+    const list = elevenVoices || [];
+    const vsig = elevenVoicesKey + '::' + list.map(v=>v.voice_id).join('|');
+    if(vsel.dataset.sig !== vsig){
+      vsel.dataset.sig = vsig;
+      vsel.innerHTML = '';
+      if(!list.length){
+        const def = document.createElement('option');
+        def.value = ''; def.textContent = elevenKey ? 'No voices loaded' : 'Add an API key first';
+        vsel.appendChild(def);
+      }
+      list.forEach(v=>{
+        const opt = document.createElement('option');
+        opt.value = v.voice_id;
+        opt.textContent = v.name + (v.labels && v.labels.accent ? ' (' + v.labels.accent + ')' : ''); // textContent — voice names are not ours to trust as markup
+        vsel.appendChild(opt);
+      });
+    }
+    vsel.value = list.some(v=>v.voice_id === elevenVoiceId) ? elevenVoiceId : '';
+
+    el('mantraElevenHint').textContent = elevenNote || (appCanWrite()
+      ? 'Billed to your ElevenLabs account, one call per new line. The key stays on this device.'
+      : 'This session is read-only — the browser voice is used instead.');
   }
 
   if(motivationTTS && motivationTTS.addEventListener) motivationTTS.addEventListener('voiceschanged', renderMantraSpeechControls);
@@ -878,9 +1017,39 @@
   });
   el('mantraVoiceSelect').addEventListener('change', e=>{
     mantraVoiceURI = e.target.value;
-    try{ localStorage.setItem(MANTRA_VOICE_KEY, mantraVoiceURI); }catch(err){}
+    mantraLSSet(MANTRA_VOICE_KEY, mantraVoiceURI);
     speakMantra(); // sample the voice you just picked
   });
+  el('mantraEngineSelect').addEventListener('change', e=>{
+    mantraEngine = e.target.value === 'elevenlabs' ? 'elevenlabs' : 'browser';
+    mantraLSSet(MANTRA_ENGINE_KEY, mantraEngine);
+    stopMantraSpeech();
+    elevenNote = '';
+    if(mantraEngine === 'elevenlabs') loadElevenVoices();
+    renderMantraSpeechControls();
+  });
+  // change, not input: a key is pasted or typed in full, and firing a voices fetch per keystroke
+  // would spend the rate-limit budget on every prefix of it.
+  el('mantraElevenKey').addEventListener('change', e=>{
+    const next = e.target.value.trim();
+    if(next === elevenKey) return;
+    elevenKey = next;
+    mantraLSSet(MANTRA_11_KEY_KEY, elevenKey);
+    elevenVoices = null; elevenVoicesKey = ''; elevenNote = '';
+    // The cache is keyed by the account that rendered it, so it can't outlive the key change.
+    elevenAudioCache.forEach(url=>{ try{ URL.revokeObjectURL(url); }catch(err){} });
+    elevenAudioCache.clear();
+    loadElevenVoices();
+    renderMantraSpeechControls();
+  });
+  el('mantraElevenVoice').addEventListener('change', e=>{
+    elevenVoiceId = e.target.value;
+    mantraLSSet(MANTRA_11_VOICE_KEY, elevenVoiceId);
+    speakMantra(); // sample the voice you just picked
+  });
+  // The voice list is fetched once at boot when ElevenLabs is already the chosen engine, so the
+  // first 🔊 doesn't have to wait for it — and so a revoked key is reported before it's needed.
+  if(mantraEngine === 'elevenlabs' && elevenKey) loadElevenVoices();
 
   /* ================= VIDEO LINKS ================= */
   /* Saved links to motivational clips that live on YouTube, Instagram or TikTok. These are not

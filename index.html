@@ -2708,6 +2708,29 @@
      it is stateful (the sleep toggle alternates bed/wake and counts up while you're asleep). -->
 <div id="quickActions" class="quick-actions" role="group" aria-label="Quick actions"></div>
 
+<!-- SLEEP VIEW — the whole screen while a night is running (js/quickactions.js). A MODE, not a
+     modal, the #scratchOverlay ruling: it covers the app including the sidebar, so it lives at body
+     level rather than inside a .view, and it never touches .nav-item.active — the tab underneath
+     stays exactly as it was and is revealed again on wake.
+     It is driven by state.fitness.sleepPending, which rides the shared row — so a night started on
+     a phone is already running when the desktop loads, with no per-device flag anywhere.
+     EMPTY of live values on purpose: renderSleepView() fills the clock and the elapsed line, and
+     re-fills them once a second while it is up. -->
+<div id="sleepOverlay" class="sleep-overlay" style="display:none;" role="dialog" aria-modal="true"
+     aria-labelledby="sleepViewHeading">
+  <div class="sleep-stars" aria-hidden="true"></div>
+  <div class="sleep-card">
+    <div class="sleep-moon" aria-hidden="true">🌙</div>
+    <h1 class="sleep-heading" id="sleepViewHeading">Sleeping</h1>
+    <div class="sleep-clock" id="sleepClock">--:--</div>
+    <div class="sleep-date" id="sleepDate"></div>
+    <div class="sleep-elapsed" id="sleepElapsed"></div>
+    <div class="sleep-since" id="sleepSince"></div>
+    <button type="button" class="sleep-wake" data-qa="sleep">Good morning — I’m awake</button>
+    <button type="button" class="sleep-dismiss" id="sleepDismissBtn">Use the app anyway</button>
+  </div>
+</div>
+
 <!-- CALENDAR "COMING UP" BUBBLE — opened once per page load by maybeShowCalendarBubble() in
      js/calendar.js when a Google Calendar event starts within the lead time.
      BODY LEVEL, deliberately not inside #view-time: .view{display:none} would hide it whenever the

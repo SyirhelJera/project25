@@ -74,6 +74,7 @@
   function startSleep(){
     const now = new Date();
     state.fitness.sleepPending = { at: now.toISOString() };
+    sleepViewDismissed = false;   // a fresh night always gets the cover, even if the last one was set aside
     save();
     renderQuickActions();
     // the Sleep pane's battery starts charging the moment this is pressed, so it has to be told —
@@ -88,6 +89,7 @@
      only the person pressing it knows which. Cancelling DISCARDS the timer rather than leaving it
      running, because the alternative is a pill that stays stuck on a number you have already
      declined once, with no other way to clear it. */
+  const SLEEP_FLOOR_MS = 10 * 60000;    // under this it is not a sleep at all — never recorded
   const SLEEP_MIN_MS = 20 * 60000;      // under this and it reads as a mis-tap
   const SLEEP_MAX_MS = 16 * 3600000;    // over this and the toggle was almost certainly forgotten
 
@@ -97,6 +99,17 @@
     const bedAt = new Date(Date.parse(sleepPending().at));
     const wokeAt = new Date();
     const txt = qaElapsedText(ms);
+    /* Under ten minutes is not a short night, it is a mis-tap — so it is discarded outright rather
+       than confirmed. Asking would be offering to record something the tracker has decided it does
+       not hold: sleepDayAgg() sums a date's sessions, so a stray two-minute record doesn't merely
+       sit there, it drags that day's average and its goal-hit down. Above the floor and below
+       SLEEP_MIN_MS the confirm still stands — a 15-minute doze is a real thing someone might mean. */
+    if(ms < SLEEP_FLOOR_MS){
+      state.fitness.sleepPending = null;
+      save(); renderQuickActions();
+      qaToast('Only <b>' + escapeHtml(txt) + '</b> — too short to log, so nothing was recorded.');
+      return;
+    }
     if(ms < SLEEP_MIN_MS || ms > SLEEP_MAX_MS){
       const why = ms < SLEEP_MIN_MS
         ? 'Only ' + txt + ' since you tapped Sleep.'
@@ -130,7 +143,7 @@
   function renderQuickActions(){
     const bar = el('quickActions'); if(!bar) return;
     // a guest can't write, so the control is not offered — see the header note
-    if(typeof appCanWrite === 'function' && !appCanWrite()){ bar.innerHTML = ''; return; }
+    if(typeof appCanWrite === 'function' && !appCanWrite()){ bar.innerHTML = ''; renderSleepView(); return; }
 
     const ms = sleepPendingElapsed();
     const running = ms != null;
@@ -163,6 +176,7 @@
       b.setAttribute('title', label);
       bar.appendChild(b);
     }
+    renderSleepView();
     syncQaTicker();
   }
 
@@ -179,6 +193,88 @@
   // A backgrounded tab's interval is throttled or stopped outright, so the elapsed figure is stale
   // by however long the phone was in a pocket — redraw on the way back rather than waiting a minute
   document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) renderQuickActions(); else syncQaTicker(); });
+
+  /* ================= SLEEP VIEW ================================================================
+     The whole screen while a night is running (#sleepOverlay). The reasoning behind covering the
+     app rather than adding another pill:
+
+       · There is nothing to do in an app you are asleep in. The one thing worth showing at 3am is
+         the time, and the one thing worth pressing is "awake".
+       · It is driven by state.fitness.sleepPending and by NOTHING else — no per-device flag, no
+         local mirror. That single shared timestamp is what makes this cross-device for free: start
+         a night on a phone, open the desktop, and the desktop loads the same stamp and covers
+         itself. It is also why the elapsed figure agrees everywhere, since it is always
+         (now − that stamp) rather than a timer anyone is running.
+       · It is a MODE, not a tab and not a modal, the #scratchOverlay ruling: it never touches
+         .nav-item.active / .view.active, so the tab underneath stays rendered and comes back
+         untouched on wake, and it sits at body level because a .view would hide it whenever its
+         host tab was not the active one.
+       · The dismissal is SESSION-ONLY (a module variable, never state) — "use the app anyway"
+         means this page load, not this night, or a single late-night lookup would silently uncover
+         every device until morning. Reloading brings it back, which is the honest behaviour for a
+         night that is genuinely still running.
+       · The clock ticks once a SECOND and therefore never calls save() — the elapsed line and the
+         clock are derived, so redrawing them costs a shared-row upload of nothing at all. Contrast
+         renderQuickActions()'s minute ticker: the pill only shows minutes.
+
+     Note the wake button carries data-qa="sleep" rather than a handler of its own — it is the same
+     toggle as the pill, so it goes through the same delegate and gets endSleep()'s confirms and the
+     ten-minute floor for free. */
+  let sleepViewDismissed = false;
+  let sleepViewTicker = null;
+
+  function sleepViewWanted(){
+    if(sleepViewDismissed) return false;
+    if(typeof appCanWrite === 'function' && !appCanWrite()) return false;  // a guest can't end it
+    return sleepPendingElapsed() != null;
+  }
+
+  function renderSleepView(){
+    const ov = el('sleepOverlay'); if(!ov) return;
+    if(!sleepViewWanted()){
+      if(ov.style.display !== 'none'){
+        ov.style.display = 'none';
+        document.documentElement.classList.remove('sleep-locked');
+      }
+      syncSleepViewTicker();
+      return;
+    }
+    const now = new Date();
+    const ms = sleepPendingElapsed();
+    const bedAt = new Date(Date.parse(sleepPending().at));
+    const clock = el('sleepClock'), date = el('sleepDate'),
+          elapsed = el('sleepElapsed'), since = el('sleepSince');
+    if(clock) clock.textContent = now.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
+    if(date) date.textContent = now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long'});
+    if(elapsed) elapsed.textContent = qaElapsedText(ms) + ' asleep';
+    if(since) since.textContent = 'Since ' + fmtClock(bedAt.getHours()*60 + bedAt.getMinutes());
+    const first = ov.style.display === 'none';
+    if(first){
+      ov.style.display = '';
+      document.documentElement.classList.add('sleep-locked');
+      // focus the way out, not the page underneath — but only on a fine pointer: focusing on touch
+      // scrolls the element into view, the scratchWantsAutoFocus() rule
+      const fine = !window.matchMedia || !window.matchMedia('(pointer:coarse)').matches;
+      const wake = ov.querySelector('.sleep-wake');
+      if(fine && wake) try{ wake.focus(); }catch(_){}
+    }
+    syncSleepViewTicker();
+  }
+
+  function syncSleepViewTicker(){
+    const want = sleepViewWanted() && !document.hidden;
+    if(want && !sleepViewTicker) sleepViewTicker = setInterval(renderSleepView, 1000);
+    else if(!want && sleepViewTicker){ clearInterval(sleepViewTicker); sleepViewTicker = null; }
+  }
+
+  document.addEventListener('click', e=>{
+    const t = e.target;
+    if(t && t.closest && t.closest('#sleepDismissBtn')){
+      sleepViewDismissed = true;
+      renderSleepView();
+      qaToast('Still counting — the sleep view comes back when you reload.');
+    }
+  });
 
   document.addEventListener('click', e=>{
     const btn = e.target && e.target.closest ? e.target.closest('[data-qa="sleep"]') : null;

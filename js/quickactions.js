@@ -46,6 +46,40 @@
   function hhmm(d){
     return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
   }
+  /* ---- the doze-off period ----------------------------------------------------------------
+     You press Sleep with the lights off and then lie there for half an hour. Counting that as
+     sleep inflates every figure in the pane — the averages, the goal-hit count, the debt sum —
+     by the same amount every single night, which is worse than noise because it is a consistent
+     bias you would never spot in the chart.
+     So the stamp is what it always was, "when I put the phone down", and the doze offset is
+     applied on the way OUT: the logged bed time is the stamp plus the offset, and the logged
+     duration is the elapsed minus it. Three consequences worth keeping straight.
+       · Nothing is stored per night. The offset lives in state.fitness.sleepDozeMins (Sleep →
+         Nightly goal) and is read at the moment a night is logged, so changing it does not
+         retroactively rewrite the log — the nights already recorded were recorded honestly under
+         whatever number was true then.
+       · It is subtracted from TOGGLE-logged nights only. A hand-typed bed/wake row is a number you
+         remembered, and the time you remember going to bed is already the time you meant.
+       · Every threshold below (the ten-minute floor, the mis-tap confirm, the forgotten-timer
+         ceiling) tests the ASLEEP figure, not the elapsed one — otherwise a 31-minute tap with a
+         30-minute doze would sail past the floor and log one minute of sleep. */
+  function sleepDozeMs(){
+    const m = (typeof sleepDozeMins === 'function') ? sleepDozeMins() : 30;
+    return Math.max(0, m) * 60000;
+  }
+  // ms actually asleep — elapsed less the doze, floored at zero while still dozing
+  function sleepAsleepElapsed(){
+    const ms = sleepPendingElapsed();
+    if(ms == null) return null;
+    return Math.max(0, ms - sleepDozeMs());
+  }
+  // ms left of the doze period, or 0 once it is over. null when no night is running.
+  function sleepDozeLeft(){
+    const ms = sleepPendingElapsed();
+    if(ms == null) return null;
+    return Math.max(0, sleepDozeMs() - ms);
+  }
+
   function qaElapsedText(ms){
     const mins = Math.floor(ms/60000);
     return Math.floor(mins/60) + 'h ' + String(mins%60).padStart(2,'0') + 'm';
@@ -80,8 +114,10 @@
     // the Sleep pane's battery starts charging the moment this is pressed, so it has to be told —
     // renderSleep() no-ops when its fields aren't on the page
     if(typeof renderSleep === 'function') renderSleep();
+    const dz = Math.round(sleepDozeMs()/60000);
     qaToast('Sleeping since <b>' + escapeHtml(fmtClock(now.getHours()*60 + now.getMinutes()))
-      + '</b>. Tap again when you wake up.');
+      + '</b>.' + (dz ? ' First ' + dz + 'm counts as settling.' : '')
+      + ' Tap again when you wake up.');
   }
 
   /* Ending is where the judgement is. Two implausible cases, each confirmed rather than refused —
@@ -94,9 +130,12 @@
   const SLEEP_MAX_MS = 16 * 3600000;    // over this and the toggle was almost certainly forgotten
 
   function endSleep(){
-    const ms = sleepPendingElapsed();
-    if(ms == null){ state.fitness.sleepPending = null; renderQuickActions(); return; }
-    const bedAt = new Date(Date.parse(sleepPending().at));
+    const raw = sleepPendingElapsed();
+    if(raw == null){ state.fitness.sleepPending = null; stopSleepNoise(); renderQuickActions(); return; }
+    // everything from here on is the ASLEEP figure — see the doze note above
+    const doze = sleepDozeMs();
+    const ms = Math.max(0, raw - doze);
+    const bedAt = new Date(Date.parse(sleepPending().at) + doze);
     const wokeAt = new Date();
     const txt = qaElapsedText(ms);
     /* Under ten minutes is not a short night, it is a mis-tap — so it is discarded outright rather
@@ -106,6 +145,7 @@
        SLEEP_MIN_MS the confirm still stands — a 15-minute doze is a real thing someone might mean. */
     if(ms < SLEEP_FLOOR_MS){
       state.fitness.sleepPending = null;
+      stopSleepNoise();
       save(); renderQuickActions();
       qaToast('Only <b>' + escapeHtml(txt) + '</b> — too short to log, so nothing was recorded.');
       return;
@@ -129,6 +169,7 @@
     const mins = Math.round(ms / 60000);
     recordSleepLog(date, { bed: hhmm(bedAt), wake: hhmm(wokeAt), mins });
     state.fitness.sleepPending = null;
+    stopSleepNoise();
     save();
     // the pane is very likely not the visible tab, and renderSleep() no-ops when its fields are
     // absent — calling it keeps the hero and the chart true if you do walk over there
@@ -147,15 +188,20 @@
 
     const ms = sleepPendingElapsed();
     const running = ms != null;
+    // during the doze the pill says so rather than counting: showing 0h 00m for half an hour reads
+    // as a broken timer, and showing the elapsed would contradict what gets logged
+    const dozing = running && sleepDozeLeft() > 0;
+    const sub = dozing ? 'settling' : qaElapsedText(sleepAsleepElapsed() || 0);
     const btn = bar.querySelector('[data-qa="sleep"]');
     const html = running
       ? '<span class="qa-live-dot" aria-hidden="true"></span>'
         + '<span class="qa-ico" aria-hidden="true">☀️</span>'
         + '<span class="qa-lbl">Awake</span>'
-        + '<span class="qa-sub">' + escapeHtml(qaElapsedText(ms)) + '</span>'
+        + '<span class="qa-sub">' + escapeHtml(sub) + '</span>'
       : '<span class="qa-ico" aria-hidden="true">🌙</span><span class="qa-lbl">Sleep</span>';
     const label = running
-      ? 'Wake up — ' + qaElapsedText(ms) + ' asleep so far. Logs the night.'
+      ? (dozing ? 'Wake up — still settling. Logs the night.'
+                : 'Wake up — ' + qaElapsedText(sleepAsleepElapsed() || 0) + ' asleep so far. Logs the night.')
       : 'Going to sleep — starts the night';
 
     // The button is reused rather than rebuilt while it is only its contents changing: this
@@ -220,6 +266,188 @@
      Note the wake button carries data-qa="sleep" rather than a handler of its own — it is the same
      toggle as the pill, so it goes through the same delegate and gets endSleep()'s confirms and the
      ten-minute floor for free. */
+  /* ================= WHITE NOISE ===============================================================
+     Sound for the sleep view, generated rather than played: this repo has no build step and no
+     asset pipeline, and a loop long enough that the ear can't hear it repeat is several megabytes
+     the service worker would have to precache to be useful offline — which is exactly when you'd
+     want it. Noise is the one sound a browser can synthesise indefinitely for nothing.
+
+     Six things hold it up.
+       · It runs on checklists.js's sfxOutput() context, never a second AudioContext — the standing
+         rule in this repo (js/goals.js records the reason: a second context is a second output bus,
+         which is what that compressor exists to prevent). Browsers also cap how many a page may
+         open at all, and this one would be held for eight hours.
+       · One four-second buffer, looped, shared by every sound. The three "sounds" are that buffer
+         through different filters — rain is a lowpass, ocean is the same lowpass under a very slow
+         gain LFO (the swell), white is unfiltered. A hiss you can hear loop is worse than no hiss,
+         so the buffer is brown-ish: integrating white noise puts the energy low, where a
+         four-second period is inaudible as a period.
+       · Volume and choice live in localStorage, NEVER in state — the mantra-voice ruling. This is a
+         per-device audio preference (a phone on a bedside table and a desktop across the room do
+         not want the same volume), and state is the shared row, which is re-uploaded in full on
+         every save.
+       · Nothing ever autoplays on a page load. Browsers block it, and a page that opened talking
+         would be a nasty surprise; the sound resumes only when the view opens from the tap that
+         started the night, which is a real user gesture. On a reload the chips are there, unlit.
+       · It keeps playing while the tab is hidden — a phone with the screen off is the normal case,
+         and pausing there would defeat the whole feature. It is stopped by waking, by dismissing
+         the cover, and by nothing else.
+       · Every start and stop is a gain RAMP, not a connect/disconnect: a square edge on a noise
+         buffer is an audible click, and this is a control you press in a silent dark room. */
+  const SLEEP_SOUNDS = [
+    { key:'rain',  label:'Rain',  ico:'\U0001F327\uFE0F' },
+    { key:'ocean', label:'Ocean', ico:'\U0001F30A' },
+    { key:'white', label:'Hiss',  ico:'\u26A1' }
+  ];
+  const NOISE_LS_KIND = 'p25.sleepNoise.kind';
+  const NOISE_LS_VOL  = 'p25.sleepNoise.vol';
+  const NOISE_FADE = 0.9;               // seconds — long enough that neither end is a click
+
+  let noiseNodes = null;                // {src, filter, gain, lfo, lfoGain} while playing
+  let noiseKind = null;                 // what is playing right now, or null
+  let noiseBuffer = null;
+
+  function noiseSavedKind(){
+    try{
+      const v = localStorage.getItem(NOISE_LS_KIND);
+      return SLEEP_SOUNDS.some(s2=> s2.key === v) ? v : null;
+    }catch(_){ return null; }
+  }
+  function noiseVol(){
+    try{
+      const v = parseInt(localStorage.getItem(NOISE_LS_VOL), 10);
+      if(!isNaN(v) && v >= 0 && v <= 100) return v;
+    }catch(_){}
+    return 45;
+  }
+  function noiseStore(k, v){ try{ localStorage.setItem(k, v); }catch(_){} }
+
+  // 0-100 slider to a gain. Squared, because loudness is not linear in amplitude — a linear slider
+  // does nothing across its top half and everything in the bottom quarter.
+  function noiseGainFor(pct){ const f = pct/100; return 0.55 * f * f; }
+
+  /* Four seconds of noise, made once and reused. It integrates the white samples with a leaky
+     accumulator — that is what turns a hiss into something closer to rain or surf before any filter
+     touches it; the /1.02 leak stops the walk drifting off into DC. */
+  function buildNoiseBuffer(ctx){
+    if(noiseBuffer) return noiseBuffer;
+    const len = Math.floor(ctx.sampleRate * 4);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    let last = 0;
+    for(let i = 0; i < len; i++){
+      const w = Math.random() * 2 - 1;
+      last = (last + 0.02 * w) / 1.02;
+      d[i] = last * 3.5;
+    }
+    noiseBuffer = buf;
+    return buf;
+  }
+
+  function stopSleepNoise(){
+    if(!noiseNodes) return;
+    const n = noiseNodes;
+    noiseNodes = null;
+    noiseKind = null;
+    try{
+      const t = sfxCtx.currentTime;
+      n.gain.gain.cancelScheduledValues(t);
+      n.gain.gain.setValueAtTime(n.gain.gain.value, t);
+      n.gain.gain.linearRampToValueAtTime(0.0001, t + NOISE_FADE);
+      // stopped only after the fade has finished, or the ramp is cut off and clicks anyway
+      n.src.stop(t + NOISE_FADE + 0.05);
+      if(n.lfo) n.lfo.stop(t + NOISE_FADE + 0.05);
+    }catch(_){}
+    renderSleepNoise();
+  }
+
+  function startSleepNoise(kind){
+    const out = (typeof sfxOutput === 'function') ? sfxOutput() : null;
+    if(!out || !sfxCtx) return;                     // Web Audio blocked — the chips just stay unlit
+    if(noiseKind === kind) return;
+    stopSleepNoise();
+    try{
+      const t = sfxCtx.currentTime;
+      const src = sfxCtx.createBufferSource();
+      src.buffer = buildNoiseBuffer(sfxCtx);
+      src.loop = true;
+      const gain = sfxCtx.createGain();
+      gain.gain.setValueAtTime(0.0001, t);
+      gain.gain.linearRampToValueAtTime(noiseGainFor(noiseVol()), t + NOISE_FADE);
+
+      let node = src, lfo = null, lfoGain = null;
+      if(kind !== 'white'){
+        const f = sfxCtx.createBiquadFilter();
+        f.type = 'lowpass';
+        f.frequency.value = kind === 'ocean' ? 420 : 1100;
+        f.Q.value = 0.7;
+        src.connect(f); node = f;
+      }
+      if(kind === 'ocean'){
+        // the swell: one very slow sine on top of the gain, plus or minus 35% every ~12 seconds
+        lfo = sfxCtx.createOscillator();
+        lfo.frequency.value = 0.085;
+        lfoGain = sfxCtx.createGain();
+        lfoGain.gain.value = 0.35;
+        lfo.connect(lfoGain); lfoGain.connect(gain.gain);
+        lfo.start(t);
+      }
+      node.connect(gain); gain.connect(out);
+      src.start(t);
+      noiseNodes = { src, gain, lfo, lfoGain };
+      noiseKind = kind;
+      noiseStore(NOISE_LS_KIND, kind);
+    }catch(_){ noiseNodes = null; noiseKind = null; }
+    renderSleepNoise();
+  }
+
+  function setSleepNoiseVol(pct){
+    noiseStore(NOISE_LS_VOL, pct);
+    if(!noiseNodes || !sfxCtx) return;
+    try{
+      const t = sfxCtx.currentTime;
+      // a short ramp rather than a set: dragging the slider writes this on every pointer move
+      noiseNodes.gain.gain.cancelScheduledValues(t);
+      noiseNodes.gain.gain.setTargetAtTime(noiseGainFor(pct), t, 0.05);
+    }catch(_){}
+  }
+
+  // Only ever called from the tap that opened the view — see the autoplay note in the header.
+  function maybeResumeSleepNoise(){
+    const k = noiseSavedKind();
+    if(k && !noiseKind) startSleepNoise(k);
+  }
+
+  function renderSleepNoise(){
+    const row = el('sleepNoiseChips');
+    if(row){
+      row.innerHTML = SLEEP_SOUNDS.map(s2=>
+        '<button type="button" class="sleep-noise-chip' + (noiseKind === s2.key ? ' is-on' : '')
+        + '" data-noise="' + s2.key + '" aria-pressed="' + (noiseKind === s2.key) + '">'
+        + '<span aria-hidden="true">' + s2.ico + '</span>' + escapeHtml(s2.label) + '</button>').join('');
+    }
+    const vol = el('sleepNoiseVol');
+    // never write the slider's value while it is being dragged, or the thumb fights the finger
+    if(vol && document.activeElement !== vol) vol.value = noiseVol();
+  }
+
+  // Delegated from the overlay, which is never rebuilt — the chips are innerHTML on every redraw.
+  {
+    const sleepOv = el('sleepOverlay');
+    if(sleepOv){
+      sleepOv.addEventListener('click', e=>{
+        const chip = e.target && e.target.closest ? e.target.closest('[data-noise]') : null;
+        if(!chip) return;
+        const k = chip.dataset.noise;
+        // pressing the lit chip is how you turn it off, and that choice is remembered as "off"
+        if(noiseKind === k){ noiseStore(NOISE_LS_KIND, ''); stopSleepNoise(); }
+        else startSleepNoise(k);
+      });
+      const volIn = el('sleepNoiseVol');
+      if(volIn) volIn.addEventListener('input', ()=> setSleepNoiseVol(parseInt(volIn.value, 10) || 0));
+    }
+  }
+
   let sleepViewDismissed = false;
   let sleepViewTicker = null;
 
@@ -234,20 +462,36 @@
     if(!sleepViewWanted()){
       if(ov.style.display !== 'none'){
         ov.style.display = 'none';
+        ov.classList.remove('is-dozing');
         document.documentElement.classList.remove('sleep-locked');
       }
       syncSleepViewTicker();
       return;
     }
     const now = new Date();
-    const ms = sleepPendingElapsed();
-    const bedAt = new Date(Date.parse(sleepPending().at));
+    const doze = sleepDozeMs();
+    const left = sleepDozeLeft();
+    const bedAt = new Date(Date.parse(sleepPending().at) + doze);   // when sleep is counted from
     const clock = el('sleepClock'), date = el('sleepDate'),
-          elapsed = el('sleepElapsed'), since = el('sleepSince');
+          elapsed = el('sleepElapsed'), since = el('sleepSince'),
+          head = el('sleepViewHeading');
     if(clock) clock.textContent = now.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'});
     if(date) date.textContent = now.toLocaleDateString(undefined, {weekday:'long', day:'numeric', month:'long'});
-    if(elapsed) elapsed.textContent = qaElapsedText(ms) + ' asleep';
-    if(since) since.textContent = 'Since ' + fmtClock(bedAt.getHours()*60 + bedAt.getMinutes());
+    /* Two states, and the wording is the whole of the difference: while the doze runs the screen is
+       counting DOWN to the moment sleep starts being credited, which is honest about the fact that
+       lying there is not yet sleep — and it is also the only feedback that the offset exists. */
+    ov.classList.toggle('is-dozing', left > 0);
+    if(left > 0){
+      const mins = Math.ceil(left/60000);
+      if(head) head.textContent = 'Winding down';
+      if(elapsed) elapsed.textContent = mins + (mins === 1 ? ' min' : ' mins') + ' to settle';
+      if(since) since.textContent = 'Sleep counts from ' + fmtClock(bedAt.getHours()*60 + bedAt.getMinutes());
+    } else {
+      if(head) head.textContent = 'Sleeping';
+      if(elapsed) elapsed.textContent = qaElapsedText(sleepAsleepElapsed()) + ' asleep';
+      if(since) since.textContent = 'Since ' + fmtClock(bedAt.getHours()*60 + bedAt.getMinutes());
+    }
+    renderSleepNoise();
     const first = ov.style.display === 'none';
     if(first){
       ov.style.display = '';
@@ -257,6 +501,7 @@
       const fine = !window.matchMedia || !window.matchMedia('(pointer:coarse)').matches;
       const wake = ov.querySelector('.sleep-wake');
       if(fine && wake) try{ wake.focus(); }catch(_){}
+      maybeResumeSleepNoise();
     }
     syncSleepViewTicker();
   }
@@ -271,6 +516,7 @@
     const t = e.target;
     if(t && t.closest && t.closest('#sleepDismissBtn')){
       sleepViewDismissed = true;
+      stopSleepNoise();   // the cover is gone; a hiss over the app you just asked to use is not the deal
       renderSleepView();
       qaToast('Still counting — the sleep view comes back when you reload.');
     }

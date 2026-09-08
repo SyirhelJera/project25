@@ -1961,6 +1961,13 @@
   /* Wrapping is the normal case here, not the edge one: a bed time later in the clock than the wake
      time simply means the night crossed midnight, which almost every night does. Equal times are
      rejected rather than read as 24 hours. */
+  /* Minutes between pressing Sleep and being asleep. Read through here, never off state directly,
+     so the clamp has one home — quickactions.js subtracts it from every toggle-logged night. */
+  function sleepDozeMins(){
+    const d = parseFloat(state.fitness.sleepDozeMins);
+    if(isNaN(d) || d < 0) return 30;
+    return Math.min(120, d);
+  }
   function sleepDuration(bed, wake){
     const b = clockMins(bed), w = clockMins(wake);
     if(b == null || w == null || b === w) return null;
@@ -2675,6 +2682,7 @@
     if(!el('slBed')) return;
     el('slGoal').value = sleepGoalHours();
     el('slBedGoal').value = state.fitness.sleepBedGoal || '';
+    el('slDoze').value = sleepDozeMins();
     renderSleepQualityChips();
     updateSleepHint();
     renderSleepHero();
@@ -2717,5 +2725,15 @@
     el('slBedGoal').addEventListener('input', ()=>{
       state.fitness.sleepBedGoal = el('slBedGoal').value || '';
       debouncedSave();
+    });
+    el('slDoze').addEventListener('input', ()=>{
+      const v = parseFloat(el('slDoze').value);
+      // out of range is ignored rather than clamped mid-typing, the slGoal rule
+      if(!isNaN(v) && v >= 0 && v <= 120){
+        state.fitness.sleepDozeMins = v;
+        debouncedSave();
+        // a running night is being measured against this number, so the cover has to be told
+        if(typeof renderQuickActions === 'function') renderQuickActions();
+      }
     });
   }

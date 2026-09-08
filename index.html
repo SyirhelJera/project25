@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Project 25</title>
-<meta name="theme-color" content="#6366F1">
+<meta name="theme-color" content="#000000">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="favicon.ico" sizes="any">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
@@ -938,6 +938,12 @@
         <div class="fitness-fields">
           <div class="fitness-field"><label for="slGoal">Hours per night</label><input type="number" id="slGoal" min="3" max="14" step="0.25"></div>
           <div class="fitness-field"><label for="slBedGoal">Target bedtime</label><input type="time" id="slBedGoal"></div>
+          <!-- The gap between pressing Sleep and actually being asleep. It is a setting rather than
+               something guessed per night, because it is a property of the person, not the night —
+               and it is subtracted from every toggle-logged session so the log holds sleep rather
+               than time-in-bed. Hand-typed bed/wake rows are untouched: you type those from memory
+               and the number you remember is already the one you mean. -->
+          <div class="fitness-field"><label for="slDoze">Minutes to fall asleep</label><input type="number" id="slDoze" min="0" max="120" step="5"></div>
         </div>
       </fieldset>
     </div>
@@ -2719,6 +2725,11 @@
 <div id="sleepOverlay" class="sleep-overlay" style="display:none;" role="dialog" aria-modal="true"
      aria-labelledby="sleepViewHeading">
   <div class="sleep-stars" aria-hidden="true"></div>
+  <!-- FALLING STARS — three elements, not a particle system: each one is a single CSS animation on
+       a staggered delay, so the sky costs no JS and no timer while it is on screen all night.
+       aria-hidden and animation:none under prefers-reduced-motion — a streak crossing the screen
+       is exactly the kind of motion that setting is asking not to see. -->
+  <div class="sleep-shooters" aria-hidden="true"><i></i><i></i><i></i></div>
   <div class="sleep-card">
     <div class="sleep-moon" aria-hidden="true">🌙</div>
     <h1 class="sleep-heading" id="sleepViewHeading">Sleeping</h1>
@@ -2726,6 +2737,16 @@
     <div class="sleep-date" id="sleepDate"></div>
     <div class="sleep-elapsed" id="sleepElapsed"></div>
     <div class="sleep-since" id="sleepSince"></div>
+    <!-- WHITE NOISE — generated in Web Audio, never a file: this repo has no build step and an mp3
+         long enough not to loop audibly is a several-megabyte asset to precache. The chips and the
+         slider are delegated from #sleepOverlay, which is never rebuilt. -->
+    <div class="sleep-noise" role="group" aria-label="White noise">
+      <div class="sleep-noise-chips" id="sleepNoiseChips"></div>
+      <label class="sleep-noise-vol">
+        <span class="sleep-noise-vol-ico" aria-hidden="true">🔉</span>
+        <input type="range" id="sleepNoiseVol" min="0" max="100" step="1" aria-label="White noise volume">
+      </label>
+    </div>
     <button type="button" class="sleep-wake" data-qa="sleep">Good morning — I’m awake</button>
     <button type="button" class="sleep-dismiss" id="sleepDismissBtn">Use the app anyway</button>
   </div>

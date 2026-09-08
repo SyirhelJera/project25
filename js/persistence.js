@@ -277,6 +277,12 @@
     // on the way to bed and clears it on waking (js/quickactions.js). It is persisted rather than
     // held in memory for the obvious reason: the app is shut for the whole of what it measures.
     if(!state.fitness.sleepPending || !state.fitness.sleepPending.at) state.fitness.sleepPending = null;
+    // How long it takes you to actually drop off after pressing Sleep. 0 is a legitimate answer
+    // (someone who falls asleep instantly), so this is clamped rather than defaulted-if-falsy.
+    {
+      const d = parseFloat(state.fitness.sleepDozeMins);
+      state.fitness.sleepDozeMins = (isNaN(d) || d < 0) ? 30 : Math.min(120, d);
+    }
     state.valorant = parsed.valorant || { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', wishlist:{} };
     if(!state.valorant.apiKey) state.valorant.apiKey = '';
     if(!state.valorant.accounts) state.valorant.accounts = [];

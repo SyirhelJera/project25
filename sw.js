@@ -5,8 +5,11 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v69';
-const RUNTIME_CACHE = 'p25-runtime-v1';
+const SHELL_CACHE = 'p25-shell-v70';
+// Bumped to v2 alongside adding pinimg.com to LIVE_DATA_HOSTS below: the activate handler
+// deletes every cache not in CURRENT_CACHES, so renaming this is what reclaims the Pinterest
+// images an earlier build had already written into it.
+const RUNTIME_CACHE = 'p25-runtime-v2';
 const CURRENT_CACHES = [SHELL_CACHE, RUNTIME_CACHE];
 
 const SHELL_ASSETS = [
@@ -100,8 +103,15 @@ self.addEventListener('fetch', (event) => {
   // networkFirst'd against the SHELL cache — which would write a third-party embed page into the
   // app shell and, on any network blip, serve './index.html' INTO the video frame, rendering the
   // whole app inside the player. This is also why youtube.com above already had to be here.
+  // pinimg.com is the Motivation tab's Pinterest collections (i.pinimg.com stills, v*.pinimg.com
+  // clips), and it is here for a reason of its own: those collections now show 25 DIFFERENT pins
+  // every day rather than recycling one set, so the cache-first branch below would write 25 new
+  // images a day into a RUNTIME_CACHE that is never evicted and never version-bumped — hundreds of
+  // megabytes on a phone within a few months, for photos that are replaced tomorrow. Leaving them
+  // to the browser's own HTTP cache keeps repeat views within a day just as cheap, and that cache
+  // is size-managed and evicted, which Cache Storage is not.
   const LIVE_DATA_HOSTS = ['.supabase.co', 'api.henrikdev.xyz', 'valorant-api.com',
-    'api.metatft.com', 'api.elevenlabs.io', 'ipwho.is', 'ipapi.co', 'get.geojs.io',
+    'api.metatft.com', 'api.elevenlabs.io', 'ipwho.is', 'ipapi.co', 'get.geojs.io', 'pinimg.com',
     'youtube.com', 'youtube-nocookie.com', 'ytimg.com', 'ggpht.com',
     'instagram.com', 'cdninstagram.com', 'tiktok.com', 'tiktokcdn.com', 'tiktokcdn-us.com', 'ttwstatic.com',
     '127.0.0.1', 'localhost'];

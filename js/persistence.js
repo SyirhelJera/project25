@@ -656,11 +656,28 @@
         if(!Array.isArray(c.images)) c.images = [];
         if(typeof c.pin !== 'string') c.pin = '';
         // source '' = an ordinary hand-uploaded category; 'pinterest' = auto-filled daily from
-        // that profile's public RSS feed (see syncPinterestCategory in js/motivation.js).
+        // that profile's public pins (see syncPinterestCategory in js/motivation.js).
         // lastSync is a localDateStr() day key — it's what makes the refresh once-per-day.
         if(typeof c.source !== 'string') c.source = '';
         if(typeof c.pinterestUser !== 'string') c.pinterestUser = '';
         if(typeof c.lastSync !== 'string') c.lastSync = '';
+        // Board slugs discovered on previous syncs, and the ids of the pins already shown. Both are
+        // Pinterest-only bookkeeping: boardSlugs is what makes the pool reach past the boards you
+        // pinned to lately, seenIds is what stops a day's pick repeating one the collection has
+        // already shown. Filtered to strings and capped here as well as in motivation.js, since a
+        // hand-edited or half-written record is what would otherwise put a non-string into a URL
+        // path or grow the shared blob without bound.
+        c.boardSlugs = (Array.isArray(c.boardSlugs) ? c.boardSlugs.filter(s=>typeof s === 'string') : []).slice(0, 30);
+        c.seenIds = (Array.isArray(c.seenIds) ? c.seenIds.filter(s=>typeof s === 'string') : []).slice(-600);
+        // Creator ids harvested from the pins on those boards — the people you save FROM, which is
+        // the pool "Discover" draws pins you've never saved out of. Digits-only is re-checked
+        // server-side before any of them is interpolated into a URL; the filter here is only about
+        // keeping junk out of the shared blob.
+        c.creatorIds = (Array.isArray(c.creatorIds) ? c.creatorIds.filter(s=>typeof s === 'string') : []).slice(0, 400);
+        // Discover defaults ON, so it is stored as "not false" rather than "=== true": a Pinterest
+        // collection that predates this key should start showing new pins without being switched
+        // on, since a daily refresh of pins you already saved is the thing that wasn't wanted.
+        c.discover = c.discover !== false;
       });
       // A saved video link. `videoId` is the regex-validated id/shortcode parsed out of `url` by
       // parseMotivationVideoUrl() in js/motivation.js, and it is the ONLY thing the embed src is

@@ -38,14 +38,27 @@
   // we're inside a gesture and play() will be allowed.
   let motivationVideoBlocked = false;
 
-  // A category with source==='pinterest' fills itself: PINTEREST_PICK_COUNT random pins from that
-  // profile's public RSS feed, swapped for a fresh set the first time the app is opened on a new
+  // A category with source==='pinterest' fills itself: PINTEREST_PICK_COUNT pins from that
+  // profile's public pins, swapped for a fresh set the first time the app is opened on a new
   // day (cat.lastSync holds the day key). Nothing is uploaded to Storage — the images stay as
   // i.pinimg.com URLs, so a category costs nothing and a refresh leaves nothing behind.
   // The 📌 button on a thumbnail copies that pin into PINTEREST_SAVED_CAT_NAME, an ordinary
   // category the daily refresh never touches — that's how a good pin outlives its day.
   const PINTEREST_PICK_COUNT = 25;
   const PINTEREST_SAVED_CAT_NAME = 'Saved Pins';
+  // How many turns are remembered, so a day's pick can avoid them (pickPinterestPins). Capped
+  // because it rides the shared blob (the ACCESS_LOG_CAP reasoning), and entries are pin ids
+  // rather than pin page URLs for the same reason — see pinterestPinKey(). Below the Edge
+  // Function's own MAX_PINS on purpose: for a pool that big this becomes a sliding "not seen in
+  // the last 24 days" window rather than a hard cycle, which is the same promise either way.
+  const PINTEREST_SEEN_CAP = 600;
+  // Boards remembered across syncs. Discovery only sees the boards you pinned to lately, so this
+  // is what makes the known set grow rather than reset each day; matches MAX_BOARDS server-side.
+  const PINTEREST_BOARD_CAP = 30;
+  // Creators remembered across syncs — the people whose pins you saved, which is what "Discover"
+  // draws from. Same growing-set role as the boards, and matches MAX_CREATORS server-side. Ids are
+  // ~19 digits, so a full list is ~8KB of the shared blob; measured 131 on a real profile.
+  const PINTEREST_CREATOR_CAP = 400;
   let pinterestSyncing = false; // one sync at a time — renderAll and the tab-open hook can both fire
 
   // How the collections are laid out for the swipe / click-the-name cycle. Purely a view over
@@ -158,6 +171,14 @@
     const isPinterest = cat.source === 'pinterest';
     el('motivationSyncPinterestBtn').style.display = isPinterest ? '' : 'none';
     el('motivationPinterestUserBtn').style.display = isPinterest ? '' : 'none';
+    // Discover is on unless the record says otherwise (see applyLoadedState) — showing pins you
+    // have never saved is what the daily refresh is *for*, and a collection of your own saves is
+    // the thing you can already scroll on Pinterest.
+    const discoverOn = isPinterest && cat.discover !== false;
+    const discoverBtn = el('motivationDiscoverBtn');
+    discoverBtn.style.display = isPinterest ? '' : 'none';
+    discoverBtn.textContent = discoverOn ? '✨ Discover new pins: on' : '✨ Discover new pins: off';
+    discoverBtn.classList.toggle('active', discoverOn);
     // Uploading into a Pinterest category would look like it worked and then vanish at the next
     // daily refresh, which replaces the whole image list — so don't offer it there.
     el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
@@ -550,7 +571,7 @@
     if(entered===null) return;
     const user = normalizePinterestUser(entered);
     if(!user) return;
-    const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '' };
+    const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: true };
     state.motivation.categories.push(cat);
     motivationActiveCatId = cat.id;
     save(); renderMotivation();
@@ -566,6 +587,10 @@
     if(user === cat.pinterestUser){ syncPinterestCategory(cat.id, true); return; }
     cat.pinterestUser = user;
     cat.lastSync = ''; // different account — today's images are no longer the right ones
+    // All three are keyed to the old profile: its board slugs would be fetched under the new
+    // username (a fan-out of 404s), its shown-pins history describes pins that aren't in the new
+    // pool, and its creators are the other account's taste graph, not this one's.
+    cat.boardSlugs = []; cat.seenIds = []; cat.creatorIds = [];
     save(); renderMotivation();
     syncPinterestCategory(cat.id, true);
   }
@@ -584,8 +609,69 @@
     return v;
   }
 
-  // Pulls the profile's public feed and keeps PINTEREST_PICK_COUNT random pins, replacing whatever
-  // was showing. Any failure leaves the existing images alone — a Pinterest hiccup shouldn't empty
+  // Flips the collection between "pins I've never saved" and "my own saves", and re-syncs on the
+  // spot rather than waiting for tomorrow — the switch is about what you want to look at NOW, and
+  // a toggle whose effect only appears the next morning reads as a toggle that did nothing.
+  // lastSync is cleared first so that re-sync isn't the same-day no-op maybeSync would make of it.
+  function toggleMotivationDiscover(){
+    const cat = activeMotivationCategory(); if(!cat || cat.source !== 'pinterest') return;
+    cat.discover = (cat.discover === false);
+    cat.lastSync = '';
+    save(); renderMotivation();
+    syncPinterestCategory(cat.id, true);
+  }
+
+  // What a pin is remembered by in cat.seenIds. The pin's numeric id out of its page URL, not the
+  // URL itself: this list rides the shared blob, which is re-serialized and re-uploaded in full on
+  // every save from every tab, so at PINTEREST_SEEN_CAP the difference between a 19-character id
+  // and a 49-character URL is ~20KB on every one of those saves. Falls back to whatever the record
+  // is keyed by, so an unrecognised shape is still remembered rather than shown forever.
+  function pinterestPinKey(p){
+    const m = String((p && p.link) || '').match(/\/pin\/([A-Za-z0-9_-]{1,64})\/?$/);
+    return m ? m[1] : String((p && p.id) || (p && p.url) || '');
+  }
+
+  // Picks the day's PINTEREST_PICK_COUNT out of the merged pool, preferring pins this collection
+  // hasn't shown yet. Drawing uniformly at random — which is what this used to do — means the pool
+  // is sampled WITH replacement across days: with 300 pins and 25 a day you meet about two of
+  // yesterday's every morning and never work through the archive, which reads as the same photos
+  // recycling forever. Tracking turns instead guarantees every pin in the pool gets shown once
+  // before any is shown twice, so a 300-pin pool is twelve days of genuinely new photos.
+  //
+  // Returns { picked, seenIds, fresh } — the caller stores seenIds only once the pick is
+  // committed, and `fresh` (how many of the picks had never been shown) is logged, not shown.
+  function pickPinterestPins(pool, prevSeen){
+    const prev = Array.isArray(prevSeen) ? prevSeen : [];
+    const seen = new Set(prev);
+    const key = pinterestPinKey;
+
+    const unseen = pool.filter(p => !seen.has(key(p)));
+    for(let i = unseen.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = unseen[i]; unseen[i] = unseen[j]; unseen[j] = tmp;
+    }
+    const picked = unseen.slice(0, PINTEREST_PICK_COUNT);
+    const fresh = picked.length;
+    if(picked.length >= PINTEREST_PICK_COUNT){
+      return { picked, fresh, seenIds: prev.concat(picked.map(key)).slice(-PINTEREST_SEEN_CAP) };
+    }
+
+    // The pool is exhausted — everything in it has had a turn. Start a new cycle, topping up from
+    // the pins already shown in the order they were shown, so the ones seen longest ago come back
+    // first and today can't repeat yesterday. prev holds each id's turn order; a pin with no entry
+    // (the pool grew past the cap) sorts ahead of every pin that does.
+    const order = new Map(prev.map((id, i) => [id, i]));
+    const rank = p => { const k = key(p); return order.has(k) ? order.get(k) : -1; };
+    const taken = new Set(picked.map(key));
+    const rest = pool.filter(p => !taken.has(key(p))).sort((a, b) => rank(a) - rank(b));
+    picked.push(...rest.slice(0, PINTEREST_PICK_COUNT - picked.length));
+    // The cycle resets with only today's turns recorded, so tomorrow the whole pool is fresh again
+    // except for these — which is exactly the "don't repeat yesterday" the top-up just arranged.
+    return { picked, fresh, seenIds: picked.map(key) };
+  }
+
+  // Pulls the profile's public pins and keeps PINTEREST_PICK_COUNT of them, replacing whatever was
+  // showing. Any failure leaves the existing images alone — a Pinterest hiccup shouldn't empty
   // the collection — and only speaks up when the user asked for this (manual), not on the silent
   // once-a-day refresh.
   async function syncPinterestCategory(catId, manual){
@@ -603,7 +689,18 @@
     btn.textContent = 'Refreshing…'; btn.disabled = true;
 
     try{
-      const { data, error } = await supa.functions.invoke('pinterest-feed', { body: { username: cat.pinterestUser } });
+      // The boards this collection already knows about ride along: the server can only discover
+      // the boards you pinned to lately, so without this the pool would shrink back to "recent"
+      // every day instead of reaching into the archive.
+      const knownBoards = Array.isArray(cat.boardSlugs) ? cat.boardSlugs : [];
+      // Same for the creators behind those pins, which is the pool Discover draws from — a sync
+      // only harvests the creators of the pins it happened to read, so the remembered list is what
+      // widens the taste graph instead of resampling the same recent corner of it.
+      const knownCreators = Array.isArray(cat.creatorIds) ? cat.creatorIds : [];
+      const wantDiscover = cat.discover !== false;
+      const { data, error } = await supa.functions.invoke('pinterest-feed', {
+        body: { username: cat.pinterestUser, boards: knownBoards, creators: knownCreators, discover: wantDiscover },
+      });
       if(error){
         // A non-2xx from the function arrives as a generic "non-2xx status code" message; the
         // readable one is in the response body, same unwrapping as uploadJobResume() in jobs.js.
@@ -617,11 +714,17 @@
       const pins = (data && data.pins) || [];
       if(!pins.length) throw new Error('That Pinterest profile has no public pins to show.');
 
-      for(let i = pins.length - 1; i > 0; i--){
-        const j = Math.floor(Math.random() * (i + 1));
-        const tmp = pins[i]; pins[i] = pins[j]; pins[j] = tmp;
-      }
-      const picked = pins.slice(0, PINTEREST_PICK_COUNT);
+      const { picked, seenIds, fresh } = pickPinterestPins(pins, cat.seenIds);
+
+      // Boards that answered just now go to the front, then the ones already remembered — so a
+      // board that has gone quiet drifts to the tail and eventually falls off the cap, while a
+      // one-off failure to read a board costs nothing.
+      const returned = Array.isArray(data.boardSlugs) ? data.boardSlugs.filter(s=>typeof s === 'string') : [];
+      cat.boardSlugs = returned.concat(knownBoards.filter(s=>!returned.includes(s))).slice(0, PINTEREST_BOARD_CAP);
+      // Creators come back as the union the server built (remembered + newly harvested), so this
+      // is a replace rather than a merge — unlike the boards above, which are ordered by whether
+      // they still answer.
+      if(Array.isArray(data.creatorIds)) cat.creatorIds = data.creatorIds.filter(s=>typeof s === 'string').slice(0, PINTEREST_CREATOR_CAP);
 
       // No-op for i.pinimg.com URLs (it only matches Storage paths), but it keeps the bucket
       // clean if a real upload ever ended up in here.
@@ -630,11 +733,24 @@
       // — the feed can't tell us which of these are videos.
       const created = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, videoUrl: '', createdAt: Date.now() }));
       cat.images = created;
+      cat.seenIds = seenIds;
       cat.lastSync = localDateStr(new Date());
       // Logged, not shown: the header stays clean, but this is how you check whether board
       // discovery actually found your boards (a pool in the hundreds) or fell back to the
-      // profile feed's ~25 most recent saves. Only the 10 picked above are stored.
-      console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length + ' pins across ' + ((data && data.boards) || 0) + ' boards');
+      // profile feed's ~25 most recent saves. Only the 25 picked above are stored. `fresh` is how
+      // many of today's pins this collection had never shown before — it dropping below the pick
+      // count means the pool has been worked through and a new cycle started, not that something
+      // is broken.
+      // In Discover mode `pins` is already the never-saved pool, so the counts describe that pool
+      // rather than the profile's own; `discovered: 0` is the server saying it fell back to your
+      // own pins, which is the one case worth telling the user about.
+      const discoverGot = (data && typeof data.discovered === 'number') ? data.discovered : null;
+      console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length
+        + (wantDiscover ? ' never-saved pins from ' + ((cat.creatorIds || []).length) + ' known creators' : ' pins')
+        + ' across ' + ((data && data.boards) || 0) + ' boards (' + fresh + ' never shown before)');
+      if(manual && wantDiscover && discoverGot === 0){
+        window.alert('Couldn’t find any new pins this time — showing your own saves instead.\n\nDiscover works from the creators behind pins you’ve saved, so it needs a sync or two to build that list up.');
+      }
       delete motivationSlideIdx[cat.id]; // start the new set from the top
       save(); renderMotivation();
       resolvePinterestVideos(cat.id, created); // not awaited — see below
@@ -704,7 +820,7 @@
 
     let saved = savedPinsCategory();
     if(!saved){
-      saved = { id: uid(), name: PINTEREST_SAVED_CAT_NAME, images: [], pin: '', source: '', pinterestUser: '', lastSync: '' };
+      saved = { id: uid(), name: PINTEREST_SAVED_CAT_NAME, images: [], pin: '', source: '', pinterestUser: '', lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: false };
       state.motivation.categories.push(saved);
     }
     if(saved.images.some(x=>x.url === img.url)) return; // already kept — the ✓ already says so
@@ -1468,6 +1584,7 @@
   el('addPinterestCategoryBtn').addEventListener('click', addPinterestCategory);
   el('motivationSyncPinterestBtn').addEventListener('click', ()=>{ const cat = activeMotivationCategory(); if(cat) syncPinterestCategory(cat.id, true); });
   el('motivationPinterestUserBtn').addEventListener('click', promptPinterestUser);
+  el('motivationDiscoverBtn').addEventListener('click', toggleMotivationDiscover);
   // Click the category name to cycle to the next one — the only way to switch categories on
   // desktop, since the swipe gesture only exists for touch. Renaming now has its own button.
   el('motivationActiveName').addEventListener('click', nextMotivationCategory);

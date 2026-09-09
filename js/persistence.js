@@ -678,6 +678,14 @@
         // collection that predates this key should start showing new pins without being switched
         // on, since a daily refresh of pins you already saved is the thing that wasn't wanted.
         c.discover = c.discover !== false;
+        // The keyword filter: words the collection should show, and words it should never show.
+        // Free text, so they are trimmed and capped here as well as re-validated server-side —
+        // they ride the shared blob, and they are matched against every pin in the day's pool.
+        const terms = (v)=> (Array.isArray(v) ? v : [])
+          .filter(x=>typeof x === 'string').map(x=>x.trim().slice(0,40)).filter(Boolean).slice(0,20);
+        c.keywords = terms(c.keywords);
+        c.excludeWords = terms(c.excludeWords);
+        c.hitCreators = (Array.isArray(c.hitCreators) ? c.hitCreators.filter(s=>typeof s === 'string') : []).slice(0, 400);
       });
       // A saved video link. `videoId` is the regex-validated id/shortcode parsed out of `url` by
       // parseMotivationVideoUrl() in js/motivation.js, and it is the ONLY thing the embed src is

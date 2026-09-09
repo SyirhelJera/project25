@@ -9,6 +9,8 @@ scripts/.valorant-match-cache.json
 scripts/.valorant-widget-config.json
 scripts/.valorant-widget.log
 scripts/.valorant-widget-cache/
+scripts/.pinterest-session.json
+scripts/.pinterest-login-profile/
 supabase/.temp/
 .claude/skills/ui-ux-pro-max/
 .cursor/skills/ui-ux-pro-max/

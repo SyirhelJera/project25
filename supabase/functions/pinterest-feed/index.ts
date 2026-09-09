@@ -28,8 +28,8 @@
 // follow) is private and has no RSS or public API, so it isn't what this reads.
 //
 // Two actions, on the same function:
-//   { username, boards?, discover?, creators? }
-//                         -> { pins, boards, boardSlugs, creatorIds }   the merge described above
+//   { username, boards?, discover?, creators?, keywords?, exclude? }
+//        -> { pins, boards, boardSlugs, creatorIds, discovered?, matched? }  the merge below
 //   { resolve: [link] }   -> { videos }                     mp4 URL per pin link, for video pins
 //
 // DISCOVER MODE returns pins the profile has never saved, which is a different question from
@@ -42,6 +42,12 @@
 // Discover harvests those creator ids out of your own pins, samples a few, reads their recent
 // pins, and subtracts everything you already have. Measured on a real profile: 131 creators
 // behind 149 saved pins, 121 of them readable, 5,805 pins never saved.
+//
+// KEYWORDS narrow that, because reading a creator's whole feed is indiscriminate by construction:
+// someone who made one car photo also pins recipes, nail art and (measured) outright scam boards.
+// `keywords` keeps pins, `exclude` drops them. See the keyword-filter section for why matching is
+// whole-word rather than prefix, and why a pin's board name is better evidence than its own
+// description.
 //
 // Why "resolve" is separate rather than folded into the feed read: neither source says whether a
 // pin is a video, so learning that means fetching the pin PAGE. Doing that for every pin in the
@@ -114,6 +120,16 @@ const SEARCH_DISCOVERY_BELOW = 5;
 // before the sample even has to repeat, and a *different* 12 are drawn next time.
 const DISCOVER_CREATOR_SAMPLE = 12;
 const MAX_CREATORS = 400;
+// With a keyword filter on, one batch of creators often isn't enough — measured on a real profile,
+// "house" went 13 → 30 → 59 matches across three batches while "cars" plateaued at 14. So discover
+// samples again while the filtered pool is thin, bounded by rounds rather than by matches so a
+// topic nobody the profile follows pins about can't turn one sync into 131 fetches.
+const DISCOVER_MAX_ROUNDS = 3;
+// "Thin" for that widening, and also the point at which board-name matches alone are deemed enough
+// that the looser description matches aren't needed. Two days' worth of picks.
+const DISCOVER_MIN_POOL = 60;
+const MAX_TERMS = 20;
+const MAX_TERM_LEN = 40;
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0 Safari/537.36";
 
 Deno.serve(async (req) => {
@@ -146,6 +162,8 @@ Deno.serve(async (req) => {
       ? body.creators.filter((s: unknown): s is string => typeof s === "string" && CREATOR_ID_RE.test(s))
       : [];
     const discover = body.discover === true;
+    const include = parseTerms(body.keywords);
+    const exclude = parseTerms(body.exclude);
 
     const pins: Array<Record<string, string>> = [];
     const seen = new Set<string>();
@@ -154,10 +172,24 @@ Deno.serve(async (req) => {
     // and is capped by MAX_PINS; this one must stay complete or already-saved pins leak through).
     const ownIds = new Set<string>();
     const creators = new Set<string>(rememberedCreators);
+    // Which of YOUR boards each creator turned up on. This is the strongest signal available for a
+    // keyword filter and it costs nothing extra: you filed their pin under "aviation-world", so
+    // when the collection is asked for aviation they are the creators to read first — far better
+    // than sampling 12 of 131 at random and hoping. Built here because this pass is the only place
+    // that sees a creator id and your own board name on the same record.
+    const creatorBoards = new Map<string, string>();
     const addPins = (got: Array<Record<string, string>> | null) => {
       for (const p of got || []) {
         if (p.pinId) ownIds.add(p.pinId);
-        if (p.creator) creators.add(p.creator);
+        if (p.creator) {
+          creators.add(p.creator);
+          if (p.boardName) {
+            const prev = creatorBoards.get(p.creator) || "";
+            // Bounded: a prolific creator can appear on many boards, and this is only ever fed to
+            // the word matcher.
+            if (prev.length < 200 && !prev.includes(p.boardName)) creatorBoards.set(p.creator, prev + " " + p.boardName);
+          }
+        }
         // A pin saved to a board also shows in the profile feed — dedupe on the pin page
         // URL so it can't win the random draw twice.
         const key = p.link || p.url;
@@ -194,7 +226,7 @@ Deno.serve(async (req) => {
           // pidgets first (50 pins vs RSS's 26); the board's RSS is the fallback for a board it
           // refuses, so one endpoint changing shape can't empty a board that still has a feed.
           let got = await fetchPidgetsBoard(username, slug);
-          if (got === null) got = await fetchRssPins(`https://www.pinterest.com/${username}/${slug}.rss`);
+          if (got === null) got = await fetchRssPins(`https://www.pinterest.com/${username}/${slug}.rss`, slug);
           if (got !== null && got.length) liveSlugs.push(slug);
           addPins(got);
         }
@@ -215,27 +247,143 @@ Deno.serve(async (req) => {
     // what it already had (working ones first), so a board that has gone quiet drifts to the tail
     // of its list and eventually falls off the cap, while a one-off failure costs nothing.
     const base = { boards: liveSlugs.length, boardSlugs: liveSlugs, creatorIds };
-    if (!discover) return json({ ...base, pins: pins.map(forWire) });
 
-    const discovered = await discoverPins(creatorIds, ownIds);
+    if (!discover) {
+      // Your own saves are already yours, so a filter here is only ever narrowing — but it narrows
+      // to nothing if the terms describe a board you don't have, and an empty slideshow is never
+      // the right answer to that. `matched` is what lets the client say so.
+      const kept = applyFilter(pins, include, exclude);
+      return json({ ...base, pins: (kept.length ? kept : pins).map(forWire), matched: kept.length });
+    }
+
+    // Creators to read first: the ones that matched on an earlier sync, plus — from scratch, with
+    // no history at all — the ones whose pins you filed on a board of your own that the keywords
+    // describe. The second half is what makes the very first filtered sync land on topic.
+    const rememberedHits: string[] = Array.isArray(body.hits)
+      ? body.hits.filter((s: unknown): s is string => typeof s === "string" && CREATOR_ID_RE.test(s))
+      : [];
+    const seeded = include.length
+      ? [...creatorBoards.entries()].filter(([, boards]) => anyTerm(normWords(boards), include)).map(([id]) => id)
+      : [];
+    const preferred = [...new Set(rememberedHits.concat(seeded))].slice(0, MAX_CREATORS);
+    const { pins: found, hits } = await discoverPins(creatorIds, ownIds, include, exclude, preferred);
     // Falling back to the profile's own pins rather than erroring: discover is a *preference*, and
-    // a collection that empties itself because a handful of creators went private or a first sync
-    // hasn't harvested anyone yet is worse than one showing pins you've seen. The client is told
-    // which it got (`discovered`), so it can say so rather than silently looking broken.
-    if (!discovered.length) return json({ ...base, pins: pins.map(forWire), discovered: 0 });
-    return json({ ...base, pins: discovered.map(forWire), discovered: discovered.length });
+    // a collection that empties itself because a handful of creators went private, or the keywords
+    // matched nothing anyone pins, or a first sync hasn't harvested anyone yet, is worse than one
+    // showing pins you've seen. The client is told which it got (`discovered`), so it can say so
+    // rather than silently looking broken.
+    // Hits are merged with what the client already had rather than replacing it: one sync only
+    // learns about the creators it happened to sample, so replacing would forget a good creator the
+    // moment a round didn't draw them.
+    const hitList = [...new Set(hits.concat(rememberedHits))].slice(0, MAX_CREATORS);
+    if (!found.length) {
+      const kept = applyFilter(pins, include, exclude);
+      return json({ ...base, pins: (kept.length ? kept : pins).map(forWire), discovered: 0, matched: kept.length, hits: hitList });
+    }
+    return json({ ...base, pins: found.map(forWire), discovered: found.length, matched: found.length, hits: hitList });
   } catch (err) {
     console.error(err);
     return json({ error: "Unexpected error" }, 500);
   }
 });
 
+/* ---------- keyword filter ----------
+
+   Discover reads a creator's WHOLE recent feed, and someone who made one car photo you saved also
+   pins recipes, nail art and (measured, on a real profile) outright scam boards. Keywords are how
+   you say what the collection is for.
+
+   Matching is **whole-word with plural tolerance**, never prefix. Measured on real pins, prefix
+   matching had "car" hitting "hair CARE", "CARPET" and "CARDIGAN" — which is the same off-topic
+   noise the filter exists to remove, arriving through the filter itself. So a term matches a word,
+   or that word ± a trailing "s"/"es", and a multi-word term matches only as a consecutive phrase.
+   The cost is that "car" misses "supercar"; with thousands of candidates and 25 slots a day,
+   precision is worth far more than recall, and a second keyword covers the miss.
+
+   The two fields are NOT equal evidence, which is the other measured finding. A pin's `boardName`
+   is the board its creator filed it under and is the honest topic — "cars 🏎️" holds car photos.
+   A `desc` is marketing copy: the description-only matches for car terms were a *running* pin whose
+   blurb said "blacked out Porsche" and a *t-shirt* pin listing "Car Tshirts • BMW". So an INCLUDE
+   term is tried against the board name first and only falls back to descriptions to fill a thin
+   day (see filterPins), while an EXCLUDE term is matched against both at once — not wanting nail
+   art is a reason to drop a pin however the words got there. */
+
+function normWords(s: string): string[] {
+  return decodeEntities(String(s || "")).toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+}
+
+// Equal, or one is the other plus "s"/"es". A pair of direct comparisons rather than a stemmer:
+// stemming disagrees with itself across "dress"/"dresses" and there is no dictionary here.
+function sameWord(a: string, b: string): boolean {
+  return a === b || a === b + "s" || b === a + "s" || a === b + "es" || b === a + "es";
+}
+
+function hasTerm(textWords: string[], termWords: string[]): boolean {
+  if (!termWords.length || termWords.length > textWords.length) return false;
+  outer:
+  for (let i = 0; i + termWords.length <= textWords.length; i++) {
+    for (let j = 0; j < termWords.length; j++) if (!sameWord(textWords[i + j], termWords[j])) continue outer;
+    return true;
+  }
+  return false;
+}
+
+const anyTerm = (words: string[], terms: string[][]) => terms.some((t) => hasTerm(words, t));
+
+// Splits the pool into { on, maybe } against the include terms, dropping anything an exclude term
+// hits. `on` matched the board name, `maybe` only a description — the caller decides how far down
+// that ladder it has to go. With no include terms everything that survives exclusion is `on`.
+function filterPins(
+  list: Array<Record<string, string>>,
+  include: string[][],
+  exclude: string[][],
+): { on: Array<Record<string, string>>; maybe: Array<Record<string, string>> } {
+  const on: Array<Record<string, string>> = [];
+  const maybe: Array<Record<string, string>> = [];
+  for (const p of list) {
+    const board = normWords(p.boardName || "");
+    const desc = normWords(p.desc || "");
+    if (exclude.length && (anyTerm(board, exclude) || anyTerm(desc, exclude))) continue;
+    if (!include.length) { on.push(p); continue; }
+    if (anyTerm(board, include)) on.push(p);
+    else if (anyTerm(desc, include)) maybe.push(p);
+  }
+  return { on, maybe };
+}
+
+// The ladder filterPins sets up, walked once: board-name matches, plus description matches only if
+// those alone can't fill a day. Used for a pool that is already in hand (the profile's own pins);
+// discoverPins runs the same ladder but can go and fetch more creators first.
+function applyFilter(
+  list: Array<Record<string, string>>,
+  include: string[][],
+  exclude: string[][],
+): Array<Record<string, string>> {
+  if (!include.length && !exclude.length) return list;
+  const { on, maybe } = filterPins(list, include, exclude);
+  return on.length >= DISCOVER_MIN_POOL ? on : on.concat(maybe);
+}
+
+// Terms as the client sends them: free text, so they are length-capped and count-capped here
+// because they are matched against every pin in a pool of up to MAX_PINS.
+function parseTerms(raw: unknown): string[][] {
+  if (!Array.isArray(raw)) return [];
+  const out: string[][] = [];
+  for (const t of raw) {
+    if (typeof t !== "string") continue;
+    const words = normWords(t.slice(0, MAX_TERM_LEN));
+    if (words.length && words.length <= 6) out.push(words);
+    if (out.length >= MAX_TERMS) break;
+  }
+  return out;
+}
+
 // `pinId` and `creator` are this function's own bookkeeping — the discover exclusion set and the
 // taste graph. The client reads neither, and on a 500-pin response they are ~20KB of it, so they
 // are dropped at the boundary rather than shipped. This is also what keeps the record the client
 // sees to the one documented shape, whichever source it came from.
 function forWire(p: Record<string, string>) {
-  const { pinId: _pinId, creator: _creator, ...rest } = p;
+  const { pinId: _pinId, creator: _creator, boardName: _boardName, desc: _desc, ...rest } = p;
   return rest;
 }
 
@@ -260,34 +408,80 @@ function forWire(p: Record<string, string>) {
 async function discoverPins(
   creatorIds: string[],
   ownIds: Set<string>,
-): Promise<Array<Record<string, string>>> {
-  if (!creatorIds.length) return [];
+  include: string[][],
+  exclude: string[][],
+  preferred: string[],
+): Promise<{ pins: Array<Record<string, string>>; hits: string[] }> {
+  if (!creatorIds.length) return { pins: [], hits: [] };
 
-  // Fisher-Yates over a copy: the caller's order is the remembered list, which must not be
-  // reshuffled into the response.
-  const shuffled = creatorIds.slice();
-  for (let i = shuffled.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-  }
-  const sample = shuffled.slice(0, DISCOVER_CREATOR_SAMPLE);
+  const filtering = include.length > 0 || exclude.length > 0;
+  // Creators that matched the keywords on a previous sync go first. Without this a narrow topic is
+  // a fresh dice roll every time — measured on a real profile, "car" terms found 1 pin in a random
+  // 36-creator draw, because the taste graph is mostly fashion accounts and the handful of car
+  // creators rarely came up. A creator who pins cars keeps pinning cars, so remembering them is
+  // what turns the filter from a lottery into something that sharpens with use.
+  const prefer = new Set(filtering ? preferred.filter((id) => CREATOR_ID_RE.test(id)) : []);
+  const hot = shuffled(creatorIds.filter((id) => prefer.has(id)));
+  const rest = shuffled(creatorIds.filter((id) => !prefer.has(id)));
 
-  const out: Array<Record<string, string>> = [];
+  const raw: Array<Record<string, string>> = [];
   const taken = new Set<string>();
-  let cursor = 0;
-  await Promise.all(
-    Array.from({ length: CONCURRENCY }, async () => {
-      while (cursor < sample.length) {
-        const id = sample[cursor++];
-        const got = await fetchPidgetsCreator(id);
-        for (const p of got || []) {
-          if (!p.pinId || ownIds.has(p.pinId) || taken.has(p.pinId)) continue;
-          taken.add(p.pinId);
-          if (out.length < MAX_PINS) out.push(p);
+  const hits = new Set<string>();
+  // Unfiltered, one batch is plenty and always was. Filtered, a batch can yield almost nothing for
+  // a narrow topic, so keep drawing batches while the on-topic pool is thin — bounded by rounds,
+  // never by "until we have enough", or a keyword nobody the profile follows pins about would walk
+  // the entire creator list one sync.
+  const rounds = filtering ? DISCOVER_MAX_ROUNDS : 1;
+  // Each filtered round is mostly known-good creators plus a few new ones, so the pool stays on
+  // topic without ossifying into the same faces — the same reason the sample was random to begin
+  // with. A round is still DISCOVER_CREATOR_SAMPLE fetches either way.
+  const fromHot = filtering ? Math.ceil(DISCOVER_CREATOR_SAMPLE * 2 / 3) : 0;
+  let hotAt = 0, restAt = 0;
+
+  for (let round = 0; round < rounds; round++) {
+    const sample: string[] = [];
+    while (sample.length < fromHot && hotAt < hot.length) sample.push(hot[hotAt++]);
+    while (sample.length < DISCOVER_CREATOR_SAMPLE && restAt < rest.length) sample.push(rest[restAt++]);
+    // Hot creators can outnumber the reserved share once the rest are exhausted.
+    while (sample.length < DISCOVER_CREATOR_SAMPLE && hotAt < hot.length) sample.push(hot[hotAt++]);
+    if (!sample.length) break;
+
+    let cursor = 0;
+    await Promise.all(
+      Array.from({ length: CONCURRENCY }, async () => {
+        while (cursor < sample.length) {
+          const id = sample[cursor++];
+          const got = await fetchPidgetsCreator(id);
+          const mine: Array<Record<string, string>> = [];
+          for (const p of got || []) {
+            if (!p.pinId || ownIds.has(p.pinId) || taken.has(p.pinId)) continue;
+            taken.add(p.pinId);
+            mine.push(p);
+            if (raw.length < MAX_PINS) raw.push(p);
+          }
+          // "Matched" means a BOARD-name hit, not a description one: the description tier is the
+          // loose fill, so counting it here would promote creators whose blurbs merely mention the
+          // word — which is the noise the two tiers exist to separate.
+          if (filtering && filterPins(mine, include, exclude).on.length) hits.add(id);
         }
-      }
-    }),
-  );
+      }),
+    );
+
+    if (!filtering) break;
+    if (filterPins(raw, include, exclude).on.length >= DISCOVER_MIN_POOL) break;
+  }
+
+  return { pins: applyFilter(raw, include, exclude), hits: [...hits] };
+}
+
+// Fisher-Yates over a copy: a caller's order is its remembered list, which must not be reshuffled
+// into the response.
+function shuffled(list: string[]): string[] {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
   return out;
 }
 
@@ -391,7 +585,11 @@ async function fetchPidgetsUser(
 
 async function fetchPidgetsBoard(username: string, slug: string): Promise<Array<Record<string, string>> | null> {
   const data = await fetchPidgets(`https://api.pinterest.com/v3/pidgets/boards/${username}/${slug}/pins/`);
-  return data ? normalizePidgetPins(data) : null;
+  // The BOARD endpoint omits the `board` object the user endpoint puts on every pin (verified), so
+  // without this the keyword filter's primary field is empty for every pin on your own boards —
+  // which is most of them. The slug is the name in URL form ("aviation-world"), and normWords()
+  // splits on the hyphen anyway, so it matches exactly what the display name would have matched.
+  return data ? normalizePidgetPins(data, slug) : null;
 }
 
 // null = the endpoint couldn't be read, or answered with something that wasn't a pin list (vs []
@@ -418,7 +616,7 @@ async function fetchPidgets(url: string): Promise<Array<Record<string, any>> | n
 // Note a pidgets pin's own `link` is the DESTINATION website, not the pin page — the pin page has
 // to be built from the id, and it is that pin page URL the "resolve" action is keyed by.
 // deno-lint-ignore no-explicit-any
-function normalizePidgetPins(raw: Array<Record<string, any>>) {
+function normalizePidgetPins(raw: Array<Record<string, any>>, fallbackBoard = "") {
   const pins: Array<Record<string, string>> = [];
   for (const p of raw) {
     const id = String((p && p.id) || "");
@@ -437,6 +635,11 @@ function normalizePidgetPins(raw: Array<Record<string, any>>) {
     // bookkeeping for discover mode — the exclusion set and the taste graph — and neither is read
     // by the client, but they ride on the record because this is the only place that has them.
     const creator = String((p && p.native_creator && p.native_creator.id) || "");
+    // The board its creator filed it under, and its full description — the two things the keyword
+    // filter reads, and the reason it can tell a car photo from a t-shirt advert that says "BMW".
+    // Both are internal: forWire() strips them, so neither costs the client anything.
+    const boardName = decodeEntities(String((p && p.board && p.board.name) || fallbackBoard)).trim();
+    const desc = decodeEntities(String((p && p.description) || "")).trim();
 
     const link = `https://www.pinterest.com/pin/${id}/`;
     pins.push({
@@ -446,9 +649,11 @@ function normalizePidgetPins(raw: Array<Record<string, any>>) {
       url: `https://i.pinimg.com/736x/${path}`,
       fallbackUrl: `https://i.pinimg.com/236x/${path}`,
       link,
-      title: decodeEntities(String((p && p.description) || "")).trim().slice(0, 200),
+      title: desc.slice(0, 200),
       pinId: id,
       ...(CREATOR_ID_RE.test(creator) ? { creator } : {}),
+      ...(boardName ? { boardName } : {}),
+      ...(desc ? { desc } : {}),
     });
   }
   return pins;
@@ -517,14 +722,14 @@ function extractVideoUrl(html: string): string | null {
 /* ---------- RSS ---------- */
 
 // null = the feed couldn't be read at all (vs [] = read fine, no pins in it).
-async function fetchRssPins(url: string): Promise<Array<Record<string, string>> | null> {
+async function fetchRssPins(url: string, boardName = ""): Promise<Array<Record<string, string>> | null> {
   try {
     const resp = await fetch(url, {
       headers: { "User-Agent": UA, "Accept": "application/rss+xml, text/xml, */*" },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!resp.ok) return null;
-    return parsePins(await resp.text());
+    return parsePins(await resp.text(), boardName);
   } catch (err) {
     console.error("Feed fetch failed", url, err);
     return null;
@@ -534,7 +739,7 @@ async function fetchRssPins(url: string): Promise<Array<Record<string, string>> 
 // Regex parsing rather than a DOM/XML parser: Deno has no built-in XML parser, and the
 // shape here is fixed and simple — each <item> holds the pin page <link> and an <img>
 // buried inside an HTML-escaped <description>.
-function parsePins(xml: string) {
+function parsePins(xml: string, boardName = "") {
   const pins: Array<Record<string, string>> = [];
   const items = xml.match(/<item>[\s\S]*?<\/item>/g) || [];
 
@@ -556,14 +761,20 @@ function parsePins(xml: string) {
     // exclusion set too, or pins you already saved come back as "new". RSS names no creator, so
     // these boards widen the exclusion set without widening the taste graph.
     const pinId = (link.match(/\/pin\/([A-Za-z0-9_-]{1,64})\/?\s*$/) || [])[1] || "";
+    // RSS names no board on the item, but the CALLER knows which board's feed this is, so the
+    // keyword filter's primary field survives the fallback path. The profile feed passes nothing,
+    // which is right: those pins span every board and no one name would be true of them.
+    const desc = decodeEntities(title).trim();
 
     pins.push({
       id: link || url,
       url,
       fallbackUrl,
       link: link.trim(),
-      title: decodeEntities(title).trim().slice(0, 200),
+      title: desc.slice(0, 200),
       ...(pinId ? { pinId } : {}),
+      ...(boardName ? { boardName } : {}),
+      ...(desc ? { desc } : {}),
     });
   }
 
@@ -573,6 +784,10 @@ function parsePins(xml: string) {
 function decodeEntities(s: string) {
   return s
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    // Numeric forms as well as named: board names are full of them (`frankkkkkk&#129782;`), and a
+    // keyword filter matching against a name still carrying `&#129782;` is matching noise.
+    .replace(/&#(\d{1,7});/g, (_m, d) => { try { return String.fromCodePoint(Number(d)); } catch { return " "; } })
+    .replace(/&#x([0-9a-fA-F]{1,6});/g, (_m, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch { return " "; } })
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')

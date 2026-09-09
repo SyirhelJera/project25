@@ -32,6 +32,8 @@ import { loginAccount } from './valorant-login.mjs';
 import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
 import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
 import { getTftLobby } from './tft-live.mjs';
+import { getHomeFeed, sessionStatus as pinterestSessionStatus, saveSession as savePinterestSession, deleteSession as deletePinterestSession, forWire as pinterestForWire } from './pinterest-lib.mjs';
+import { startPinterestLogin, getPinterestLoginStatus, cancelPinterestLogin } from './pinterest-login-window.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TOKEN_FILE = path.join(__dirname, '.valorant-local-token.json');
@@ -90,7 +92,15 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/status') {
     let accounts = [];
     try { accounts = Object.keys(loadSessions()); } catch { /* no session file yet — empty list */ }
-    sendJson(res, 200, { ok: true, accounts, loginWindow: getLoginWindowStatus() }, origin);
+    // `pinterest` says only WHETHER a session is saved, never the cookies — same rule as
+    // `accounts` above, so the Motivation tab can decide whether to read your home feed here or
+    // fall back to the public Edge Function path without needing the token first.
+    let pinterest = { saved: false };
+    try { pinterest = pinterestSessionStatus(); } catch { /* no session file yet */ }
+    sendJson(res, 200, {
+      ok: true, accounts, loginWindow: getLoginWindowStatus(),
+      pinterest, pinterestLoginWindow: getPinterestLoginStatus(),
+    }, origin);
     return;
   }
 
@@ -236,6 +246,102 @@ const server = http.createServer(async (req, res) => {
         error: (err && err.message) || String(err),
       }, origin);
     }
+    return;
+  }
+
+  /* ---------- Pinterest home feed ----------
+     The one Pinterest surface with no public route: its official API has no feed endpoint at all
+     (189 of them, checked against Pinterest's own OpenAPI spec) and the pidgets JSON the Edge
+     Function uses only serves embeddable widgets. Reading it needs your logged-in session, and a
+     Pinterest session cookie is full account access — so it lives in a gitignored file on this
+     machine and is read by this process, never by an Edge Function and never from `state`, which
+     rides an unauthenticated Supabase row. Same ruling, same reasons, as the Riot session.
+
+     Every call it makes is a GET against the feed itself. Nothing here writes to Pinterest. */
+  if (req.method === 'POST' && url.pathname === '/pinterest-feed') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    try {
+      const feed = await getHomeFeed({
+        wanted: Number(body.wanted) > 0 ? Math.min(Number(body.wanted), 400) : 150,
+        keywords: body.keywords, exclude: body.exclude,
+      });
+      sendJson(res, 200, {
+        ok: true,
+        pins: feed.pins.map(pinterestForWire),
+        total: feed.total, matched: feed.matched, pages: feed.pages,
+      }, origin);
+    } catch (err) {
+      // 200 with ok:false, the /tft-live shape: "no session yet" and "session expired" are states
+      // the page renders, not faults. It falls back to the public path either way, so a failure
+      // here costs the collection nothing but the personalisation.
+      sendJson(res, 200, {
+        ok: false,
+        code: (err && err.code) ? err.code : 'pinterest_error',
+        error: (err && err.message) || String(err),
+      }, origin);
+    }
+    return;
+  }
+
+  // POST /pinterest-login — the manual paste path, so a browser the window flow can't drive is
+  // never a dead end. saveSession() validates the jar; the caller checks it works.
+  if (req.method === 'POST' && url.pathname === '/pinterest-login') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    if (body.forget === true) {
+      deletePinterestSession();
+      console.log('Pinterest session deleted.');
+      sendJson(res, 200, { ok: true, forgot: true }, origin);
+      return;
+    }
+    const sess = (body.sess || '').trim();
+    const csrf = (body.csrf || '').trim();
+    if (!sess) { sendJson(res, 400, { ok: false, error: 'Missing the _pinterest_sess cookie.' }, origin); return; }
+    try {
+      savePinterestSession(csrf ? { _pinterest_sess: sess, csrftoken: csrf } : { _pinterest_sess: sess });
+      // Verified before it is called a success, or a bad paste presents as "expired" on every
+      // later refresh instead of as the failed paste it was.
+      const probe = await getHomeFeed({ wanted: 1 });
+      if (!probe.pins.length) throw new Error('Signed in, but your home feed came back empty.');
+      console.log('Saved a Pinterest session.');
+      sendJson(res, 200, { ok: true, pins: probe.total }, origin);
+    } catch (err) {
+      deletePinterestSession();
+      sendJson(res, 200, { ok: false, error: (err && err.message) || String(err) }, origin);
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/pinterest-login-window') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    try {
+      const status = startPinterestLogin();
+      console.log('Opened a Pinterest login window — waiting for sign-in...');
+      sendJson(res, 200, { ok: true, ...status }, origin);
+    } catch (err) {
+      sendJson(res, 200, { ok: false, error: err.message || String(err) }, origin);
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/pinterest-login-window-status') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const status = getPinterestLoginStatus();
+    if (status.status === 'done') console.log('Pinterest login window: saved a fresh session.');
+    else if (status.status === 'error') console.error(`Pinterest login window failed: ${status.error}`);
+    sendJson(res, 200, { ok: true, ...status }, origin);
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/pinterest-login-window-cancel') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    const cancelled = cancelPinterestLogin();
+    if (cancelled) console.log('Pinterest login window cancelled.');
+    sendJson(res, 200, { ok: true, cancelled }, origin);
     return;
   }
 

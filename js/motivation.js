@@ -179,6 +179,22 @@
     discoverBtn.style.display = isPinterest ? '' : 'none';
     discoverBtn.textContent = discoverOn ? '✨ Discover new pins: on' : '✨ Discover new pins: off';
     discoverBtn.classList.toggle('active', discoverOn);
+
+    // The label carries the count rather than the words themselves: a menu item is one line, and
+    // "🔎 Keywords: 4 + 2 blocked" is readable where a truncated list of the terms is not.
+    const kwBtn = el('motivationKeywordsBtn');
+    kwBtn.style.display = isPinterest ? '' : 'none';
+    const nKw = (cat.keywords || []).length, nEx = (cat.excludeWords || []).length;
+    kwBtn.textContent = (nKw || nEx)
+      ? '🔎 Keywords: ' + (nKw ? nKw + ' wanted' : 'none') + (nEx ? ' · ' + nEx + ' blocked' : '')
+      : '🔎 Keywords…';
+    kwBtn.classList.toggle('active', !!(nKw || nEx));
+
+    // Shown only for a Pinterest collection, and only where a helper could plausibly answer — on a
+    // phone there is nothing this button could do, and an entry that always says "not available"
+    // is worse than no entry.
+    const hfBtn = el('motivationHomeFeedBtn');
+    hfBtn.style.display = (isPinterest && typeof valLocalUrl === 'function') ? '' : 'none';
     // Uploading into a Pinterest category would look like it worked and then vanish at the next
     // daily refresh, which replaces the whole image list — so don't offer it there.
     el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
@@ -571,7 +587,7 @@
     if(entered===null) return;
     const user = normalizePinterestUser(entered);
     if(!user) return;
-    const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: true };
+    const cat = { id: uid(), name: 'Pinterest', images: [], pin: '', source: 'pinterest', pinterestUser: user, lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: true, keywords: [], excludeWords: [], hitCreators: [] };
     state.motivation.categories.push(cat);
     motivationActiveCatId = cat.id;
     save(); renderMotivation();
@@ -590,7 +606,7 @@
     // All three are keyed to the old profile: its board slugs would be fetched under the new
     // username (a fan-out of 404s), its shown-pins history describes pins that aren't in the new
     // pool, and its creators are the other account's taste graph, not this one's.
-    cat.boardSlugs = []; cat.seenIds = []; cat.creatorIds = [];
+    cat.boardSlugs = []; cat.seenIds = []; cat.creatorIds = []; cat.hitCreators = [];
     save(); renderMotivation();
     syncPinterestCategory(cat.id, true);
   }
@@ -607,6 +623,189 @@
       return '';
     }
     return v;
+  }
+
+  /* ---------- the real Pinterest home feed, via the local helper ----------
+
+     The feed you actually see on pinterest.com. It has no public route at all — Pinterest's
+     official API has no feed endpoint (189 of them, checked against their own OpenAPI spec) and
+     the pidgets JSON the Edge Function uses only serves embeddable widgets — so reading it needs
+     your logged-in session. That cookie is full account access and this app's Supabase row is
+     unauthenticated, so it can only live on your own machine: scripts/pinterest-lib.mjs holds it
+     in a gitignored file and the local helper serves it on 127.0.0.1, the same ruling as the Riot
+     session. Read README's "Pinterest home feed" before touching any of it.
+
+     Consequences the rest of this file depends on: the helper answers only on the machine it runs
+     on, so this returns null on a phone, with the helper stopped, or before you have signed in —
+     and the caller then falls back to the public Discover path. Nothing here is required for the
+     collection to work; it is the better answer when it is available. */
+  function valHelperToken(){
+    return (state.valorant && state.valorant.localServerToken) || '';
+  }
+  function valHelperReady(){
+    return typeof valLocalUrl === 'function' && !!valHelperToken();
+  }
+  // Short and explicit: a fetch to a port with nothing listening costs Chrome ~2s to give up on,
+  // and the daily sync must not sit on that before falling back.
+  async function helperPost(pathname, body, timeoutMs){
+    const res = await fetch(valLocalUrl() + pathname, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: valHelperToken(), ...body }),
+      signal: AbortSignal.timeout(timeoutMs || 20000),
+    });
+    if(!res.ok) throw new Error('Helper returned ' + res.status);
+    return await res.json();
+  }
+
+  // Returns the feed's pins, or null when this machine can't answer. Never throws: every failure
+  // here is a reason to use the public path instead, not a reason to break the refresh.
+  async function fetchPinterestHomeFeed(cat){
+    if(!valHelperReady()) return null;
+    try{
+      const data = await helperPost('/pinterest-feed', {
+        wanted: 150,
+        keywords: Array.isArray(cat.keywords) ? cat.keywords : [],
+        exclude: Array.isArray(cat.excludeWords) ? cat.excludeWords : [],
+      }, 30000);
+      if(!data || !data.ok || !Array.isArray(data.pins) || !data.pins.length){
+        // no_session and expired are ordinary states, not faults — remembered so the menu item can
+        // say which one it is without another round trip.
+        pinterestHelperNote = (data && data.code) || '';
+        return null;
+      }
+      pinterestHelperNote = '';
+      return data;
+    }catch(e){
+      pinterestHelperNote = '';
+      return null;
+    }
+  }
+  let pinterestHelperNote = ''; // '' | 'no_session' | 'expired' | …, from the last attempt
+
+  // Sign-in management, kept in the collection menu because that is where the collection is.
+  // Prompt-driven like the rest of this menu.
+  async function promptPinterestHomeFeed(){
+    if(typeof valLocalUrl !== 'function' || !valHelperToken()){
+      window.alert('Reading your Pinterest home feed needs the local helper running on this machine.\n\n'
+        + 'Start it from Settings → Valorant local helper, paste its token there once, then come back.');
+      return;
+    }
+
+    let status = null;
+    try{
+      const res = await fetch(valLocalUrl() + '/status', { signal: AbortSignal.timeout(6000) });
+      status = await res.json();
+    }catch(e){
+      window.alert('The local helper isn’t responding. Start it, then try again.');
+      return;
+    }
+
+    if(status && status.pinterest && status.pinterest.saved){
+      const when = status.pinterest.savedAt ? new Date(status.pinterest.savedAt).toLocaleDateString() : 'earlier';
+      if(!window.confirm('Signed in to Pinterest on this machine (since ' + when + ').\n\n'
+        + 'OK to sign out and forget the saved session, or Cancel to leave it alone.')) return;
+      try{ await helperPost('/pinterest-login', { forget: true }); }catch(e){ /* helper went away */ }
+      window.alert('Signed out. The collection will go back to the public Discover pins.');
+      return;
+    }
+
+    if(!window.confirm('Open a browser window to sign in to Pinterest?\n\n'
+      + 'The window is a fresh, separate one — you sign in there, and only the resulting cookie is '
+      + 'saved, to a gitignored file on this machine. It is never uploaded anywhere.\n\n'
+      + 'Cancel if you would rather paste the cookie by hand instead.')){
+      await promptPinterestCookiePaste();
+      return;
+    }
+
+    try{
+      const started = await helperPost('/pinterest-login-window', {});
+      if(!started || !started.ok) throw new Error((started && started.error) || 'Could not open a window.');
+    }catch(err){
+      window.alert('Couldn’t open the sign-in window: ' + ((err && err.message) || err)
+        + '\n\nYou can paste the cookie by hand instead.');
+      await promptPinterestCookiePaste();
+      return;
+    }
+
+    // Poll rather than hold anything open: signing in takes as long as it takes, and the window
+    // outlives this page anyway (the Valorant login-window ruling).
+    const deadline = Date.now() + 10 * 60 * 1000;
+    while(Date.now() < deadline){
+      await new Promise(r=>setTimeout(r, 1500));
+      let s;
+      try{ s = await helperPost('/pinterest-login-window-status', {}, 8000); }
+      catch(e){ continue; }
+      if(!s) continue;
+      if(s.status === 'done'){
+        window.alert('Signed in. Your collection will now pull from your real Pinterest home feed.');
+        const cat = activeMotivationCategory();
+        if(cat && cat.source === 'pinterest'){ cat.lastSync = ''; save(); syncPinterestCategory(cat.id, true); }
+        return;
+      }
+      if(s.status === 'error' || s.status === 'cancelled'){
+        window.alert('Sign-in didn’t finish: ' + (s.error || s.status));
+        return;
+      }
+    }
+    window.alert('Timed out waiting for the sign-in.');
+  }
+
+  async function promptPinterestCookiePaste(){
+    const sess = window.prompt('Paste your _pinterest_sess cookie.\n\n'
+      + 'In Chrome, signed in to pinterest.com: F12 → Application → Cookies → https://www.pinterest.com,\n'
+      + 'then copy the VALUE of _pinterest_sess.', '');
+    if(sess === null || !sess.trim()) return;
+    const csrf = window.prompt('And the csrftoken cookie from the same list (needed — Pinterest checks the pair):', '');
+    if(csrf === null) return;
+    try{
+      const r = await helperPost('/pinterest-login', { sess: sess.trim(), csrf: (csrf || '').trim() }, 30000);
+      if(!r || !r.ok) throw new Error((r && r.error) || 'Those cookies did not work.');
+      window.alert('Signed in — read ' + (r.pins || 0) + ' pins from your feed.');
+      const cat = activeMotivationCategory();
+      if(cat && cat.source === 'pinterest'){ cat.lastSync = ''; save(); syncPinterestCategory(cat.id, true); }
+    }catch(err){
+      window.alert('Couldn’t save that: ' + ((err && err.message) || err));
+    }
+  }
+
+  // One comma-separated line for both lists, with a leading "-" marking a word to block. Two
+  // prompts would make the common case (just say what you want) twice the work, and the minus is
+  // the same shorthand a search box uses. Stored as two arrays rather than one list of prefixed
+  // tokens, so the "-" stays a detail of this editor and never reaches the request.
+  function promptMotivationKeywords(){
+    const cat = activeMotivationCategory(); if(!cat || cat.source !== 'pinterest') return;
+    const current = (cat.keywords || []).concat((cat.excludeWords || []).map(w=>'-'+w)).join(', ');
+    const entered = window.prompt(
+      'Words this collection should show — comma separated.\n'
+      + 'Put a minus in front to block a word instead: cars, aviation, -makeup\n\n'
+      + 'Whole words only, so “car” matches “car” and “cars” but not “supercar”.\n'
+      + 'Leave blank to show everything.', current);
+    if(entered === null) return;
+
+    const keywords = [], excludeWords = [];
+    entered.split(',').forEach(raw=>{
+      let t = String(raw).trim();
+      if(!t) return;
+      const block = t[0] === '-';
+      if(block) t = t.slice(1).trim();
+      // Same caps the Edge Function enforces — matched against every pin in a pool of up to 800,
+      // and this rides the shared blob like every other category field.
+      t = t.slice(0, 40);
+      if(!t) return;
+      const list = block ? excludeWords : keywords;
+      if(list.length < 20 && !list.some(x=>x.toLowerCase() === t.toLowerCase())) list.push(t);
+    });
+    cat.keywords = keywords;
+    cat.excludeWords = excludeWords;
+    // Which creators "matched" was an answer about the old words, so it can't be carried over to
+    // new ones — it would steer the next sync towards the topic just abandoned.
+    cat.hitCreators = [];
+    // The pins on screen were picked under the old terms, so re-sync now rather than leaving a
+    // filter that visibly does nothing until tomorrow — the toggleMotivationDiscover reasoning.
+    cat.lastSync = '';
+    save(); renderMotivation();
+    syncPinterestCategory(cat.id, true);
   }
 
   // Flips the collection between "pins I've never saved" and "my own saves", and re-syncs on the
@@ -670,6 +869,44 @@
     return { picked, fresh, seenIds: picked.map(key) };
   }
 
+  /* ---------- committing a day's pins ----------
+     Shared by both pools — your real home feed (local helper) and the public Discover merge (Edge
+     Function) — because everything from here down is the same job whichever answered: swap the
+     images, remember the turns, stamp the day, and go and find out which of them are videos. The
+     two paths differ only in where `picked` came from and what gets logged. */
+  function commitPinterestPicks(cat, picked){
+    // No-op for i.pinimg.com URLs (it only matches Storage paths), but it keeps the bucket
+    // clean if a real upload ever ended up in here.
+    cat.images.forEach(img=> deleteStorageImage(img.url));
+    // videoUrl starts empty for every pin and is filled in afterwards by resolvePinterestVideos()
+    // — neither pool can tell us which of these are videos.
+    const created = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, videoUrl: '', createdAt: Date.now() }));
+    cat.images = created;
+    cat.lastSync = localDateStr(new Date());
+    return created;
+  }
+  function finishPinterestSync(cat, created){
+    delete motivationSlideIdx[cat.id]; // start the new set from the top
+    save(); renderMotivation();
+    resolvePinterestVideos(cat.id, created); // not awaited — see resolvePinterestVideos
+  }
+
+  // The home-feed path's whole commit, in the shape the Edge Function path does inline. Kept short
+  // on purpose: the home feed needs none of the board/creator bookkeeping, because it is not
+  // reconstructed from anything — Pinterest already chose these pins for you.
+  function applyPinterestPins(cat, pins, opts){
+    const { picked, seenIds, fresh } = pickPinterestPins(pins, cat.seenIds);
+    cat.seenIds = seenIds;
+    const created = commitPinterestPicks(cat, picked);
+    console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length + ' pins '
+      + opts.note + ' (' + fresh + ' never shown before)');
+    if(opts.manual && opts.matched === 0){
+      window.alert('None of your keywords matched anything in your home feed just now, so it is '
+        + 'showing unfiltered pins.\n\nTry broader words, or fewer of them.');
+    }
+    finishPinterestSync(cat, created);
+  }
+
   // Pulls the profile's public pins and keeps PINTEREST_PICK_COUNT of them, replacing whatever was
   // showing. Any failure leaves the existing images alone — a Pinterest hiccup shouldn't empty
   // the collection — and only speaks up when the user asked for this (manual), not on the silent
@@ -689,6 +926,25 @@
     btn.textContent = 'Refreshing…'; btn.disabled = true;
 
     try{
+      // Your real home feed first, when this machine can answer for it. It is strictly the better
+      // pool — it is the feed you already like, personalised by Pinterest rather than reconstructed
+      // from the creators behind your saves — so it is preferred whenever it is available rather
+      // than being a mode you have to pick. It answers only where the helper runs, and returns null
+      // otherwise, which is what makes the public path below a fallback rather than dead code.
+      // Only under Discover: with Discover off you asked for your own saves, which this isn't.
+      if(cat.discover !== false){
+        const home = await fetchPinterestHomeFeed(cat);
+        if(home){
+          applyPinterestPins(cat, home.pins, {
+            source: 'home feed',
+            note: 'from your Pinterest home feed',
+            matched: typeof home.matched === 'number' ? home.matched : null,
+            manual,
+          });
+          return;
+        }
+      }
+
       // The boards this collection already knows about ride along: the server can only discover
       // the boards you pinned to lately, so without this the pool would shrink back to "recent"
       // every day instead of reaching into the archive.
@@ -699,7 +955,15 @@
       const knownCreators = Array.isArray(cat.creatorIds) ? cat.creatorIds : [];
       const wantDiscover = cat.discover !== false;
       const { data, error } = await supa.functions.invoke('pinterest-feed', {
-        body: { username: cat.pinterestUser, boards: knownBoards, creators: knownCreators, discover: wantDiscover },
+        body: {
+          username: cat.pinterestUser, boards: knownBoards, creators: knownCreators, discover: wantDiscover,
+          keywords: Array.isArray(cat.keywords) ? cat.keywords : [],
+          exclude: Array.isArray(cat.excludeWords) ? cat.excludeWords : [],
+          // Creators that matched the keywords before. A narrow topic is a lottery on a random
+          // sample of 131 creators, so this is what makes the filter sharpen with use instead of
+          // re-rolling every morning.
+          hits: Array.isArray(cat.hitCreators) ? cat.hitCreators : [],
+        },
       });
       if(error){
         // A non-2xx from the function arrives as a generic "non-2xx status code" message; the
@@ -725,16 +989,11 @@
       // is a replace rather than a merge — unlike the boards above, which are ordered by whether
       // they still answer.
       if(Array.isArray(data.creatorIds)) cat.creatorIds = data.creatorIds.filter(s=>typeof s === 'string').slice(0, PINTEREST_CREATOR_CAP);
+      // Already merged with what was sent, so this is a replace like creatorIds above.
+      if(Array.isArray(data.hits)) cat.hitCreators = data.hits.filter(s=>typeof s === 'string').slice(0, PINTEREST_CREATOR_CAP);
 
-      // No-op for i.pinimg.com URLs (it only matches Storage paths), but it keeps the bucket
-      // clean if a real upload ever ended up in here.
-      cat.images.forEach(img=> deleteStorageImage(img.url));
-      // videoUrl starts empty for every pin and is filled in afterwards by resolvePinterestVideos()
-      // — the feed can't tell us which of these are videos.
-      const created = picked.map(p=>({ id: uid(), url: p.url, fallbackUrl: p.fallbackUrl, link: p.link, videoUrl: '', createdAt: Date.now() }));
-      cat.images = created;
       cat.seenIds = seenIds;
-      cat.lastSync = localDateStr(new Date());
+      const created = commitPinterestPicks(cat, picked);
       // Logged, not shown: the header stays clean, but this is how you check whether board
       // discovery actually found your boards (a pool in the hundreds) or fell back to the
       // profile feed's ~25 most recent saves. Only the 25 picked above are stored. `fresh` is how
@@ -748,12 +1007,17 @@
       console.info('Pinterest sync: picked ' + picked.length + ' of ' + pins.length
         + (wantDiscover ? ' never-saved pins from ' + ((cat.creatorIds || []).length) + ' known creators' : ' pins')
         + ' across ' + ((data && data.boards) || 0) + ' boards (' + fresh + ' never shown before)');
-      if(manual && wantDiscover && discoverGot === 0){
+      // Two different fallbacks, and they need different words: `discovered: 0` means it couldn't
+      // find anything new at all, `matched: 0` means the keywords matched nothing so the filter was
+      // ignored. Only ever said on a sync the user asked for — the silent daily one stays silent.
+      const matched = (data && typeof data.matched === 'number') ? data.matched : null;
+      const hasTerms = (Array.isArray(cat.keywords) && cat.keywords.length) || (Array.isArray(cat.excludeWords) && cat.excludeWords.length);
+      if(manual && hasTerms && matched === 0){
+        window.alert('None of your keywords matched anything this time, so the collection is showing unfiltered pins.\n\nTry broader words, or fewer of them — keywords match whole words, so “car” finds “car” and “cars” but not “supercar”.');
+      } else if(manual && wantDiscover && discoverGot === 0){
         window.alert('Couldn’t find any new pins this time — showing your own saves instead.\n\nDiscover works from the creators behind pins you’ve saved, so it needs a sync or two to build that list up.');
       }
-      delete motivationSlideIdx[cat.id]; // start the new set from the top
-      save(); renderMotivation();
-      resolvePinterestVideos(cat.id, created); // not awaited — see below
+      finishPinterestSync(cat, created);
     }catch(err){
       console.error('Pinterest sync failed', err);
       if(manual) window.alert((err && err.message) || 'Could not refresh from Pinterest.');
@@ -820,7 +1084,7 @@
 
     let saved = savedPinsCategory();
     if(!saved){
-      saved = { id: uid(), name: PINTEREST_SAVED_CAT_NAME, images: [], pin: '', source: '', pinterestUser: '', lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: false };
+      saved = { id: uid(), name: PINTEREST_SAVED_CAT_NAME, images: [], pin: '', source: '', pinterestUser: '', lastSync: '', boardSlugs: [], seenIds: [], creatorIds: [], discover: false, keywords: [], excludeWords: [], hitCreators: [] };
       state.motivation.categories.push(saved);
     }
     if(saved.images.some(x=>x.url === img.url)) return; // already kept — the ✓ already says so
@@ -1585,6 +1849,8 @@
   el('motivationSyncPinterestBtn').addEventListener('click', ()=>{ const cat = activeMotivationCategory(); if(cat) syncPinterestCategory(cat.id, true); });
   el('motivationPinterestUserBtn').addEventListener('click', promptPinterestUser);
   el('motivationDiscoverBtn').addEventListener('click', toggleMotivationDiscover);
+  el('motivationKeywordsBtn').addEventListener('click', promptMotivationKeywords);
+  el('motivationHomeFeedBtn').addEventListener('click', promptPinterestHomeFeed);
   // Click the category name to cycle to the next one — the only way to switch categories on
   // desktop, since the swipe gesture only exists for touch. Renaming now has its own button.
   el('motivationActiveName').addEventListener('click', nextMotivationCategory);

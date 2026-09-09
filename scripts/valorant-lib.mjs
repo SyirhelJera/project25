@@ -129,7 +129,11 @@ export function collectOfferedItems(result){
   const out = [];
   (result?.items || []).forEach(it => out.push({ name: it.name, source: 'daily store' }));
   (result?.nightMarket?.offers || []).forEach(it => out.push({ name: it.name, source: 'night market' }));
-  (result?.bundle?.items || []).forEach(it => out.push({ name: it.name, source: 'bundle' }));
+  // every featured bundle, not just the first: Riot runs two some weeks, and a wishlisted skin
+  // sitting in the second one is exactly the hit this watch exists to catch. Falls back to the
+  // single `bundle` key for results written before `bundles` existed.
+  const bundleList = (result?.bundles || []).length ? result.bundles : (result?.bundle ? [result.bundle] : []);
+  bundleList.forEach(b => (b?.items || []).forEach(it => out.push({ name: it.name, source: 'bundle' })));
   (result?.accessories || []).forEach(it => out.push({ name: it.name, source: 'accessory shop' }));
   return out;
 }
@@ -411,11 +415,96 @@ async function fetchWallet(shard, puuid, headers){
   }
 }
 
+// One entry of the storefront's FeaturedBundle list, resolved into the record the app and the
+// widget read. Never throws: a featured bundle is a nice-to-have, and with two of them on sale a
+// lookup failure on one must still leave the other renderable — so a failure here returns null and
+// is filtered out by the caller rather than failing the whole store check.
+//
+// `entry` is one of FeaturedBundle.Bundles[] (or the legacy FeaturedBundle.Bundle object, which
+// carries the same fields); `featured` is the parent, read only for the values that live on it
+// alone in older responses.
+async function resolveFeaturedBundle(entry, featured){
+  const bundleId = entry?.DataAssetID;
+  if (!bundleId) return null;
+  try {
+    const r = await fetch(`${VALORANT_API_BASE}/bundles/${bundleId}`);
+    const j = await r.json();
+    // What's *in* the bundle, resolved from the storefront's own item list rather than
+    // valorant-api's bundle record: this one carries each item's base and discounted price, and
+    // it's the list Riot is actually selling today. A bundle mixes skins with sprays/buddies/
+    // cards, which is exactly what resolveAccessoryReward() already knows how to resolve — the
+    // Item shape here ({ItemTypeID, ItemID}) is the same one the accessory shop uses.
+    const items = await Promise.all((entry.Items || []).map(async (it) => {
+      const info = await resolveAccessoryReward(it?.Item || {});
+      // IsPromoItem is Riot's own flag for the things a bundle throws in for nothing — the melee
+      // on a launch bundle, a gun buddy, a card. It's recorded rather than inferred from a zero
+      // DiscountedPrice, because a store checked before this existed reports 0 for "not known"
+      // too, and guessing there would relabel a paid item as free.
+      return {
+        ...info,
+        price: it?.BasePrice || 0,
+        discountPrice: it?.DiscountedPrice || 0,
+        isPromo: !!it?.IsPromoItem,
+      };
+    }));
+    // A bundle has two totals and they are not the same number: TotalBaseCost is what its
+    // contents add up to bought one by one, TotalDiscountedCost is what Riot actually charges
+    // for the bundle — the promo items above are priced into the second one only, so on a launch
+    // bundle the two differ by thousands of VP. Recording the base cost as the price (which is
+    // all this used to do) put a figure on the banner that nobody is ever asked to pay, so the
+    // real one rides alongside it under the same `discountPrice` name every other discounted
+    // offer here already uses.
+    // The legacy `.Bundle` object is where the totals lived in older storefront responses, so it
+    // stays a fallback — but only for the entry that *is* that bundle. Reading it for a second
+    // bundle would give it the first one's base total, which is a strikethrough and a discount
+    // percentage for a price that was never quoted for it.
+    const legacy = featured?.Bundle?.DataAssetID === bundleId ? featured.Bundle : null;
+    const baseCost = firstCostValue(entry.TotalBaseCost)
+      || firstCostValue(legacy?.TotalBaseCost) || 0;
+    return {
+      // The bundle's own uuid, so the app can key two banners apart by identity rather than by
+      // position in the array — a list that reorders between checks would otherwise open the
+      // wrong contents list.
+      uuid: bundleId,
+      name: j?.data?.displayName || 'Featured Bundle',
+      // The two lines Riot's own featured card carries under the name: `displayNameSubText` is the
+      // offer's type ("CAPSULE", "BUNDLE"), and extraDescription is the flavour copy — which is
+      // also where Riot spells out "Items can only be purchased as a bundle". promoDescription is
+      // the same string on every bundle checked, so it's only a fallback.
+      subText: j?.data?.displayNameSubText || '',
+      description: j?.data?.extraDescription || j?.data?.promoDescription || '',
+      imageUrl: j?.data?.displayIcon || '',
+      price: baseCost,
+      discountPrice: firstCostValue(entry.TotalDiscountedCost)
+        || firstCostValue(legacy?.TotalDiscountedCost) || 0,
+      // Each bundle carries its OWN countdown in DurationRemainingInSeconds, which is the field to
+      // read: the panel-level BundleRemainingDurationInSeconds describes the featured slot rather
+      // than any one bundle, so it can only ever agree with the first. Verified against a live
+      // two-bundle storefront — every Bundles[] entry has this key. Note that on that rotation both
+      // entries happened to carry the SAME number (the two bundles really did end together), so
+      // reading per-entry changes nothing on a day like that; it is right for the day they differ,
+      // which is the day the panel-level figure would quietly misreport the second bundle.
+      // `??`, not `||`: a bundle in its last second reports 0, and `||` would swap that real 0 for
+      // the panel's figure and promise days on a bundle that is about to rotate out.
+      remainingSeconds: entry.DurationRemainingInSeconds ?? featured?.BundleRemainingDurationInSeconds ?? 0,
+      // Riot's own flag for "this one is sold whole": when true the contents have no individual
+      // price and the only way to get the one skin you want is to buy everything around it. When
+      // false each item is separately purchasable (they ride along in `ItemOffers` at the same
+      // prices `Items` already reports, so the flag is the whole of the new information).
+      wholesaleOnly: !!entry.WholesaleOnly,
+      items,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Runs the full silent-reauth -> storefront fetch for one saved Riot session. Returns
-// { checkedAt, items, itemsRemainingSeconds, bundle, accessories, accessoriesRemainingSeconds,
-//   nightMarket, identity, wallet, error:'' } on success, or throws an Error with a user-facing
-// message. Everything after the daily offers is best-effort: bundle, nightMarket, identity and
-// wallet each degrade to null rather than failing a check that otherwise worked.
+// { checkedAt, items, itemsRemainingSeconds, bundles, accessories,
+//   accessoriesRemainingSeconds, nightMarket, identity, wallet, error:'' } on success, or throws
+// an Error with a user-facing message. Everything after the daily offers is best-effort: bundles,
+// nightMarket, identity and wallet each degrade to empty/null rather than failing a check that
+// otherwise worked.
 export async function checkAccountStore(label, session){
   let accessToken, idToken;
   try {
@@ -511,55 +600,23 @@ export async function checkAccountStore(label, session){
     }
   }));
 
-  let bundle = null;
-  const bundleId = store?.FeaturedBundle?.Bundle?.DataAssetID;
-  if (bundleId) {
-    try {
-      const r = await fetch(`${VALORANT_API_BASE}/bundles/${bundleId}`);
-      const j = await r.json();
-      // What's *in* the bundle, resolved from the storefront's own item list rather than
-      // valorant-api's bundle record: this one carries each item's base and discounted price, and
-      // it's the list Riot is actually selling today. A bundle mixes skins with sprays/buddies/
-      // cards, which is exactly what resolveAccessoryReward() already knows how to resolve — the
-      // Item shape here ({ItemTypeID, ItemID}) is the same one the accessory shop uses.
-      const bundleItems = await Promise.all((store?.FeaturedBundle?.Bundle?.Items || []).map(async (entry) => {
-        const info = await resolveAccessoryReward(entry?.Item || {});
-        // IsPromoItem is Riot's own flag for the things a bundle throws in for nothing — the melee
-        // on a launch bundle, a gun buddy, a card. It's recorded rather than inferred from a zero
-        // DiscountedPrice, because a store checked before this existed reports 0 for "not known"
-        // too, and guessing there would relabel a paid item as free.
-        return {
-          ...info,
-          price: entry?.BasePrice || 0,
-          discountPrice: entry?.DiscountedPrice || 0,
-          isPromo: !!entry?.IsPromoItem,
-        };
-      }));
-      // A bundle has two totals and they are not the same number: TotalBaseCost is what its
-      // contents add up to bought one by one, TotalDiscountedCost is what Riot actually charges
-      // for the bundle — the promo items above are priced into the second one only, so on a launch
-      // bundle the two differ by thousands of VP. Recording the base cost as the price (which is
-      // all this used to do) put a figure on the banner that nobody is ever asked to pay, so the
-      // real one rides alongside it under the same `discountPrice` name every other discounted
-      // offer here already uses. The totals sit on FeaturedBundle.Bundles[] in the current
-      // storefront and on the legacy .Bundle object in older responses — read both, since which of
-      // them carries the money has changed before.
-      const featured = store?.FeaturedBundle || {};
-      const totals = (featured.Bundles || []).find(x => x?.DataAssetID === bundleId)
-        || (featured.Bundles || [])[0]
-        || featured.Bundle || {};
-      const baseCost = firstCostValue(totals.TotalBaseCost)
-        || firstCostValue(featured.Bundle?.TotalBaseCost) || 0;
-      bundle = {
-        name: j?.data?.displayName || 'Featured Bundle',
-        imageUrl: j?.data?.displayIcon || '',
-        price: baseCost,
-        discountPrice: firstCostValue(totals.TotalDiscountedCost) || 0,
-        remainingSeconds: store?.FeaturedBundle?.BundleRemainingDurationInSeconds || 0,
-        items: bundleItems,
-      };
-    } catch { /* featured bundle is a nice-to-have — a lookup failure shouldn't fail the whole check */ }
-  }
+  // Riot's storefront carries the featured bundles in `FeaturedBundle.Bundles[]` and, for older
+  // responses, a single `.Bundle` object holding the first of them. Most weeks there is one — but
+  // Riot runs two often enough (a launch bundle beside a returning one, or an anniversary pair)
+  // that reading only `.Bundle` silently dropped the second from the app, the widget and the
+  // wishlist watch alike. So the list is the source and `.Bundle` is its one-entry fallback.
+  const featured = store?.FeaturedBundle || {};
+  const featuredEntries = (featured.Bundles || []).length
+    ? featured.Bundles
+    : (featured.Bundle ? [featured.Bundle] : []);
+  const bundles = (await Promise.all(
+    featuredEntries.map(entry => resolveFeaturedBundle(entry, featured))
+  )).filter(Boolean);
+  // No `bundle` twin is written beside it. Records this script wrote before `bundles` existed
+  // carry the old single key and every reader still falls back to it (valStoreBundles() in
+  // js/valorant.js, the widget's $bundleList) — but writing both would duplicate a couple of KB of
+  // item list per account in the shared row, which is re-serialized and re-uploaded in full on
+  // every save from every tab.
 
   // Night Market — the same storefront response, and the panel that's absent most of the year:
   // a personal set of discounted skins Riot opens for a couple of weeks per act. Nothing else in
@@ -610,7 +667,8 @@ export async function checkAccountStore(label, session){
     // rather than assuming a fixed reset hour. An extra key here is harmless for the app, which
     // reads dailyStores entries field by field.
     itemsRemainingSeconds: store?.SkinsPanelLayout?.SingleItemOffersRemainingDurationInSeconds || 0,
-    bundle,
+    // every featured bundle Riot is running, not just the first — see resolveFeaturedBundle()
+    bundles,
     accessories,
     accessoriesRemainingSeconds: store?.AccessoryStore?.AccessoryStoreRemainingDurationInSeconds || 0,
     nightMarket,

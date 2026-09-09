@@ -440,15 +440,21 @@ function Update-Widget {
     $y += 56
   }
 
-  # ---- featured bundle
-  if ($acct.bundle -and $acct.bundle.name) {
+  # ---- featured bundles. Riot runs two some weeks, so this is a list and gets a line each --
+  # showing only the first is how the second used to disappear from the widget entirely. Snapshots
+  # written before the list existed carry a single `bundle` object instead, so that's the fallback.
+  $bundleList = @()
+  if ($acct.bundles) { $bundleList = @($acct.bundles) }
+  elseif ($acct.bundle) { $bundleList = @($acct.bundle) }
+  foreach ($bdl in $bundleList) {
+    if (-not $bdl -or -not $bdl.name) { continue }
     # discountPrice is what the bundle actually charges; price is what its contents cost bought
     # separately, which is thousands more on any bundle with free promo items in it. Older
     # snapshots predate the discounted total, so fall back to the base one rather than show 0.
-    $bundleBase = [int]$acct.bundle.price
-    $bundlePaid = [int]$acct.bundle.discountPrice
+    $bundleBase = [int]$bdl.price
+    $bundlePaid = [int]$bdl.discountPrice
     if ($bundlePaid -le 0) { $bundlePaid = $bundleBase }
-    $bundleText = '{0} - {1:N0} VP' -f $acct.bundle.name, $bundlePaid
+    $bundleText = '{0} - {1:N0} VP' -f $bdl.name, $bundlePaid
     if ($bundleBase -gt $bundlePaid) { $bundleText += ' (was {0:N0})' -f $bundleBase }
     $lblBundle  = New-Label $bundleText $FontSmall $ColMuted $pad $y ($WidgetWidth - 2 * $pad) 16
     Add-DragHandlers $lblBundle

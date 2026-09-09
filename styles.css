@@ -4965,28 +4965,62 @@
     .val-live-head-right select{max-width:none;flex:1;}
   }
 
-  /* featured bundle banner, once above every account's store (valFeaturedBundleHtml() in
-     valorant.js) — mimics the in-game featured-bundle card: full-bleed promo art with a scrim
-     from the left so the name and price stay legible over whatever art Riot shipped this week */
-  .val-bundle{
-    position:relative;display:block;width:100%;overflow:hidden;cursor:pointer;padding:0;
-    min-height:120px;border-radius:12px;border:1px solid var(--border);background:var(--surface-alt);
-    text-align:left;font-family:'Inter',sans-serif;
+  /* The featured card, once above every account's store (valFeaturedBundleHtml() in valorant.js).
+     Copies the in-game featured card: full-bleed promo art, a scrim from the left so the copy
+     stays legible over whatever art Riot shipped, FEATURED and a live DD:HH:MM:SS on the top line,
+     the name large under it, then type + price, then Riot's own blurb — and, when two bundles are
+     running, one card with a tab strip along the bottom rather than two stacked banners. */
+  .val-bundle-card{
+    position:relative;border-radius:12px;overflow:hidden;border:1px solid var(--border);
+    background:#0B0E14;
     transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease;
   }
-  .val-bundle:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.45);border-color:var(--vp-gold);}
+  .val-bundle-card:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(0,0,0,.45);border-color:var(--vp-gold);}
+  .val-bundle{
+    position:relative;display:block;width:100%;overflow:hidden;cursor:pointer;padding:0;
+    min-height:188px;border:0;border-radius:0;background:transparent;
+    text-align:left;font-family:'Inter',sans-serif;
+  }
   .val-bundle-art{position:absolute;inset:0;}
   .val-bundle-art img{width:100%;height:100%;object-fit:cover;display:block;}
-  .val-bundle-body{
-    position:relative;display:flex;flex-direction:column;gap:4px;align-items:flex-start;
-    min-height:120px;justify-content:flex-end;padding:14px 16px;
-    background:linear-gradient(90deg,rgba(8,11,17,.92) 0%,rgba(8,11,17,.72) 45%,rgba(8,11,17,.15) 100%);
+  /* the 10s carousel swaps the whole pane, so it fades in rather than cutting — a hard swap of a
+     full-bleed photo every ten seconds reads as a glitch. Off under reduced motion, where the cut
+     is the honest answer. */
+  @media (prefers-reduced-motion:no-preference){
+    .val-bundle{animation:valBundleFade .32s ease both;}
   }
-  .val-bundle-kicker{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.4px;color:var(--vp-gold);}
+  @keyframes valBundleFade{from{opacity:.35;}to{opacity:1;}}
+  /* the scrim carries every bit of this card's legibility, so it runs further across than a plain
+     left-edge fade: the blurb is three lines deep and the art behind it is often bright sky */
+  .val-bundle-body{
+    position:relative;display:flex;flex-direction:column;align-items:flex-start;gap:5px;
+    min-height:188px;justify-content:center;padding:18px 20px;max-width:min(62%,560px);
+    background:linear-gradient(90deg,rgba(8,11,17,.94) 0%,rgba(8,11,17,.88) 42%,rgba(8,11,17,.55) 78%,rgba(8,11,17,0) 100%);
+  }
+  .val-bundle-topline{display:flex;align-items:center;gap:8px;}
+  .val-bundle-kicker{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.6px;color:#E7EAF2;}
+  .val-bundle-sep{font-size:10px;font-weight:700;color:#6E7686;}
+  /* the countdown, repainted every second by tickValBundleClocks(). Tabular figures so the digits
+     don't jitter the line as they tick — a proportional 1 is narrower than a 0 and the whole row
+     shifts once a second without this. */
+  .val-bundle-clock{
+    font-size:11.5px;font-weight:800;letter-spacing:1.2px;color:var(--vp-gold);
+    font-variant-numeric:tabular-nums;font-feature-settings:'tnum' 1;
+  }
   /* fixed light ink rather than --text: this sits on the scrim over the art in every theme */
-  .val-bundle-name{font-size:16px;font-weight:800;letter-spacing:.2px;color:#F4F6FB;}
-  .val-bundle-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .val-bundle-time{font-size:10.5px;font-weight:700;letter-spacing:.3px;color:#B9C0D0;}
+  .val-bundle-name{
+    font-size:30px;line-height:1.06;font-weight:900;letter-spacing:.4px;text-transform:uppercase;
+    color:#F7F9FE;
+  }
+  .val-bundle-sub{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:1px;}
+  .val-bundle-type{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:1.3px;color:#D6DBE7;}
+  /* Riot's own blurb — clamped to three lines, which is what the in-game card shows and enough for
+     every description checked; the tooltip on the card carries the rest either way */
+  .val-bundle-desc{
+    font-size:12px;line-height:1.5;color:#AFB7C7;max-width:44ch;
+    display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  }
+  .val-bundle-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:3px;}
   /* a bundle sells for less than its contents add up to (valBundlePricing() in valorant.js): the
      paid price leads in the usual VP pill, the separate-purchase total follows it struck through.
      Fixed ink again, not --muted — this sits on the scrim over the promo art in every theme. */
@@ -4995,16 +5029,103 @@
     padding:2px 7px;border-radius:5px;font-size:9.5px;font-weight:800;letter-spacing:.4px;
     color:#0B0E14;background:var(--vp-gold);
   }
-  /* a wishlisted item is inside the bundle — the banner shows one piece of promo art, so without
+  /* The plate the client puts its buy button on. Nothing here buys anything, so it answers what
+     the price actually raises — can this account afford it, and if not by how much — but it keeps
+     the client's position and weight, because that right edge is where the eye goes for the
+     number. It drops into the normal flow under the copy on a phone (see the media query), where
+     an absolutely-placed plate would sit across the middle of the art. */
+  .val-bundle-buy{
+    position:absolute;right:20px;top:50%;transform:translateY(-50%);
+    display:flex;flex-direction:column;align-items:flex-end;gap:5px;
+  }
+  .val-bundle-buy-price{
+    display:flex;align-items:center;gap:7px;min-width:150px;justify-content:center;
+    padding:10px 16px;border-radius:4px;border:1px solid rgba(231,234,242,.5);
+    background:rgba(8,11,17,.55);backdrop-filter:blur(2px);
+  }
+  /* the "Need" label in front of a shortfall — without it the plate reads as a price, which is
+     the one thing the number in it is not */
+  .val-bundle-buy-lead{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#E4CFA8;}
+  /* the plate sits at the right, past where the body's scrim has cleared, so this line is on bare
+     promo art — which on a bright bundle is a pale caption on a pale sky. It carries its own chip
+     for the same reason the price box above it does. */
+  .val-bundle-buy-note{
+    font-size:10.5px;font-weight:700;letter-spacing:.2px;color:#C6CEDD;
+    padding:2px 8px;border-radius:4px;background:rgba(8,11,17,.62);
+  }
+  /* short by / covered. The gold edge is the same signal the VP tier uses elsewhere, and the
+     affordable state stays quiet — "yes" doesn't need a colour, it needs to not stop you. */
+  .val-bundle-buy.is-short .val-bundle-buy-price{border-color:rgba(240,212,73,.8);background:rgba(24,19,4,.62);}
+  .val-bundle-buy.is-ok .val-bundle-buy-note{color:#9FD9B8;}
+  /* a wishlisted item is inside the bundle — the card shows one piece of promo art, so without
      this the hit is invisible until you open the contents list */
-  .val-bundle.wishlist-match{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
+  .val-bundle-card.has-wish{border-color:var(--danger);box-shadow:0 0 0 1px var(--danger);}
   .val-bundle-wish{
     display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;
     text-transform:uppercase;letter-spacing:.6px;color:#fff;background:var(--danger);
     border-radius:6px;padding:2px 7px;
   }
+  /* part of the bundle is already in your collection (valBundleOwnership() in valorant.js) — the
+     opposite signal to the wishlist chip beside it, so it's outlined rather than filled: "you
+     already have some of this" is information, not an alert, and two solid chips on one line would
+     read as two warnings. Fixed light ink again — this sits on the scrim over the promo art. */
+  .val-bundle-owned{
+    display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.6px;color:#CFE6D8;
+    border:1px solid rgba(47,190,122,.65);border-radius:6px;padding:1px 6px;
+  }
+  /* The tab strip along the bottom, one per running bundle — the client's own way of fitting two
+     bundles into one card. A sibling of the card's <button>, never inside it (see
+     valFeaturedBundleHtml()), and laid over the foot of the art on its own scrim. */
+  .val-bundle-tabs{
+    position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:22px;
+    padding:0 20px 12px;
+    background:linear-gradient(0deg,rgba(8,11,17,.82) 0%,rgba(8,11,17,.45) 55%,rgba(8,11,17,0) 100%);
+  }
+  .val-bundle-tab{
+    display:flex;flex-direction:column;align-items:center;gap:6px;
+    padding:8px 4px 0;border:0;background:transparent;cursor:pointer;
+    font-family:'Inter',sans-serif;min-width:0;max-width:220px;
+  }
+  .val-bundle-tab-name{
+    font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.1px;color:#98A1B3;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;
+    transition:color .14s ease;
+  }
+  /* The underline is the whole state signal, so it gets the accent and the label merely brightens.
+     On the active tab it is also the rotation countdown: the fill sweeps left to right over
+     --val-rotate (written from VAL_BUNDLE_ROTATE_MS in valorant.js) so the strip says when the
+     card is about to flip, the way the real shop's does. scaleX rather than width, so the sweep
+     runs on the compositor instead of laying out a bar 60 times a second. */
+  .val-bundle-tab-bar{
+    position:relative;overflow:hidden;
+    width:100%;min-width:86px;height:3px;border-radius:2px;background:rgba(152,161,179,.35);
+    transition:background .14s ease;
+  }
+  .val-bundle-tab:hover .val-bundle-tab-name{color:#D6DBE7;}
+  .val-bundle-tab.is-active .val-bundle-tab-name{color:#F7F9FE;}
+  .val-bundle-tab.is-active .val-bundle-tab-bar::after{
+    content:'';position:absolute;inset:0;border-radius:inherit;
+    background:var(--success);transform-origin:left center;
+  }
+  /* only while the carousel is actually running — a bar still filling toward a rotation that was
+     switched off by picking a tab would be counting down to nothing */
+  .val-bundle-card.is-rotating .val-bundle-tab.is-active .val-bundle-tab-bar::after{
+    animation:valBundleTabFill var(--val-rotate,10000ms) linear both;
+  }
+  @keyframes valBundleTabFill{from{transform:scaleX(0);}to{transform:scaleX(1);}}
+  /* reduced motion keeps the meaning and drops the sweep: a solid accent bar, as before */
+  @media (prefers-reduced-motion:reduce){
+    .val-bundle-card.is-rotating .val-bundle-tab.is-active .val-bundle-tab-bar::after{animation:none;}
+  }
+  .val-bundle-tab:focus-visible{outline:2px solid var(--vp-gold);outline-offset:2px;border-radius:4px;}
+  /* the tabs sit over the foot of the card, so the body has to end above them or a three-line
+     blurb runs underneath the strip. `.has-tabs` is set in the markup rather than inferred with
+     :has() — nothing else in this stylesheet uses it, and where it isn't supported the failure
+     mode is the strip landing on top of the copy. */
+  .val-bundle-card.has-tabs .val-bundle-body{padding-bottom:46px;}
 
-  /* bundle contents, listed in the preview modal — the only place a bundle's items can be seen */
+  /* bundle contents, listed in the preview modal â€” the only place a bundle's items can be seen */
   .val-preview-items{margin-top:18px;display:flex;flex-direction:column;gap:6px;}
   .val-preview-items-hdr{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:2px;}
   .val-preview-item{
@@ -5016,9 +5137,38 @@
   .val-preview-item-name{flex:1;min-width:0;font-size:12px;font-weight:700;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .val-preview-item-wish{color:var(--danger);}
   .val-preview-item-type{flex:none;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);}
-  /* the promo items a bundle throws in — the reason its price isn't this list's total */
+  /* the promo items a bundle throws in â€” the reason its price isn't this list's total */
   .val-preview-item-was{flex:none;font-size:10.5px;font-weight:700;color:var(--faint);text-decoration:line-through;}
   .val-preview-item-free{flex:none;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;color:var(--success);}
+  /* Whether the contents can be bought one at a time or only as the whole bag (Riot's
+     WholesaleOnly, valBundleWholesaleText() in valorant.js). Outlined like the owned chip rather
+     than filled — it's a property of the offer, not an alert — and the bundle-only case is the
+     restrictive one, so it takes the muted ink while "sold separately" reads as the open door. */
+  .val-bundle-sale{
+    display:inline-flex;align-items:center;font-size:10px;font-weight:800;
+    text-transform:uppercase;letter-spacing:.6px;color:#CBD3E4;
+    border:1px solid rgba(203,211,228,.4);border-radius:6px;padding:1px 6px;
+  }
+  .val-bundle-sale.is-bundle-only{color:#E4CFA8;border-color:rgba(240,212,73,.55);}
+  /* the same fact restated in the contents list, where "can I just buy this one?" is the question
+     the list itself provokes */
+  .val-preview-items-note{
+    margin:-2px 0 6px;font-size:11.5px;line-height:1.5;color:var(--faint);
+  }
+
+  /* an item already in this account's collection. The row is dimmed rather than struck through or
+     hidden: it's still in the bundle and still being charged for, which is the whole point of the
+     breakdown under the list — it just isn't what you're buying the bundle for. */
+  .val-preview-item.is-owned{opacity:.62;}
+  .val-preview-item-owned{
+    flex:none;font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;
+    color:var(--success);border:1px solid var(--border);border-radius:5px;padding:1px 5px;
+  }
+  /* the owned-skins receipt under the contents list. Sits between the list and the top-up
+     calculator and borrows its rows, since both answer "what does this cost me" and reading them
+     as one column is the point — hence the same top rule the calculator carries. */
+  .val-bundle-breakdown{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);}
+  .val-bundle-breakdown .val-vp-calc-row.is-owned{color:var(--success);}
 
   /* VP top-up calculator, at the foot of the item preview (valVpCalcHtml() in valorant.js).
      Reads as a receipt: label/value rows, then the plan boxed off under its own heading. */
@@ -5494,11 +5644,57 @@
     .val-store-item-img img{max-height:52px;}
     .val-store-item-name{font-size:9.5px;}
     .val-store-item-price{font-size:10.5px;}
-    /* the bundle scrim goes nearly opaque here: at phone width the text covers most of the banner,
-       so a gradient that clears by 45% would leave the name sitting on bare art */
-    .val-bundle,.val-bundle-body{min-height:96px;}
-    .val-bundle-body{padding:12px;background:linear-gradient(90deg,rgba(8,11,17,.94) 0%,rgba(8,11,17,.8) 70%,rgba(8,11,17,.4) 100%);}
-    .val-bundle-name{font-size:14px;}
+    /* THE FEATURED CARD AT PHONE WIDTH.
+       The desktop card is two columns over the art — copy on the left behind a horizontal scrim,
+       buy plate floated at the right. Neither survives 360px: the plate lands across the middle of
+       the art and the copy has nowhere to go. So the phone card stacks, and the scrim moves off
+       the copy and onto the ART, covering the whole face in one pass. That single change is what
+       fixes it: with a scrim per element, the body's horizontal gradient and the plate's flat
+       panel met in a visible seam and each block of text needed its own backdrop to stay legible.
+       One scrim over everything means the stack can be any height and still read. */
+    .val-bundle{min-height:0;}
+    .val-bundle-art::after{
+      content:'';position:absolute;inset:0;
+      background:linear-gradient(180deg,rgba(8,11,17,.82) 0%,rgba(8,11,17,.88) 45%,rgba(8,11,17,.95) 100%);
+    }
+    /* align-items:stretch, not the desktop flex-start: a flex item sized to fit-content resolves
+       to MAX-content for the -webkit-box the blurb is, so with the desktop max-width lifted the
+       description laid itself out ~700px wide and the card clipped it — which is why it read as
+       line 1 followed by line 3. Stretching the children to the body's width is what makes the
+       text wrap instead, and max-width:100% keeps anything else here inside it too. */
+    .val-bundle-body{
+      min-height:0;max-width:none;padding:14px 14px 10px;gap:4px;align-items:stretch;
+      background:none; /* the art's scrim above carries legibility now */
+    }
+    .val-bundle-body > *{max-width:100%;min-width:0;}
+    .val-bundle-topline{gap:7px;}
+    /* a long bundle name has to break rather than push the card open */
+    .val-bundle-name{font-size:20px;letter-spacing:.2px;overflow-wrap:anywhere;}
+    .val-bundle-desc{font-size:11.5px;line-height:1.45;-webkit-line-clamp:2;}
+    .val-bundle-meta{gap:6px;}
+    /* the plate joins the flow under the copy rather than being hidden: the shortfall is the one
+       thing on this card the price row doesn't already say, so losing it on a phone would lose the
+       point of the plate. Full width, so the number sits on the same left margin as the copy. */
+    .val-bundle-buy{
+      position:static;transform:none;align-items:stretch;gap:4px;
+      padding:0 14px 14px;background:none;
+    }
+    .val-bundle-buy-price{
+      min-width:0;padding:9px 14px;justify-content:flex-start;
+      background:rgba(8,11,17,.62);
+    }
+    /* on a phone the whole card is under one scrim already, so the note needs no chip of its own */
+    .val-bundle-buy-note{background:none;padding:0 2px;}
+    /* two tabs have to share a 360px line, so they split it evenly and ellipsis rather than
+       shrink-wrapping — "RUN IT BACK V26" is wider than half the screen at the desktop size */
+    .val-bundle-tabs{gap:10px;padding:0 12px 10px;}
+    .val-bundle-tab{flex:1 1 0;min-width:0;max-width:none;padding-top:6px;}
+    .val-bundle-tab-name{font-size:9.5px;letter-spacing:.8px;}
+    .val-bundle-tab-bar{min-width:0;}
+    /* the strip is still pinned to the foot of the card, and on a phone what sits above it is the
+       plate rather than the copy — so the clearance moves there */
+    .val-bundle-card.has-tabs .val-bundle-body{padding-bottom:10px;}
+    .val-bundle-card.has-tabs .val-bundle-buy{padding-bottom:42px;}
     .val-store-account-card{width:28px;height:28px;}
     .val-card-actions{top:10px;right:10px;}
     .val-card-action-btn{width:27px;height:27px;font-size:12px;}

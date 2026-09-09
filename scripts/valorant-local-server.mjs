@@ -124,8 +124,8 @@ const server = http.createServer(async (req, res) => {
       try {
         const result = await checkAccountStore(label, sess);
         await recordAccountResult(label, result);
-        results[label] = { ok: true, items: result.items.length, accessories: result.accessories.length, bundle: !!result.bundle, nightMarket: !!result.nightMarket };
-        console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundle ? ' + featured bundle' : ''}${result.nightMarket ? ` + NIGHT MARKET (${result.nightMarket.offers.length} offers)` : ''}.`);
+        results[label] = { ok: true, items: result.items.length, accessories: result.accessories.length, bundles: result.bundles.length, nightMarket: !!result.nightMarket };
+        console.log(`  done: ${result.items.length} skin(s)${result.accessories.length ? ` + ${result.accessories.length} accessory offer(s)` : ''}${result.bundles.length ? ` + ${result.bundles.length} featured bundle(s)` : ''}${result.nightMarket ? ` + NIGHT MARKET (${result.nightMarket.offers.length} offers)` : ''}.`);
       } catch (err) {
         results[label] = { ok: false, error: err.message };
         await recordAccountError(label, err.message).catch(() => {});

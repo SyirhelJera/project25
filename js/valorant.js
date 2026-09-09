@@ -426,6 +426,27 @@
       return wl && (lower.includes(wl) || wl.includes(lower));
     });
   }
+  // Every featured bundle in one store check. Riot features one most weeks and two often enough
+  // that reading a single `bundle` key quietly dropped the second one from every panel that reads
+  // the store — the banner, the wishlist match, the learned prices. `bundles` is what a store check
+  // writes now; `bundle` is what every record written before it carries, and both have to render.
+  function valStoreBundles(ds){
+    if(!ds) return [];
+    const list = (ds.bundles||[]).filter(b=>b && b.name);
+    if(list.length) return list;
+    return (ds.bundle && ds.bundle.name) ? [ds.bundle] : [];
+  }
+  // One bundle item's two prices, resolved identically everywhere they're read (the contents list
+  // and the owned-skin breakdown under it). `isPromo` is Riot's own flag for the things a bundle
+  // throws in for nothing; a zero discountPrice is never *inferred* to mean free, since a store
+  // checked before that flag existed reports 0 for "not recorded" as well.
+  function valBundleItemPrice(it){
+    const base = parseInt(it.price,10) || 0;
+    const disc = parseInt(it.discountPrice,10) || 0;
+    const free = !!it.isPromo;
+    return { free, price: free ? 0 : (disc || base), was: free ? base : ((disc && base > disc) ? base : 0) };
+  }
+
   // Everything one account has for sale right now, flattened across all four panels and tagged
   // with which one it came from. The wishlist is matched against all of it — a skin you're waiting
   // for arrives in the featured bundle or the night market just as often as in the four daily
@@ -436,7 +457,7 @@
     return [].concat(
       (ds.items||[]).map(it=>({ name:it.name, source:'daily' })),
       ((ds.nightMarket && ds.nightMarket.offers)||[]).map(it=>({ name:it.name, source:'night' })),
-      ((ds.bundle && ds.bundle.items)||[]).map(it=>({ name:it.name, source:'bundle' })),
+      valStoreBundles(ds).flatMap(b=>(b.items||[]).map(it=>({ name:it.name, source:'bundle' }))),
       (ds.accessories||[]).map(it=>({ name:it.name, source:'accessory' })),
     );
   }
@@ -465,7 +486,7 @@
     return [].concat(
       (ds.items||[]).map(it=>({ name: it.name, vp: parseInt(it.price,10)||0 })),
       ((ds.nightMarket && ds.nightMarket.offers)||[]).map(it=>({ name: it.name, vp: vpOf(it) })),
-      ((ds.bundle && ds.bundle.items)||[]).map(it=>({ name: it.name, vp: vpOf(it) })),
+      valStoreBundles(ds).flatMap(b=>(b.items||[]).map(it=>({ name: it.name, vp: vpOf(it) }))),
     ).filter(x=>x.vp > 0);
   }
   /* Prices actually seen. Every store check reports real VP prices for whatever was on sale, and
@@ -485,7 +506,7 @@
       if(!ds) return;
       (ds.items||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
       ((ds.nightMarket && ds.nightMarket.offers)||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
-      ((ds.bundle && ds.bundle.items)||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0));
+      valStoreBundles(ds).forEach(b=> (b.items||[]).forEach(it=> put(it.name, parseInt(it.price,10)||0)));
     });
     if(changed) save(); // only when something new was actually learned — this runs on every render
   }
@@ -886,18 +907,21 @@
       + '</div>';
   }
 
-  /* ---- featured bundle: Riot runs one featured bundle for everybody, so it's rendered once at
-     the top of the store column rather than repeated inside every tracked account's section —
-     seeing the same banner three times only made the accounts harder to scan. The freshest check
-     wins (rather than, say, the first account): all accounts report the same bundle, so the only
-     thing that differs between their copies is how stale the countdown is. Returns '' when no
-     account has recorded one — either nothing is featured, or every store here predates bundle
-     support. `label` is carried on the tile so the preview click handler can find it again. ---- */
+  /* ---- featured bundles: Riot runs the same featured bundle(s) for everybody, so they're
+     rendered once at the top of the store column rather than repeated inside every tracked
+     account's section — seeing the same banner three times only made the accounts harder to scan.
+     The freshest check wins (rather than, say, the first account): all accounts report the same
+     bundles, so the only thing that differs between their copies is how stale the countdown is.
+     Returns '' when no account has recorded one — either nothing is featured, or every store here
+     predates bundle support. `label` is carried on each tile so the preview click handler can find
+     the store again, and the bundle's own uuid identifies *which* bundle within it, since two
+     banners keyed by array position would open each other's contents if Riot reordered the list
+     between checks. ---- */
   function valFeaturedBundleLabel(stores, labels){
     let best = '', bestAt = 0;
     labels.forEach(label=>{
       const ds = stores[label] || {};
-      if(ds.bundle && ds.bundle.name && (ds.checkedAt||0) > bestAt){ best = label; bestAt = ds.checkedAt||0; }
+      if(valStoreBundles(ds).length && (ds.checkedAt||0) > bestAt){ best = label; bestAt = ds.checkedAt||0; }
     });
     return best;
   }
@@ -917,38 +941,399 @@
     const off = (paid && base && base > paid) ? Math.round((1 - paid / base) * 100) : 0;
     return { now: paid || base, was: off ? base : 0, off };
   }
-  function valFeaturedBundleHtml(stores, labels){
-    const label = valFeaturedBundleLabel(stores, labels);
-    if(!label) return '';
-    const ds = stores[label];
-    const b = ds.bundle;
+
+  /* ---- what of a bundle you already own ---------------------------------------------------
+     A bundle you half own is worth a different amount to you than its price says, and the contents
+     list is the only place that could ever tell you — so the items you already have are marked in
+     it and subtracted in a breakdown underneath.
+
+     Matched by *name*, not uuid, and that isn't laziness: a bundle item is a skin **level** uuid
+     (valorant-api's weapons/skinlevels), while checkAccountOwnedSkins() records the parent **skin**
+     uuid — two identifiers with no conversion between them short of pulling the whole skin catalog
+     into the browser. Both names come from the same valorant-api record, so an exact
+     case-insensitive match is cheap and precise. Deliberately exact, unlike the wishlist's
+     substring match: "is some Vandal skin in my store" is a useful alert and a useless answer to
+     "have I already bought this exact one".
+
+     Only weapon skins are in ownedSkins at all, so a bundle's sprays, buddies, cards and titles
+     never match and count as not-owned — which is the truth as far as this data can tell it. ---- */
+  function valOwnedSkinNameSet(label){
+    const os = (state.valorant.ownedSkins||{})[label];
+    // no data is not the same claim as "owns nothing", so an unchecked or errored account returns
+    // null and the whole breakdown is left out rather than reported as zero
+    if(!label || !os || os.error || !os.checkedAt) return null;
+    return new Set((os.skins||[]).map(s=>(s.name||'').trim().toLowerCase()).filter(Boolean));
+  }
+  // The account whose collection a bundle banner is measured against. The banner is rendered once
+  // above every account, so there isn't always one obvious answer: the picked account when one is
+  // picked, the only account holding owned-skins data when there's exactly one, and otherwise
+  // nothing — printing a figure labelled "owned" while quietly meaning some other account's
+  // collection is worse than leaving it out.
+  function valBundleOwnerLabel(){
+    const sel = valSelectedLabel();
+    if(sel) return valOwnedSkinNameSet(sel) ? sel : '';
+    // valAccountLabels() rather than the stores on screen: an account can have owned-skins data
+    // and no store check yet, and it's still the only collection there is to measure against
+    const withData = valAccountLabels().filter(l => valOwnedSkinNameSet(l));
+    return withData.length === 1 ? withData[0] : '';
+  }
+  /* The account a featured bundle is priced against — its wallet, its wishlist. NOT the same
+     thing as the account the bundle record was read from: the card is rendered once from whichever
+     check is freshest (valFeaturedBundleLabel()), because that's the only store holding the
+     bundle's contents, but the money and the wishlist belong to whoever you're actually looking at.
+     Conflating the two is what put another account's VP on the card, twice — so both the card and
+     the preview modal behind it resolve it here rather than each deciding for itself.
+
+     Falls back to the bundle's own account only for "All accounts", where no single account is
+     being viewed and there is nothing better to prefer. */
+  function valBundleViewLabel(bundleLabel){
+    return valSelectedLabel() || bundleLabel || '';
+  }
+  /* The breakdown itself. `ownedCost` is what the items you already have are costing you *at
+     bundle rates* — the per-item discounted price, which is the figure that adds up to what Riot
+     charges. Subtracting it is sound because an item you own still appearing in the storefront's
+     own item list is one Riot is still selling you inside this bundle: had it been dropped from
+     the bundle for you, it wouldn't be in the list to match in the first place. The subtraction is
+     only reported when it lands somewhere coherent (above zero, below the price) — a store checked
+     before per-item discounted prices were recorded has only base prices, whose sum can exceed the
+     bundle total, and printing a confident nonsense number is worse than printing the count alone. */
+  function valBundleOwnership(b, label){
+    const owned = valOwnedSkinNameSet(label);
+    if(!owned || !owned.size) return null;
+    const items = (b.items||[]).filter(it => owned.has((it.name||'').trim().toLowerCase()));
+    if(!items.length) return null;
+    const ownedCost = items.reduce((n,it)=> n + valBundleItemPrice(it).price, 0);
+    const now = valBundlePricing(b).now;
+    return {
+      label, items, count: items.length, total: (b.items||[]).length, ownedCost,
+      net: (ownedCost > 0 && now > ownedCost) ? now - ownedCost : 0,
+      names: new Set(items.map(it=>(it.name||'').trim().toLowerCase())),
+    };
+  }
+  // The receipt under the contents list: what Riot charges, what of it you already have, and what
+  // the rest works out at. Reuses the top-up calculator's row styling that follows it, since both
+  // answer "so what does this actually cost me" and reading them as one column is the point.
+  function valBundleBreakdownHtml(own, pr){
+    if(!own) return '';
+    const rows = [['Bundle price', pr.now ? pr.now.toLocaleString()+' VP' : 'not recorded', '']];
+    if(own.net){
+      rows.push(['Already owned ('+own.count+' of '+own.total+')', '−'+own.ownedCost.toLocaleString()+' VP', 'is-owned']);
+      rows.push(['New to you', own.net.toLocaleString()+' VP', 'is-short']);
+    } else {
+      // the per-item prices this record carries don't reconcile against its total (a store checked
+      // before per-item discounted prices were recorded has base prices only, which can add up to
+      // more than the bundle costs) — so the count is the whole honest answer here, and a signed
+      // figure that doesn't subtract from the line above it is left out rather than printed
+      rows.push(['Already owned', own.count+' of '+own.total+' items', 'is-owned']);
+    }
+    return '<div class="val-bundle-breakdown">'
+      + '<div class="val-preview-items-hdr">What it’s worth to you</div>'
+      + rows.map(r=>'<div class="val-vp-calc-row '+r[2]+'"><span>'+escapeHtml(r[0])+'</span><span>'+escapeHtml(r[1])+'</span></div>').join('')
+      + '<div class="val-vp-calc-note">Measured against '+escapeHtml(own.label)+'’s owned skins.'
+      + (own.net ? ' Riot still charges the full bundle price — this is what the part you don’t already have comes to.' : '')
+      + '</div></div>';
+  }
+
+  /* ---- the featured card's live countdown ------------------------------------------------
+     Riot's own card counts down in DD:HH:MM:SS and so does this one. The deadline is written into
+     the markup as an absolute timestamp (checkedAt + remainingSeconds) and a single interval
+     rewrites the digits — the clock must never re-render the card, because a store card rebuilt
+     every second would throw away the hover state, the focus ring and any open sub-tab underneath
+     it, and renderValorantStore() also re-runs valLearnStorePrices(), which can call save().
+     One interval for however many clocks are on screen; it stops itself once the markup holding
+     them is gone, and skips any clock that is merely hidden rather than removed. ---- */
+  let valBundleClockTimer = null;
+  function valBundleClockText(deadline){
+    const left = Math.floor((deadline - Date.now())/1000);
+    if(left <= 0) return 'rotated — re-check';
+    const d = Math.floor(left/86400), h = Math.floor((left%86400)/3600),
+          m = Math.floor((left%3600)/60), s = left%60;
+    const p = n => String(n).padStart(2,'0');
+    // days only once there are any: an 8-character clock reading 00:04:11:57 buries the number
+    // that matters behind a zero, and the in-game card drops the field the same way
+    return (d ? p(d)+':' : '') + p(h)+':'+p(m)+':'+p(s);
+  }
+  function tickValBundleClocks(){
+    const nodes = document.querySelectorAll('[data-bundle-deadline]');
+    if(!nodes.length){
+      if(valBundleClockTimer){ clearInterval(valBundleClockTimer); valBundleClockTimer = null; }
+      return;
+    }
+    if(document.hidden) return; // nobody is reading it; don't spend a wake-up a second on a hidden tab
+    nodes.forEach(n=>{
+      // the Owned Skins pane hides the store card rather than emptying it, so a clock can outlive
+      // its own visibility — repainting one inside a display:none subtree is invisible work
+      if(n.offsetParent === null) return;
+      n.textContent = valBundleClockText(parseInt(n.dataset.bundleDeadline,10)||0);
+    });
+  }
+  function startValBundleClocks(){
+    tickValBundleClocks();
+    if(!valBundleClockTimer && document.querySelector('[data-bundle-deadline]')){
+      valBundleClockTimer = setInterval(tickValBundleClocks, 1000);
+    }
+  }
+
+  /* Which bundle the one featured card is showing. Keyed by the bundle's uuid rather than its
+     index, the same rule the banner's click target follows: a store re-check can reorder or
+     replace the list, and an index would then quietly show a different bundle than the tab that
+     is lit. Not persisted — it's a view of one card, not a setting, and the pair resets to the
+     first bundle on reload the way the in-game card does. */
+  let valBundleTabUuid = '';
+  function valActiveBundleIndex(bundles){
+    const i = bundles.findIndex(b => b.uuid && b.uuid === valBundleTabUuid);
+    return i >= 0 ? i : 0;
+  }
+
+  /* The card cycles through the running bundles on its own, the way the in-game shop does — with
+     two bundles the second one is otherwise only ever seen by someone who noticed the tab strip.
+     Four things keep it from being annoying:
+       - picking a tab by hand STOPS the rotation for the rest of the page load (valBundleAutoStop).
+         Auto-advancing out from under someone who just chose a bundle is the whole failure mode
+         here, and there's no way to read "I want this one" other than the click itself.
+       - it only re-renders the featured card, not the store column: renderValorantStore() rebuilds
+         every account's grid and re-runs valLearnStorePrices(), which can call save() — doing that
+         every ten seconds forever would put a write loop behind a decorative animation.
+       - it stands still while the tab is hidden or the store pane isn't showing, so a laptop left
+         on the Valorant tab overnight isn't repainting into nothing.
+       - one interval for the page, cleared and restarted by the same render that draws the card. */
+  const VAL_BUNDLE_ROTATE_MS = 10000;
+  let valBundleRotateTimer = null;
+  let valBundleAutoStop = false;
+  function stopValBundleRotate(){
+    if(valBundleRotateTimer){ clearInterval(valBundleRotateTimer); valBundleRotateTimer = null; }
+  }
+  function rotateValBundle(){
+    if(document.hidden) return;
+    const strip = el('valStoreCard') && el('valStoreCard').querySelector('.val-bundle-tabs');
+    if(!strip || strip.offsetParent === null) return; // card gone or pane hidden — nothing to cycle
+    const stores = state.valorant.dailyStores || {};
+    const label = valFeaturedBundleLabel(stores, Object.keys(stores));
+    const bundles = label ? valStoreBundles(stores[label]) : [];
+    if(bundles.length < 2) return;
+    const next = bundles[(valActiveBundleIndex(bundles) + 1) % bundles.length];
+    valBundleTabUuid = next.uuid || '';
+    renderValFeaturedBundle();
+  }
+  function startValBundleRotate(){
+    stopValBundleRotate();
+    if(valBundleAutoStop) return;
+    if(!el('valStoreCard') || !el('valStoreCard').querySelector('.val-bundle-tabs')) return;
+    valBundleRotateTimer = setInterval(rotateValBundle, VAL_BUNDLE_ROTATE_MS);
+  }
+  /* Redraws the featured card alone, in place. The store card's markup is one flat innerHTML
+     string built by renderValorantStore(), so the card is swapped by replacing just its own
+     element — which is what lets both the rotation and a tab click avoid rebuilding the accounts
+     below it. Falls back to the full render if the card isn't on screen to swap. */
+  function renderValFeaturedBundle(){
+    const wrap = el('valStoreCard'); if(!wrap) return;
+    const existing = wrap.querySelector('.val-bundle-card');
+    const stores = state.valorant.dailyStores || {};
+    const html = valFeaturedBundleHtml(stores, Object.keys(stores));
+    if(!existing){ if(html) renderValorantStore(); return; }
+    if(!html){ existing.remove(); return; }
+    const holder = document.createElement('div');
+    holder.innerHTML = html;
+    const fresh = holder.firstElementChild;
+    existing.replaceWith(fresh);
+    applyValTileTitles(fresh);
+    startValBundleClocks();
+  }
+
+  /* Whether the bundle's contents have individual prices at all. Riot's own `WholesaleOnly` flag:
+     true means the only way to get the one skin you want is to buy everything around it, false
+     means each item is separately purchasable at the price the contents list already shows. It's
+     the question you ask right after "what's in it", and nothing else in the store answers it.
+
+     Returns null — and so renders nothing — for a store checked before the flag was recorded.
+     `undefined` is not `false`: claiming "items sold separately" about a bundle-only offer would
+     send you looking for a price that doesn't exist, so an old record says nothing until its next
+     check fills the flag in. */
+  function valBundleWholesaleText(b){
+    if(typeof (b && b.wholesaleOnly) !== 'boolean') return null;
+    return b.wholesaleOnly
+      ? { bundleOnly: true, chip: 'Bundle only',
+          hint: 'sold as a whole bundle — its items have no individual price' }
+      : { bundleOnly: false, chip: 'Items sold separately',
+          hint: 'each item can also be bought on its own' };
+  }
+
+  /* The right-hand plate: what this bundle would actually cost you, given what the account is
+     holding. Three states, and which one shows is the whole point of the plate:
+       - no wallet recorded (a store checked before the wallet lookup existed, or an account whose
+         check errored) -> just the price, exactly as before. Silence beats a shortfall computed
+         against a balance nobody read.
+       - covered -> the price plus what's left over, so "yes" carries its own arithmetic.
+       - short    -> the shortfall leads in the plate and the price drops to a sub-line, because
+         once you can't afford it the number you need is the gap, not the sticker.
+     `label` is the account the card is priced against — the selected one, resolved by the caller
+     the same way the preview modal does it, so the plate and the calculator behind the click can
+     never disagree about whose wallet this is. */
+  function valBundleAffordHtml(b, pr, label){
+    const ds = (state.valorant.dailyStores||{})[label] || {};
+    const have = ds.wallet ? (parseInt(ds.wallet.vp,10)||0) : null;
+    const cost = pr.now || 0;
+    if(!cost) return '';
+    if(have === null){
+      return '<span class="val-bundle-buy">'
+        + '<span class="val-bundle-buy-price"><span class="val-store-item-price">'+cost.toLocaleString()+'</span></span>'
+        + '</span>';
+    }
+    const short = Math.max(0, cost - have);
+    return '<span class="val-bundle-buy'+(short?' is-short':' is-ok')+'">'
+      + '<span class="val-bundle-buy-price">'
+        + (short
+            ? '<span class="val-bundle-buy-lead">Need</span><span class="val-store-item-price">'+short.toLocaleString()+'</span>'
+            : '<span class="val-store-item-price">'+cost.toLocaleString()+'</span>')
+      + '</span>'
+      + '<span class="val-bundle-buy-note">'
+        + (short
+            ? escapeHtml(cost.toLocaleString()+' VP · you have '+have.toLocaleString())
+            : escapeHtml('Affordable · '+(have-cost).toLocaleString()+' VP left'))
+      + '</span>'
+      + '</span>';
+  }
+
+  /* One bundle's face, filling the whole card. Modelled on the in-game featured card, which is
+     the layout this is copying: FEATURED and the countdown on one line, the name big under it,
+     then the offer type and price, then Riot's own blurb, with the price repeated on a plate at
+     the right where the buy button sits in the client. Everything is inside the one <button>, so
+     the whole face opens the contents — the tab strip is a sibling below it, never nested, since
+     a button inside a button is invalid and the tabs would swallow the card's own clicks. */
+  // Wishlist hits inside one bundle, for the account the card is priced against. Shared by the
+  // pane (which shows the count and names them in the tooltip) and by the card wrapper (which
+  // takes the red border), so the chip and the border can never disagree about whether there's
+  // a hit.
+  function valBundleWishHits(b, label){
+    return (b.items||[]).filter(it => valWishlistMatchesForItem(it.name, label).length);
+  }
+  function valBundlePaneHtml(b, idx, count, ds, bundleLabel, ownerLabel){
+    // bundleLabel is where the bundle RECORD came from (the freshest check) and is what the click
+    // handler needs to find it again; viewLabel is whose money and wishlist this card is about.
+    // See valBundleViewLabel() — they are only the same account in the "All accounts" view.
+    const label = valBundleViewLabel(bundleLabel);
     const pr = valBundlePricing(b);
-    const timeLeft = valStoreTimeLeft(ds.checkedAt, b.remainingSeconds);
-    // a bundle is a bag of items, so a wishlist hit inside one is invisible from the banner unless
-    // it's called out — the names go in the tooltip, since the banner has room for a count only
-    const wishHits = (b.items||[]).filter(it => valWishlistMatchesForItem(it.name, label).length);
+    const deadline = (ds.checkedAt && b.remainingSeconds)
+      ? ds.checkedAt + b.remainingSeconds*1000 : 0;
+    // a bundle is a bag of items, so a wishlist hit inside one is invisible from the card unless
+    // it's called out — the names go in the tooltip, since the card has room for a count only
+    const wishHits = valBundleWishHits(b, label);
     const wishHtml = wishHits.length
       ? '<span class="val-bundle-wish"><span aria-hidden="true">★</span> '
         + wishHits.length + ' wishlisted</span>'
       : '';
-    const title = b.name + ' — Featured Bundle'
+    // the same call-out for the opposite signal: part of this bundle is stuff you already have,
+    // which is equally invisible from one piece of promo art
+    const own = ownerLabel ? valBundleOwnership(b, ownerLabel) : null;
+    const ownHtml = own
+      ? '<span class="val-bundle-owned" title="Already in '+escapeHtml(own.label).replace(/"/g,'&quot;')+'’s collection">'
+        + '<span aria-hidden="true">✓</span> ' + own.count + ' owned</span>'
+      : '';
+    // whether the contents have individual prices at all, which is the difference between "I only
+    // want the Vandal" being an option and not
+    const ws = valBundleWholesaleText(b);
+    const wsHtml = ws
+      ? '<span class="val-bundle-sale'+(ws.bundleOnly?' is-bundle-only':'')+'" title="'+escapeHtml(ws.hint).replace(/"/g,'&quot;')+'">'
+        + escapeHtml(ws.chip)+'</span>'
+      : '';
+    const title = b.name + ' — Featured Bundle' + (count > 1 ? ' ' + (idx+1) + ' of ' + count : '')
       + (pr.now ? ' — ' + pr.now.toLocaleString() + ' VP'
           + (pr.was ? ' (' + pr.was.toLocaleString() + ' bought separately, −' + pr.off + '%)' : '') : '')
       + (wishHits.length ? ' — on your wishlist: ' + wishHits.map(it=>it.name).join(', ') : '')
+      + (own ? ' — you already own ' + own.count + ' of its ' + own.total + ' items on ' + own.label
+               + (own.net ? ', leaving ' + own.net.toLocaleString() + ' VP of new content' : '') : '')
+      + (ws ? ' — ' + ws.hint : '')
       + ' — click for contents';
-    return '<button type="button" class="val-bundle'+(wishHits.length?' wishlist-match':'')+'" data-preview-kind="bundle" data-preview-label="'+escapeHtml(label)+'"'
+    return '<button type="button" class="val-bundle'+(wishHits.length?' wishlist-match':'')+'"'
+      + ' data-preview-kind="bundle" data-preview-label="'+escapeHtml(bundleLabel)+'"'
+      + ' data-preview-uuid="'+escapeHtml(b.uuid||'')+'" data-preview-idx="'+idx+'"'
       + ' data-tile-title="'+escapeHtml(title)+'">'
       + (b.imageUrl ? '<span class="val-bundle-art"><img src="'+escapeHtml(b.imageUrl)+'" alt=""></span>' : '')
       + '<span class="val-bundle-body">'
-      + '<span class="val-bundle-kicker">Featured Bundle</span>'
+      + '<span class="val-bundle-topline">'
+        + '<span class="val-bundle-kicker">Featured</span>'
+        + (deadline
+            ? '<span class="val-bundle-sep" aria-hidden="true">|</span>'
+              // the digits are painted by tickValBundleClocks(); the server-rendered text is only
+              // what shows for the instant before the first tick
+              + '<span class="val-bundle-clock" data-bundle-deadline="'+deadline+'">'
+              + escapeHtml(valBundleClockText(deadline))+'</span>'
+            : '')
+      + '</span>'
       + '<span class="val-bundle-name">'+escapeHtml(b.name)+'</span>'
-      + '<span class="val-bundle-meta">'
-      + (pr.now ? '<span class="val-store-item-price" title="Valorant Points">'+pr.now.toLocaleString()+'</span>' : '')
-      + (pr.was ? '<span class="val-bundle-was" title="Total if the contents were bought separately">'+pr.was.toLocaleString()+'</span>' : '')
-      + (pr.off ? '<span class="val-bundle-off">−'+pr.off+'%</span>' : '')
-      + (timeLeft ? '<span class="val-bundle-time">'+escapeHtml(timeLeft)+'</span>' : '')
-      + wishHtml
-      + '</span></span></button>';
+      + '<span class="val-bundle-sub">'
+        + (b.subText ? '<span class="val-bundle-type">'+escapeHtml(b.subText)+'</span>' : '')
+        + (pr.now ? '<span class="val-store-item-price" title="Valorant Points">'+pr.now.toLocaleString()+'</span>' : '')
+        + (pr.was ? '<span class="val-bundle-was" title="'
+            // the base total is what the contents add up to at their individual prices — which on a
+            // bundle-only offer is a comparison, not a purchase you could actually make
+            + (ws && ws.bundleOnly ? 'What the contents add up to at their individual prices'
+                                   : 'Total if the contents were bought separately')
+            + '">'+pr.was.toLocaleString()+'</span>' : '')
+        + (pr.off ? '<span class="val-bundle-off">−'+pr.off+'%</span>' : '')
+      + '</span>'
+      + (b.description ? '<span class="val-bundle-desc">'+escapeHtml(b.description)+'</span>' : '')
+      + ((wishHtml || ownHtml || wsHtml)
+          ? '<span class="val-bundle-meta">'+wishHtml+ownHtml+wsHtml+'</span>' : '')
+      + '</span>'
+      // The right-hand plate the in-game card puts its buy button on. Nothing here can buy
+      // anything, so instead of repeating the price it answers the question the price actually
+      // raises — can I afford it, and if not by how much — read from the same wallet the top-up
+      // calculator uses. Inert markup inside the one button, never a control of its own.
+      + valBundleAffordHtml(b, pr, label)
+      + '</button>';
+  }
+
+  /* The featured card: ONE card however many bundles Riot is running, with a tab strip along the
+     bottom exactly as the client has it. Two stacked banners was the wrong shape — the store
+     column is a list of accounts and a second full-width banner read as a second account rather
+     than as the other half of one offer.
+
+     Built from the freshest check (all accounts see the same bundles, so the only thing that
+     differs between their copies is how stale the countdown is), and returns '' when no account
+     has recorded one — either nothing is featured, or every store here predates bundle support. */
+  function valFeaturedBundleHtml(stores, labels){
+    const label = valFeaturedBundleLabel(stores, labels);
+    if(!label) return '';
+    const ds = stores[label];
+    const bundles = valStoreBundles(ds);
+    if(!bundles.length) return '';
+    const ownerLabel = valBundleOwnerLabel();
+    const active = valActiveBundleIndex(bundles);
+    const b = bundles[active];
+    // State classes on the wrapper rather than a :has() in the stylesheet. Nothing else in
+    // styles.css uses :has(), and where it fails (older mobile WebViews) the failure here is the
+    // tab strip landing on top of the copy — so the layout depends on a selector the markup can
+    // simply state instead.
+    // `is-rotating` drives the active tab's underline filling over the rotation interval, the way
+    // the real shop's does — so the bar reads as "how long until this flips" rather than as
+    // decoration. It goes on only when the carousel is actually going to run, which is why picking
+    // a tab by hand (valBundleAutoStop) leaves a solid bar rather than one still counting down to
+    // a rotation that will never come.
+    const rotating = bundles.length > 1 && !valBundleAutoStop;
+    const cls = 'val-bundle-card'
+      + (bundles.length > 1 ? ' has-tabs' : '')
+      + (rotating ? ' is-rotating' : '')
+      + (valBundleWishHits(b, valBundleViewLabel(label)).length ? ' has-wish' : '');
+    // one source of truth for the interval: the CSS fill reads it from here rather than repeating
+    // the number, so changing VAL_BUNDLE_ROTATE_MS can't leave the bar out of step with the timer
+    return '<div class="'+cls+'" style="--val-rotate:'+VAL_BUNDLE_ROTATE_MS+'ms">'
+      + valBundlePaneHtml(b, active, bundles.length, ds, label, ownerLabel)
+      + (bundles.length > 1
+          // role=group + aria-pressed rather than a tablist, the same call the account switcher
+          // chips make one card below: role=tab promises arrow-key navigation between the tabs,
+          // and these are plain buttons that tab through like everything else on the card
+          ? '<div class="val-bundle-tabs" role="group" aria-label="Featured bundles">'
+            + bundles.map((x, i)=>
+                '<button type="button" class="val-bundle-tab'+(i === active ? ' is-active' : '')+'"'
+                + ' aria-pressed="'+(i === active)+'"'
+                + ' data-bundle-tab="'+escapeHtml(x.uuid || String(i))+'">'
+                + '<span class="val-bundle-tab-name">'+escapeHtml(x.name)+'</span>'
+                + '<span class="val-bundle-tab-bar" aria-hidden="true"></span>'
+                + '</button>').join('')
+            + '</div>'
+          : '')
+      + '</div>';
   }
 
   /* ---- item preview modal: clicking any store / accessory / owned-skin tile opens that item's
@@ -1334,28 +1719,27 @@
   // can't see from its tile — the banner is one piece of promo art for a bag of five or six
   // things — so the preview is where "what am I actually buying" gets answered, wishlist hits
   // included.
-  function valPreviewItemRowHtml(it, wished){
+  function valPreviewItemRowHtml(it, wished, owned){
     // The promo items are why a bundle's price isn't the sum of this list, so the list has to say
-    // which ones they are. `isPromo` is Riot's flag, carried only by newer store checks: a zero
-    // discountPrice is never *inferred* to mean free, since an older record reports 0 for "not
-    // recorded" as well, and a row with neither field falls back to the base price as before.
-    const base = parseInt(it.price,10) || 0;
-    const disc = parseInt(it.discountPrice,10) || 0;
-    const free = !!it.isPromo;
-    const price = free ? 0 : (disc || base);
-    const was = free ? base : ((disc && base > disc) ? base : 0);
-    return '<div class="val-preview-item'+(wished?' wishlist-match':'')+'">'
+    // which ones they are — valBundleItemPrice() is the one place that decides which those are,
+    // shared with the owned-skins breakdown so the two can't disagree about what an item costs.
+    const pi = valBundleItemPrice(it);
+    return '<div class="val-preview-item'+(wished?' wishlist-match':'')+(owned?' is-owned':'')+'">'
       + (it.imageUrl
           ? '<img class="val-preview-item-img" src="'+escapeHtml(it.imageUrl)+'" alt="">'
           : '<span class="val-preview-item-img"></span>')
       + '<span class="val-preview-item-name">'+escapeHtml(it.name||'Unknown item')
         + (wished ? ' <span class="val-preview-item-wish" title="On your wishlist">★</span>' : '')
       + '</span>'
-      + (it.type ? '<span class="val-preview-item-type">'+escapeHtml(it.type)+'</span>' : '')
-      + (was ? '<span class="val-preview-item-was">'+was.toLocaleString()+'</span>' : '')
-      + (free
+      // "Owned" replaces the type chip rather than joining it: the row is one line, and which of
+      // the two you need is answered by the fact that you already have this one
+      + (owned
+          ? '<span class="val-preview-item-owned" title="Already in this account’s collection">Owned</span>'
+          : (it.type ? '<span class="val-preview-item-type">'+escapeHtml(it.type)+'</span>' : ''))
+      + (pi.was ? '<span class="val-preview-item-was">'+pi.was.toLocaleString()+'</span>' : '')
+      + (pi.free
           ? '<span class="val-preview-item-free" title="Included with the bundle at no extra cost">Free</span>'
-          : (price ? '<span class="val-store-item-price">'+price.toLocaleString()+'</span>' : ''))
+          : (pi.price ? '<span class="val-store-item-price">'+pi.price.toLocaleString()+'</span>' : ''))
       + '</div>';
   }
 
@@ -1391,9 +1775,15 @@
       + ((view.items && view.items.length)
           ? '<div class="val-preview-items">'
             + '<div class="val-preview-items-hdr">In this bundle</div>'
-            + view.items.map(it => valPreviewItemRowHtml(it, it._wished)).join('')
+            // whether these rows are things you could buy one at a time, or only the whole bag —
+            // the list is exactly where that question gets asked
+            + (view.itemsNote ? '<div class="val-preview-items-note">'+escapeHtml(view.itemsNote)+'</div>' : '')
+            + view.items.map(it => valPreviewItemRowHtml(it, it._wished, it._owned)).join('')
             + '</div>'
           : '')
+      // the owned-skins receipt, between the contents and the top-up calculator: it reads what the
+      // list above it just showed, and hands the calculator the price you'd still be charged
+      + (view.breakdown || '')
       // anything priced in VP gets the top-up calculator; Kingdom Credit offers and the equipped
       // card pass no vpCost and so get nothing
       + valVpCalcHtml(view.vpCost, view.accountLabel);
@@ -1421,6 +1811,25 @@
   // to the (never-replaced) container elements and look their item back up by uuid — binding per
   // tile wouldn't survive a re-render.
   el('valStoreCard').addEventListener('click', e=>{
+    // The featured card's tab strip. It sits *outside* the card's own <button> (nesting one button
+    // in another is invalid, and the tabs would swallow the clicks that open the contents), so it
+    // never matches the [data-preview-kind] lookup below and has to be handled first.
+    const tab = e.target.closest('[data-bundle-tab]');
+    if(tab){
+      valBundleTabUuid = tab.dataset.bundleTab;
+      // choosing a bundle by hand ends the 10s carousel for this page load — see
+      // startValBundleRotate(); rotating away from the one you just picked is the one thing this
+      // animation must never do
+      valBundleAutoStop = true;
+      stopValBundleRotate();
+      renderValFeaturedBundle();
+      // focus follows the tab you just pressed — the strip is rebuilt by that redraw, so the
+      // element under the pointer is a different node and a keyboard user would otherwise be
+      // dropped back to the top of the document
+      const again = el('valStoreCard').querySelector('[data-bundle-tab="'+CSS.escape(valBundleTabUuid)+'"]');
+      if(again) again.focus();
+      return;
+    }
     const tile = e.target.closest('[data-preview-kind]');
     if(!tile) return;
     const ds = (state.valorant.dailyStores||{})[tile.dataset.previewLabel] || {};
@@ -1438,22 +1847,44 @@
         accountLabel: tile.dataset.previewLabel,
       });
     } else if(tile.dataset.previewKind === 'bundle'){
-      const b = ds.bundle;
+      // by uuid first, by position only as the fallback for records written before bundles carried
+      // one — with two banners on screen, position alone opens the other one's contents whenever
+      // Riot reorders the list between checks
+      const bundles = valStoreBundles(ds);
+      const b = (uuid && bundles.find(x=>x.uuid === uuid)) || bundles[parseInt(tile.dataset.previewIdx,10) || 0];
       if(!b) return;
       // the paid total, not the base one — this feeds the top-up calculator below the art, which
-      // was planning a purchase against a price the bundle doesn't charge
+      // was planning a purchase against a price the bundle doesn't charge. It stays the *full*
+      // bundle price even when part of the bundle is already owned: the breakdown says what the
+      // new content works out at, but the till still asks for this number.
       const pr = valBundlePricing(b);
-      const label = tile.dataset.previewLabel;
+      // whose wallet and wishlist this is about — the account being viewed, not the one the
+      // bundle record was read from. `ds` above stays keyed by the latter, which is the only
+      // store holding the contents. See valBundleViewLabel().
+      const label = valBundleViewLabel(tile.dataset.previewLabel);
+      const own = valBundleOwnership(b, valBundleOwnerLabel());
+      const bws = valBundleWholesaleText(b);
       openValItemPreview({
         name: b.name,
         subtitle: ['Featured Bundle',
           pr.now ? pr.now.toLocaleString()+' VP'+(pr.was ? ' (was '+pr.was.toLocaleString()+', −'+pr.off+'%)' : '') : '',
-          valStoreTimeLeft(ds.checkedAt, b.remainingSeconds)].filter(Boolean).join(' · '),
+          valStoreTimeLeft(ds.checkedAt, b.remainingSeconds),
+          bws ? bws.chip : ''].filter(Boolean).join(' · '),
         color: '#F0D449',
         imageUrl: b.imageUrl,
-        // the wishlist flag is resolved here rather than inside the preview, which has no idea
-        // which account's list applies
-        items: (b.items||[]).map(it => ({ ...it, _wished: valWishlistMatchesForItem(it.name, label).length > 0 })),
+        // the wishlist and owned flags are resolved here rather than inside the preview, which has
+        // no idea which account's list or collection applies
+        items: (b.items||[]).map(it => ({
+          ...it,
+          _wished: valWishlistMatchesForItem(it.name, label).length > 0,
+          _owned: !!(own && own.names.has((it.name||'').trim().toLowerCase())),
+        })),
+        breakdown: valBundleBreakdownHtml(own, pr),
+        itemsNote: bws
+          ? (bws.bundleOnly
+              ? 'Sold as a whole bundle — these have no individual price, so the only way to get one is to buy all of them.'
+              : 'Each of these can also be bought on its own at the price shown.')
+          : '',
         vpCost: pr.now,
         accountLabel: label,
       });
@@ -1682,6 +2113,11 @@
       return '<div class="val-store-account">'+hdrHtml+html+'</div>';
     }).join('');
     applyValTileTitles(wrap);
+    // the featured card's DD:HH:MM:SS counts down on its own from here — see the comment on
+    // valBundleClockTimer for why this can't be a re-render
+    startValBundleClocks();
+    // and the card cycles between the running bundles every 10s, unless a tab has been picked
+    startValBundleRotate();
   }
 
   // Tooltip text is carried as data-tile-title and applied as a property here rather than being
@@ -2993,6 +3429,11 @@
   // a page nobody is looking at is exactly what this feature shouldn't do.
   document.addEventListener('visibilitychange', ()=>{
     if(document.hidden) stopValLivePolling(); else syncValLivePolling();
+    // The featured card's underline is a CSS animation and keeps running in a hidden tab, while
+    // rotateValBundle() deliberately doesn't — so coming back could show a bar that had already
+    // filled against a rotation still seconds away. Restarting both together puts them back in
+    // phase; startValBundleRotate() is a no-op when there's nothing to rotate.
+    if(!document.hidden){ startValBundleRotate(); renderValFeaturedBundle(); }
   });
 
   /* ---- render ---------------------------------------------------------------- */

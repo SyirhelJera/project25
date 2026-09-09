@@ -195,6 +195,13 @@
     // is worse than no entry.
     const hfBtn = el('motivationHomeFeedBtn');
     hfBtn.style.display = (isPinterest && typeof valLocalUrl === 'function') ? '' : 'none';
+    // Carries the last sync's verdict, so a broken sign-in is visible in the menu rather than only
+    // in a console line nobody reads.
+    hfBtn.textContent = pinterestHelperNote === 'no_session' ? '🏠 Home feed: not signed in'
+      : (pinterestHelperNote === 'expired' || pinterestHelperNote === 'signed_out') ? '🏠 Home feed: sign-in expired'
+      : pinterestUsedHomeFeed ? '🏠 Home feed: on'
+      : '🏠 Home feed sign-in…';
+    hfBtn.classList.toggle('active', pinterestUsedHomeFeed);
     // Uploading into a Pinterest category would look like it worked and then vanish at the next
     // daily refresh, which replaces the whole image list — so don't offer it there.
     el('motivationUploadRow').style.display = isPinterest ? 'none' : 'flex';
@@ -672,16 +679,22 @@
         // no_session and expired are ordinary states, not faults — remembered so the menu item can
         // say which one it is without another round trip.
         pinterestHelperNote = (data && data.code) || '';
+        pinterestUsedHomeFeed = false;
         return null;
       }
       pinterestHelperNote = '';
+      pinterestUsedHomeFeed = true;
       return data;
     }catch(e){
+      // The helper isn't reachable at all (stopped, or this is a phone). Not a sign-in problem, so
+      // it must not be reported as one — no note, and the menu keeps its neutral label.
       pinterestHelperNote = '';
+      pinterestUsedHomeFeed = false;
       return null;
     }
   }
   let pinterestHelperNote = ''; // '' | 'no_session' | 'expired' | …, from the last attempt
+  let pinterestUsedHomeFeed = false; // whether the last sync's pins actually came from your feed
 
   // Sign-in management, kept in the collection menu because that is where the collection is.
   // Prompt-driven like the rest of this menu.
@@ -713,6 +726,9 @@
     if(!window.confirm('Open a browser window to sign in to Pinterest?\n\n'
       + 'The window is a fresh, separate one — you sign in there, and only the resulting cookie is '
       + 'saved, to a gitignored file on this machine. It is never uploaded anywhere.\n\n'
+      + 'IMPORTANT: let the window close ITSELF once you are signed in. Closing it by hand a moment '
+      + 'too early ends the sign-in before the cookie can be read, which is exactly how a half-'
+      + 'finished one gets picked up.\n\n'
       + 'Cancel if you would rather paste the cookie by hand instead.')){
       await promptPinterestCookiePaste();
       return;
@@ -942,6 +958,19 @@
             manual,
           });
           return;
+        }
+        // Falling back is correct, but doing it SILENTLY is not: a dead session then looks exactly
+        // like a working one showing worse pins, which is indistinguishable from the feature simply
+        // being bad. Said only on a sync you asked for — the daily one stays quiet — and only when
+        // this machine could plausibly have answered, so a phone never sees it.
+        if(manual && pinterestHelperNote){
+          const why = pinterestHelperNote === 'no_session'
+            ? 'you are not signed in to Pinterest on this machine yet'
+            : (pinterestHelperNote === 'expired' || pinterestHelperNote === 'signed_out')
+              ? 'your saved Pinterest sign-in is no longer valid'
+              : 'your Pinterest home feed could not be read (' + pinterestHelperNote + ')';
+          window.alert('Showing the public Discover pins, because ' + why + '.\n\n'
+            + 'Use “🏠 Home feed sign-in…” in this menu to fix that.');
         }
       }
 

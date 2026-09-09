@@ -56,6 +56,14 @@ const MAX_PAGES = 6;
 // whose absence means "this isn't a signed-in session" rather than "this might still work".
 const REQUIRED_COOKIES = ['_pinterest_sess'];
 
+// Pinterest sets `_pinterest_sess` and `csrftoken` for signed-OUT visitors too — they are the
+// session, not the login — so their presence says nothing about being logged in. `_auth` is the
+// flag that does: "1" signed in, "0" not. Checking it is what stops a jar scraped a moment too
+// early (or from a window where the sign-in never completed) being saved as though it worked.
+export function looksSignedIn(cookies){
+  return !!cookies && cookies._auth === '1' && !!cookies._pinterest_sess;
+}
+
 /* ---------- the session file ---------- */
 
 export function loadSession(){
@@ -187,8 +195,12 @@ async function fetchHomeFeedPage(session, bookmark){
 // Walks up to MAX_PAGES of the feed and returns normalized pin records. `wanted` stops the walk
 // early once there are plainly enough — the collection keeps 25, so there is no reason to pull six
 // pages when two answered the question.
-export async function getHomeFeed({ wanted = 150, keywords = [], exclude = [] } = {}){
-  const session = loadSession();
+export async function getHomeFeed({ wanted = 150, keywords = [], exclude = [], session: given = null } = {}){
+  // `session` is passed in when a candidate jar is being TESTED rather than used: nothing may be
+  // written to disk until it has proved it can read the feed. Saving first and verifying after is
+  // what left a signed-OUT jar sitting in the session file, which then presented as "expired" on
+  // every refresh while the collection quietly fell back to the public path.
+  const session = given || loadSession();
   if (!session) {
     const e = new Error('No Pinterest session saved on this machine yet.');
     e.code = 'no_session';
@@ -226,6 +238,32 @@ export async function getHomeFeed({ wanted = 150, keywords = [], exclude = [] } 
     matched: kept.length,
     pages: pagesRead,
   };
+}
+
+// Proves a candidate jar before anything is written. Returns the number of pins it could read.
+// Throws with a `code` the caller can show: `signed_out` is a different sentence from `expired`.
+export async function verifySession(cookies){
+  // `_auth: '0'` is a definite no, and worth its own sentence — it is what a jar scraped before the
+  // sign-in finished looks like. Its ABSENCE proves nothing (the paste path only ever has the two
+  // cookies you can see in DevTools), so that case falls through to the real read, which is the
+  // actual proof either way.
+  if (cookies && cookies._auth === '0') {
+    const e = new Error('Those cookies are from a signed-out Pinterest session (_auth=0) — the sign-in had not finished.');
+    e.code = 'signed_out';
+    throw e;
+  }
+  if (!cookies || !cookies._pinterest_sess) {
+    const e = new Error('No _pinterest_sess cookie in that set.');
+    e.code = 'signed_out';
+    throw e;
+  }
+  const probe = await getHomeFeed({ wanted: 1, session: { cookies } });
+  if (!probe.total) {
+    const e = new Error('Signed in, but the home feed came back empty.');
+    e.code = 'empty';
+    throw e;
+  }
+  return probe.total;
 }
 
 /* ---------- normalising ---------- */

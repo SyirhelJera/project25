@@ -29,13 +29,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { saveSession } from './pinterest-lib.mjs';
+import { saveSession, verifySession, looksSignedIn } from './pinterest-lib.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROFILE_DIR = path.join(__dirname, '.pinterest-login-profile');
 const LOGIN_URL = 'https://www.pinterest.com/login/';
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
-const COOKIE_POLL_MS = 1500;
+// Tighter than the Valorant one: Pinterest sets its signed-in cookie the instant the redirect
+// lands, and a window closed by hand a moment later must not beat the poll to it.
+const COOKIE_POLL_MS = 900;
 const CHROMIUM_EXE = /(chrome|msedge|brave|vivaldi|opera|chromium)\.exe$/i;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -252,18 +254,20 @@ async function runLoginWindow(current, exe){
     for (const c of cookies) {
       if (c.value && /(^|\.)pinterest\.[a-z.]+$/.test(String(c.domain || ''))) jar[c.name] = c.value;
     }
-    // _pinterest_sess exists signed-OUT too (it is the session, not the login), so the presence of
-    // a csrftoken alongside it is the cheap signal that the sign-in actually completed. A jar that
-    // isn't really logged in fails the verifying read below and the loop simply carries on.
-    if (jar._pinterest_sess && jar.csrftoken) {
+    // `_pinterest_sess` and `csrftoken` are set for signed-OUT visitors too, so waiting on those
+    // captured a logged-out jar the moment the login page loaded. `_auth === '1'` is the flag that
+    // actually means signed in, and the feed read after it is the proof.
+    //
+    // Nothing is written until BOTH pass. The earlier order — save, then verify, then throw —
+    // left a signed-out jar in the session file whenever the verify failed, and the app then
+    // reported "expired" on every refresh while quietly falling back to the public path.
+    if (looksSignedIn(jar)) {
       try {
+        await verifySession(jar);
         saveSession(jar);
-        const { getHomeFeed } = await import('./pinterest-lib.mjs');
-        const probe = await getHomeFeed({ wanted: 1 });
-        if (!probe.pins.length) throw new Error('signed in but the feed came back empty');
         await finish('done', '');
         return;
-      } catch { /* not a usable session yet — keep waiting */ }
+      } catch { /* not a usable session yet — keep waiting, having written nothing */ }
     }
 
     await sleep(COOKIE_POLL_MS);

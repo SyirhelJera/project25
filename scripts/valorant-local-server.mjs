@@ -32,7 +32,7 @@ import { loginAccount } from './valorant-login.mjs';
 import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
 import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
 import { getTftLobby } from './tft-live.mjs';
-import { getHomeFeed, sessionStatus as pinterestSessionStatus, saveSession as savePinterestSession, deleteSession as deletePinterestSession, forWire as pinterestForWire } from './pinterest-lib.mjs';
+import { getHomeFeed, verifySession as verifyPinterestSession, sessionStatus as pinterestSessionStatus, saveSession as savePinterestSession, deleteSession as deletePinterestSession, forWire as pinterestForWire } from './pinterest-lib.mjs';
 import { startPinterestLogin, getPinterestLoginStatus, cancelPinterestLogin } from './pinterest-login-window.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -298,16 +298,16 @@ const server = http.createServer(async (req, res) => {
     const sess = (body.sess || '').trim();
     const csrf = (body.csrf || '').trim();
     if (!sess) { sendJson(res, 400, { ok: false, error: 'Missing the _pinterest_sess cookie.' }, origin); return; }
+    // Verified BEFORE anything is written, so a bad paste can never leave a session file behind to
+    // be reported as "expired" on every later refresh.
+    const jar = { _pinterest_sess: sess };
+    if (csrf) jar.csrftoken = csrf;
     try {
-      savePinterestSession(csrf ? { _pinterest_sess: sess, csrftoken: csrf } : { _pinterest_sess: sess });
-      // Verified before it is called a success, or a bad paste presents as "expired" on every
-      // later refresh instead of as the failed paste it was.
-      const probe = await getHomeFeed({ wanted: 1 });
-      if (!probe.pins.length) throw new Error('Signed in, but your home feed came back empty.');
+      const total = await verifyPinterestSession(jar);
+      savePinterestSession(jar);
       console.log('Saved a Pinterest session.');
-      sendJson(res, 200, { ok: true, pins: probe.total }, origin);
+      sendJson(res, 200, { ok: true, pins: total }, origin);
     } catch (err) {
-      deletePinterestSession();
       sendJson(res, 200, { ok: false, error: (err && err.message) || String(err) }, origin);
     }
     return;

@@ -18,7 +18,7 @@
 // gitignored. Never commit it and never paste it anywhere else.
 
 import readline from 'node:readline';
-import { saveSession, loadSession, deleteSession, getHomeFeed, SESSION_FILE } from './pinterest-lib.mjs';
+import { saveSession, loadSession, deleteSession, getHomeFeed, verifySession, SESSION_FILE } from './pinterest-lib.mjs';
 
 function ask(question, { hidden = false } = {}){
   return new Promise(resolve => {
@@ -61,20 +61,24 @@ async function main(){
   if (!sess) { console.error('Nothing pasted — stopping.'); process.exit(1); }
   const csrf = await ask('csrftoken:       ');
 
-  // Saved only after it demonstrably works: writing first and failing later leaves a broken
-  // session file that the app then reports as "expired" on every refresh.
+  // Verified BEFORE it is written. Writing first and failing after is what left a signed-out jar
+  // in the session file, which the app then reported as "expired" on every refresh while quietly
+  // falling back to the public path.
   const jar = { _pinterest_sess: sess };
   if (csrf) jar.csrftoken = csrf;
-  try { saveSession(jar); }
-  catch (err) { console.error(err.message); process.exit(1); }
-
-  if (await check()) console.log(`\nSaved to ${SESSION_FILE}`);
-  else {
-    deleteSession();
-    console.error('\nThose cookies did not work, so nothing was saved.');
-    console.error('Check you copied the VALUE (not the name), from www.pinterest.com, while signed in.');
+  process.stdout.write('Checking those cookies... ');
+  try {
+    const total = await verifySession(jar);
+    console.log(`ok — read ${total} pins from your home feed.`);
+  } catch (err) {
+    console.log('failed.');
+    console.error(`\n${err.message}`);
+    console.error('\nNothing was saved. Copy the VALUE (not the name) of BOTH cookies, from');
+    console.error('www.pinterest.com, in a browser where you are signed in.');
     process.exit(1);
   }
+  saveSession(jar);
+  console.log(`\nSaved to ${SESSION_FILE}`);
 }
 
 main();

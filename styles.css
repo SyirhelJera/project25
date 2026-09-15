@@ -5899,21 +5899,30 @@
   #selfPortrait{position:relative;z-index:1;display:block;width:100%;height:100%;
     object-fit:contain;object-position:center bottom;-webkit-user-drag:none;}
 
-  .self-sheet{display:flex;flex-direction:column;gap:13px;min-width:0;}
-  .self-name{font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;line-height:1.15;color:var(--text);
+  .self-sheet{display:flex;flex-direction:column;gap:9px;min-width:0;}
+  .self-name{font-family:'Manrope',sans-serif;font-size:21px;font-weight:800;line-height:1.15;color:var(--text);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .self-sub{margin-top:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+  .self-sub{margin-top:2px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
 
-  .self-xp{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:12px 14px;}
-  .self-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;}
-  .self-stat{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:11px 13px;min-width:0;}
-  .self-stat-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
-  .self-stat-val{display:flex;align-items:baseline;gap:5px;margin-top:4px;min-width:0;}
-  .self-stat-val b{min-width:0;font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;
-    font-variant-numeric:tabular-nums;line-height:1.15;color:var(--text);
+  .self-xp{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:8px 12px;}
+  /* .exp-row/.exp-track are the sidebar profile card's, shared so the bar reads identically in both
+     places (js/goals.js copies into them). Scoped here rather than changed there: the sidebar has
+     room the sheet does not. */
+  .self-xp .exp-row{margin-bottom:3px;}
+  /* Same move for the six figures: label, value and the qualifier under it all on one line, in a
+     pill that is as wide as what it holds. Six equal grid tracks padded "66" out to the width of
+     "₱205,194" and cost two tall rows; as pills they pack into the width there actually is. */
+  .self-stats{display:flex;flex-wrap:wrap;gap:6px;}
+  .self-stat{display:inline-flex;align-items:baseline;gap:7px;min-width:0;max-width:100%;
+    background:var(--surface);border-radius:999px;box-shadow:var(--fin-shadow);padding:5px 13px;}
+  .self-stat-lbl{flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);white-space:nowrap;}
+  .self-stat-val{display:inline-flex;align-items:baseline;gap:4px;margin-top:0;min-width:0;}
+  .self-stat-val b{min-width:0;font-family:'Manrope',sans-serif;font-size:14px;font-weight:800;
+    font-variant-numeric:tabular-nums;line-height:1.2;color:var(--text);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .self-stat-sub{margin-top:3px;font-size:11.5px;font-weight:600;color:var(--faint);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-stat-sub{margin-top:0;flex:none;font-size:9.5px;font-weight:600;color:var(--faint);
+    white-space:nowrap;}
 
 
   /* ---------- the living figure (js/avatar.js) ----------
@@ -6048,23 +6057,34 @@
   /* one line of plain English about how much of today is still unearned */
   .self-day{font-size:12px;font-weight:700;color:var(--muted);margin-top:-4px;}
 
-  /* THE FOUR AXES. Deliberately four separate chips and not one combined bar — the whole design is
-     that they never average — so each carries its own word, its own bar and its own count. */
-  /* auto-fit, not a fixed count: the axes are a list that can grow (social status was the
-     fifth), and a hard column count silently squeezes every chip when one is added */
-  .self-axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px;}
-  .self-axis{background:var(--surface);border-radius:var(--fin-r-ctl);box-shadow:var(--fin-shadow);
-    padding:9px 10px;min-width:0;border-left:3px solid var(--self-axis,var(--faint));}
-  .self-axis-top{display:flex;align-items:center;gap:5px;min-width:0;}
-  .self-axis-icon{font-size:11px;line-height:1;flex:none;}
-  .self-axis-lbl{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .self-axis-state{margin-top:3px;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;
+  /* THE AXES, AS PILLS. Still one per axis and never one combined bar — the whole design is that
+     they never average — but laid out along a line rather than as cards in a grid.
+
+     A grid gave every reading the same track width whether it needed it or not, and stacked label
+     over value over bar over count, so five of them cost 162px and on a phone 200px. A pill is
+     sized by its own content and wraps when the row runs out, which is what actually fits: the
+     same five read in one desktop row of ~28px, and three phone rows instead of three tall ones.
+
+     `display:contents` on the .self-axis-top wrapper is what lets the icon and the label become
+     direct children of the pill's own flex line without touching the markup renderSelfAvatar()
+     emits — the two layouts are the same DOM. */
+  .self-axes{display:flex;flex-wrap:wrap;gap:6px;}
+  .self-axis{display:inline-flex;align-items:baseline;gap:6px;min-width:0;max-width:100%;
+    background:var(--surface);border:none;border-radius:999px;box-shadow:var(--fin-shadow);
+    padding:5px 12px;}
+  .self-axis-top{display:contents;}
+  .self-axis-icon{font-size:11px;line-height:1;flex:none;align-self:center;}
+  .self-axis-lbl{flex:none;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+    color:var(--muted);white-space:nowrap;}
+  .self-axis-state{margin-top:0;font-family:'Manrope',sans-serif;font-size:12.5px;font-weight:800;
     color:var(--self-axis,var(--text));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .self-axis-bar{height:3px;border-radius:999px;background:var(--surface-alt);overflow:hidden;margin-top:6px;}
+  /* The bar said a third time what the state word's colour and the count beside it already say,
+     and it was the one part of the chip that forced a second line. Kept in the DOM rather than cut
+     from renderSelfAvatar(), so the card layout is a CSS revert away. */
+  .self-axis-bar{display:none;}
   .self-axis-bar i{display:block;height:100%;border-radius:999px;background:var(--self-axis,var(--faint));}
-  .self-axis-meta{margin-top:5px;font-size:10.5px;font-weight:600;color:var(--faint);
-    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-axis-meta{margin-top:0;flex:none;font-size:9.5px;font-weight:600;color:var(--faint);
+    white-space:nowrap;}
   /* The step ramp. --fin-neg/--fin-pos rather than raw --danger/--success because these are small
      bold words on --surface, which is the contrast case those two tokens exist for. */
   .self-axis[data-step="0"]{--self-axis:var(--fin-neg);}
@@ -6091,10 +6111,16 @@
   .self-map-none{font-size:12px;line-height:1.6;color:var(--muted);}
 
   @media (max-width:760px){
-    /* Two across, not four: at 390px a four-column row leaves each chip about 80px, which is
-       narrower than the words in it ("Exhausted", "Comfortable") and every one of them ellipsises. */
-    .self-axes{grid-template-columns:repeat(2,minmax(0,1fr));}
+    /* Nothing to override any more: pills wrap on their own and a phone simply fits fewer per row,
+       which is the behaviour the old two-column rule was hand-writing. */
     .self-map-pick{max-width:46%;}
+  }
+
+  /* The 44px on .g-more-summary is a TOUCH TARGET, so it is only given back where a pointer is
+     actually fine — two collapsed rows at 44px were 88px of a sheet trying not to scroll, and on a
+     mouse a 30px row is still comfortably clickable. Coarse pointers keep the full 44px. */
+  @media (hover:hover) and (pointer:fine){
+    .self-sheet .g-more-summary{min-height:30px;}
   }
 
   .self-portrait-row{flex-wrap:wrap;}

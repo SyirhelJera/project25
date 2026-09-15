@@ -66,7 +66,10 @@
        — behind the body — because what it describes is the room around a person rather than
        anything he is wearing, and because a backdrop plate dropped into its slots must never
        cover the figure standing in front of it. Reorder it forward if your art wants that. */
-    { key:'social', label:'Social status', icon:'🤝', layer:'presence, behind him',
+    /* `short` is for the places the full name does not fit — the axis chips are sized so all
+       five land on one row, which is worth more than spelling "status" out in a 9px label that
+       already carries the full name in its title. Only this axis needs one. */
+    { key:'social', label:'Social status', short:'Social', icon:'🤝', layer:'presence, behind him',
       states:['Unknown', 'Noticed', 'Respected', 'Admired'],
       hint:'People, reputation, showing up, posting' }
   ];
@@ -798,10 +801,10 @@
         const pct = s.untracked ? 0 : Math.round(s.pct);
         return '<div class="self-axis' + (s.untracked ? ' is-untracked' : '') + '" data-step="' + s.step + '" title="' + escapeHtml(axis.label + ' — ' + axis.hint) + '">' +
           '<div class="self-axis-top"><span class="self-axis-icon">' + axis.icon + '</span>' +
-          '<span class="self-axis-lbl">' + escapeHtml(axis.label) + '</span></div>' +
+          '<span class="self-axis-lbl">' + escapeHtml(axis.short || axis.label) + '</span></div>' +
           '<div class="self-axis-state">' + escapeHtml(avStateLabel(axis, s)) + '</div>' +
           '<div class="self-axis-bar"><i style="width:' + pct + '%"></i></div>' +
-          '<div class="self-axis-meta">' + (s.test ? 'test' : s.untracked ? 'Assign a checklist' : (s.done + ' / ' + s.total + ' today')) + '</div>' +
+          '<div class="self-axis-meta">' + (s.test ? 'test' : s.untracked ? 'Assign a checklist' : (s.done + ' / ' + s.total)) + '</div>' +
           '</div>';
       }).join('');
     }

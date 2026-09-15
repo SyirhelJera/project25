@@ -64,10 +64,11 @@
       if(tab==='mantras') renderMantras();
       // maybeSyncPinterestCategories() here (not just at load) catches an app left open past
       // midnight — it's date-gated, so on any other open it does nothing.
-      // showMotivationSubTab('slideshow') BEFORE renderMotivation(), the same order showGameSubTab()
+      // showMotivationSubTab('self') BEFORE renderMotivation(), the same order showGameSubTab()
       // uses for showTftSubTab('rank') — the pane reset is also what stops the Videos pane counting
-      // as visible from the last visit, and it renders whichever pane it reveals.
-      if(tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); showMotivationSubTab('slideshow'); renderMotivation(); maybeSyncPinterestCategories(); }
+      // as visible from the last visit, and it renders whichever pane it reveals. Self, not
+      // Slideshow, is the default landing pane — see index.html's #motivationContent comment.
+      if(tab==='motivation'){ if(!wasAlreadyOpen) openToPinnedMotivationCategory(); showMotivationSubTab('self'); renderMotivation(); maybeSyncPinterestCategories(); }
       if(tab==='checklists') renderChecklists();
       if(tab==='notes') renderNotes();
       // Board always opens on Ask. Unlike the Games tab's persisted choice, its three panes are

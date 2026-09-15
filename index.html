@@ -1919,17 +1919,21 @@
     </div>
 
     <div id="motivationContent">
-      <!-- Two panes, one strip. Deliberately the app's ordinary .finance-subnav rather than
+      <!-- Three panes, one strip. Deliberately the app's ordinary .finance-subnav rather than
            anything new: this is the same "two views of one concern" shape as Finance and Time,
-           and like those it RESETS to Slideshow on tab entry (showMotivationSubTab() is called
-           from js/nav.js, never from renderMotivation() — renderAll() runs that after every save
-           and would snap you out of the Videos pane mid-edit). -->
+           and like those it RESETS on tab entry (showMotivationSubTab() is called from js/nav.js,
+           never from renderMotivation() — renderAll() runs that after every save and would
+           snap you out of the Videos pane mid-edit). The default landing pane is SELF, not
+           Slideshow — the character sheet is the more useful thing to see walking in, and
+           it costs nothing to look at (no fetch, no slideshow timer starting) unlike a
+           Pinterest-backed category. -->
       <div class="finance-subnav">
-        <button class="finance-subnav-btn active" data-motsub="slideshow" type="button">Slideshow</button>
+        <button class="finance-subnav-btn active" data-motsub="self" type="button">Self</button>
+        <button class="finance-subnav-btn" data-motsub="slideshow" type="button">Slideshow</button>
         <button class="finance-subnav-btn" data-motsub="videos" type="button">Videos</button>
       </div>
 
-      <div id="motivationPaneSlideshow">
+      <div id="motivationPaneSlideshow" style="display:none;">
       <!-- Deliberately just the name and one ⋯ — every action lives in #motivationMenu below, so
            nothing competes with the image for attention. The head stays visible even with no
            collections, since the ⋯ is the only way to create the first one. -->
@@ -1994,6 +1998,166 @@
         <div class="motivation-menu-hint" id="motVideoHint" style="display:none;"></div>
         <div class="mot-video-list" id="motVideoList"></div>
         <div class="empty" id="motVideoEmpty" style="display:none;">No videos yet — paste a link above.</div>
+      </div>
+
+      <!-- SELF — the character sheet. The portrait beside exactly the figures the sidebar profile
+           card carries, which on a phone is hidden entirely (the same gap the Goals board already
+           mirrors three of them into). READ-ONLY BY CONTRACT, the js/insights.js rule: nothing in
+           here computes a figure. The mirrored ones are copied straight off the profile card by
+           syncBoardStats() in js/goals.js, so one number can never come to mean two things, and
+           the rest are read through their owning tab's helper (currentLevelInfo, levelTier,
+           calcStreak, dailiesOverallProgress, kgToDisplay). The one write is the portrait itself.
+           .fin-scope for the --fin-r-card / --fin-shadow tokens, exactly as #view-insights does. -->
+      <div id="motivationPaneSelf" class="fin-scope">
+        <div class="self-wrap">
+          <!-- The stage is a LIGHT plinth in every theme on purpose: portrait art almost always
+               arrives on a white background, and a white rectangle sitting in a dark theme reads
+               as a broken image rather than as a framed picture. A cut-out PNG composites over it
+               just as well — uploadCompressedImage() keeps alpha when the pixels carry it
+               (js/core.js) — so this costs the transparent case nothing. -->
+          <div class="self-stage is-avatar" id="selfStage">
+            <!-- THE LIVING FIGURE. One fixed character whose CONDITION is composited from eight
+                 layers by buildAvatarSvg() in js/avatar.js — one stack position per habit axis, so
+                 doing fitness and work while skipping grooming shows an athletic, sharply dressed
+                 man with messy hair and heavy stubble rather than an average of the three. A <div>
+                 rather than an <svg> because that builder returns a whole <svg>, viewBox and all. -->
+            <div class="self-figure" id="selfFigure"></div>
+            <img id="selfPortrait" alt="Your portrait" style="display:none;">
+          </div>
+
+          <div class="self-sheet">
+            <div class="self-id">
+              <div class="self-name" id="selfName">Unnamed</div>
+              <div class="self-sub" id="selfSub"></div>
+            </div>
+
+            <!-- How much of today he still has to be earned, in one line. -->
+            <div class="self-day" id="selfDayLine"></div>
+
+            <!-- ONE CHIP PER AXIS — deliberately four separate readings and not one combined bar,
+                 because the entire design is that the axes never average into each other. Built by
+                 renderSelfAvatar() in js/avatar.js from the same numbers the figure is drawn from,
+                 so the chips can't describe a man the picture isn't showing. -->
+            <div class="self-axes" id="selfAxisRow"></div>
+
+            <!-- Same .exp-row / .exp-track markup as the profile card, so the bar reads identically
+                 in both places; syncBoardStats() copies the label and the fill width across. -->
+            <div class="self-xp">
+              <div class="exp-row"><span class="exp-level" id="selfLevel">Lv. 1</span><span class="exp-num" id="selfExpNum">0 / 100 XP</span></div>
+              <div class="exp-track"><div class="exp-fill" id="selfExpFill" style="width:0%"></div></div>
+            </div>
+
+            <div class="self-stats">
+              <div class="self-stat">
+                <div class="self-stat-lbl">Rank</div>
+                <div class="self-stat-val"><b id="selfRank">—</b></div>
+                <div class="self-stat-sub" id="selfRankSub"></div>
+              </div>
+              <div class="self-stat">
+                <div class="self-stat-lbl">Net Worth</div>
+                <div class="self-stat-val"><b id="selfNetWorth">—</b><span id="selfNetWorthTrend"></span></div>
+                <div class="self-stat-sub" id="selfNetWorthSub"></div>
+              </div>
+              <div class="self-stat">
+                <div class="self-stat-lbl">Fitness</div>
+                <div class="self-stat-val"><b id="selfFitness">—</b><span id="selfFitnessTrend"></span></div>
+                <div class="self-stat-sub" id="selfFitnessSub"></div>
+              </div>
+              <div class="self-stat">
+                <div class="self-stat-lbl">Goals Cleared</div>
+                <div class="self-stat-val"><b id="selfGoalsDone">0</b></div>
+                <div class="self-stat-sub" id="selfGoalsSub"></div>
+              </div>
+              <div class="self-stat">
+                <div class="self-stat-lbl">Best Streak</div>
+                <div class="self-stat-val"><b id="selfStreak">0</b></div>
+                <div class="self-stat-sub" id="selfStreakSub"></div>
+              </div>
+              <div class="self-stat">
+                <div class="self-stat-lbl">Dailies Today</div>
+                <div class="self-stat-val"><b id="selfDailies">—</b></div>
+                <div class="self-stat-sub" id="selfDailiesSub"></div>
+              </div>
+            </div>
+
+            <!-- Static, never rebuilt: renderSelf() only ever writes text and visibility into these,
+                 so a repaint can't destroy the <label> between mousedown and click (the VOD-tally
+                 rule in js/valorant.js). The stage can show either the living figure or a fixed
+                 photo you upload; the upload controls appear only on the Photo side, since they are
+                 meaningless on the other. -->
+            <div class="self-figure-row">
+              <div class="unit-toggle self-fig-toggle" id="selfFigureToggle">
+                <button type="button" data-figure="avatar">Avatar</button>
+                <button type="button" data-figure="portrait">Photo</button>
+              </div>
+              <div class="img-row self-portrait-row" id="selfPortraitRow" style="display:none;">
+                <label><span id="selfUploadText">＋ Add portrait</span><input type="file" accept="image/*" id="selfPortraitInput" style="display:none;"></label>
+                <button class="btn btn-sm" id="selfPortraitRemoveBtn" type="button" style="display:none;">Remove</button>
+                <span class="self-hint" id="selfPortraitHint"></span>
+              </div>
+            </div>
+
+            <!-- Which checklist feeds which part of him. Closed by default — it is setup, done once,
+                 and the figure is the thing you came to look at. Reuses the .g-more disclosure the
+                 goal sheet already uses rather than inventing a second one. -->
+            <details class="g-more self-map">
+              <summary class="g-more-summary"><span class="g-more-title">What shapes him</span><span class="g-more-hint">Which checklist feeds which part</span></summary>
+              <div class="g-more-body">
+                <div class="self-map-intro">Only <b>daily</b> checklists can shape him — that reset is what makes him start over each morning. Each one feeds exactly one part, and the parts never average together.</div>
+                <div class="self-map-list" id="selfMapList"></div>
+              </div>
+            </details>
+
+            <!-- YOUR OWN ARTWORK. One PNG slot per (axis, state) — 16 in all — and any slot left
+                 empty stays drawn, so a half-finished set never leaves a hole in the figure.
+                 Position is dragged on the stage rather than baked into the export, because
+                 aligning layered art is otherwise a build-step problem and this repo has no build
+                 step; see js/avatar.js. Every control in here is static markup for the VOD-tally
+                 reason — only the grid's rows are ever rebuilt. -->
+            <details class="g-more self-art">
+              <summary class="g-more-summary"><span class="g-more-title">Artwork</span><span class="g-more-hint">Use your own PNGs for any state</span></summary>
+              <div class="g-more-body">
+                <div class="self-map-intro">Pick a state, then drop a PNG on the figure, paste one with <b>Ctrl+V</b>, or use the button. <b>Move</b> drags the layer into place; <b>Erase</b> brushes parts of it away. The rows below run front to back — use <b>▲▼</b> when a layer is covering one it should sit behind. Anything you leave empty stays drawn.</div>
+                <!-- TEST MODE. A made-up day, for looking at a combination without living it.
+                     Session-only and never stored (js/avatar.js): an override that survived a
+                     reload would leave the figure quietly lying about the day. -->
+                <div class="self-test"><button class="btn btn-sm self-test-toggle" id="selfTestToggle" type="button"
+                     title="Mix and match states to preview a combination. Nothing is saved and it ends when you close the tab.">Test mode</button></div>
+                <div class="self-test-panel" id="selfTestPanel" style="display:none;"></div>
+                <div class="self-art-grid" id="selfArtGrid"></div>
+                <div class="self-art-allrow"><button class="btn btn-sm" id="selfArtDefaultOrder" type="button" title="Body, then clothes, then face, then hair">Default order</button><button class="btn btn-sm" id="selfArtResetAll" type="button" title="Put every layer back to filling the frame, keeping the artwork">Reset all positions</button></div>
+                <div class="self-art-tools" id="selfArtTools" style="display:none;">
+                  <div class="self-art-now" id="selfArtNow"></div>
+                  <div class="self-art-btns">
+                    <label class="self-art-up"><span id="selfArtUpText">＋ Add PNG</span><input type="file" accept="image/*" id="selfArtInput" style="display:none;"></label>
+                    <button class="btn btn-sm" id="selfArtRemoveBg" type="button" title="Cut the background off this layer, in place — a flat backdrop only, not a real photo">Remove BG</button>
+                    <button class="btn btn-sm" id="selfArtRemove" type="button">Remove</button>
+                    <button class="btn btn-sm" id="selfArtReset" type="button" title="Put this layer back to filling the frame">Reset position</button>
+                    <button class="btn btn-sm" id="selfArtMatch" type="button" title="Give every other state on this axis the same position and size">Match other states</button>
+                    <button class="btn btn-sm" id="selfArtDone" type="button">Done</button>
+                  </div>
+                  <div class="unit-toggle self-art-mode" id="selfArtMode">
+                    <button type="button" data-artmode="move" class="active">Move</button>
+                    <button type="button" data-artmode="erase">Erase</button>
+                  </div>
+                  <div id="selfArtMoveRow"><label class="self-art-size">Size <input type="range" id="selfArtSize" min="10" max="300" step="1" value="100"></label></div>
+                  <!-- Erase side: the brush, and the three things an unsaved edit needs. Nothing
+                       here touches Storage until Apply — see js/avatar.js's editing session. -->
+                  <div id="selfArtEraseRow" style="display:none;">
+                    <label class="self-art-size">Brush <input type="range" id="selfArtBrush" min="6" max="140" step="1" value="30"></label>
+                    <label class="self-art-size">BG strength <input type="range" id="selfArtTol" min="2" max="100" step="1" value="22"><b id="selfArtTolNum">22</b></label>
+                    <div class="self-art-btns">
+                      <button class="btn btn-sm" id="selfArtUndo" type="button" title="Step back one stroke">Undo</button>
+                      <button class="btn btn-sm self-art-apply" id="selfArtApply" type="button" title="Save these edits to this layer">Apply</button>
+                      <button class="btn btn-sm" id="selfArtRevert" type="button" title="Throw the edits away and go back to the stored art">Discard</button>
+                    </div>
+                  </div>
+                  <div class="self-art-hint" id="selfArtHint"></div>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
       </div>
 
       <!-- Everything that used to sit in a row above the slideshow. Same button ids as before, so
@@ -2805,6 +2969,7 @@
 <script src="js/access.js"></script>
 <script src="js/mantras.js"></script>
 <script src="js/motivation.js"></script>
+<script src="js/avatar.js"></script>
 <script src="js/music.js"></script>
 <script src="js/checklists.js"></script>
 <script src="js/notes.js"></script>

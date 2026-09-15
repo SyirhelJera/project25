@@ -5859,6 +5859,258 @@
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
 
+
+  /* ---------- self, the character sheet (js/motivation.js, Motivation -> Self) ----------
+     A portrait beside the same figures the sidebar profile card carries — which is hidden below
+     760px, so on a phone this is the only place several of them can be read at all. Nothing here
+     is computed: syncBoardStats() in js/goals.js copies them in. #motivationPaneSelf carries
+     .fin-scope for --fin-r-card / --fin-shadow / --fin-r-panel, exactly as #view-insights does. */
+  .self-wrap{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:18px;align-items:start;}
+
+  /* The stage stays a LIGHT plinth in all four themes on purpose — portrait art almost always
+     arrives on a white background, and a white rectangle dropped into a dark theme reads as a
+     broken image rather than as a framed picture. The near-white top stop is part of the same
+     bargain: it is what an opaque white corner blends into instead of announcing itself. */
+  /* The art bleeds to the frame — no mat. An opaque white background (the usual case) then
+     fills the stage exactly and there is nothing to notice; only the 4px that keeps it clear of
+     the spine is padded away. */
+  .self-stage{position:relative;box-sizing:border-box;aspect-ratio:3/4;padding-left:4px;
+    border-radius:var(--fin-r-panel);overflow:hidden;border:1px solid var(--border);
+    background:linear-gradient(180deg,#FCFCFF 0%,#F1F2FA 100%);
+    box-shadow:var(--fin-shadow);display:flex;align-items:flex-end;justify-content:center;}
+  /* The rank colour is a SPINE, never the border — half the tier palette is pale (Silver is
+     #B7C0CC) and a 1px line in it is invisible on the very frame whose one job is telling ranks
+     apart: the same ruling the calendar bubble's accent is built on. It also has to live AT the
+     frame rather than behind the figure, because portrait art usually carries its own opaque
+     background and would simply cover anything painted underneath it. */
+  .self-stage::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;z-index:2;
+    background:var(--self-accent,#6366F1);pointer-events:none;}
+  /* The ground shows only through a cut-out PNG — which is exactly the case where a figure would
+     otherwise float on a flat panel. It costs the opaque case nothing, since the art covers it. */
+  .self-stage::after{content:'';position:absolute;left:50%;bottom:20px;width:58%;height:26px;
+    transform:translateX(-50%);border-radius:50%;pointer-events:none;
+    background:radial-gradient(ellipse closest-side,rgba(22,26,48,.22) 0%,transparent 72%);}
+  /* #selfPortrait, NOT `.self-stage img`. That selector is a class plus an element (0,1,1), which
+     outranks the single class on .av-png (0,1,0) — so it reached every artwork layer in the stack
+     and forced position:relative on them. Absolutely positioned layers became in-flow blocks, the
+     stack stopped overlapping and stacked VERTICALLY instead, and the only way to get a layer back
+     over the figure was to drag it hundreds of percent upward. Keep this scoped to the one image
+     it is about. */
+  #selfPortrait{position:relative;z-index:1;display:block;width:100%;height:100%;
+    object-fit:contain;object-position:center bottom;-webkit-user-drag:none;}
+
+  .self-sheet{display:flex;flex-direction:column;gap:13px;min-width:0;}
+  .self-name{font-family:'Manrope',sans-serif;font-size:26px;font-weight:800;line-height:1.15;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-sub{margin-top:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);}
+
+  .self-xp{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:12px 14px;}
+  .self-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:10px;}
+  .self-stat{background:var(--surface);border-radius:var(--fin-r-card);box-shadow:var(--fin-shadow);padding:11px 13px;min-width:0;}
+  .self-stat-lbl{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+  .self-stat-val{display:flex;align-items:baseline;gap:5px;margin-top:4px;min-width:0;}
+  .self-stat-val b{min-width:0;font-family:'Manrope',sans-serif;font-size:19px;font-weight:800;
+    font-variant-numeric:tabular-nums;line-height:1.15;color:var(--text);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-stat-sub{margin-top:3px;font-size:11.5px;font-weight:600;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+
+  /* ---------- the living figure (js/avatar.js) ----------
+     The stage keeps its plinth and its frame; the figure is transparent SVG sitting in it and
+     draws its OWN ground shadow, so the stage's ::after is switched off under .is-avatar or the
+     two would stack into a smear under his feet. */
+  /* ---------- the layer stack ----------
+     Every position in the stack is one absolutely-positioned box filling the figure, whether it is
+     a drawn <svg> or a PNG of yours — that sameness is what lets the two be mixed slot by slot.
+     A drawn layer always fills the frame; a PNG carries its own left/top/width, written inline by
+     avComposite() from the numbers you dragged it to. */
+  .self-figure{position:relative;z-index:1;width:100%;height:100%;}
+  /* Scoped under .self-figure — two classes (0,2,0) — deliberately, and not for tidiness: these
+     have to outrank anything of the shape `.self-stage img` (0,1,1) that the frame around them
+     might grow later. A bare `.av-png` lost that fight once already and the whole stack stopped
+     overlapping, which is a failure no amount of dragging can work around. */
+  .self-figure .av-layer{position:absolute;inset:0;pointer-events:none;}
+  .self-figure .av-svg{display:block;width:100%;height:100%;}
+  /* inset is overridden for a PNG: left/top/width come from the slot, height follows the art, and
+     nothing may constrain that height or same-canvas exports stop landing on each other. */
+  .self-figure .av-png{inset:auto;width:auto;height:auto;max-width:none;max-height:none;
+    object-fit:fill;display:block;-webkit-user-drag:none;user-select:none;}
+  /* While one layer is being placed the rest hold back so you can see what you are moving — they
+     stay visible rather than hiding, because alignment is the whole job and you need what is
+     underneath. */
+  .self-figure .av-layer.is-dim{opacity:.28;}
+
+  .self-stage.is-editing{cursor:grab;}
+  .self-stage.is-editing:active{cursor:grabbing;}
+  .self-stage.is-editing::before{width:6px;}
+  .self-stage.is-drop{outline:2px dashed var(--violet);outline-offset:-6px;}
+
+  /* ---------- the artwork grid ---------- */
+  .self-art-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;min-width:0;}
+  .self-art-axis{flex:0 0 160px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-art-cells{flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;}
+  .self-art-cell{display:flex;flex-direction:column;align-items:stretch;gap:4px;padding:5px;min-width:0;
+    background:var(--surface-alt);border:1px solid transparent;border-radius:10px;cursor:pointer;
+    font-family:'Inter',sans-serif;-webkit-tap-highlight-color:transparent;}
+  .self-art-cell:hover{border-color:var(--border);}
+  .self-art-cell.is-on{border-color:var(--violet);box-shadow:0 0 0 1.5px var(--violet);}
+  /* a quiet mark on the state he is actually in right now, so the grid doubles as a readout */
+  .self-art-cell.is-live .self-art-name{color:var(--violet-dark);}
+  .self-art-thumb{display:flex;align-items:center;justify-content:center;height:44px;border-radius:7px;
+    background:linear-gradient(180deg,#FCFCFF,#EDEEF6);overflow:hidden;}
+  .self-art-thumb img{max-width:100%;max-height:100%;object-fit:contain;display:block;}
+  .self-art-thumb i{font-style:normal;font-size:15px;font-weight:700;color:var(--faint);}
+  .self-art-name{font-size:9.5px;font-weight:700;color:var(--muted);text-align:center;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+
+
+  /* ---------- editing a layer in place ----------
+     Erase takes the same drag the Move mode uses, so the cursor and the touch-action have to say
+     which one is armed: without touch-action:none a brush stroke on a phone scrolls the page out
+     from under the finger instead of drawing. */
+  .self-stage.is-erasing{cursor:crosshair;touch-action:none;}
+  .self-stage.is-erasing .self-figure .av-png{cursor:crosshair;}
+  /* The layer being erased sits on a checker so a hole reads as a hole rather than as a dark
+     patch of whatever happens to be behind it — the one place in this app where transparency
+     itself is the thing being looked at. */
+  .self-stage.is-erasing .self-figure canvas.av-png{
+    background-image:linear-gradient(45deg,rgba(128,132,150,.22) 25%,transparent 25%,transparent 75%,rgba(128,132,150,.22) 75%),
+      linear-gradient(45deg,rgba(128,132,150,.22) 25%,transparent 25%,transparent 75%,rgba(128,132,150,.22) 75%);
+    background-size:14px 14px;background-position:0 0,7px 7px;
+  }
+  .self-art-mode{margin:0 0 10px;}
+  .self-art-apply{border-color:var(--violet);color:var(--violet-dark);font-weight:700;}
+  .self-art-apply:not([disabled]):hover{background:var(--violet);color:#fff;}
+  #selfArtEraseRow .self-art-btns{margin-top:8px;}
+
+  /* ---------- stack order ----------
+     Two arrows per row, sized to the row's own label rather than to a toolbar: they are a nudge
+     you reach for once per layer, not a primary control. */
+  .self-art-axis{display:flex;align-items:center;gap:6px;}
+  .self-art-axis-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-art-ord{display:inline-flex;flex:none;gap:2px;}
+  .self-art-ord button{
+    font:inherit;font-size:9px;line-height:1;color:var(--muted);background:var(--surface-alt);
+    border:1px solid var(--border);border-radius:5px;padding:3px 4px;cursor:pointer;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .self-art-ord button:hover:not([disabled]){color:var(--text);border-color:var(--violet);}
+  .self-art-ord button[disabled]{opacity:.3;cursor:default;}
+  /* ---------- test mode ----------
+     Loud on purpose. This is the one state in which the figure is not reporting the real day,
+     so the stage carries a dashed ring and the day line turns into a warning — a reader must
+     not be able to glance at it and take it for today. */
+  .self-test{display:flex;justify-content:flex-end;margin-bottom:8px;}
+  .self-test-toggle.active{background:var(--gold);border-color:var(--gold);color:#241A00;font-weight:800;}
+  .self-stage.is-test{outline:2px dashed var(--gold);outline-offset:-5px;}
+  .self-day.is-test{color:var(--g-gold-text);font-weight:800;letter-spacing:.04em;}
+  .self-test-panel{background:var(--surface-alt);border-radius:var(--fin-r-card);padding:10px 12px;margin-bottom:10px;}
+  .self-test-row{display:flex;align-items:center;gap:10px;margin-bottom:6px;min-width:0;}
+  .self-test-axis{flex:0 0 132px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-test-steps{flex:1;min-width:0;display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px;}
+  .self-test-step{font:inherit;font-size:10.5px;font-weight:700;color:var(--muted);background:var(--surface);
+    border:1px solid var(--border);border-radius:7px;padding:5px 4px;cursor:pointer;min-width:0;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;-webkit-tap-highlight-color:transparent;}
+  .self-test-step:hover{color:var(--text);border-color:var(--violet);}
+  .self-test-step.is-on{background:var(--violet);border-color:var(--violet);color:#fff;}
+  .self-test-quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px;padding-top:9px;border-top:1px solid var(--border);}
+  @media (max-width:760px){
+    .self-test-row{display:block;}
+    .self-test-axis{flex:none;margin-bottom:4px;}
+  }
+  .self-art-allrow{display:flex;justify-content:flex-end;gap:7px;margin-top:2px;flex-wrap:wrap;}
+  .self-art-tools{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);}
+  .self-art-now{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--violet-dark);margin-bottom:8px;}
+  .self-art-btns{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
+  .self-art-up{background:var(--violet-pale);border:1px solid var(--border);color:var(--violet-dark);
+    border-radius:7px;padding:6px 10px;font-size:11.5px;font-weight:700;cursor:pointer;}
+  .self-art-up:hover{background:var(--violet);color:#fff;}
+  .self-art-btns .btn[disabled]{opacity:.45;cursor:not-allowed;}
+  .self-art-size{display:flex;align-items:center;gap:9px;margin-top:10px;font-size:11px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+  .self-art-size input{flex:1;min-width:0;accent-color:var(--violet);}
+  .self-art-size b{flex:none;min-width:2.2em;text-align:right;font-variant-numeric:tabular-nums;color:var(--text);}
+  #selfArtEraseRow .self-art-size{margin-top:0;}
+  #selfArtEraseRow .self-art-size + .self-art-size{margin-top:8px;}
+  .self-art-hint{margin-top:7px;font-size:11.5px;font-weight:600;color:var(--muted);}
+
+  @media (max-width:760px){
+    /* The axis label stops being a column and becomes the row's own heading — at 390px a 96px
+       gutter plus four cells leaves each cell too narrow for its own thumbnail. */
+    .self-art-row{display:block;}
+    .self-art-axis{flex:none;margin-bottom:5px;}
+  }
+  .self-stage.is-avatar::after{display:none;}
+
+  /* one line of plain English about how much of today is still unearned */
+  .self-day{font-size:12px;font-weight:700;color:var(--muted);margin-top:-4px;}
+
+  /* THE FOUR AXES. Deliberately four separate chips and not one combined bar — the whole design is
+     that they never average — so each carries its own word, its own bar and its own count. */
+  /* auto-fit, not a fixed count: the axes are a list that can grow (social status was the
+     fifth), and a hard column count silently squeezes every chip when one is added */
+  .self-axes{display:grid;grid-template-columns:repeat(auto-fit,minmax(124px,1fr));gap:8px;}
+  .self-axis{background:var(--surface);border-radius:var(--fin-r-ctl);box-shadow:var(--fin-shadow);
+    padding:9px 10px;min-width:0;border-left:3px solid var(--self-axis,var(--faint));}
+  .self-axis-top{display:flex;align-items:center;gap:5px;min-width:0;}
+  .self-axis-icon{font-size:11px;line-height:1;flex:none;}
+  .self-axis-lbl{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-axis-state{margin-top:3px;font-family:'Manrope',sans-serif;font-size:13.5px;font-weight:800;
+    color:var(--self-axis,var(--text));overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-axis-bar{height:3px;border-radius:999px;background:var(--surface-alt);overflow:hidden;margin-top:6px;}
+  .self-axis-bar i{display:block;height:100%;border-radius:999px;background:var(--self-axis,var(--faint));}
+  .self-axis-meta{margin-top:5px;font-size:10.5px;font-weight:600;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  /* The step ramp. --fin-neg/--fin-pos rather than raw --danger/--success because these are small
+     bold words on --surface, which is the contrast case those two tokens exist for. */
+  .self-axis[data-step="0"]{--self-axis:var(--fin-neg);}
+  .self-axis[data-step="1"]{--self-axis:var(--orange);}
+  .self-axis[data-step="2"]{--self-axis:var(--blue);}
+  .self-axis[data-step="3"]{--self-axis:var(--fin-pos);}
+  .self-axis.is-untracked{--self-axis:var(--faint);}
+  .self-axis.is-untracked .self-axis-state{color:var(--faint);}
+
+  .self-figure-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+  .self-fig-toggle{margin-bottom:0;flex:none;}
+
+  /* the mapping editor, behind the .g-more disclosure the goal sheet already uses */
+  .self-map{margin-top:2px;}
+  .self-map-intro{font-size:11.5px;line-height:1.55;color:var(--muted);margin:4px 0 10px;}
+  .self-map-list{display:flex;flex-direction:column;gap:6px;}
+  .self-map-row{display:flex;align-items:center;gap:10px;background:var(--surface-alt);
+    border-radius:var(--fin-r-ctl);padding:7px 10px;min-width:0;}
+  .self-map-name{flex:1;min-width:0;display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:700;
+    color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .self-map-count{flex:none;font-size:10.5px;font-weight:700;color:var(--faint);font-variant-numeric:tabular-nums;}
+  .self-map-pick{flex:none;max-width:52%;font-family:'Inter',sans-serif;font-size:12px;font-weight:700;
+    color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:5px 7px;cursor:pointer;}
+  .self-map-none{font-size:12px;line-height:1.6;color:var(--muted);}
+
+  @media (max-width:760px){
+    /* Two across, not four: at 390px a four-column row leaves each chip about 80px, which is
+       narrower than the words in it ("Exhausted", "Comfortable") and every one of them ellipsises. */
+    .self-axes{grid-template-columns:repeat(2,minmax(0,1fr));}
+    .self-map-pick{max-width:46%;}
+  }
+
+  .self-portrait-row{flex-wrap:wrap;}
+  .self-hint{font-size:11.5px;font-weight:600;color:var(--muted);}
+
+  @media (max-width:760px){
+    .self-wrap{grid-template-columns:1fr;gap:14px;}
+    /* The portrait is the point of the tab, but a full-width 3:4 box at phone width pushes every
+       figure below the fold — so the frame is driven from its HEIGHT here and takes whatever width
+       that ratio then asks for, centred. Stretching it to the column instead would letterbox the
+       art behind two plinth-coloured gutters, which is the one thing the edge-to-edge fit above
+       exists to avoid. */
+    .self-stage{height:46vh;min-height:230px;width:auto;justify-self:center;}
+    .self-name{font-size:22px;}
+  }
+
   /* ---------- INSIGHTS (js/insights.js) ----------
      The cross-tracker tab. Two shapes only — a tile for the Today strip, a card for everything
      else — because the tab's job is comparison: fourteen figures that all look alike are scannable

@@ -23,12 +23,19 @@
     try{ localStorage.setItem(MOTIVATION_UNLOCK_KEY, JSON.stringify({ tab: motivationUnlocked, cats: motivationUnlockedCats })); }catch(e){}
   }
   let motivationSuppressClick = false; // true briefly after a swipe, so it doesn't also fire as a tap-to-advance
-  // Which pane of the tab is showing: 'slideshow' | 'videos'. A module-level variable rather than a
-  // state key, like tftActiveSubtab — these are two views of one concern (the Finance/Time ruling,
-  // not the Games one), so it RESETS to 'slideshow' on tab entry. That reset lives in js/nav.js and
-  // must not move into renderMotivation(), which renderAll() runs after every save and would snap
-  // you out of the Videos pane mid-edit.
-  let motivationActiveSubtab = 'slideshow';
+  // Which pane of the tab is showing: 'slideshow' | 'videos' | 'self'. A module-level variable
+  // rather than a state key, like tftActiveSubtab — these are two views of one concern (the
+  // Finance/Time ruling, not the Games one), so it RESETS on tab entry. That reset lives in
+  // js/nav.js and must not move into renderMotivation(), which renderAll() runs after every save
+  // and would snap you out of the Videos pane mid-edit.
+  //
+  // Its INITIAL value has to be 'self', matching index.html's static markup, and not merely the
+  // showMotivationSubTab('self') call in js/nav.js's tab-click handler — Motivation is the app's
+  // one hardcoded default landing tab (the only nav-item marked active in the static HTML, with
+  // no persisted "last tab"), so it is already .active on first paint and nothing ever clicks it.
+  // A stale default here left renderMotivation() taking the slideshow branch — building slides,
+  // arming the auto-advance timer — for a pane that was never actually shown.
+  let motivationActiveSubtab = 'self';
   const MOTIVATION_INTERVAL_MS = 5000;
   // A video slide runs until the clip ends; this is only the ceiling, so one long pin can't park
   // the slideshow on itself indefinitely.
@@ -134,6 +141,9 @@
     // it's refreshed here before any of the early returns. Skipped while something in it has focus:
     // renderMotivationVideos() rebuilds the rows, and doing that under a caret would drop it.
     if(motivationActiveSubtab === 'videos' && !el('motivationPaneVideos').contains(document.activeElement)) renderMotivationVideos();
+    // The Self sheet is text written into static nodes — no rows rebuilt, no caret to lose — so
+    // unlike the video list it needs no focus guard and can simply be brought up to date.
+    if(motivationActiveSubtab === 'self') renderSelf();
 
     el('motivationPinBtn').textContent = state.motivation.pin ? 'Change PIN' : 'Set PIN';
     el('motivationLockBtn').style.display = state.motivation.pin ? '' : 'none';
@@ -1827,28 +1837,224 @@
 
   /* ---------- panes ---------- */
   function showMotivationSubTab(which){
-    motivationActiveSubtab = (which === 'videos') ? 'videos' : 'slideshow';
+    motivationActiveSubtab = (which === 'videos' || which === 'self') ? which : 'slideshow';
     document.querySelectorAll('#motivationContent [data-motsub]').forEach(b=>{
       b.classList.toggle('active', b.dataset.motsub === motivationActiveSubtab);
     });
-    const onVideos = motivationActiveSubtab === 'videos';
-    el('motivationPaneSlideshow').style.display = onVideos ? 'none' : '';
-    el('motivationPaneVideos').style.display = onVideos ? 'block' : 'none';
-    if(onVideos){
-      // Leaving the slideshow has to silence it as surely as leaving the tab does — and the menu
-      // is a slideshow-pane control, so a menu left open would float over the video list.
-      stopMotivationSlideshow();
-      stopMantraSpeech();
-      hideMotivationVideo();
-      closeMotivationMenu();
+    const onSlides = motivationActiveSubtab === 'slideshow';
+    el('motivationPaneSlideshow').style.display = onSlides ? '' : 'none';
+    el('motivationPaneVideos').style.display = motivationActiveSubtab === 'videos' ? 'block' : 'none';
+    el('motivationPaneSelf').style.display = motivationActiveSubtab === 'self' ? 'block' : 'none';
+    if(onSlides){
+      closeMotVideoPlayer();
+      renderMotivation();
+      return;
+    }
+    // Leaving the slideshow has to silence it as surely as leaving the tab does — and the menu is
+    // a slideshow-pane control, so a menu left open would float over whichever pane replaced it.
+    // Written once for both of the other panes rather than per-pane: a fourth would inherit it.
+    stopMotivationSlideshow();
+    stopMantraSpeech();
+    hideMotivationVideo();
+    closeMotivationMenu();
+    if(motivationActiveSubtab === 'videos'){
       setMotVideoHint('');
       renderMotivationVideos();
       ensureMotVideoMeta();
     } else {
-      closeMotVideoPlayer();
-      renderMotivation();
+      closeMotVideoPlayer();   // the lightbox is a Videos-pane thing and must not outlive it
+      renderSelf();
     }
   }
+
+  /* ================= SELF — the character sheet =================
+     Motivation -> Self. A portrait of you beside the figures the app already keeps about you:
+     level and XP, rank, net worth, fitness, goals cleared, best habit streak, today's dailies.
+
+     READ-ONLY BY CONTRACT, the js/insights.js rule, with exactly one exception — the portrait.
+     Nothing here derives a figure. The ones the sidebar profile card already shows are COPIED off
+     it by syncBoardStats() in js/goals.js (the same mirror the Goals board uses on phones), and
+     everything else is read through its owning tab's own helper: currentLevelInfo()/levelTier()/
+     nextLevelTier() from goals.js, calcStreak() from habits.js, dailiesOverallProgress() from
+     checklists.js, kgToDisplay()/roundWeight()/unitLabel() from fitness.js. All of those files
+     load AFTER this one, which is fine because none of it is touched until a render — the same
+     arrangement insights.js relies on. A figure that needs new maths goes in the owning file.
+
+     state.self is therefore PREFERENCES ONLY: one Storage URL, never image bytes, because this
+     rides the shared blob that is re-uploaded in full on every save from every tab.
+
+     Every element it writes into is static markup in index.html. Nothing here is ever rebuilt, so
+     the <label> that opens the file picker cannot be destroyed between mousedown and click (the
+     VOD-tally rule in js/valorant.js) and there is no caret to protect — which is what lets
+     renderMotivation() refresh this pane after any save. */
+  function selfState(){
+    // Cheap and idempotent, the ensureScratchPages() shape: applyLoadedState() sets this on every
+    // load, but a render that beat a load (or a load that failed its gate) must still find an
+    // object — and js/avatar.js reaches for .map from a delegated listener that can fire first.
+    if(!state.self || typeof state.self !== 'object') state.self = { portraitUrl:'', updatedAt:0, figure:'avatar', map:{}, layers:{} };
+    if(state.self.figure !== 'portrait') state.self.figure = 'avatar';   // unknown falls back to the living figure
+    if(!state.self.map || typeof state.self.map !== 'object') state.self.map = {};
+    if(!state.self.layers || typeof state.self.layers !== 'object') state.self.layers = {};
+    if(state.self.order !== null && !Array.isArray(state.self.order)) state.self.order = null;
+    return state.self;
+  }
+
+  function setSelfHint(msg){
+    const hint = el('selfPortraitHint');
+    if(hint) hint.textContent = msg || '';
+  }
+
+  function renderSelf(){
+    const self = selfState();
+    const prof = state.profile || {};
+    const hasArt = !!self.portraitUrl;
+
+    /* Which of the two the stage is showing. Choosing Photo with nothing uploaded still shows the
+       living figure rather than an empty frame — the upload row is sitting right underneath saying
+       what is missing, and a blank stage would read as a broken image instead of as a choice. */
+    const wantPhoto = self.figure === 'portrait';
+    const showPhoto = wantPhoto && hasArt;
+    const img = el('selfPortrait'), figure = el('selfFigure');
+    if(showPhoto){
+      // Guarded: renderMotivation() runs after every save from every tab, and re-assigning the same
+      // src makes the browser decode the image again and flashes the stage for nothing.
+      if(img.getAttribute('src') !== self.portraitUrl) img.setAttribute('src', self.portraitUrl);
+      img.style.display = '';
+      figure.style.display = 'none';
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+      figure.style.display = '';
+    }
+    // the stage drops its portrait framing for the figure, which has its own ground shadow drawn in
+    el('selfStage').classList.toggle('is-avatar', !showPhoto);
+    document.querySelectorAll('#selfFigureToggle [data-figure]').forEach(b=>{
+      b.classList.toggle('active', (b.dataset.figure === 'portrait') === wantPhoto);
+    });
+    el('selfPortraitRow').style.display = wantPhoto ? 'flex' : 'none';
+    el('selfUploadText').textContent = hasArt ? '⟳ Replace portrait' : '＋ Add portrait';
+    el('selfPortraitRemoveBtn').style.display = hasArt ? '' : 'none';
+
+    /* ---- identity ---- */
+    el('selfName').textContent = (prof.name || '').trim() || 'Unnamed';
+
+    const { level } = currentLevelInfo();   // the SHOWN level, top-tier goal bonus included
+    const tier = levelTier(level);
+    const line = [tier.label];
+    const age = parseFloat(prof.age);
+    if(!isNaN(age)) line.push(age + (age === 1 ? ' year old' : ' years old'));
+    el('selfSub').textContent = line.join(' · ');
+    // The glow behind the figure IS the rank colour, so the picture and the Rank tile can never
+    // disagree about which tier you are on.
+    el('selfStage').style.setProperty('--self-accent', tier.color);
+
+    el('selfRank').textContent = tier.label;
+    el('selfRank').style.color = tier.color;
+    const next = nextLevelTier(level);
+    el('selfRankSub').textContent = next ? (next.label + ' at Lv. ' + next.at) : 'Highest rank';
+
+    // the figure itself is mirrored; this names which currency it was converted into
+    el('selfNetWorthSub').textContent = prof.netWorthCurrency || 'USD';
+
+    /* ---- fitness: the tier is mirrored, this is the weigh-in underneath it ---- */
+    const cw = parseFloat((state.fitness || {}).currentWeight);
+    el('selfFitnessSub').textContent = isNaN(cw) ? 'No weigh-in yet' : (roundWeight(kgToDisplay(cw)) + ' ' + unitLabel());
+
+    /* ---- goals: the count is mirrored, this is what it is a count OF ---- */
+    const goalCount = (state.goals || []).length;
+    el('selfGoalsSub').textContent = goalCount ? ('of ' + goalCount) : 'No goals yet';
+
+    /* ---- habits: the longest streak currently running, and whose it is ---- */
+    let best = null;
+    (state.habits || []).forEach(h=>{
+      const days = calcStreak(h);
+      if(!best || days > best.days) best = { days, name: h.name };
+    });
+    el('selfStreak').textContent = best ? best.days : 0;
+    el('selfStreakSub').textContent = !best ? 'No habits yet' : (best.days ? best.name : 'Nothing running');
+
+    /* ---- today's dailies ---- */
+    const dailies = dailiesOverallProgress();
+    el('selfDailies').textContent = dailies.total ? (dailies.done + ' / ' + dailies.total) : '—';
+    el('selfDailiesSub').textContent = dailies.total
+      ? (Math.round(dailies.done / dailies.total * 100) + '% done')
+      : 'No dailies set';
+
+    /* Fills the mirrored half — level, the XP bar, net worth, fitness tier, goals cleared. Called
+       from here as well as from its own two callers because opening this pane is not a save: with
+       nothing to trigger updateExpUI(), the sheet would otherwise show whatever the previous
+       render left in those elements. It is a handful of textContent copies, so running it twice in
+       a renderAll() costs nothing. */
+    if(typeof syncBoardStats === 'function') syncBoardStats();
+
+    /* The living figure, its four axis chips and the setup list — all of js/avatar.js, which
+       derives everything from state.checklists and writes nothing.
+
+       avSeedMap() takes a first guess at which checklist feeds which axis so the pane does
+       something on its very first open instead of presenting an empty settings form. It is
+       deliberately NOT saved from here: a render must not write to the shared row (the access-log
+       ruling). The guess sits in memory and rides the next ordinary save, and because it is
+       deterministic, a device that never saved it seeds the same answer rather than a different
+       one. It also never overwrites a choice already made, including a deliberate "don't count
+       this one".
+
+       Guarded because these live in a file of their own: an older cached service-worker shell can
+       serve an index.html listing js/avatar.js against a cache that doesn't hold it, and this way
+       that costs the Self figure rather than throwing halfway through renderAll(). */
+    if(typeof avSeedMap === 'function'){
+      avSeedMap();
+      renderSelfAvatar();
+      renderAvatarMapEditor();
+      renderSelfArt();
+      renderSelfTest();
+    }
+  }
+
+  /* Avatar vs. Photo. A stored preference rather than a session one: which of the two you want to
+     look at is a standing choice, not something to re-make every time the tab is opened. */
+  el('selfFigureToggle').addEventListener('click', e=>{
+    const btn = e.target.closest('[data-figure]');
+    if(!btn) return;
+    const self = selfState();
+    const want = btn.dataset.figure === 'portrait' ? 'portrait' : 'avatar';
+    if(self.figure === want) return;
+    self.figure = want;
+    setSelfHint('');
+    save(); renderSelf();
+  });
+
+  el('selfPortraitInput').addEventListener('change', e=>{
+    const file = e.target.files[0];
+    e.target.value = '';   // so picking the same file again still fires a change
+    if(!file) return;
+    setSelfHint('Uploading…');
+    /* 1400px at 0.85 rather than the slideshow's 960 at 0.78: this is the one image in the app that
+       is looked AT rather than glanced past, and it is shown at nearly full column height. The
+       output FORMAT is not decided here — uploadCompressedImage() reads it off the pixels, so a
+       cut-out PNG keeps its alpha and an ordinary photo still comes back a JPEG (js/core.js). */
+    uploadCompressedImage(file, 1400, 0.85, 'self').then(url=>{
+      const self = selfState();
+      const old = self.portraitUrl;
+      self.portraitUrl = url;
+      self.updatedAt = Date.now();
+      // The old file is referenced by nothing the moment the new URL is in, so reclaim it — the
+      // same best-effort sweep deleteMotivationImage() does, and a failure there is harmless.
+      if(old) deleteStorageImage(old);
+      setSelfHint('');
+      save(); renderSelf();
+    }).catch(err=> setSelfHint(err.message || 'Could not upload that image.'));
+  });
+
+  el('selfPortraitRemoveBtn').addEventListener('click', ()=>{
+    const self = selfState();
+    if(!self.portraitUrl) return;
+    if(!window.confirm('Remove your portrait? The generated avatar takes its place.')) return;
+    deleteStorageImage(self.portraitUrl);
+    self.portraitUrl = '';
+    self.updatedAt = Date.now();
+    setSelfHint('');
+    save(); renderSelf();
+  });
 
   /* ---------- options menu ---------- */
   // Everything that used to be a row of buttons above the slideshow. renderMotivation() runs on

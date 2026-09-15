@@ -526,6 +526,25 @@
     delete state.profile.avatarImage;
     delete state.profile.avatarGeneratedAt;
     ['race','skinTone','hairColor','hairStyle','eyeColor','clothing','background'].forEach(k=> delete state.profile[k]);
+    // Motivation -> Self. Rebuilt field by field rather than taken wholesale, so a hand-edited or
+    // older row can't put a non-string where an <img> src is about to go.
+    const slf = (parsed.self && typeof parsed.self === 'object') ? parsed.self : {};
+    state.self = {
+      portraitUrl: typeof slf.portraitUrl === 'string' ? slf.portraitUrl : '',
+      updatedAt: typeof slf.updatedAt === 'number' ? slf.updatedAt : 0,
+      // which occupant the stage shows, and which checklist feeds which avatar axis (js/avatar.js).
+      // The map is keyed by checklist id, so a renamed checklist keeps its assignment.
+      figure: slf.figure === 'portrait' ? 'portrait' : 'avatar',
+      map: (slf.map && typeof slf.map === 'object') ? slf.map : {},
+      // your own PNG per (axis, state), keyed "<axis>:<step>", each a Storage URL plus the x/y/w
+      // it was dragged to. Validated on read in js/avatar.js rather than here, since that is also
+      // where a live edit writes them and one clamp is better than two.
+      layers: (slf.layers && typeof slf.layers === 'object') ? slf.layers : {},
+      // which order the four avatar layers composite in, bottom to top. Null means "the drawn
+      // default"; avStackOrder() in js/avatar.js validates it on every read, so a hand-edited or
+      // half-written array can't make a layer disappear.
+      order: Array.isArray(slf.order) ? slf.order.slice() : null
+    };
     state.focus = parsed.focus || null;
     state.playSession = parsed.playSession || null;
     state.sessionMusic = parsed.sessionMusic || { url:'', enabled:true, volume:35, shuffle:true, mode:'embed', playlists:[] };

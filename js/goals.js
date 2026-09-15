@@ -239,6 +239,13 @@
   function levelTier(level){
     return LEVEL_TIERS.find(t=> level >= t.at) || LEVEL_TIERS[LEVEL_TIERS.length-1];
   }
+  /* The tier ABOVE the one this level sits in — what the Self sheet's Rank tile counts toward, and
+     null once there is nothing left to climb. LEVEL_TIERS is highest-threshold first, so the next
+     tier up is the LAST entry still out of reach, not the first. */
+  function nextLevelTier(level){
+    const ahead = LEVEL_TIERS.filter(t=> level < t.at);
+    return ahead.length ? ahead[ahead.length-1] : null;
+  }
 
   function updateExpUI(){
     const { level, into, need } = currentLevelInfo();
@@ -387,10 +394,13 @@
   if(levelUpPreviewBtn) levelUpPreviewBtn.addEventListener('click', previewLevelUp);
 
   /* The sidebar profile card is hidden below 760px, so level / net worth / fitness are mirrored
-     onto the Goals board for phones. Copied from that card's own elements rather than recomputed:
+     onto the Goals board for phones — and, since Motivation -> Self grew a character sheet out of
+     the same figures, onto that too. Copied from that card's own elements rather than recomputed:
      one source per figure, and no second copy of the maths to drift. Called from updateExpUI()
-     (which renderGoals runs after it has written the net worth) and from fitness.js when the
-     fitness tier changes. */
+     (which renderGoals runs after it has written the net worth), from fitness.js when the fitness
+     tier changes, and from renderSelf() in motivation.js so opening that pane fills it even when
+     nothing has saved since the last render. Every copy is a no-op when its target is absent, so
+     a reader that isn't on screen costs nothing. */
   function syncBoardStats(){
     const copy = (dstId, srcId, withColor) => {
       const dst = el(dstId), src = el(srcId);
@@ -410,6 +420,16 @@
     copy('meFitness', 'pfFitnessLevel', true);
     copyHtml('meNetWorthTrend', 'pfNetWorthTrend');
     copyHtml('meFitnessTrend', 'pfFitnessTrend');
+    // Motivation -> Self (js/motivation.js). The XP bar comes across as well as the figures,
+    // because unlike the board that sheet draws the whole profile card, bar and all.
+    copy('selfLevel', 'pfLevel');
+    copy('selfExpNum', 'pfExpNum');
+    copy('selfNetWorth', 'pfNetWorthCalc');
+    copy('selfFitness', 'pfFitnessLevel', true);
+    copy('selfGoalsDone', 'pfGoalsCompleted');
+    copyHtml('selfNetWorthTrend', 'pfNetWorthTrend');
+    copyHtml('selfFitnessTrend', 'pfFitnessTrend');
+    { const dst = el('selfExpFill'), src = el('pfExpFill'); if(dst && src) dst.style.width = src.style.width; }
     if(openBoardNote) showBoardNote(openBoardNote); // keep an open note in step with the figures
   }
 

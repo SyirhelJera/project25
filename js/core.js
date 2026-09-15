@@ -113,7 +113,13 @@
     // at parse time would hit the temporal dead zone. applyLoadedState() does the seeding instead,
     // which is also the only place that can tell "never had a board" from "fired everyone".
     board: { advisers: [], sessions: [], prefs: { attach:{}, rules:'', tool:'chatgpt' } },
-    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false}, focus: null, playSession: null, theme: 'light',
+    profile: {name:'',age:'',netWorth:'',netWorthCurrency:'USD',hideAvatar:false},
+    // Motivation -> Self: the character sheet's portrait, and nothing else. Every FIGURE that pane
+    // shows is mirrored from the profile card or read through its owning tab's helper, so this key
+    // stays preferences — the js/calendar.js ruling, at a much smaller scale. A Storage URL, never
+    // bytes (CLAUDE.md's image convention): this row is re-uploaded in full on every save.
+    self: { portraitUrl:'', updatedAt:0, figure:'avatar', map:{}, layers:{}, order:null },
+    focus: null, playSession: null, theme: 'light',
     // background music for Play sessions (js/music.js) — `url` is the playlist currently loaded
     // (any YouTube / YouTube Music link), `playlists` the saved shortlist you can switch between
     // mid-session, volume is 0-100. `mode` is 'embed' (in-app iframe player) or 'external' (hand

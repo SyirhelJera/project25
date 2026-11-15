@@ -1603,6 +1603,11 @@
     let dragging = false, dragged = false, startX = 0, startScroll = 0;
     nav.addEventListener('pointerdown', e=>{
       if(e.pointerType === 'mouse' && e.button !== 0) return;
+      // On a strip whose tabs can be dragged into a new order (js/subtaborder.js), a mouse press
+      // on a TAB is that drag, and scrolling the strip under it as well would fight it. A press
+      // in the strip's empty space still scrolls; touch is untouched, since it scrolls natively
+      // and only a long press there starts a reorder.
+      if(e.pointerType === 'mouse' && nav.hasAttribute('data-subtab-sort') && e.target.closest('button')) return;
       dragging = true; dragged = false;
       startX = e.clientX; startScroll = nav.scrollLeft;
     });

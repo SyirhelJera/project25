@@ -29,13 +29,14 @@
   // js/nav.js and must not move into renderMotivation(), which renderAll() runs after every save
   // and would snap you out of the Videos pane mid-edit.
   //
-  // Its INITIAL value has to be 'self', matching index.html's static markup, and not merely the
-  // showMotivationSubTab('self') call in js/nav.js's tab-click handler — Motivation is the app's
+  // Its INITIAL value has to be 'slideshow', matching index.html's static markup, and not merely the
+  // showMotivationSubTab('slideshow') call in js/nav.js's tab-click handler — Motivation is the app's
   // one hardcoded default landing tab (the only nav-item marked active in the static HTML, with
   // no persisted "last tab"), so it is already .active on first paint and nothing ever clicks it.
-  // A stale default here left renderMotivation() taking the slideshow branch — building slides,
-  // arming the auto-advance timer — for a pane that was never actually shown.
-  let motivationActiveSubtab = 'self';
+  // A stale default here (back when Self was the landing pane) left renderMotivation() taking the
+  // slideshow branch — building slides, arming the auto-advance timer — for a pane that was never
+  // actually shown. The markup, this value and nav.js have to name the same pane.
+  let motivationActiveSubtab = 'slideshow';
   const MOTIVATION_INTERVAL_MS = 5000;
   // A video slide runs until the clip ends; this is only the ceiling, so one long pin can't park
   // the slideshow on itself indefinitely.

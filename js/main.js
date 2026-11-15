@@ -1,5 +1,6 @@
   function renderAll(){
     applyTabOrder();
+    applySubtabOrder(); // each sub-tab strip in its dragged order (js/subtaborder.js)
     applyTabIcons();
     applyTabVisibility();
     applyTabLooks(); // per-tab name / icon / icon-colour overrides (Settings > Navigation)

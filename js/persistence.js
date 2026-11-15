@@ -592,6 +592,17 @@
     // applyTabOrder()/applyTabIcons()/applyTabVisibility()
     state.tabOrder = Array.isArray(parsed.tabOrder) ? parsed.tabOrder : [];
     state.hideTabIcons = !!parsed.hideTabIcons;
+    /* Sub-tab strip order (js/subtaborder.js). Only the shape is checked here — arrays of strings
+       under string keys. Which keys a strip actually has is the DOM's to say, and
+       subtabOrderFor() repairs each list against it on read (unknown keys dropped, missing ones
+       slotted back at their default position) rather than this rejecting a list wholesale. */
+    state.subtabOrder = {};
+    if(parsed.subtabOrder && typeof parsed.subtabOrder === 'object' && !Array.isArray(parsed.subtabOrder)){
+      Object.keys(parsed.subtabOrder).forEach(k=>{
+        const list = parsed.subtabOrder[k];
+        if(Array.isArray(list)) state.subtabOrder[k] = list.filter(x=> typeof x === 'string');
+      });
+    }
     /* How far back the Net Worth / Fitness ▲▼ arrows compare (Settings -> Trend Comparison).
        '0' means "against the previous reading, whenever it was", which is how they always behaved;
        '7'/'30'/'90'/'365' are rolling day counts and 'week'/'month' are calendar anchors, so this

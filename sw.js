@@ -5,7 +5,7 @@
    this worker deliberately leaves supabase.co requests alone so load()/save()
    see real network failures instead of a stale cached API response.
 ------------------------------------------------- */
-const SHELL_CACHE = 'p25-shell-v78';
+const SHELL_CACHE = 'p25-shell-v79';
 // Bumped to v2 alongside adding pinimg.com to LIVE_DATA_HOSTS below: the activate handler
 // deletes every cache not in CURRENT_CACHES, so renaming this is what reclaims the Pinterest
 // images an earlier build had already written into it.
@@ -31,6 +31,7 @@ const SHELL_ASSETS = [
   './js/habits.js',
   './js/countdowns.js',
   './js/settings.js',
+  './js/subtaborder.js',
   './js/backups.js',
   './js/access.js',
   './js/mantras.js',

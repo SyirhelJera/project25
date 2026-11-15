@@ -397,6 +397,11 @@ state = {
   tabOrder: [ '<tab key>', … ],        // sidebar tab order (Settings -> "Navbar Tabs");
                                        // empty means index.html's own order. Tabs missing from a
                                        // stale saved order fall in at the end — applyTabOrder()
+  subtabOrder: { '<strip>': [ '<sub-tab key>', … ] },
+                                       // sub-tab strips dragged into a new order, keyed by the
+                                       // strip's data-subtab-sort value. Sparse: a strip in its
+                                       // markup order has no entry. Repaired against the markup
+                                       // on read — see "Sub-tab order" (js/subtaborder.js)
   hiddenTabs: [ '<tab key>', … ],      // Settings -> "Navbar Tabs", the Shown/Hidden pill: tabs
                                        // kept out of the sidebar (visibleNavItems()). Presentation
                                        // only — the view and its data are untouched. 'settings' is
@@ -1199,6 +1204,16 @@ A **Photo** toggle sits beside **Avatar** if you'd rather the frame just held on
 | YouTube IFrame Player API (`www.youtube.com/iframe_api`) | Background music during a checklist Play session, from a YouTube / YouTube Music playlist | None — public playlists only, no key |
 | ntfy.sh (via `scripts/valorant-lib.mjs`) | Optional phone push when a wishlisted skin rotates in, or when a saved Riot session expires | None — a topic name of your choosing, stored locally in `scripts/.valorant-notify-config.json` |
 
+### Sub-tab order
+
+Every row of sub-tabs can be rearranged where it stands (`js/subtaborder.js`): Finance, Fitness, Games, the Valorant and TFT panes, Time, Board, Motivation and Settings. Drag a sub-tab along its row with the mouse. On a touch screen, press and hold until it lifts, then slide. Alt+Shift+←/→ moves a focused one. Settings → Navigation → *Sub-tab order* explains this and has the one way back, **Reset to original order**. The order lives in the shared row as `state.subtabOrder`, so it follows you between devices.
+
+- **Opting a strip in is one attribute.** `data-subtab-sort="fintab"` on the strip names the data attribute its buttons are already keyed by (`data-fintab="accounts"`, …). That value is also the key the order is saved under. Every `show*SubTab()` keys off those attributes and none of them cares where a button sits, which is why reordering needs no change in any tab's own file. Renaming a strip's data attribute orphans its saved order, harmlessly: it falls back to the markup order.
+- **Sparse, and repaired on read.** A strip dragged back to its markup order loses its entry. `subtabOrderFor()` repairs each saved list against the buttons that actually exist: unknown keys and duplicates are dropped, and a sub-tab added to the markup later is slotted in after its default-order predecessor (the `avStackOrder()` ruling, rather than rejecting the whole list). The defaults are snapshotted from the DOM at load, before anything can reorder them.
+- **Pointer events, with capture on the strip.** HTML5 drag-and-drop never fires on touch, and a touch press implicitly captures to the button, which the drop moves. Nothing moves in the DOM until release. During the gesture the lifted tab follows the pointer and its neighbours slide aside by `transform`, against slots measured once at pick-up. The button is reinserted once, which is also the only `save()`.
+- **Touch needs a hold; the mouse doesn't.** These strips scroll sideways on a phone, so a swipe must stay a scroll. Only a press held still for 380 ms picks the tab up. From then on, a non-passive `touchmove` listener stops the browser panning under the drag. That listener is attached permanently, because Chrome decides at `touchstart` whether a touch sequence can be cancelled. With a mouse, a press on a tab now drags it, so `js/finance.js`'s mouse drag-to-scroll steps aside for presses on a sortable strip's tabs. A press in the strip's empty space still scrolls, and dragging a tab to either end of an overflowing strip auto-scrolls it.
+- **A drag never switches tab.** The click after a drop is eaten by a window capture listener. Any new press disarms that listener, so a drop with no trailing click can't swallow your next real tap.
+
 ### PWA / offline
 
 `manifest.json` + `sw.js` make the app installable. The service worker precaches the static app shell (HTML/CSS/JS/icons/fonts/supabase-js) with a network-first strategy for same-origin/navigation requests and cache-first for cross-origin static assets — but it deliberately **never** intercepts `*.supabase.co`, `api.henrikdev.xyz`, `valorant-api.com`, YouTube (`youtube.com`/`ytimg.com`, the session-music player), the IP-geolocation hosts behind the access log (`ipwho.is`/`ipapi.co`/`get.geojs.io`), or `127.0.0.1`/`localhost` (the Valorant Local Helper) requests, so those always hit the network live instead of serving a stale cached response (this is also why `persistence.js`'s own online/offline handling sees real network state). The loopback entry matters more than it looks: the helper's `GET /status` heartbeat is cross-origin, so without it the connection dot could keep reporting "connected" against a server that had already been stopped.
@@ -1281,6 +1296,7 @@ js/
   protecteddays.js                  vacation/sick/event exemption list (Settings) — consumed by habits.js/checklists.js
   main.js                           renderAll(), theme switching, boot (load())
   nav.js                            tab switching, mobile gestures
+  subtaborder.js                    drag-to-reorder for every sub-tab strip (data-subtab-sort) + Settings reset
   quickactions.js                   fixed bottom-right quick-actions bar (the sleep toggle)
   music.js                          background music for a checklist Play session (YouTube IFrame player)
   board.js                          Board of Advisers — adviser roster, prompt maker, consult log (no API calls)

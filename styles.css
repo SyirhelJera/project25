@@ -3077,6 +3077,23 @@
      rather than border-color alone so it survives .active repainting the border violet. */
   .finance-subnav-btn.subnav-alert{border-color:var(--danger);box-shadow:0 0 0 1.5px var(--danger);}
 
+  /* Drag-to-reorder sub-tabs (js/subtaborder.js), shared by the .finance-subnav and .unit-toggle
+     strips that opt in with data-subtab-sort. No selection or iOS callout on a long press, since
+     the long press is the pick-up gesture on touch.
+     The lifted tab is marked by an INSET ring, never a lift or a shadow: .finance-subnav clips on
+     the y axis (see the overflow note above), so anything drawn above or below a tab is cut off,
+     and the active tab already reaches the strip's top edge. z-index works without position
+     because every one of these buttons is a flex item. The ring goes white on a violet-filled
+     active tab and back to violet on the Games strip, whose active tab isn't filled violet. */
+  [data-subtab-sort] > button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;}
+  [data-subtab-sort].subtab-sorting,
+  [data-subtab-sort].subtab-sorting > button{cursor:grabbing;}
+  [data-subtab-sort] > button.subtab-lifted{z-index:2;outline:2px solid var(--violet);outline-offset:-3px;}
+  [data-subtab-sort] > button.subtab-lifted.active{outline-color:rgba(255,255,255,.9);}
+  .games-subnav > button.subtab-lifted.active{outline-color:var(--violet);}
+  .subtab-order-row{align-items:center;}
+  .subtab-order-note{font-size:12.5px;color:var(--muted);}
+
   /* Games strip (Valorant | TFT): the only sub-nav picking between two *products* rather than two
      views of one, so each button carries its game's mark, which keeps its brand color throughout —
      a strip of two identical grey pills is what the icons are here to break up. Sized off the

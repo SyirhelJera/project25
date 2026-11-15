@@ -249,7 +249,7 @@
   <!-- FINANCE -->
   <div class="view" id="view-finance">
 
-    <div class="finance-subnav">
+    <div class="finance-subnav" data-subtab-sort="fintab">
       <button class="finance-subnav-btn active" data-fintab="accounts" type="button">Accounts</button>
       <button class="finance-subnav-btn" data-fintab="debts" type="button">Debts</button>
       <button class="finance-subnav-btn" data-fintab="moneygoals" type="button">Money Goals</button>
@@ -643,7 +643,7 @@
       <button class="btn btn-sm btn-primary" id="fitnessLogNowBtn">Log now</button>
     </div>
 
-    <div class="finance-subnav" id="fitnessSubnav">
+    <div class="finance-subnav" id="fitnessSubnav" data-subtab-sort="fittab">
       <button class="finance-subnav-btn active" data-fittab="weight" type="button"><span>Weight</span></button>
       <button class="finance-subnav-btn" data-fittab="photos" type="button"><span>Photos</span></button>
       <button class="finance-subnav-btn" data-fittab="calories" type="button"><span>Calories</span></button>
@@ -969,7 +969,7 @@
          nav icons above — not the official brand art. Deliberate: this strip is app shell, so it
          has to render offline and in every theme, and a remote logo file would be the one thing
          on the page that can 404 or arrive after the buttons do. -->
-    <div class="finance-subnav games-subnav">
+    <div class="finance-subnav games-subnav" data-subtab-sort="gametab">
       <button class="finance-subnav-btn active" data-gametab="valorant" type="button">
         <svg class="game-logo" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M2.6 3H7.8L12 10.8L13.8 7.5H19L12 20.5Z"/></svg>
         <span>Valorant</span>
@@ -992,7 +992,7 @@
          sub-tab strip below names the pane — a third heading between them only pushed the content
          down. Same for #gametab-tft. -->
 
-    <div class="unit-toggle" id="valSubtabToggle">
+    <div class="unit-toggle" id="valSubtabToggle" data-subtab-sort="subtab">
       <button data-subtab="shop" id="valSubtabBtnShop">Shop Tracker</button>
       <button data-subtab="rr" id="valSubtabBtnRR">RR Tracker</button>
       <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
@@ -1271,7 +1271,7 @@
            entry: these are two views of one game, not two games. It resetting is also what stops
            opening the tab from starting the lobby poll on its own, exactly as Valorant landing on
            Shop Tracker does for Live Match. See showTftSubTab() in js/tft.js. -->
-      <div class="unit-toggle" id="tftSubtabToggle">
+      <div class="unit-toggle" id="tftSubtabToggle" data-subtab-sort="tftsubtab">
         <button data-tftsubtab="rank" id="tftSubtabBtnRank" class="active">Rank</button>
         <button data-tftsubtab="lobby" id="tftSubtabBtnLobby">Live Lobby</button>
       </div>
@@ -1720,7 +1720,7 @@
          a clock, an hourglass and a calendar mean one thing each across the app. Emoji could do
          neither job: the platform draws them in its own colours, so 🕐⏳📅 stayed multicoloured on
          the violet fill of the active button and reported nothing about which pane you were on. -->
-    <div class="finance-subnav time-subnav">
+    <div class="finance-subnav time-subnav" data-subtab-sort="timetab">
       <button class="finance-subnav-btn active" data-timetab="clock" type="button">
         <svg class="time-logo" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <circle cx="12" cy="12" r="8.6" stroke="currentColor" stroke-width="1.8"/>
@@ -1856,7 +1856,7 @@
     <div class="view-title">Board of Advisers</div>
     <div class="view-sub">A standing panel of perspectives to run a decision past. Write the situation, pick who sits, attach whatever the question actually depends on, then take the prompt to ChatGPT, Gemini, Claude or Perplexity.</div>
 
-    <div class="finance-subnav board-subnav">
+    <div class="finance-subnav board-subnav" data-subtab-sort="boardtab">
       <button class="finance-subnav-btn active" data-boardtab="ask" type="button">🗣️ Ask</button>
       <button class="finance-subnav-btn" data-boardtab="roster" type="button">👥 The Board</button>
       <button class="finance-subnav-btn" data-boardtab="history" type="button">📜 History</button>
@@ -1952,17 +1952,18 @@
            anything new: this is the same "two views of one concern" shape as Finance and Time,
            and like those it RESETS on tab entry (showMotivationSubTab() is called from js/nav.js,
            never from renderMotivation() — renderAll() runs that after every save and would
-           snap you out of the Videos pane mid-edit). The default landing pane is SELF, not
-           Slideshow — the character sheet is the more useful thing to see walking in, and
-           it costs nothing to look at (no fetch, no slideshow timer starting) unlike a
-           Pinterest-backed category. -->
-      <div class="finance-subnav">
-        <button class="finance-subnav-btn active" data-motsub="self" type="button">Self</button>
-        <button class="finance-subnav-btn" data-motsub="slideshow" type="button">Slideshow</button>
+           snap you out of the Videos pane mid-edit). The default landing pane is SLIDESHOW.
+           Which button is .active here, which pane is visible here, motivationActiveSubtab's
+           initial value in js/motivation.js and the showMotivationSubTab() call in js/nav.js
+           must all name the same pane — Motivation is the hardcoded landing TAB, so this
+           markup is what the first paint shows and nothing clicks it into agreement. -->
+      <div class="finance-subnav" data-subtab-sort="motsub">
+        <button class="finance-subnav-btn" data-motsub="self" type="button">Self</button>
+        <button class="finance-subnav-btn active" data-motsub="slideshow" type="button">Slideshow</button>
         <button class="finance-subnav-btn" data-motsub="videos" type="button">Videos</button>
       </div>
 
-      <div id="motivationPaneSlideshow" style="display:none;">
+      <div id="motivationPaneSlideshow">
       <!-- Deliberately just the name and one ⋯ — every action lives in #motivationMenu below, so
            nothing competes with the image for attention. The head stays visible even with no
            collections, since the ⋯ is the only way to create the first one. -->
@@ -2037,7 +2038,7 @@
            the rest are read through their owning tab's helper (currentLevelInfo, levelTier,
            calcStreak, dailiesOverallProgress, kgToDisplay). The one write is the portrait itself.
            .fin-scope for the --fin-r-card / --fin-shadow tokens, exactly as #view-insights does. -->
-      <div id="motivationPaneSelf" class="fin-scope">
+      <div id="motivationPaneSelf" class="fin-scope" style="display:none;">
         <div class="self-wrap">
           <!-- The stage is a LIGHT plinth in every theme on purpose: portrait art almost always
                arrives on a white background, and a white rectangle sitting in a dark theme reads
@@ -2268,7 +2269,7 @@
     <div class="view-title">Settings</div>
     <div class="view-sub">App-wide preferences.</div>
 
-    <div class="finance-subnav settings-subnav">
+    <div class="finance-subnav settings-subnav" data-subtab-sort="settab">
       <button class="finance-subnav-btn active" data-settab="appearance" type="button">Appearance</button>
       <button class="finance-subnav-btn" data-settab="navigation" type="button">Navigation</button>
       <button class="finance-subnav-btn" data-settab="tracking" type="button">Tracking</button>
@@ -2365,6 +2366,18 @@
         <div class="set-card-h">Navbar tabs</div>
         <div class="set-card-sub">Drag a tab by its handle to change the order it appears in the sidebar, and hit Shown/Hidden to keep a tab out of the navbar. Hiding only removes the tab from the sidebar and the mobile switcher — nothing in it is deleted, so switching it back on brings everything with it. Settings always stays put. ✎ opens a tab's own name, icon and icon colour; every one of those can be put back to the original from the same sheet.</div>
         <div id="tabOrderList" class="tab-order-list"></div>
+      </div>
+
+      <!-- Sub-tab order (js/subtaborder.js). The reordering itself happens on each strip, so this
+           card is only the explanation and the way back. The wording deliberately names no tab:
+           a list of strips would go stale the next time one is added. -->
+      <div class="set-card">
+        <div class="set-card-h">Sub-tab order</div>
+        <div class="set-card-sub">Any row of sub-tabs in the app — the one at the top of this page included — can be rearranged right where it is. Drag a sub-tab along its row with the mouse, or on a phone press and hold one until it lifts, then slide it. From the keyboard, focus a sub-tab and press Alt+Shift+← or →. The new order is saved and follows you to every device.</div>
+        <div class="set-inline-row subtab-order-row">
+          <button class="btn btn-ghost btn-sm" id="subtabOrderResetBtn" type="button">Reset to original order</button>
+          <span class="subtab-order-note" id="subtabOrderNote"></span>
+        </div>
       </div>
 
       <div class="set-card">
@@ -2994,6 +3007,7 @@
 <script src="js/habits.js"></script>
 <script src="js/countdowns.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/subtaborder.js"></script>
 <script src="js/backups.js"></script>
 <script src="js/access.js"></script>
 <script src="js/mantras.js"></script>

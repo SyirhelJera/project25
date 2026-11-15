@@ -131,6 +131,11 @@
     // hiddenTabs are the tab keys kept out of the navbar entirely ('settings' is never hideable).
     // All three are applied by applyTabOrder()/applyTabIcons()/applyTabVisibility() in js/settings.js.
     tabOrder: [], hideTabIcons: false, hiddenTabs: [],
+    /* Sub-tab strip order, dragged into place on the strip itself (js/subtaborder.js). Keyed by
+       the strip's data-subtab-sort value, each an array of button keys in display order. SPARSE,
+       like tabNames below: a strip left in (or dragged back to) its index.html order has no
+       entry, so a sub-tab added to the markup later still lands where the markup puts it. */
+    subtabOrder: {},
     /* Per-tab navbar overrides (Settings > Navigation > Navbar tabs > ✎), all keyed by tab key
        and all deliberately SPARSE: a key that isn't present means "keep whatever index.html and
        styles.css already give this tab". That's what lets "reset to default" delete a key instead

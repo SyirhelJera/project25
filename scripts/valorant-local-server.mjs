@@ -30,7 +30,7 @@ import { fileURLToPath } from 'node:url';
 import { loadSessions, saveSessions, checkAccountStore, recordAccountResult, recordAccountError, deleteAccountStore, checkAccountOwnedSkins, recordOwnedSkinsResult, recordOwnedSkinsError, deleteAccountOwnedSkins, renameStoreSnapshot } from './valorant-lib.mjs';
 import { loginAccount } from './valorant-login.mjs';
 import { startLoginWindow, getLoginWindowStatus, cancelLoginWindow } from './valorant-login-window.mjs';
-import { getLiveMatch, getLiveMatchAuto, flushMatchCache } from './valorant-live.mjs';
+import { getLiveMatch, getLiveMatchAuto, flushMatchCache, getDeathmatchHistory } from './valorant-live.mjs';
 import { getTftLobby } from './tft-live.mjs';
 import { getHomeFeed, verifySession as verifyPinterestSession, sessionStatus as pinterestSessionStatus, saveSession as savePinterestSession, deleteSession as deletePinterestSession, forWire as pinterestForWire } from './pinterest-lib.mjs';
 import { startPinterestLogin, getPinterestLoginStatus, cancelPinterestLogin } from './pinterest-login-window.mjs';
@@ -140,7 +140,8 @@ const server = http.createServer(async (req, res) => {
   // POST /check-inventory — same per-account loop as /check above, but for every owned skin (see
   // checkAccountOwnedSkins() in valorant-lib.mjs), sorted by tier, instead of the daily storefront.
   // Kept as a separate endpoint/button rather than folded into /check so a plain store check
-  // never costs the extra Riot reauth + valorant-api.com catalog fetch this needs.
+  // never costs the extra Riot reauth + valorant-api.com catalog fetch this needs. The scheduled
+  // valorant-check-store.mjs run is the one place the two are chained, once a day.
   if (req.method === 'POST' && url.pathname === '/check-inventory') {
     const body = await readJsonBody(req);
     if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
@@ -215,6 +216,27 @@ const server = http.createServer(async (req, res) => {
         code: err && err.code ? err.code : 'riot_unreachable',
         error: (err && err.message) || String(err),
         shard: err && err.shard, tried: err && err.tried,
+      }, origin);
+    }
+    return;
+  }
+
+  // POST /dm-history — every saved account's recent deathmatches, read back from Riot's match
+  // history after the fact: the leaderboard, each player's rank, the lobby average and how many
+  // players ranked above you that you beat. Writes no Supabase row itself — the page keeps a
+  // compact per-account summary in the shared row and the full leaderboards stay in this machine's
+  // gitignored scripts/.valorant-dm-cache.json. See README.md, "Deathmatch history".
+  if (req.method === 'POST' && url.pathname === '/dm-history') {
+    const body = await readJsonBody(req);
+    if (body.token !== TOKEN) { sendJson(res, 401, { ok: false, error: 'Invalid token.' }, origin); return; }
+    try {
+      const labels = Array.isArray(body.labels) ? body.labels.filter(l => typeof l === 'string') : null;
+      sendJson(res, 200, await getDeathmatchHistory(loadSessions(), { labels, depth: body.depth }), origin);
+    } catch (err) {
+      sendJson(res, 200, {
+        ok: false,
+        code: err && err.code ? err.code : 'riot_unreachable',
+        error: (err && err.message) || String(err),
       }, origin);
     }
     return;

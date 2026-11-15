@@ -352,6 +352,14 @@
     if(!(state.valorant.live.historyDepth >= 5 && state.valorant.live.historyDepth <= 20)) state.valorant.live.historyDepth = 10;
     if(state.valorant.live.showEnemyStats===undefined) state.valorant.live.showEnemyStats = true;
     if(state.valorant.live.showIncognito===undefined) state.valorant.live.showIncognito = false;
+    /* Deathmatch history — { [account label]: [compact per-game summary] }, newest first, capped
+       at VAL_DM_CAP in valorant.js. Summaries only: the full leaderboards (other people's puuids)
+       stay in the local helper's disk cache. See README.md, "Deathmatch history". */
+    if(!state.valorant.dmHistory || typeof state.valorant.dmHistory !== 'object' || Array.isArray(state.valorant.dmHistory)) state.valorant.dmHistory = {};
+    Object.keys(state.valorant.dmHistory).forEach(label=>{
+      const list = state.valorant.dmHistory[label];
+      state.valorant.dmHistory[label] = Array.isArray(list) ? list.filter(x=> x && typeof x.id === 'string') : [];
+    });
     /* VOD review — a per-mistake tally, kept as { id, name, days:{'YYYY-MM-DD':n} }. The daily
        buckets are what let the panel's range toggle answer "today" and "last 7 days" without
        storing one record per button press; VOD_DAY_CAP in valorant.js trims the oldest keys so a

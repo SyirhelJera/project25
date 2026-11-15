@@ -1181,6 +1181,25 @@
         <div class="val-err" id="valLiveErr" style="display:none;"></div>
         <div id="valLiveBody"></div>
       </div>
+
+      <!-- DEATHMATCH HISTORY — every saved account's recent deathmatches, read back from Riot's
+           match history by the local helper after the game (POST /dm-history), so a game counts even
+           if this page was shut while you played. Summaries live in state.valorant.dmHistory; the full
+           leaderboards stay on the PC. Rebuilt by renderValDm(), so clicks are delegated off the card. -->
+      <div class="val-live-card val-dm-card" id="valDmCard">
+        <div class="val-live-head">
+          <div class="val-dm-heading">
+            <div class="val-dm-title">Deathmatch history</div>
+            <div class="val-live-status" id="valDmStatus" aria-live="polite"></div>
+          </div>
+          <div class="val-live-head-right">
+            <div class="unit-toggle val-dm-filter" id="valDmFilter" style="display:none;"></div>
+            <button class="btn btn-sm" id="valDmRefreshBtn" title="Check for new deathmatches" aria-label="Check for new deathmatches">⟳</button>
+          </div>
+        </div>
+        <div class="val-err" id="valDmErr" style="display:none;"></div>
+        <div id="valDmBody"></div>
+      </div>
     </div>
 
     <!-- VOD REVIEW — a tally of the mistakes found while reviewing your own demos. Deliberately a
@@ -1190,6 +1209,7 @@
          show "today" / "last 7 days" / "all time" without storing one record per press. The list
          is rebuilt wholesale by renderValVod(), so every control here is delegated off the panel. -->
     <div class="val-subtab-panel" id="valSubtabVod" style="display:none;">
+      <div class="val-vod-quote">RR is Temporary. Game Sense is Forever.</div>
       <!-- The summary strip is the pane's headline: the one figure and the one name that answer
            "what am I doing most", with the range control on the same line because it is what those
            two numbers are a function of. -->

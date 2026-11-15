@@ -253,6 +253,27 @@ export async function notifyWishlistMatches(label, items, wishlist){
   });
 }
 
+// Same opt-in ntfy topic, for the other thing worth hearing about: a saved session has died, so
+// the daily store check has stopped working for that account. Sent by valorant-check-store.mjs,
+// once per run, naming every account that needs a sign-in — the 8:01 run fires whether or not
+// anyone is at the PC, so without this the store just quietly stops updating. `pageOpened` says
+// whether that run also opened Riot's sign-in page in the PC's browser. Never throws.
+export async function notifySessionExpired(labels, { pageOpened = false } = {}){
+  const config = loadNotifyConfig();
+  if (!config || !labels.length) return;
+  const who = labels.join(', ');
+  const fix = `${pageOpened ? "Riot's sign-in page is open in your browser on the PC" : 'Sign in at playvalorant.com on your PC'}, then hand the ssid + clid cookies over with 🔑 Re-login in the Valorant tab.`;
+  try {
+    await fetch(`https://ntfy.sh/${encodeURIComponent(config.ntfyTopic)}`, {
+      method: 'POST',
+      headers: { Title: 'Valorant session expired', Tags: 'key' },
+      body: `${who}: the saved session expired, so the daily store check can't run. ${fix}`,
+    });
+  } catch (err) {
+    console.error(`  session-expired notify failed: ${err.message}`);
+  }
+}
+
 // Redeems a saved `ssid` cookie for a fresh access/id token pair, the same silent reauth Riot's
 // own client does. Throws a user-facing error if the cookie is missing, wrong, or expired —
 // shared by checkAccountStore() below and valorant-login.mjs's loginAccount() (which uses it
@@ -300,6 +321,24 @@ export async function silentReauth(session){
     throw new Error('That session is invalid or expired — log in again to save a fresh one.');
   }
   return { accessToken, idToken };
+}
+
+// Which account a session belongs to, read out of the id_token silentReauth() just returned — a
+// JWT whose `sub` is the PUUID, the one identifier that survives a Riot ID change. Decoded, not
+// verified: it came straight from auth.riotgames.com over TLS a moment ago, and it is only used to
+// tell your own accounts apart (see loginAccount()). Anything unreadable comes back null, which
+// switches that check off rather than failing a sign-in that worked.
+export function tokenAccount(idToken){
+  try {
+    const payload = JSON.parse(Buffer.from(String(idToken).split('.')[1], 'base64url').toString('utf8'));
+    const acct = payload.acct || {};
+    return {
+      puuid: typeof payload.sub === 'string' && payload.sub ? payload.sub : null,
+      riotId: acct.game_name && acct.tag_line ? `${acct.game_name}#${acct.tag_line}` : '',
+    };
+  } catch {
+    return { puuid: null, riotId: '' };
+  }
 }
 
 // The accessory shop (Kingdom Credits, refreshes weekly) sells sprays/buddies/cards/titles rather
@@ -499,6 +538,44 @@ async function resolveFeaturedBundle(entry, featured){
   }
 }
 
+// pd.*.a.pvp.net answers a refused request with a JSON body naming the reason
+// (`{"httpStatus":403,"errorCode":"SCHEDULED_DOWNTIME","message":"..."}`), and that reason is the
+// whole difference between "your session died", "Valorant is patching" and "this script is out of
+// date". The bare status code alone is indistinguishable between the three, so a routine Riot
+// maintenance window reached the app's store banner as an unexplained "HTTP 403" that reads like a
+// bug in this repo. The code is therefore translated into a sentence and appended to the thrown
+// message.
+//
+// The wording is load-bearing, not cosmetic: js/valorant.js offers its 🔑 Re-login button on
+// `/expired|invalid|incomplete/i` against this string, so a sentence here decides whether the user
+// is invited to re-paste cookies. BAD_CLAIMS is the one code below that says those words, because
+// it is the one a fresh login actually fixes — the rest are deliberately phrased without them, and
+// an unrecognised code is left out of the message entirely rather than risk a raw
+// `INVALID_HEADERS` tripping that regex and offering a pointless re-login. Unknown codes still
+// reach the console log beside every call site.
+const RIOT_ERROR_TEXT = {
+  SCHEDULED_DOWNTIME: 'Riot has Valorant down for scheduled maintenance — nothing to fix here, try again once the servers are back.',
+  BAD_CLAIMS: 'Riot rejected the auth token — the saved session is invalid or expired.',
+  INVALID_HEADERS: 'Riot refused the request headers — the client version this script sends may be out of date.',
+  TOO_MANY_REQUESTS: 'Riot is rate-limiting this account — wait a few minutes before checking again.',
+};
+function riotErrorSuffix(body){
+  let code = '';
+  try { code = JSON.parse(body)?.errorCode || ''; } catch { /* not JSON, or an empty body */ }
+  return RIOT_ERROR_TEXT[code] ? ` ${RIOT_ERROR_TEXT[code]}` : '';
+}
+
+// "A fresh sign-in fixes this" — the one test, applied to a store-check error message. It is the
+// same regex js/valorant.js uses to offer 🔑 Re-login (a copy, since that file runs in the
+// browser; change one and change both), and valorant-check-store.mjs uses it to decide whether to
+// open a sign-in window by itself. So a window opens in exactly the cases the tab would offer the
+// button, and the wording rules on RIOT_ERROR_TEXT above now guard both: a maintenance window or a
+// rate limit must never pop a login window, because signing in can't help and every extra
+// sign-in is traffic Riot sees.
+export function isSessionError(message){
+  return /expired|invalid|incomplete/i.test(String(message || ''));
+}
+
 // Runs the full silent-reauth -> storefront fetch for one saved Riot session. Returns
 // { checkedAt, items, itemsRemainingSeconds, bundles, accessories,
 //   accessoriesRemainingSeconds, nightMarket, identity, wallet, error:'' } on success, or throws
@@ -580,7 +657,7 @@ export async function checkAccountStore(label, session){
   if (!storeResp.ok) {
     const body = await storeResp.text().catch(() => '');
     console.error('  storefront body:', body.slice(0, 500) || '<empty>');
-    throw new Error(`Storefront request failed (HTTP ${storeResp.status}).`);
+    throw new Error(`Storefront request failed (HTTP ${storeResp.status}).${riotErrorSuffix(body)}`);
   }
   const store = await storeResp.json();
 
@@ -820,7 +897,7 @@ export async function checkAccountOwnedSkins(label, session){
   if (!entitlementsResp.ok) {
     const body = await entitlementsResp.text().catch(() => '');
     console.error('  entitlements body:', body.slice(0, 500) || '<empty>');
-    throw new Error(`Owned-skins lookup failed (HTTP ${entitlementsResp.status}).`);
+    throw new Error(`Owned-skins lookup failed (HTTP ${entitlementsResp.status}).${riotErrorSuffix(body)}`);
   }
   const entData = await entitlementsResp.json();
   const groups = entData?.EntitlementsByTypes || [];

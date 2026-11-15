@@ -4146,6 +4146,10 @@
      you cannot do while three of them fill the screen. Everything that isn't the name, the count
      or the two steppers is therefore off the line — the all-time/last-logged detail is the row's
      title, and the share-of-the-busiest comparison is a 2px rule along the bottom edge. */
+  .val-vod-quote{
+    font-family:'Manrope',sans-serif;font-size:13px;font-weight:700;font-style:italic;
+    color:var(--muted);text-align:center;margin:0 0 12px;letter-spacing:.01em;
+  }
   .val-vod-head{
     display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
     margin-bottom:10px;
@@ -4757,7 +4761,7 @@
   /* "Daily Offers" / "Accessories" sub-headers inside one account's section (valStoreSectionHdr()
      in valorant.js). Both shops stack in the one column, so both headers always render — each
      carrying its own shop's rotation countdown, which is the thing that differs between them */
-  /* the top margin only ever applies to a section following a grid (Accessories), since the
+  /* the top margin only ever applies to a section following a grid (Night Market, Accessories), since the
      leading one zeroes it below — it's what keeps the two shops from reading as one long list */
   .val-store-section-hdr{display:flex;align-items:baseline;gap:8px;margin:8px 0 10px;}
   .val-store-section-name{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);font-weight:800;}
@@ -4963,6 +4967,72 @@
     .val-live-comfort-cell{grid-column:2 / -1;}
     .val-live-head-right{width:100%;margin-left:0;}
     .val-live-head-right select{max-width:none;flex:1;}
+  }
+
+  /* Deathmatch history (renderValDm() in valorant.js) — the same dark overlay card as Live Match,
+     one row per game. Rank colour rides on --tier exactly like the live rows, so a tier colour is
+     only ever painted on the tier name, never on a player name. */
+  .val-dm-card{margin-top:14px;}
+  .val-dm-heading{display:flex;flex-direction:column;gap:3px;min-width:0;}
+  .val-dm-title{font-size:13px;font-weight:800;color:var(--text);letter-spacing:.2px;}
+  .val-dm-filter{margin:0;}
+  .val-dm-filter button{padding:5px 10px;font-size:11.5px;}
+  .val-dm-filter button.active{background:var(--surface);color:var(--text);}
+  .val-dm-tally{margin-bottom:12px;}
+  .val-dm-plain{color:var(--text) !important;}
+  .val-dm-pride-stat{--tier:var(--vp-gold);}
+  .val-dm-list{display:flex;flex-direction:column;gap:6px;}
+  .val-dm-game{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;}
+  .val-dm-game.first{border-color:rgba(236,225,184,.45);}
+  .val-dm-game.open{border-color:var(--violet);}
+  .val-dm-row{
+    all:unset;box-sizing:border-box;width:100%;cursor:pointer;
+    display:grid;align-items:center;gap:12px;padding:8px 12px;
+    grid-template-columns:52px minmax(0,1.1fr) 64px minmax(0,1fr) minmax(0,1.3fr) minmax(0,1.4fr);
+    font-family:'Inter',sans-serif;color:var(--text);
+  }
+  .val-dm-row:hover{background:var(--surface-alt);}
+  .val-dm-row:focus-visible{outline:2px solid var(--violet);outline-offset:-2px;border-radius:10px;}
+  .val-dm-place,.val-dm-where,.val-dm-kd,.val-dm-cell{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .val-dm-place b{font-size:17px;font-weight:800;line-height:1;}
+  .val-dm-game.first .val-dm-place b{color:var(--vp-gold);}
+  .val-dm-place span,.val-dm-where span,.val-dm-kd span,.val-dm-who{font-size:10.5px;color:var(--muted);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-dm-where b,.val-dm-kd b{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-dm-lbl{font-size:9.5px;font-weight:700;color:var(--faint);text-transform:uppercase;letter-spacing:.5px;}
+  .val-dm-cell{--tier:#8B92A8;}
+  .val-dm-tier{display:flex;align-items:center;gap:5px;min-width:0;}
+  .val-dm-tier b{font-size:12.5px;font-weight:800;color:var(--tier);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-dm-ico{width:18px;height:18px;object-fit:contain;flex:none;}
+  .val-dm-verdict{font-size:12px;font-weight:700;color:var(--muted);display:flex;flex-direction:column;gap:5px;min-width:0;}
+  .val-dm-verdict.all,.val-dm-verdict.top{color:var(--vp-gold);}
+  .val-dm-verdict.some{color:var(--text);}
+  .val-dm-verdict.pending{color:var(--faint);font-weight:600;}
+  .val-dm-meter{display:block;height:3px;border-radius:2px;background:var(--surface-alt);overflow:hidden;}
+  .val-dm-meter span{display:block;height:100%;background:var(--vp-gold);border-radius:2px;}
+  .val-dm-board{border-top:1px solid var(--border);padding:6px 8px 8px;}
+  .val-dm-brow{
+    --tier:#8B92A8;display:grid;align-items:center;gap:10px;padding:4px 6px;border-radius:6px;
+    grid-template-columns:24px minmax(0,1.6fr) minmax(0,1.1fr) 84px;font-size:12px;
+    border-left:3px solid var(--tier);margin-bottom:3px;background:var(--surface-alt);
+  }
+  .val-dm-brow.is-self{outline:1px solid var(--tier);font-weight:700;}
+  .val-dm-bpl{font-weight:800;color:var(--muted);text-align:center;}
+  .val-dm-bname{display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .val-dm-brank{display:flex;align-items:center;gap:5px;min-width:0;white-space:nowrap;overflow:hidden;}
+  .val-dm-brank > span:first-of-type{color:var(--tier);font-weight:700;overflow:hidden;text-overflow:ellipsis;}
+  .val-dm-bkda{text-align:right;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .val-dm-mark{font-size:10px;font-weight:800;color:var(--faint);flex:none;}
+  .val-dm-mark.beat{color:var(--vp-gold);}
+  .val-dm-board-note{font-size:11.5px;color:var(--faint);padding:8px 12px;border-top:1px solid var(--border);}
+  @media (max-width:760px){
+    /* place + map + K/D on the first line, the three rank readings underneath */
+    .val-dm-row{grid-template-columns:44px minmax(0,1fr) minmax(0,1fr) 64px;row-gap:8px;}
+    .val-dm-where{grid-column:2 / 4;}
+    .val-dm-row > .val-dm-cell:nth-of-type(4){grid-column:1 / 3;}
+    .val-dm-row > .val-dm-cell:nth-of-type(5){grid-column:3 / 5;}
+    .val-dm-verdict{grid-column:1 / -1;}
+    .val-dm-brow{grid-template-columns:22px minmax(0,1fr) 74px;}
+    .val-dm-brank{grid-column:2 / -1;grid-row:2;}
   }
 
   /* The featured card, once above every account's store (valFeaturedBundleHtml() in valorant.js).
@@ -5335,6 +5405,23 @@
     -webkit-line-clamp:3;-webkit-box-orient:vertical;
   }
 
+  /* the night market sits under Daily Offers as the rung below it, so it's one row of smaller
+     tiles rather than a second grid the same size: six full daily-offer tiles above the four that
+     change each day was what buried them. Flex with a fixed basis for the accessory strip's
+     reason — a grid track stretches to its share of the column, which at six offers made each
+     tile as big as a daily one. Left-packed, no-wrap, can shrink but never grow; the 560px block
+     turns it into a 3-up grid, since six across a phone would leave nothing readable. Declared
+     after .val-store-grid on purpose: same specificity, so the later display wins. */
+  .val-night-grid{display:flex;flex-wrap:nowrap;gap:10px;}
+  .val-night-item{flex:0 1 120px;min-width:0;}
+  .val-night-item .val-store-item-img{min-height:48px;padding:12px 8px 3px;}
+  .val-night-item .val-store-item-img img{max-height:44px;}
+  /* name over price rather than beside it: the strip shrinks toward ~90px a tile before the phone
+     grid takes over, and sharing that line with a price and its icon left the name as "I…" */
+  .val-night-item .val-store-item-footer{flex-direction:column;align-items:flex-start;gap:2px;padding:6px 8px;}
+  .val-night-item .val-store-item-name{flex:none;width:100%;font-size:10px;}
+  .val-night-item .val-store-item-price{font-size:10.5px;}
+
   /* item preview modal — opened by clicking any store/accessory/owned-skin tile (see
      openValItemPreview() in valorant.js). Sits in the shared .struggle-overlay, so it picks up
      that overlay's backdrop/centering and only restyles the card itself. */
@@ -5644,6 +5731,7 @@
     .val-store-item-img img{max-height:52px;}
     .val-store-item-name{font-size:9.5px;}
     .val-store-item-price{font-size:10.5px;}
+    .val-night-item .val-store-item-name{font-size:9.5px;}
     /* THE FEATURED CARD AT PHONE WIDTH.
        The desktop card is two columns over the art — copy on the left behind a horizontal scrim,
        buy plate floated at the right. Neither survives 360px: the plate lands across the middle of
@@ -5741,9 +5829,9 @@
 
   /* PHONES — the store rows stop being auto-filled and become a fixed 2-up.
      A width-driven grid answers "four daily offers, room for three" with a 3 + 1 orphan, which
-     reads as a broken row rather than a wrapped one. Every section here comes in an even count
-     (four daily offers, six night-market), so two columns fill every row exactly, and the tiles
-     get roughly double the art they had at three-up. An odd count would still orphan its last
+     reads as a broken row rather than a wrapped one. Four daily offers fill two columns exactly,
+     and the tiles get roughly double the art they had at three-up; the night market's six go 3-up
+     instead, so it stays the smaller rung under them. An odd count would still orphan its last
      tile — Riot has never sent one, but nothing guarantees it — so that tile spans the pair
      instead of sitting half-width next to a hole.
      Everything here hangs off .val-store-account, i.e. the shop sections only: #valOwnedSkinsList
@@ -5753,11 +5841,13 @@
      and would burst if handed a daily offer's 68px art floor. */
   @media (max-width:560px){
     .val-store-account .val-store-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;}
-    .val-store-account .val-store-grid > .val-store-item:last-child:nth-child(odd){grid-column:1 / -1;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img{min-height:68px;padding:14px 12px 6px;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img img{max-height:76px;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-name{font-size:10.5px;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-price{font-size:11px;}
+    .val-store-account .val-store-grid:not(.val-night-grid) > .val-store-item:last-child:nth-child(odd){grid-column:1 / -1;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-img{min-height:68px;padding:14px 12px 6px;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-img img{max-height:76px;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-name{font-size:10.5px;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-price{font-size:11px;}
+    /* the night market's six go 3-up: two even rows, each tile still well under a 2-up daily offer */
+    .val-store-account .val-night-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;}
     /* accessories keep their single no-wrap row, but split it evenly instead of left-packing at a
        fixed width, so the row ends flush with the skins grid above rather than trailing dead space.
        Sharing a phone row between four of them still leaves each well under half a daily-offer
@@ -5769,8 +5859,10 @@
   @media (max-width:420px){
     /* store sections keep the 2-up from the block above — only the breathing room tightens */
     .val-store-account .val-store-grid{gap:8px;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img{min-height:56px;padding:12px 10px 5px;}
-    .val-store-account .val-store-item:not(.val-accessory-item) .val-store-item-img img{max-height:62px;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-img{min-height:56px;padding:12px 10px 5px;}
+    .val-store-account .val-store-item:not(.val-accessory-item,.val-night-item) .val-store-item-img img{max-height:62px;}
+    .val-night-item .val-store-item-img{min-height:42px;padding:11px 6px 3px;}
+    .val-night-item .val-store-item-img img{max-height:40px;}
     /* at this size the footer bar is most of the square, so the art keeps only a hairline of padding */
     .val-accessory-item .val-store-item-img{padding:7px 5px 2px;}
     /* the owned-skins collection stays auto-filled, so its tiles still shrink here */

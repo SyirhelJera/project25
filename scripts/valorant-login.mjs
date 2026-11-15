@@ -36,7 +36,7 @@
 // No npm dependencies — nothing in scripts/ needs `npm install` anymore.
 
 import readline from 'node:readline';
-import { loadSessions, saveSessions, silentReauth } from './valorant-lib.mjs';
+import { loadSessions, saveSessions, silentReauth, tokenAccount } from './valorant-lib.mjs';
 
 // Confirms the cookies actually work (a quick silent reauth) before saving them under `label` —
 // so a mistyped or already-expired cookie fails immediately here instead of silently breaking the
@@ -44,12 +44,32 @@ import { loadSessions, saveSessions, silentReauth } from './valorant-lib.mjs';
 //
 // `cookies` is { ssid, clid, ... }; a bare ssid string is still accepted so nothing that predates
 // the clid requirement breaks outright, but it will fail the reauth with a message saying so.
+//
+// A label is one Riot account for life — its store history, wishlist and owned skins are all
+// keyed by it — so a save that would quietly file a DIFFERENT account under it is refused, with
+// err.code 'wrong_account'. That got easy to do once valorant-check-store.mjs started opening
+// sign-in windows by itself: nothing on Riot's page says which account the window is for. The
+// check needs the account's puuid from an earlier save, which every save records from now on; a
+// session saved before that is simply unchecked until its next sign-in.
 export async function loginAccount(label, cookies){
   const jar = typeof cookies === 'string' ? { ssid: cookies } : (cookies || {});
-  await silentReauth(jar);
+  const { idToken } = await silentReauth(jar);
   const accounts = loadSessions();
-  // spread first so any cookie the caller collected is kept, not just the two we name
-  accounts[label] = { ...jar, savedAt: Date.now() };
+  const { puuid, riotId } = tokenAccount(idToken);
+  if (puuid) {
+    const who = riotId ? `"${riotId}"` : 'a different Riot account';
+    const prev = accounts[label];
+    if (prev && prev.puuid && prev.puuid !== puuid) {
+      throw Object.assign(new Error(`That sign-in was ${who}, not the account saved as "${label}" — sign in as that account instead. (To track a different account under this name, delete it first.)`), { code: 'wrong_account' });
+    }
+    const other = Object.keys(accounts).find(l => l !== label && accounts[l] && accounts[l].puuid === puuid);
+    if (other) {
+      throw Object.assign(new Error(`That sign-in was ${who}, which is already saved as "${other}" — sign in as the account for "${label}" instead.`), { code: 'wrong_account' });
+    }
+  }
+  // spread first so any cookie the caller collected is kept, not just the two we name;
+  // sessionCookieHeader() only ever sends cookie names, so `puuid` never reaches Riot as one
+  accounts[label] = { ...jar, ...(puuid ? { puuid } : {}), savedAt: Date.now() };
   saveSessions(accounts);
   console.log(`Session for "${label}" saved locally to scripts/.valorant-session.json`);
 }

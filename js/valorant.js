@@ -899,8 +899,8 @@
   // Sub-header inside one account's section, separating the daily skins grid from the accessory
   // grid below it — smaller/lighter than the account header above so the account stays the
   // dominant heading. `primary` marks the section that leads its account (Daily Offers), which
-  // holds the column's three-step hierarchy up: featured bundle, then daily offers, then
-  // accessories, each visibly a rung below the last.
+  // holds the column's hierarchy up: featured bundle, then daily offers, then the night market
+  // when it's open, then accessories, each visibly a rung below the last.
   function valStoreSectionHdr(name, note, primary){
     return '<div class="val-store-section-hdr'+(primary?' val-store-section-hdr-primary':'')+'"><span class="val-store-section-name">'+escapeHtml(name)+'</span>'
       + (note ? '<span class="val-store-section-note">'+escapeHtml(note)+'</span>' : '')
@@ -2013,6 +2013,9 @@
       if(ds.error){
         // an expired session is the one store error you can actually fix from here, so the button
         // is offered for that case only — a Riot outage shouldn't invite a pointless re-login.
+        // isSessionError() in scripts/valorant-lib.mjs is a copy of this test, and decides when the
+        // daily store check opens Riot's sign-in page and pushes to your phone — change one,
+        // change both.
         // escapeHtml() round-trips through textContent and so leaves double quotes alone; an
         // account label going into an attribute needs them handled here.
         const canRelogin = /expired|invalid|incomplete/i.test(ds.error);
@@ -2027,17 +2030,35 @@
       // Every shop this account has open, stacked, each under its own header carrying its own
       // countdown — they refresh on completely different clocks (daily VP, weekly Kingdom Credits,
       // and a night market that runs for a couple of weeks an act), which is exactly what a reader
-      // needs side by side to decide what to spend on. `lead` hands the brighter header to
-      // whichever section is first: the night market outranks the daily offers when it's open,
-      // because it's the one that won't be there next month.
-      let lead = true;
+      // needs side by side to decide what to spend on. Daily Offers always leads. The night market
+      // used to, on the grounds that it's the one that won't be there next month, but it's also
+      // the one that doesn't change for two weeks: six full-size tiles on top every day meant the
+      // four that DID change sat below a wall of skins already seen, as a part-filled row under a
+      // full one. So it follows the daily grid as a smaller single-row strip (.val-night-grid).
       let html = '';
+
+      const items = ds.items || [];
+      html += valStoreSectionHdr('Daily Offers', valStoreTimeLeft(ds.checkedAt, ds.itemsRemainingSeconds), true);
+      html += '<div class="val-store-grid">';
+      items.forEach(it=>{
+        const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
+        const rarity = valSkinRarityInfo(it.price);
+        html += '<button type="button" class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
+          + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
+          + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
+          + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
+          + '<span class="val-store-item-img">'+(it.imageUrl ? '<img loading="lazy" decoding="async" src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
+          + '<span class="val-store-item-footer">'
+          + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
+          + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
+          + '</span></button>';
+      });
+      html += '</div>';
 
       const nm = ds.nightMarket;
       if(nm && (nm.offers||[]).length){
-        html += valStoreSectionHdr('Night Market', valStoreTimeLeft(ds.checkedAt, nm.remainingSeconds), lead);
-        lead = false;
-        html += '<div class="val-store-grid">';
+        html += valStoreSectionHdr('Night Market', valStoreTimeLeft(ds.checkedAt, nm.remainingSeconds));
+        html += '<div class="val-store-grid val-night-grid">';
         nm.offers.forEach(o=>{
           const isWish = valWishlistMatchesForItem(o.name, label).length > 0;
           const was = parseInt(o.price,10)||0, now = parseInt(o.discountPrice,10)||0;
@@ -2055,25 +2076,6 @@
         });
         html += '</div>';
       }
-
-      const items = ds.items || [];
-      html += valStoreSectionHdr('Daily Offers', valStoreTimeLeft(ds.checkedAt, ds.itemsRemainingSeconds), lead);
-      lead = false;
-      html += '<div class="val-store-grid">';
-      items.forEach(it=>{
-        const isWish = valWishlistMatchesForItem(it.name, label).length > 0;
-        const rarity = valSkinRarityInfo(it.price);
-        html += '<button type="button" class="val-store-item'+(isWish?' wishlist-match':'')+'" style="--rarity-color:'+rarity.color+';"'
-          + ' data-preview-kind="skin" data-preview-label="'+escapeHtml(label)+'" data-preview-uuid="'+escapeHtml(it.uuid||'')+'"'
-          + ' data-tile-title="'+escapeHtml(it.name+' — '+rarity.name+' Edition — click to enlarge')+'">'
-          + (isWish ? '<span class="val-store-item-wish-badge" title="On your wishlist"><span aria-hidden="true">★</span></span>' : '')
-          + '<span class="val-store-item-img">'+(it.imageUrl ? '<img loading="lazy" decoding="async" src="'+escapeHtml(it.imageUrl)+'" alt="">' : '')+'</span>'
-          + '<span class="val-store-item-footer">'
-          + '<span class="val-store-item-name">'+escapeHtml(it.name)+'</span>'
-          + '<span class="val-store-item-price" title="Valorant Points">'+(parseInt(it.price,10)||0).toLocaleString()+'</span>'
-          + '</span></button>';
-      });
-      html += '</div>';
 
       // accessory shop (Kingdom Credits — sprays/buddies/cards/titles, weekly rotation). Absent
       // from stores checked before this was added, so an older dailyStores entry shows the
@@ -2248,7 +2250,8 @@
     const checkedEl = el('valOwnedSkinsChecked');
     if(!os || (!os.checkedAt && !os.error)){
       showOnly('info');
-      infoEl.textContent = 'No owned-skins data yet — click "🎨 Check Owned Skins" in Settings → Valorant Local Helper.';
+      // the daily valorant-check-store.mjs run refreshes this too, after each successful store check
+      infoEl.textContent = 'No owned-skins data yet — the daily store check fills this in, or click "🎨 Check Owned Skins" in Settings → Valorant Local Helper to fetch it now.';
       checkedEl.style.display = 'none';
       el('valOwnedSkinsCount').textContent = '';
       return;
@@ -2649,7 +2652,7 @@
   }
 
   // The label is the key in five places: the helper's session file, the widget's snapshot file,
-  // and dailyStores / ownedSkins / wishlist in the shared row (plus live.label, which pins an
+  // and dailyStores / ownedSkins / wishlist / dmHistory in the shared row (plus live.label, which pins an
   // account for Live Match). The helper owns the two files; everything else moves here and rides
   // out on the next save().
   async function commitValAcctRename(){
@@ -2679,7 +2682,7 @@
 
       // move every per-account bucket. Done after the helper agreed, so a failure there leaves the
       // page's data and the session file agreeing on the old name rather than disagreeing.
-      ['dailyStores','ownedSkins','wishlist'].forEach(key=>{
+      ['dailyStores','ownedSkins','wishlist','dmHistory'].forEach(key=>{
         const bag = state.valorant[key];
         if(bag && Object.prototype.hasOwnProperty.call(bag, from)){
           bag[to] = bag[from];
@@ -3407,6 +3410,7 @@
         valLiveState.err = ''; valLiveState.code = ''; valLiveState.backoff = 0;
         valLiveState.status = json.phase === 'none' ? 'searching' : 'in-match';
         if(json.map && json.map.id) ensureValMapDb();
+        noteValDmFinished(json);
       }
     }catch(e){
       if(epoch !== valLiveState.epoch) return;
@@ -3685,6 +3689,10 @@
     renderValLiveBody();
     syncValLivePolling();
     centreValLiveCard();
+    // the deathmatch history card shares this pane, and every transition that matters to it (the
+    // pane appearing, the helper coming up, a match ending) already comes through here
+    renderValDm();
+    maybeSyncValDm();
   }
 
   function renderValLiveBody(){
@@ -3921,6 +3929,295 @@
     state.valorant.live.showIncognito = el('valLiveShowIncognito').checked;
     save();
     renderValLive();
+  });
+
+  /* ================= DEATHMATCH HISTORY =================
+     Every saved account's recent deathmatches, read back from Riot's match history by the local
+     helper (POST /dm-history → getDeathmatchHistory() in scripts/valorant-live.mjs) instead of
+     watched live, so a game counts even when this page wasn't open while you played it. Read
+     README's "Deathmatch history" before touching it. Four rules:
+     - state.valorant.dmHistory[label] holds a COMPACT summary per game (summarizeDm()'s short
+       keys), capped at VAL_DM_CAP — it rides the shared blob re-uploaded on every save. The full
+       leaderboard stays in the helper's disk cache and in valDm.rows (memory), never in `state`.
+     - A summary is written once per game and only replaced while it is incomplete (`c:0`): the
+       comparison is against your rank when the game was read, and a later rank-up must not
+       rewrite what an old game meant.
+     - The label is a key here, so dmHistory is in commitValAcctRename()'s migration list.
+     - Syncing is spend-free but its only output is a write, so it's gated on appCanWrite(); a
+       guest still sees whatever history the shared row already holds. */
+  const VAL_DM_CAP = 20;
+  const VAL_DM_SYNC_GAP_MS = 3 * 60 * 1000;    // opening the pane again soon after isn't news
+  const VAL_DM_FOLLOWUP_MS = 45 * 1000;        // backlog still being read → ask again shortly
+  const VAL_DM_WAIT_MS = 30 * 1000;            // a just-finished game not in match history yet
+  const VAL_DM_WAIT_TRIES = 5;
+  const valDm = {
+    busy:false, lastAt:0, err:'', remaining:0, accErr:{},
+    rows:{},          // label|matchId -> full leaderboard, memory-only
+    filter:'all', open:'', timer:null,
+    waitFor:'', waitTries:0,
+  };
+
+  function valDmLists(){
+    const h = state.valorant.dmHistory || {};
+    return Object.keys(h).filter(l=> Array.isArray(h[l]) && h[l].length).map(l=> ({ label:l, list:h[l] }));
+  }
+  function valDmHas(matchId){
+    return valDmLists().some(({list})=> list.some(s=> s.id === matchId));
+  }
+  // Newest first, across the picked account(s). Each entry is tagged with the account it belongs
+  // to, so "All" can say which seat a game was played from.
+  function valDmEntries(){
+    const lists = valDmLists();
+    const pick = (valDm.filter !== 'all' && lists.some(x=> x.label === valDm.filter)) ? valDm.filter : 'all';
+    const out = [];
+    lists.forEach(({label, list})=>{ if(pick === 'all' || pick === label) list.forEach(s=> out.push({ label, s })); });
+    return out.sort((a,b)=> (b.s.t||0) - (a.s.t||0));
+  }
+
+  function valDmMerge(label, matches){
+    if(!state.valorant.dmHistory || typeof state.valorant.dmHistory !== 'object') state.valorant.dmHistory = {};
+    const list = Array.isArray(state.valorant.dmHistory[label]) ? state.valorant.dmHistory[label].slice() : [];
+    let changed = false;
+    (matches || []).forEach(m=>{
+      const s = m && m.summary; if(!s || !s.id) return;
+      if(Array.isArray(m.rows)) valDm.rows[label+'|'+s.id] = m.rows;
+      const i = list.findIndex(x=> x.id === s.id);
+      if(i < 0){ list.push(s); changed = true; }
+      else if(!list[i].c && JSON.stringify(list[i]) !== JSON.stringify(s)){ list[i] = s; changed = true; }
+    });
+    if(!changed) return false;
+    list.sort((a,b)=> (b.t||0) - (a.t||0));
+    state.valorant.dmHistory[label] = list.slice(0, VAL_DM_CAP);
+    return true;
+  }
+
+  function valDmPaneVisible(){
+    const pane = el('valSubtabLive');
+    return !document.hidden && !!pane && pane.offsetParent !== null;
+  }
+
+  // Called from every renderValLive(), so it has to be cheap when it decides to do nothing.
+  function maybeSyncValDm(force){
+    if(valDm.busy || valLiveUnavailable()) return;
+    if(!valLocalStatus.connected || !state.valorant.localServerToken || !appCanWrite()) return;
+    if(!valDmPaneVisible()) return;
+    // not while a match is being played: the lobby's own rank lookups at the barrier drop are the
+    // ones that must not be crowded out (see rememberSnapshot() in valorant-live.mjs)
+    const d = valLiveState.data;
+    if(d && (d.phase === 'pregame' || d.phase === 'coregame')) return;
+    if(!force && valDm.lastAt && Date.now() - valDm.lastAt < VAL_DM_SYNC_GAP_MS) return;
+    syncValDm();
+  }
+
+  async function syncValDm(){
+    if(valDm.timer){ clearTimeout(valDm.timer); valDm.timer = null; }
+    valDm.busy = true; valDm.err = '';
+    renderValDm();
+    try{
+      const res = await fetch(valLocalUrl()+'/dm-history', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ token: state.valorant.localServerToken }),
+      });
+      const json = await res.json().catch(()=>null);
+      if(res.status === 401) throw new Error('The local helper rejected the token — paste the one it printed into Settings → Valorant Local Helper.');
+      if(res.status === 404) throw new Error('The local helper is out of date — restart it to pick up deathmatch history.');
+      if(!json || json.ok === false) throw new Error((json && json.error) || 'The local helper could not read your deathmatches.');
+      let changed = false;
+      valDm.remaining = 0; valDm.accErr = {};
+      Object.entries(json.accounts || {}).forEach(([label, acc])=>{
+        if(!acc || !acc.ok){ valDm.accErr[label] = (acc && acc.error) || 'Could not read this account.'; return; }
+        valDm.remaining += acc.remaining || 0;
+        if(valDmMerge(label, acc.matches)) changed = true;
+      });
+      if(changed) save();
+      if(valDmLists().length) ensureValMapDb();
+    }catch(e){
+      valDm.err = (e && e.message) || 'Could not reach the local helper.';
+    }finally{
+      valDm.busy = false;
+      valDm.lastAt = Date.now();
+    }
+    // two reasons to come back on our own: a backlog the rank budget cut short, or the game that
+    // just ended not being in Riot's match history yet (it lands a little after the scoreboard)
+    let wait = 0;
+    if(valDm.waitFor && !valDmHas(valDm.waitFor) && valDm.waitTries < VAL_DM_WAIT_TRIES){ valDm.waitTries++; wait = VAL_DM_WAIT_MS; }
+    else { valDm.waitFor = ''; if(!valDm.err && valDm.remaining > 0) wait = VAL_DM_FOLLOWUP_MS; }
+    if(wait) valDm.timer = setTimeout(()=>{ valDm.timer = null; maybeSyncValDm(true); }, wait);
+    renderValDm();
+  }
+
+  // From valLiveTick(): the Live panel just watched a deathmatch end and got its scoreboard, so
+  // that game is about to exist in match history — fetch it rather than waiting for the next visit.
+  function noteValDmFinished(snap){
+    if(!snap || snap.phase !== 'ended' || !snap.mode || snap.mode.id !== 'deathmatch') return;
+    if(!snap.final || snap.final.state !== 'done' || !snap.matchId) return;
+    if(valDm.waitFor === snap.matchId || valDmHas(snap.matchId)) return;
+    valDm.waitFor = snap.matchId; valDm.waitTries = 0;
+    maybeSyncValDm(true);
+  }
+
+  /* ---- render ---- */
+  function valDmMapName(mapUrl){
+    const m = valMapCache && mapUrl ? valMapCache[String(mapUrl).toLowerCase()] : null;
+    if(m && m.name) return m.name;
+    return String(mapUrl || '').split('/').pop() || 'Unknown map';
+  }
+  function valDmTierHtml(tier, cls){
+    const info = valTierInfo(tier);
+    return (info && info.small ? '<img class="'+(cls||'val-dm-ico')+'" src="'+info.small+'" alt="">' : '');
+  }
+  function valDmPlayerName(n){ return n ? escapeHtml(n) : '<span class="val-live-dim">Unknown player</span>'; }
+
+  // The headline for one game: of the players ranked above you, how many you finished ahead of.
+  function valDmVerdict(s){
+    if(!s.c && s.ab <= 0) return { cls:'pending', text:'Ranks still loading…' };
+    if(s.ab < 0) return { cls:'muted', text:'You’re unrated on this account' };
+    if(s.ab === 0) return s.hi && s.hi.me
+      ? { cls:'top', text:'You were the highest rank here' }
+      : { cls:'muted', text:'Nobody ranked above you' };
+    const cls = s.bt === s.ab ? 'all' : (s.bt > 0 ? 'some' : 'none');
+    return { cls, text:'Beat '+s.bt+' of '+s.ab+' ranked above you', pct: Math.round(s.bt / s.ab * 100) };
+  }
+
+  function valDmTallyHtml(entries){
+    const done = entries.filter(e=> e.s.c);
+    if(!done.length) return '';
+    const n = done.length;
+    const avgPlace = done.reduce((t,e)=> t + (e.s.pl||0), 0) / n;
+    const above = done.filter(e=> e.s.ab > 0);
+    const ab = above.reduce((t,e)=> t + e.s.ab, 0), bt = above.reduce((t,e)=> t + e.s.bt, 0);
+    const lobbies = done.filter(e=> e.s.avg > 0);
+    const avgElo = lobbies.length ? Math.round(lobbies.reduce((t,e)=> t + e.s.avg, 0) / lobbies.length) : 0;
+    let best = null;
+    done.forEach(e=>{ if(e.s.bb && (!best || e.s.bb.t > best.s.bb.t)) best = e; });
+
+    let html = '<div class="val-live-summary val-dm-tally">';
+    html += '<div class="val-live-stat"><div class="val-live-stat-lbl">Games</div>'
+      + '<div class="val-live-stat-main"><b class="val-dm-plain">'+n+'</b><span class="val-live-rr">avg '+valOrdinal(Math.round(avgPlace))+' place</span></div>'
+      + '<div class="val-live-stat-sub">'+done.filter(e=> e.s.pl === 1).length+' won outright</div></div>';
+    if(ab){
+      const pct = Math.round(bt / ab * 100);
+      html += '<div class="val-live-stat val-dm-pride-stat"><div class="val-live-stat-lbl">Higher ranks beaten</div>'
+        + '<div class="val-live-stat-main"><b>'+pct+'%</b><span class="val-live-rr">'+bt+' of '+ab+'</span></div>'
+        + '<div class="val-live-stat-bar"><div class="val-live-stat-fill" style="width:'+pct+'%;"></div></div>'
+        + '<div class="val-live-stat-sub">players ranked above you that you finished ahead of</div></div>';
+    }
+    if(best){
+      const b = best.s.bb;
+      html += '<div class="val-live-stat" style="--tier:'+valTierColor(valTierLabel(b.t))+';"><div class="val-live-stat-lbl">Best scalp</div>'
+        + '<div class="val-live-stat-main">'+valDmTierHtml(b.t, 'val-live-stat-icon')+'<b>'+escapeHtml(valTierLabel(b.t))+(b.pk?' <span class="val-live-dim">(peak)</span>':'')+'</b></div>'
+        + '<div class="val-live-stat-sub">'+valDmPlayerName(b.n)+' · '+escapeHtml(valDmMapName(best.s.map))+'</div></div>';
+    }
+    if(avgElo) html += valLiveTierTileHtml('Average lobby', Math.floor(avgElo/100), avgElo % 100, 'across '+lobbies.length+' game'+(lobbies.length===1?'':'s'));
+    return html + '</div>';
+  }
+
+  function valDmBoardHtml(key, s){
+    const rows = valDm.rows[key];
+    if(!rows) return '<div class="val-dm-board-note">'+(valLocalStatus.connected
+      ? 'Loading the full leaderboard…'
+      : 'The full leaderboard is kept on your PC — open this with the local helper running to see it.')+'</div>';
+    return '<div class="val-dm-board">' + rows.map(r=>{
+      const eff = r.t > 0 ? r.t : (r.pk || 0);
+      const higher = s.ab >= 0 && eff > s.mt && !r.me;
+      const beaten = higher && r.pl > s.pl;
+      const rank = eff
+        ? valDmTierHtml(eff)+'<span>'+escapeHtml(valTierLabel(eff))+(r.t > 0 ? '' : ' <span class="val-live-dim">peak</span>')+'</span>'
+        : '<span class="val-live-dim">'+(r.e && r.e !== 'forbidden' ? 'Not read yet' : 'Unrated')+'</span>';
+      const mark = beaten ? '<span class="val-dm-mark beat" title="Ranked above you — you finished ahead">✓ beat</span>'
+        : (higher ? '<span class="val-dm-mark" title="Ranked above you">▲</span>' : '');
+      return '<div class="val-dm-brow'+(r.me?' is-self':'')+'" style="--tier:'+valTierColor(eff ? valTierLabel(eff) : '')+';">'
+        + '<span class="val-dm-bpl">'+r.pl+'</span>'
+        + '<span class="val-dm-bname">'+valDmPlayerName(r.n ? r.n+'#'+r.tag : '')+mark+'</span>'
+        + '<span class="val-dm-brank">'+rank+'</span>'
+        + '<span class="val-dm-bkda">'+r.k+' / '+r.d+' / '+r.a+'</span>'
+        + '</div>';
+    }).join('') + '</div>';
+  }
+
+  function valDmRowHtml(e, showLabel){
+    const s = e.s, key = e.label+'|'+s.id;
+    const v = valDmVerdict(s);
+    const avgTier = s.avg ? Math.floor(s.avg/100) : 0;
+    const open = valDm.open === key;
+    const kd = s.d ? (s.k / s.d).toFixed(2) : String(s.k);
+    let html = '<div class="val-dm-game'+(open?' open':'')+(s.pl === 1?' first':'')+'">'
+      + '<button type="button" class="val-dm-row" data-dmkey="'+encodeURIComponent(key)+'" aria-expanded="'+open+'">'
+      + '<span class="val-dm-place"><b>'+valOrdinal(s.pl)+'</b><span>of '+s.n+'</span></span>'
+      + '<span class="val-dm-where"><b>'+escapeHtml(valDmMapName(s.map))+'</b>'
+      +   '<span>'+escapeHtml(valTimeAgo(s.t))+(showLabel ? ' · '+escapeHtml(e.label) : '')+'</span></span>'
+      + '<span class="val-dm-kd"><b>'+s.k+'/'+s.d+'</b><span>'+kd+' K/D</span></span>'
+      + '<span class="val-dm-cell" style="--tier:'+valTierColor(valTierLabel(avgTier))+';"><span class="val-dm-lbl">Lobby avg</span>'
+      +   (avgTier ? '<span class="val-dm-tier">'+valDmTierHtml(avgTier)+'<b>'+escapeHtml(valTierLabel(avgTier))+'</b></span>' : '<span class="val-live-dim">—</span>')+'</span>'
+      + '<span class="val-dm-cell" style="--tier:'+(s.hi ? valTierColor(valTierLabel(s.hi.t)) : '#8B92A8')+';"><span class="val-dm-lbl">♛ Highest</span>'
+      +   (s.hi ? '<span class="val-dm-tier">'+valDmTierHtml(s.hi.t)+'<b>'+escapeHtml(valTierLabel(s.hi.t))+'</b></span>'
+            + '<span class="val-dm-who">'+(s.hi.me ? 'You' : valDmPlayerName(s.hi.n))+'</span>' : '<span class="val-live-dim">—</span>')+'</span>'
+      + '<span class="val-dm-verdict '+v.cls+'">'+escapeHtml(v.text)
+      +   (v.pct != null ? '<span class="val-dm-meter"><span style="width:'+v.pct+'%;"></span></span>' : '')+'</span>'
+      + '</button>';
+    if(open) html += valDmBoardHtml(key, s)
+      + (s.ra && s.t && s.ra - s.t > 6*3600*1000 ? '<div class="val-dm-board-note">Ranks as of '+escapeHtml(new Date(s.ra).toLocaleDateString())+', when this game was first read.</div>' : '');
+    return html + '</div>';
+  }
+
+  function renderValDm(){
+    const body = el('valDmBody'); if(!body) return;
+    const lists = valDmLists();
+    const labels = lists.map(x=> x.label);
+    if(valDm.filter !== 'all' && !labels.includes(valDm.filter)) valDm.filter = 'all';
+
+    // status line
+    const st = el('valDmStatus');
+    let status = '';
+    if(valDm.busy) status = 'Reading your recent deathmatches…';
+    else if(valDm.waitFor && valDm.timer) status = 'Waiting for Riot to publish the game you just finished…';
+    else if(valDm.remaining > 0 && valDm.timer) status = valDm.remaining+' more game'+(valDm.remaining===1?'':'s')+' to read — continuing shortly';
+    else if(valDm.lastAt) status = 'Updated '+valTimeAgo(valDm.lastAt);
+    else if(!valLocalStatus.connected) status = lists.length ? 'Start the local helper to pick up new games' : '';
+    st.textContent = status;
+    el('valDmRefreshBtn').disabled = valDm.busy || !valLocalStatus.connected || !state.valorant.localServerToken || !appCanWrite();
+
+    const err = el('valDmErr');
+    const errs = [];
+    if(valDm.err) errs.push(valDm.err);
+    Object.entries(valDm.accErr).forEach(([l, m])=> errs.push(l+': '+m));
+    err.style.display = errs.length ? 'block' : 'none';
+    err.textContent = errs.join(' · ');
+
+    const ft = el('valDmFilter');
+    ft.style.display = labels.length > 1 ? '' : 'none';
+    if(labels.length > 1){
+      ft.innerHTML = ['all'].concat(labels).map(l=>
+        '<button type="button" data-dmfilter="'+encodeURIComponent(l)+'" class="'+(valDm.filter === l ? 'active' : '')+'">'+escapeHtml(l === 'all' ? 'All accounts' : l)+'</button>').join('');
+    }
+
+    const entries = valDmEntries();
+    if(!entries.length){
+      body.innerHTML = '<div class="val-live-empty">'+(valDm.busy ? 'Reading your deathmatches…'
+        : (valLocalStatus.connected
+          ? 'No deathmatches yet. Play one and come back here: every saved account’s games are picked up from Riot’s match history, even if this page was closed while you played.'
+          : 'Your deathmatches show up here: who was in each lobby, its average rank, the highest-ranked player and how many players ranked above you that you beat. Start the local helper on your PC to read them.'))+'</div>';
+      return;
+    }
+    body.innerHTML = valDmTallyHtml(entries)
+      + '<div class="val-dm-list">' + entries.map(e=> valDmRowHtml(e, valDm.filter === 'all' && labels.length > 1)).join('') + '</div>';
+  }
+
+  el('valDmCard').addEventListener('click', e=>{
+    const f = e.target.closest('[data-dmfilter]');
+    if(f){ valDm.filter = decodeURIComponent(f.dataset.dmfilter); valDm.open = ''; renderValDm(); return; }
+    const row = e.target.closest('[data-dmkey]');
+    if(row){
+      const key = decodeURIComponent(row.dataset.dmkey);
+      valDm.open = valDm.open === key ? '' : key;
+      renderValDm();
+      // a leaderboard this page load hasn't fetched (another device read the game, or the page
+      // was reloaded) is one cache-backed helper call away
+      if(valDm.open && !valDm.rows[key]) maybeSyncValDm(true);
+      return;
+    }
+    if(e.target.closest('#valDmRefreshBtn')) maybeSyncValDm(true);
   });
 
   /* The add form is always on screen, so Escape can't close it any more — it clears the field and

@@ -48,7 +48,9 @@
 //
 // scripts/valorant-local-server.mjs also imports it, which is how the Valorant tab's "Log in with
 // browser" / "Re-login" buttons drive the same flow — but that's a second front door, not a
-// requirement.
+// requirement. The daily store check deliberately does NOT open this window when a session
+// expires — it opens Riot's page in your everyday browser instead; see askForSignIn() in
+// valorant-check-store.mjs for why.
 //
 // No npm dependencies — CDP is spoken over Node's built-in fetch + WebSocket.
 
@@ -67,7 +69,14 @@ const PROFILE_DIR = path.join(__dirname, '.valorant-login-profile');
 // How long to leave the window open waiting for a sign-in before giving up. Generous on purpose:
 // a real login can involve a password manager, an email code and a 2FA app.
 const LOGIN_TIMEOUT_MS = 10 * 60 * 1000;
+// The cookie read is local (the window's own jar) and costs Riot nothing, so it can poll briskly.
 const COOKIE_POLL_MS = 1500;
+// Testing a captured pair is NOT local — it is a reauth against auth.riotgames.com — so a pair
+// that fails is retried on a doubling backoff, starting over only when the cookies change, rather
+// than once per poll: up to 400 auth requests in ten minutes is precisely the pattern Riot's
+// fraud detection exists to notice.
+const REAUTH_RETRY_MIN_MS = 3000;
+const REAUTH_RETRY_MAX_MS = 5 * 60 * 1000;
 
 // ---- finding a browser -----------------------------------------------------------------------
 
@@ -298,6 +307,9 @@ async function runLoginWindow(current, exe){
 
   current.status = 'waiting';
 
+  // The cookie pair last sent to Riot, and when it may be sent again (see REAUTH_RETRY_MIN_MS).
+  let attempt = { key: '', tries: 0, nextAt: 0 };
+
   while (Date.now() < deadline) {
     if (current.cancelled) { await finish('cancelled', 'Cancelled.'); return; }
     if (exited) { await finish('cancelled', 'The login window was closed before sign-in finished.'); return; }
@@ -319,13 +331,25 @@ async function runLoginWindow(current, exe){
       if (c.value && /(^|\.)riotgames\.com$/.test(String(c.domain || ''))) jar[c.name] = c.value;
     }
     if (jar.ssid && jar.clid) {
-      try {
-        // loginAccount() silent-reauths before saving, so a half-finished login (cookies set
-        // before the flow completed) fails here and the loop simply carries on waiting.
-        await loginAccount(current.label, jar);
+      const key = `${jar.ssid}\n${jar.clid}`;
+      if (key !== attempt.key) attempt = { key, tries: 0, nextAt: 0 };
+      if (Date.now() >= attempt.nextAt) {
+        try {
+          // loginAccount() silent-reauths before saving, so a half-finished login (cookies set
+          // before the flow completed) fails here and the loop carries on waiting.
+          await loginAccount(current.label, jar);
+        } catch (err) {
+          // ...except a finished login as the wrong account (loginAccount()'s guard), which no amount
+          // of waiting fixes — and which, retried, would be the same refused save over and over
+          if (err && err.code === 'wrong_account') { await finish('error', err.message); return; }
+          attempt.tries++;
+          attempt.nextAt = Date.now() + Math.min(REAUTH_RETRY_MIN_MS * 2 ** (attempt.tries - 1), REAUTH_RETRY_MAX_MS);
+          await sleep(COOKIE_POLL_MS);
+          continue;
+        }
         await finish('done', '');
         return;
-      } catch { /* not a usable session yet — keep waiting */ }
+      }
     }
 
     await sleep(COOKIE_POLL_MS);

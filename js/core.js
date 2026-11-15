@@ -53,7 +53,7 @@
     fitness: { currentWeight:'', targetWeight:'', height:'', age:'', sex:'male', activity:'1.55', pace:'0.5', unit:'kg', weightLog:[], calorieLog:[], kcalOffset:1, activityLog:[], measureLog:[], progressPhotos:[], dreamPhoto:null, sleepLog:[], sleepGoal:8, sleepBedGoal:'', sleepPending:null, sleepDozeMins:30 },
     // valorant.live holds PREFERENCES ONLY — the live lobby itself is never stored anywhere,
     // see applyLoadedState() in persistence.js and README.md's "Live Match" section.
-    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, selectedStoreLabel:'', storeMode:'store', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlist:{},
+    valorant: { apiKey:'', accounts:[], selectedAccountId:null, sortMode:'manual', dailyStores:{}, ownedSkins:{}, selectedStoreLabel:'', storeMode:'store', localServerUrl:'', localServerToken:'', activeSubtab:'shop', wishlist:{}, dmHistory:{},
       skinPrices:{},
       vp:{ currency:'', packages:[{vp:475,price:0},{vp:1000,price:0},{vp:2050,price:0},{vp:3650,price:0},{vp:5350,price:0},{vp:11000,price:0}], offers:[], useOffers:true },
       live:{ enabled:true, label:'', regionOverride:'', historyDepth:10, showEnemyStats:true, showIncognito:false },

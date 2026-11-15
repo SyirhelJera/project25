@@ -1393,6 +1393,245 @@ export async function getLiveMatchAuto(sessions, opts = {}){
   return tag(snap, label);
 }
 
+/* ------------------------------------------------------------------ deathmatch history */
+
+// Deathmatch lobbies read back AFTER the fact, from each account's own match history, rather than
+// watched live. Live Match can only describe a game it was polling during — the panel had to be
+// on screen for the whole match — while this answers "who was in the deathmatch I just played"
+// whenever the page next asks, for every saved account, including games played with the app shut.
+//
+// Two facts measured against real deathmatch match-details decide the shape of it:
+//   - `competitiveTier` is 0 for every player in a deathmatch, and `gameName`/`tagLine` are empty.
+//     So nothing about rank or identity rides along with the scoreboard; each player costs one
+//     /mmr/v1 lookup and the lobby one name-service call. That is what DM_RANK_BUDGET bounds.
+//   - Ranks are therefore read when the game is read, not as they were when it was played. For a
+//     game read minutes after it ended those are the same thing (tracker.gg works the same way for
+//     unrated modes); for a backfilled one they are "as of readAt", and the page says so.
+//
+// Full leaderboards are kept in a gitignored disk cache on this machine (other people's puuids, so
+// never the shared row). The page stores only the compact per-account summary — see
+// summarizeDm() and README.md's "Deathmatch history".
+const DM_CACHE_FILE = path.join(__dirname, '.valorant-dm-cache.json');
+const DM_DEPTH_DEFAULT = 10;     // recent deathmatches looked at per account per call
+const DM_DEPTH_MAX = 20;
+// Uncached MMR lookups per call, across every account. ~11 per new game, so a first sync backfills
+// about five games and the page asks again for the rest; steady state is one game, well inside it.
+const DM_RANK_BUDGET = 60;
+const DM_CACHE_KEEP = 400;
+const DM_MMR_TTL_MS = 6 * 60 * 60 * 1000;   // the same player shows up in back-to-back lobbies
+
+const dmMmrMemo = new Map();     // puuid -> { at, data } — successful lookups only
+let dmCache = null;
+let dmCacheDirty = false;
+
+function readDmCache(){
+  if (dmCache) return dmCache;
+  try {
+    const raw = JSON.parse(fs.readFileSync(DM_CACHE_FILE, 'utf8'));
+    dmCache = (raw && raw.version === 1 && raw.records) ? raw.records : {};
+  } catch { dmCache = {}; }
+  return dmCache;
+}
+
+function flushDmCache(){
+  if (!dmCacheDirty || !dmCache) return;
+  try {
+    const ids = Object.keys(dmCache);
+    if (ids.length > DM_CACHE_KEEP) {
+      ids.sort((a, b) => (dmCache[b].t || 0) - (dmCache[a].t || 0));
+      const kept = {};
+      for (const id of ids.slice(0, DM_CACHE_KEEP)) kept[id] = dmCache[id];
+      dmCache = kept;
+    }
+    fs.writeFileSync(DM_CACHE_FILE, JSON.stringify({ version: 1, updatedAt: Date.now(), records: dmCache }));
+    dmCacheDirty = false;
+  } catch { /* an unwritable cache only means the next call re-reads these games */ }
+}
+
+async function fetchDmDetails(auth, sess, matchId){
+  const url = `${auth.pdBase}/match-details/v1/matches/${matchId}`;
+  let res = await riotFetch(auth, sess, url, {}, TIMEOUT.details);
+  if (res.status === 429) {
+    await sleep(Math.min(5000, (Number(res.headers?.get('retry-after')) || 2) * 1000));
+    res = await riotFetch(auth, sess, url, {}, TIMEOUT.details);
+  }
+  return (res.ok && res.json) ? res.json : null;
+}
+
+// One game, reduced to its leaderboard. Placement is the in-game deathmatch order — kills, then
+// score, then fewest deaths — the same comparator applyFinal() uses for the Live panel's standing.
+async function buildDmRecord(auth, sess, matchId){
+  const d = await fetchDmDetails(auth, sess, matchId);
+  if (!d) return null;
+  const players = (d.players || []).filter(p => p.subject && !p.isObserver);
+  if (!players.length) return null;
+  const rows = players.map(p => ({
+    puuid: p.subject,
+    name: p.gameName || '', tag: p.tagLine || '',
+    k: p.stats?.kills || 0, d: p.stats?.deaths || 0, a: p.stats?.assists || 0, s: p.stats?.score || 0,
+    tier: null, rr: null, peakTier: null, rankError: '', place: 0,
+  }));
+  rows.sort((a, b) => b.k - a.k || b.s - a.s || a.d - b.d);
+  rows.forEach((r, i) => { r.place = i + 1; });
+  return {
+    id: matchId,
+    t: d.matchInfo?.gameStartMillis || 0,
+    len: d.matchInfo?.gameLengthMillis || 0,
+    map: d.matchInfo?.mapId || '',
+    rows, namesOk: false, complete: false, readAt: 0,
+  };
+}
+
+// 'forbidden' is Riot declining to share a rank — an answer, same as RANK_RETRYABLE's reasoning.
+// Anything else unresolved is retried by the next call, which is what `complete` tracks.
+const dmRankFinal = r => r.tier != null || r.rankError === 'forbidden';
+
+async function resolveDmRecord(auth, sess, rec, budget){
+  if (!rec.namesOk) {
+    const names = await fetchNames(auth, sess, rec.rows.map(r => r.puuid));
+    if (Object.keys(names).length) {
+      for (const r of rec.rows) if (names[r.puuid]) { r.name = names[r.puuid].name; r.tag = names[r.puuid].tag; }
+      rec.namesOk = true;
+    }
+  }
+  await pool(rec.rows.filter(r => !dmRankFinal(r)), LIMIT.mmr, async r => {
+    const memo = dmMmrMemo.get(r.puuid);
+    let m;
+    if (memo && Date.now() - memo.at < DM_MMR_TTL_MS) m = memo.data;
+    else {
+      if (budget.left <= 0) return;   // left for the next call; the record stays incomplete
+      budget.left--;
+      m = await fetchMmr(auth, sess, r.puuid);
+      if (!m.rankError) dmMmrMemo.set(r.puuid, { at: Date.now(), data: m });
+    }
+    if (m.rankError) { r.rankError = m.rankError; return; }
+    r.tier = m.tier; r.rr = m.rr; r.peakTier = m.peakTier; r.rankError = '';
+  });
+  if (!rec.readAt) rec.readAt = Date.now();
+  rec.complete = rec.namesOk && rec.rows.every(dmRankFinal);
+}
+
+// The rank a player is compared at: this act's, or — exactly as computeLobby() does — their peak
+// when they haven't placed this act, since half a deathmatch lobby typically hasn't. Neither is
+// "unrated", which is left out of every comparison rather than counted as Iron.
+function dmEffRank(r){
+  if (r.tier > 0) return { t: r.tier, rr: r.rr || 0, pk: false };
+  if (r.peakTier) return { t: r.peakTier, rr: 0, pk: true };
+  return null;
+}
+const dmWho = r => (r.name ? `${r.name}#${r.tag}` : '');
+
+// The compact record the page keeps in the shared row, from one account's point of view. Short keys
+// on purpose: it rides the blob that's re-uploaded in full on every save. `ab`/`bt` are the headline
+// — how many players were ranked above you, and how many of those you finished ahead of — measured
+// against your rank ON THAT ACCOUNT, so a smurf game is judged against the smurf's rank.
+export function summarizeDm(rec, mePuuid){
+  const me = rec.rows.find(r => r.puuid === mePuuid);
+  if (!me) return null;
+  const lobby = computeLobby(rec.rows, { teamBased: false });
+  const mine = dmEffRank(me);
+  const others = rec.rows.filter(r => r !== me);
+  const above = mine ? others.filter(r => { const e = dmEffRank(r); return e && e.t > mine.t; }) : null;
+  const beat = above ? above.filter(r => r.place > me.place) : null;
+  // the best scalp: highest-ranked player you finished ahead of, whatever your own rank
+  const best = others
+    .filter(r => r.place > me.place && dmEffRank(r))
+    .sort((a, b) => dmEffRank(b).t - dmEffRank(a).t || (b.rr || 0) - (a.rr || 0))[0] || null;
+  const hiRow = lobby.highest ? rec.rows.find(r => r.puuid === lobby.highest.puuid) : null;
+  return {
+    id: rec.id, t: rec.t, map: rec.map,
+    n: rec.rows.length, pl: me.place, k: me.k, d: me.d,
+    mt: mine ? mine.t : 0, mpk: mine && mine.pk ? 1 : 0,
+    avg: lobby.avgElo, rk: lobby.rankedCount,
+    hi: hiRow ? { n: dmWho(hiRow), t: lobby.highest.tier, rr: lobby.highest.rr, pk: lobby.highest.fromPeak ? 1 : 0, me: hiRow === me ? 1 : 0 } : null,
+    ab: above ? above.length : -1,
+    bt: beat ? beat.length : -1,
+    bb: best ? { n: dmWho(best), t: dmEffRank(best).t, pk: dmEffRank(best).pk ? 1 : 0 } : null,
+    ra: rec.readAt || 0,
+    c: rec.complete ? 1 : 0,
+  };
+}
+
+// The full leaderboard for the expanded view. Memory-only on the page (never saved), and no puuids:
+// the page has no use for them and they're the least public thing in the record.
+function dmWireRows(rec, mePuuid){
+  return rec.rows.map(r => ({
+    n: r.name, tag: r.tag, pl: r.place, k: r.k, d: r.d, a: r.a, s: r.s,
+    t: r.tier, rr: r.rr, pk: r.peakTier || 0, e: r.rankError || '',
+    me: r.puuid === mePuuid ? 1 : 0,
+  }));
+}
+
+export async function getDeathmatchHistory(sessions, opts = {}){
+  const depth = Math.max(1, Math.min(DM_DEPTH_MAX, Number(opts.depth) || DM_DEPTH_DEFAULT));
+  const wanted = Array.isArray(opts.labels) && opts.labels.length ? opts.labels : Object.keys(sessions);
+  const labels = wanted.filter(l => sessions[l] && sessions[l].ssid);
+  if (!labels.length) throw new LiveError('no_session', 'No saved accounts. Add one first.');
+
+  await ensureRefData();
+  const cache = readDmCache();
+  const accounts = {};
+
+  // 1. every account's recent deathmatch ids — one cheap call each. A dead session is that
+  //    account's problem only; the other one still gets its games.
+  const plans = [];
+  for (const label of labels) {
+    const sess = sessions[label];
+    try {
+      const auth = await ensureLiveAuth(label, sess);
+      const res = await riotFetch(auth, sess,
+        `${auth.pdBase}/match-history/v1/history/${auth.puuid}?startIndex=0&endIndex=${depth}&queue=deathmatch`,
+        {}, TIMEOUT.history);
+      if (!res.ok) {
+        accounts[label] = { ok: false, code: 'riot_unreachable', error: `Riot didn’t return match history (HTTP ${res.status}).` };
+        continue;
+      }
+      plans.push({ label, auth, sess, hist: (res.json?.History || []).filter(h => h.MatchID) });
+    } catch (err) {
+      accounts[label] = { ok: false, code: (err && err.code) || 'riot_unreachable', error: (err && err.message) || String(err) };
+    }
+  }
+
+  // 2. read games newest-first ACROSS accounts, so the rank budget goes to what you just played
+  //    rather than to one account's backlog. A game both accounts were in is read once.
+  const budget = { left: DM_RANK_BUDGET };
+  const jobs = [];
+  for (const plan of plans) for (const h of plan.hist) jobs.push({ plan, id: h.MatchID, start: h.GameStartTime || 0 });
+  jobs.sort((a, b) => b.start - a.start);
+  const seen = new Set();
+  for (const job of jobs) {
+    if (seen.has(job.id)) continue;
+    seen.add(job.id);
+    let rec = cache[job.id];
+    if (rec && rec.complete) continue;
+    if (!rec) {
+      // don't start a game the budget can't rank — it would only come back half-empty
+      if (budget.left <= 0) continue;
+      rec = await buildDmRecord(job.plan.auth, job.plan.sess, job.id);
+      if (!rec) continue;
+      cache[job.id] = rec;
+    }
+    await resolveDmRecord(job.plan.auth, job.plan.sess, rec, budget);
+    dmCacheDirty = true;
+  }
+  flushDmCache();
+
+  // 3. answer per account, from that account's own seat in each game
+  for (const plan of plans) {
+    const matches = [];
+    let remaining = 0;
+    for (const h of plan.hist) {
+      const rec = cache[h.MatchID];
+      if (!rec || !rec.complete) remaining++;
+      if (!rec) continue;
+      const summary = summarizeDm(rec, plan.auth.puuid);
+      if (summary) matches.push({ summary, rows: dmWireRows(rec, plan.auth.puuid) });
+    }
+    accounts[plan.label] = { ok: true, matches, remaining };
+  }
+  return { ok: true, fetchedAt: Date.now(), accounts };
+}
+
 /* ------------------------------------------------------------------ CLI */
 
 const TIER_NAMES = ['Unranked', '', '', 'Iron 1', 'Iron 2', 'Iron 3', 'Bronze 1', 'Bronze 2', 'Bronze 3',
@@ -1408,11 +1647,13 @@ async function main(){
     console.error('No saved accounts. Run `node scripts/valorant-login.mjs <label>` first.');
     process.exit(1);
   }
-  const label = process.argv[2] || '';
+  const dmMode = process.argv.includes('--dm');
+  const label = process.argv.slice(2).find(a => a !== '--dm') || '';
   if (label && !(sessions[label] && sessions[label].ssid)) {
     console.error(`No saved session for "${label}". Known accounts: ${labels.join(', ')}`);
     process.exit(1);
   }
+  if (dmMode) { await printDmHistory(sessions, label); return; }
 
   let snap;
   try {
@@ -1505,6 +1746,28 @@ async function main(){
     console.log(`${side} ${(p.isSelf ? '> ' : '  ')}${who.padEnd(22)}${stack.padEnd(6)} ${rank.padEnd(18)} peak ${tierName(p.peakTier).padEnd(12)}${tail}`);
   }
   flushMatchCache();
+}
+
+// `node scripts/valorant-live.mjs --dm [label]` — the Deathmatch history panel as a table.
+async function printDmHistory(sessions, label){
+  let out;
+  try { out = await getDeathmatchHistory(sessions, { labels: label ? [label] : null }); }
+  catch (err) { console.error(`${err.code ? `[${err.code}] ` : ''}${err.message}`); process.exit(1); }
+  const elo = e => (e ? `${tierName(Math.floor(e / 100))} ${e % 100}RR` : '—');
+  for (const [lbl, acc] of Object.entries(out.accounts)) {
+    console.log(`\n== ${lbl}`);
+    if (!acc.ok) { console.log(`  ${acc.code ? `[${acc.code}] ` : ''}${acc.error}`); continue; }
+    if (!acc.matches.length) console.log('  No deathmatches read yet.');
+    for (const { summary: s } of acc.matches) {
+      const when = new Date(s.t).toLocaleString();
+      const map = (s.map.split('/').pop() || '?').padEnd(9);
+      const vs = s.ab < 0 ? 'you: unrated' : (s.ab ? `beat ${s.bt}/${s.ab} ranked above you` : 'nobody ranked above you');
+      const hi = s.hi ? `${s.hi.me ? 'YOU' : s.hi.n || '?'} (${tierName(s.hi.t)}${s.hi.pk ? ' peak' : ''})` : '—';
+      console.log(`  ${when.padEnd(22)} ${map} #${String(s.pl).padEnd(2)}/${s.n} ${s.k}/${s.d}`.padEnd(52)
+        + ` · avg ${elo(s.avg).padEnd(16)} · top ${hi} · ${vs}${s.c ? '' : ' (ranks still loading)'}`);
+    }
+    if (acc.remaining) console.log(`  …${acc.remaining} game(s) still to read — run again.`);
+  }
 }
 
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);

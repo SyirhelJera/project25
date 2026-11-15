@@ -381,7 +381,7 @@
      panels instead of one long scroll. Ordered by how often they're opened, not by urgency — the
      store is the daily reason to come here (and the pane the tab now always lands on, see
      showGameSubTab() in tft.js), while Live Match only has anything to show during a match. ---- */
-  const VAL_SUBTABS = ['shop','rr','live','vod'];
+  const VAL_SUBTABS = ['shop','rr','live','dm','vod'];
   function renderValSubtabs(){
     const active = VAL_SUBTABS.includes(state.valorant.activeSubtab) ? state.valorant.activeSubtab : 'shop';
     VAL_SUBTABS.forEach(key=>{
@@ -2652,7 +2652,7 @@
   }
 
   // The label is the key in five places: the helper's session file, the widget's snapshot file,
-  // and dailyStores / ownedSkins / wishlist / dmHistory in the shared row (plus live.label, which pins an
+  // and dailyStores / ownedSkins / wishlist in the shared row (plus live.label, which pins an
   // account for Live Match). The helper owns the two files; everything else moves here and rides
   // out on the next save().
   async function commitValAcctRename(){
@@ -2682,7 +2682,7 @@
 
       // move every per-account bucket. Done after the helper agreed, so a failure there leaves the
       // page's data and the session file agreeing on the old name rather than disagreeing.
-      ['dailyStores','ownedSkins','wishlist','dmHistory'].forEach(key=>{
+      ['dailyStores','ownedSkins','wishlist'].forEach(key=>{
         const bag = state.valorant[key];
         if(bag && Object.prototype.hasOwnProperty.call(bag, from)){
           bag[to] = bag[from];
@@ -3410,7 +3410,6 @@
         valLiveState.err = ''; valLiveState.code = ''; valLiveState.backoff = 0;
         valLiveState.status = json.phase === 'none' ? 'searching' : 'in-match';
         if(json.map && json.map.id) ensureValMapDb();
-        noteValDmFinished(json);
       }
     }catch(e){
       if(epoch !== valLiveState.epoch) return;
@@ -3689,10 +3688,6 @@
     renderValLiveBody();
     syncValLivePolling();
     centreValLiveCard();
-    // the deathmatch history card shares this pane, and every transition that matters to it (the
-    // pane appearing, the helper coming up, a match ending) already comes through here
-    renderValDm();
-    maybeSyncValDm();
   }
 
   function renderValLiveBody(){
@@ -3931,137 +3926,300 @@
     renderValLive();
   });
 
-  /* ================= DEATHMATCH HISTORY =================
-     Every saved account's recent deathmatches, read back from Riot's match history by the local
-     helper (POST /dm-history → getDeathmatchHistory() in scripts/valorant-live.mjs) instead of
-     watched live, so a game counts even when this page wasn't open while you played it. Read
-     README's "Deathmatch history" before touching it. Four rules:
-     - state.valorant.dmHistory[label] holds a COMPACT summary per game (summarizeDm()'s short
-       keys), capped at VAL_DM_CAP — it rides the shared blob re-uploaded on every save. The full
-       leaderboard stays in the helper's disk cache and in valDm.rows (memory), never in `state`.
-     - A summary is written once per game and only replaced while it is incomplete (`c:0`): the
-       comparison is against your rank when the game was read, and a later rank-up must not
-       rewrite what an old game meant.
-     - The label is a key here, so dmHistory is in commitValAcctRename()'s migration list.
-     - Syncing is spend-free but its only output is a write, so it's gated on appCanWrite(); a
-       guest still sees whatever history the shared row already holds. */
+  /* ================= DEATHMATCH HISTORY (its own sub-tab) =================
+     Your recent deathmatches, read back after the game from the HenrikDev API — the same key and
+     the same browser-side calls the RR Tracker uses, so there is no local helper involved and it
+     works from any device. Each game shows the lobby's average rank, its highest-ranked player, and
+     how many players ranked above you that you finished ahead of. Read README's "Deathmatch
+     history" before touching it. Five rules:
+     - A deathmatch carries NO ranks: every player's tier comes back "Unrated" (measured against
+       both HenrikDev and Riot's own match-details). So each player is one /v3/by-puuid/mmr call,
+       and with a basic key at 30 requests a minute everything goes through valHenrikGet(), which
+       paces itself off the X-RateLimit-* headers HenrikDev exposes. Ranks are memoized per puuid.
+     - state.valorant.dm.games[accountId] holds a COMPACT summary per game (short keys, VAL_DM_CAP
+       per account): it rides the shared blob re-uploaded on every save. Full leaderboards are a
+       per-device localStorage cache (rebuildable — expanding a game refetches it if missing).
+     - A complete summary (c:1) is never rewritten: "ranked above you" is measured against your
+       rank when the game was read, and a later rank-up must not change what an old game meant.
+     - Keyed by RR Tracker account id, so a rename there costs nothing; only accounts listed in
+       state.valorant.dm.tracked are read (the RR Tracker also follows friends).
+     - Syncing writes, so it is gated on appCanWrite(); a guest still sees the stored history. */
   const VAL_DM_CAP = 20;
-  const VAL_DM_SYNC_GAP_MS = 3 * 60 * 1000;    // opening the pane again soon after isn't news
-  const VAL_DM_FOLLOWUP_MS = 45 * 1000;        // backlog still being read → ask again shortly
-  const VAL_DM_WAIT_MS = 30 * 1000;            // a just-finished game not in match history yet
-  const VAL_DM_WAIT_TRIES = 5;
+  const VAL_DM_DEPTH = 10;                     // recent deathmatches looked at per account
+  const VAL_DM_SYNC_GAP_MS = 3 * 60 * 1000;    // re-check this often while the tab sits open
+  const VAL_DM_RANK_TTL_MS = 6 * 60 * 60 * 1000;
+  const VAL_DM_BOARDS_KEY = 'p25-dm-boards';
+  const VAL_DM_BOARDS_CAP = 60;
   const valDm = {
-    busy:false, lastAt:0, err:'', remaining:0, accErr:{},
-    rows:{},          // label|matchId -> full leaderboard, memory-only
-    filter:'all', open:'', timer:null,
-    waitFor:'', waitTries:0,
+    busy:false, lastAt:0, err:'', accErr:{}, progress:'',
+    filter:'all', open:'', timer:null, boardBusy:'',
+    rankMemo: new Map(),   // puuid -> { at, t, rr, pk, e }
   };
 
-  function valDmLists(){
-    const h = state.valorant.dmHistory || {};
-    return Object.keys(h).filter(l=> Array.isArray(h[l]) && h[l].length).map(l=> ({ label:l, list:h[l] }));
-  }
-  function valDmHas(matchId){
-    return valDmLists().some(({list})=> list.some(s=> s.id === matchId));
-  }
-  // Newest first, across the picked account(s). Each entry is tagged with the account it belongs
-  // to, so "All" can say which seat a game was played from.
-  function valDmEntries(){
-    const lists = valDmLists();
-    const pick = (valDm.filter !== 'all' && lists.some(x=> x.label === valDm.filter)) ? valDm.filter : 'all';
-    const out = [];
-    lists.forEach(({label, list})=>{ if(pick === 'all' || pick === label) list.forEach(s=> out.push({ label, s })); });
-    return out.sort((a,b)=> (b.s.t||0) - (a.s.t||0));
+  /* ---- HenrikDev, paced ---- */
+  const valHenrikGate = { remaining:null, resetAt:0 };
+  const valSleep = ms => new Promise(r=> setTimeout(r, Math.max(0, ms)));
+  async function valHenrikGet(path){
+    const headers = { 'Accept':'application/json' };
+    if(state.valorant.apiKey) headers['Authorization'] = state.valorant.apiKey;
+    for(let attempt = 0; attempt < 4; attempt++){
+      if(valHenrikGate.remaining !== null && valHenrikGate.remaining <= 1 && Date.now() < valHenrikGate.resetAt){
+        const was = valDm.progress;
+        valDm.progress = 'Pacing for the HenrikDev rate limit…'; renderValDm();
+        await valSleep(valHenrikGate.resetAt - Date.now() + 300);
+        valDm.progress = was;
+        valHenrikGate.remaining = null;
+      }
+      let res;
+      try{ res = await fetch(HENRIK_BASE + path, { headers }); }
+      catch(e){ return { ok:false, status:0, json:null }; }
+      const rem = Number(res.headers.get('x-ratelimit-remaining'));
+      const reset = Number(res.headers.get('x-ratelimit-reset'));
+      if(Number.isFinite(rem)) valHenrikGate.remaining = rem;
+      if(Number.isFinite(reset)) valHenrikGate.resetAt = Date.now() + reset * 1000;
+      if(res.status === 429){
+        valHenrikGate.remaining = 0;
+        if(!Number.isFinite(reset)) valHenrikGate.resetAt = Date.now() + 60000;
+        continue;
+      }
+      const json = await res.json().catch(()=>null);
+      return { ok:res.ok, status:res.status, json };
+    }
+    return { ok:false, status:429, json:null };
   }
 
-  function valDmMerge(label, matches){
-    if(!state.valorant.dmHistory || typeof state.valorant.dmHistory !== 'object') state.valorant.dmHistory = {};
-    const list = Array.isArray(state.valorant.dmHistory[label]) ? state.valorant.dmHistory[label].slice() : [];
-    let changed = false;
-    (matches || []).forEach(m=>{
-      const s = m && m.summary; if(!s || !s.id) return;
-      if(Array.isArray(m.rows)) valDm.rows[label+'|'+s.id] = m.rows;
-      const i = list.findIndex(x=> x.id === s.id);
-      if(i < 0){ list.push(s); changed = true; }
-      else if(!list[i].c && JSON.stringify(list[i]) !== JSON.stringify(s)){ list[i] = s; changed = true; }
+  /* ---- state access ---- */
+  function valDmState(){
+    if(!state.valorant.dm || typeof state.valorant.dm !== 'object') state.valorant.dm = { tracked:[], games:{} };
+    if(!Array.isArray(state.valorant.dm.tracked)) state.valorant.dm.tracked = [];
+    if(!state.valorant.dm.games || typeof state.valorant.dm.games !== 'object') state.valorant.dm.games = {};
+    return state.valorant.dm;
+  }
+  function valDmAccName(acc){ return acc ? acc.name + '#' + acc.tag : ''; }
+  function valDmTrackedAccounts(){
+    const ids = valDmState().tracked;
+    return state.valorant.accounts.filter(a=> ids.includes(a.id));
+  }
+  function valDmHas(accId, matchId){
+    const list = valDmState().games[accId];
+    return Array.isArray(list) ? list.find(s=> s.id === matchId) : null;
+  }
+  // Newest first, across the picked account(s), each tagged with the account it belongs to.
+  function valDmEntries(){
+    const accs = valDmTrackedAccounts();
+    const pick = accs.some(a=> a.id === valDm.filter) ? valDm.filter : 'all';
+    const out = [];
+    accs.forEach(acc=>{
+      if(pick !== 'all' && pick !== acc.id) return;
+      (valDmState().games[acc.id] || []).forEach(s=> out.push({ acc, s }));
     });
-    if(!changed) return false;
+    return out.sort((a,b)=> (b.s.t||0) - (a.s.t||0));
+  }
+  function valDmMerge(accId, s){
+    const games = valDmState().games;
+    const list = Array.isArray(games[accId]) ? games[accId].slice() : [];
+    const i = list.findIndex(x=> x.id === s.id);
+    if(i >= 0 && (list[i].c || JSON.stringify(list[i]) === JSON.stringify(s))) return false;
+    if(i >= 0) list[i] = s; else list.push(s);
     list.sort((a,b)=> (b.t||0) - (a.t||0));
-    state.valorant.dmHistory[label] = list.slice(0, VAL_DM_CAP);
+    games[accId] = list.slice(0, VAL_DM_CAP);
     return true;
   }
 
-  function valDmPaneVisible(){
-    const pane = el('valSubtabLive');
-    return !document.hidden && !!pane && pane.offsetParent !== null;
+  /* ---- full leaderboards: a per-device cache, never the shared row ---- */
+  function valDmBoards(){
+    try{ return JSON.parse(localStorage.getItem(VAL_DM_BOARDS_KEY) || '{}') || {}; }catch(e){ return {}; }
+  }
+  function valDmPutBoard(matchId, board){
+    try{
+      const all = valDmBoards();
+      all[matchId] = board;
+      const ids = Object.keys(all);
+      if(ids.length > VAL_DM_BOARDS_CAP){
+        ids.sort((a,b)=> (all[a].t||0) - (all[b].t||0));
+        ids.slice(0, ids.length - VAL_DM_BOARDS_CAP).forEach(id=> delete all[id]);
+      }
+      localStorage.setItem(VAL_DM_BOARDS_KEY, JSON.stringify(all));
+    }catch(e){ /* a full or blocked store only means the board is refetched when opened */ }
   }
 
-  // Called from every renderValLive(), so it has to be cheap when it decides to do nothing.
+  /* ---- reading one game ---- */
+  // Placement is the in-game deathmatch order: kills, then score, then fewest deaths.
+  function valDmRowsFromMatch(m){
+    const rows = (m.players || []).map(p=> ({
+      puuid: p.puuid, n: p.name || '', tag: p.tag || '',
+      k: (p.stats && p.stats.kills) || 0, d: (p.stats && p.stats.deaths) || 0,
+      a: (p.stats && p.stats.assists) || 0, s: (p.stats && p.stats.score) || 0,
+      t: null, rr: 0, pk: 0, e: 'pending', pl: 0,
+    }));
+    rows.sort((a,b)=> b.k - a.k || b.s - a.s || a.d - b.d);
+    rows.forEach((r,i)=> { r.pl = i + 1; });
+    return rows;
+  }
+
+  async function valDmRank(region, platform, puuid){
+    const hit = valDm.rankMemo.get(puuid);
+    if(hit && Date.now() - hit.at < VAL_DM_RANK_TTL_MS) return hit;
+    const res = await valHenrikGet('/v3/by-puuid/mmr/'+region+'/'+platform+'/'+encodeURIComponent(puuid));
+    let out;
+    if(res.ok && res.json && res.json.data){
+      const d = res.json.data;
+      out = {
+        t: (d.current && d.current.tier && d.current.tier.id) || 0,
+        rr: (d.current && d.current.rr) || 0,
+        pk: (d.peak && d.peak.tier && d.peak.tier.id) || 0, e: '',
+      };
+    } else if(res.status === 404){
+      out = { t:0, rr:0, pk:0, e:'' };     // no ranked data at all: an answer, not a failure
+    } else {
+      return { t:null, rr:0, pk:0, e:'pending' };   // not cached: the next sync retries it
+    }
+    out.at = Date.now();
+    valDm.rankMemo.set(puuid, out);
+    return out;
+  }
+
+  async function valDmResolveRanks(acc, rows){
+    for(const r of rows){
+      if(r.e !== 'pending') continue;
+      const k = await valDmRank(acc.region, acc.platform, r.puuid);
+      r.t = k.t; r.rr = k.rr; r.pk = k.pk; r.e = k.e;
+    }
+  }
+
+  // The rank someone is compared at: this act's, or their peak when they haven't placed this act
+  // (half a deathmatch lobby typically hasn't). Neither is "unrated" and is left out of every
+  // comparison rather than being counted as Iron — the same rule Live Match's computeLobby() uses.
+  function valDmEff(r){
+    if(r.t > 0) return { t:r.t, rr:r.rr || 0, pk:false };
+    if(r.pk) return { t:r.pk, rr:0, pk:true };
+    return null;
+  }
+  const valDmWho = r => (r && r.n ? r.n + '#' + r.tag : '');
+
+  // The compact record kept in the shared row, from one account's seat. Short keys on purpose.
+  // ab/bt are the headline: players ranked above you, and how many of those you finished ahead
+  // of — against your rank ON THAT ACCOUNT, so a smurf game is judged against the smurf's rank.
+  function valDmSummarize(m, rows, me, prev){
+    const rated = rows.map(r=> ({ r, e: valDmEff(r) })).filter(x=> x.e);
+    // the RR cap keeps one Radiant's combined score from dragging the average up by whole tiers
+    const avg = rated.length ? Math.round(rated.reduce((t,x)=> t + x.e.t * 100 + Math.min(Math.max(x.e.rr,0),99), 0) / rated.length) : 0;
+    const hiX = rated.slice().sort((a,b)=> b.e.t - a.e.t || (b.r.rr||0) - (a.r.rr||0))[0] || null;
+    const mine = valDmEff(me);
+    const others = rows.filter(r=> r !== me);
+    const above = mine ? others.filter(r=>{ const e = valDmEff(r); return e && e.t > mine.t; }) : null;
+    const beat = above ? above.filter(r=> r.pl > me.pl) : null;
+    const best = others.filter(r=> r.pl > me.pl && valDmEff(r))
+      .sort((a,b)=> valDmEff(b).t - valDmEff(a).t || (b.rr||0) - (a.rr||0))[0] || null;
+    const meta = m.metadata || {};
+    return {
+      id: meta.match_id, t: Date.parse(meta.started_at) || 0,
+      map: (meta.map && meta.map.name) || '',
+      n: rows.length, pl: me.pl, k: me.k, d: me.d,
+      mt: mine ? mine.t : 0, mpk: mine && mine.pk ? 1 : 0,
+      avg, rk: rated.length,
+      hi: hiX ? { n: valDmWho(hiX.r), t: hiX.e.t, rr: hiX.r.rr || 0, pk: hiX.e.pk ? 1 : 0, me: hiX.r === me ? 1 : 0 } : null,
+      ab: above ? above.length : -1, bt: beat ? beat.length : -1,
+      bb: best ? { n: valDmWho(best), t: valDmEff(best).t, pk: valDmEff(best).pk ? 1 : 0 } : null,
+      ra: (prev && prev.ra) || Date.now(),
+      c: rows.every(r=> r.e !== 'pending') ? 1 : 0,
+    };
+  }
+  function valDmFindMe(acc, rows){
+    const n = acc.name.toLowerCase(), t = acc.tag.toLowerCase();
+    return rows.find(r=> r.n.toLowerCase() === n && r.tag.toLowerCase() === t) || null;
+  }
+  function valDmBoardFrom(rows, me, t){
+    return { t, rows: rows.map(r=> ({ n:r.n, tag:r.tag, pl:r.pl, k:r.k, d:r.d, a:r.a, t:r.t, rr:r.rr, pk:r.pk, e:r.e, me: r === me ? 1 : 0 })) };
+  }
+
+  /* ---- sync ---- */
+  function valDmPaneVisible(){
+    const pane = el('valSubtabDm');
+    return !document.hidden && !!pane && pane.offsetParent !== null;
+  }
+  function valDmCanSync(){
+    return !!state.valorant.apiKey && appCanWrite() && valDmTrackedAccounts().length > 0;
+  }
+  // Cheap when it decides to do nothing: called from every render of the pane.
   function maybeSyncValDm(force){
-    if(valDm.busy || valLiveUnavailable()) return;
-    if(!valLocalStatus.connected || !state.valorant.localServerToken || !appCanWrite()) return;
-    if(!valDmPaneVisible()) return;
-    // not while a match is being played: the lobby's own rank lookups at the barrier drop are the
-    // ones that must not be crowded out (see rememberSnapshot() in valorant-live.mjs)
-    const d = valLiveState.data;
-    if(d && (d.phase === 'pregame' || d.phase === 'coregame')) return;
+    if(valDm.busy || !valDmCanSync() || !valDmPaneVisible()) return;
     if(!force && valDm.lastAt && Date.now() - valDm.lastAt < VAL_DM_SYNC_GAP_MS) return;
     syncValDm();
   }
 
   async function syncValDm(){
     if(valDm.timer){ clearTimeout(valDm.timer); valDm.timer = null; }
-    valDm.busy = true; valDm.err = '';
+    valDm.busy = true; valDm.err = ''; valDm.accErr = {}; valDm.progress = 'Checking for new deathmatches…';
     renderValDm();
     try{
-      const res = await fetch(valLocalUrl()+'/dm-history', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({ token: state.valorant.localServerToken }),
-      });
-      const json = await res.json().catch(()=>null);
-      if(res.status === 401) throw new Error('The local helper rejected the token — paste the one it printed into Settings → Valorant Local Helper.');
-      if(res.status === 404) throw new Error('The local helper is out of date — restart it to pick up deathmatch history.');
-      if(!json || json.ok === false) throw new Error((json && json.error) || 'The local helper could not read your deathmatches.');
-      let changed = false;
-      valDm.remaining = 0; valDm.accErr = {};
-      Object.entries(json.accounts || {}).forEach(([label, acc])=>{
-        if(!acc || !acc.ok){ valDm.accErr[label] = (acc && acc.error) || 'Could not read this account.'; return; }
-        valDm.remaining += acc.remaining || 0;
-        if(valDmMerge(label, acc.matches)) changed = true;
-      });
-      if(changed) save();
-      if(valDmLists().length) ensureValMapDb();
+      // 1. each account's recent deathmatches — one call each, full scoreboards included
+      const jobs = [];
+      for(const acc of valDmTrackedAccounts()){
+        const res = await valHenrikGet('/v4/matches/'+acc.region+'/'+acc.platform+'/'+encodeURIComponent(acc.name)+'/'+encodeURIComponent(acc.tag)+'?mode=deathmatch&size='+VAL_DM_DEPTH);
+        if(!res.ok || !res.json || !Array.isArray(res.json.data)){
+          const msg = res.json && res.json.errors && res.json.errors[0] && res.json.errors[0].message;
+          valDm.accErr[acc.id] = msg || ('HenrikDev didn’t return matches (HTTP '+res.status+').');
+          continue;
+        }
+        res.json.data.forEach(m=>{
+          const id = m && m.metadata && m.metadata.match_id;
+          if(!id) return;
+          const have = valDmHas(acc.id, id);
+          if(have && have.c) return;
+          jobs.push({ acc, m, have });
+        });
+      }
+      // 2. newest first, so the rate limit is spent on what you just played. A game two tracked
+      //    accounts were both in is ranked once — the memo makes the second seat free.
+      jobs.sort((a,b)=> (Date.parse(b.m.metadata.started_at)||0) - (Date.parse(a.m.metadata.started_at)||0));
+      for(let i = 0; i < jobs.length; i++){
+        const { acc, m, have } = jobs[i];
+        valDm.progress = 'Reading game '+(i+1)+' of '+jobs.length+' — '+((m.metadata.map && m.metadata.map.name) || 'deathmatch')+'…';
+        renderValDm();
+        const rows = valDmRowsFromMatch(m);
+        const me = valDmFindMe(acc, rows);
+        if(!me) continue;
+        await valDmResolveRanks(acc, rows);
+        const s = valDmSummarize(m, rows, me, have);
+        valDmPutBoard(s.id, valDmBoardFrom(rows, me, s.t));
+        // saved per game, so a long backfill that's interrupted keeps what it already read
+        if(valDmMerge(acc.id, s)) save();
+        renderValDm();
+      }
     }catch(e){
-      valDm.err = (e && e.message) || 'Could not reach the local helper.';
+      valDm.err = (e && e.message) || 'Could not read your deathmatches.';
     }finally{
-      valDm.busy = false;
-      valDm.lastAt = Date.now();
+      valDm.busy = false; valDm.progress = ''; valDm.lastAt = Date.now();
     }
-    // two reasons to come back on our own: a backlog the rank budget cut short, or the game that
-    // just ended not being in Riot's match history yet (it lands a little after the scoreboard)
-    let wait = 0;
-    if(valDm.waitFor && !valDmHas(valDm.waitFor) && valDm.waitTries < VAL_DM_WAIT_TRIES){ valDm.waitTries++; wait = VAL_DM_WAIT_MS; }
-    else { valDm.waitFor = ''; if(!valDm.err && valDm.remaining > 0) wait = VAL_DM_FOLLOWUP_MS; }
-    if(wait) valDm.timer = setTimeout(()=>{ valDm.timer = null; maybeSyncValDm(true); }, wait);
+    // keep looking while the tab sits open — "play a game, alt-tab back" should just work
+    valDm.timer = setTimeout(()=>{ valDm.timer = null; maybeSyncValDm(true); }, VAL_DM_SYNC_GAP_MS);
     renderValDm();
   }
 
-  // From valLiveTick(): the Live panel just watched a deathmatch end and got its scoreboard, so
-  // that game is about to exist in match history — fetch it rather than waiting for the next visit.
-  function noteValDmFinished(snap){
-    if(!snap || snap.phase !== 'ended' || !snap.mode || snap.mode.id !== 'deathmatch') return;
-    if(!snap.final || snap.final.state !== 'done' || !snap.matchId) return;
-    if(valDm.waitFor === snap.matchId || valDmHas(snap.matchId)) return;
-    valDm.waitFor = snap.matchId; valDm.waitTries = 0;
-    maybeSyncValDm(true);
+  // A game whose board isn't cached on this device (read on another device, or the cache was
+  // cleared): one match call plus memoized rank lookups.
+  async function loadValDmBoard(acc, matchId){
+    if(valDm.boardBusy || !state.valorant.apiKey) return;
+    valDm.boardBusy = matchId; renderValDm();
+    try{
+      const res = await valHenrikGet('/v4/match/'+acc.region+'/'+encodeURIComponent(matchId));
+      const m = res.ok && res.json && res.json.data;
+      if(m){
+        const rows = valDmRowsFromMatch(m);
+        await valDmResolveRanks(acc, rows);
+        valDmPutBoard(matchId, valDmBoardFrom(rows, valDmFindMe(acc, rows), Date.parse(m.metadata.started_at) || 0));
+      }
+    }finally{ valDm.boardBusy = ''; renderValDm(); }
   }
 
   /* ---- render ---- */
-  function valDmMapName(mapUrl){
-    const m = valMapCache && mapUrl ? valMapCache[String(mapUrl).toLowerCase()] : null;
-    if(m && m.name) return m.name;
-    return String(mapUrl || '').split('/').pop() || 'Unknown map';
+  function valDmMapName(map){
+    const s = String(map || '');
+    if(s.indexOf('/') < 0) return s || 'Unknown map';
+    // games read before this moved to HenrikDev stored Riot's map path
+    const m = valMapCache ? valMapCache[s.toLowerCase()] : null;
+    return (m && m.name) || s.split('/').pop() || 'Unknown map';
   }
   function valDmTierHtml(tier, cls){
     const info = valTierInfo(tier);
@@ -4069,7 +4227,6 @@
   }
   function valDmPlayerName(n){ return n ? escapeHtml(n) : '<span class="val-live-dim">Unknown player</span>'; }
 
-  // The headline for one game: of the players ranked above you, how many you finished ahead of.
   function valDmVerdict(s){
     if(!s.c && s.ab <= 0) return { cls:'pending', text:'Ranks still loading…' };
     if(s.ab < 0) return { cls:'muted', text:'You’re unrated on this account' };
@@ -4113,21 +4270,26 @@
     return html + '</div>';
   }
 
-  function valDmBoardHtml(key, s){
-    const rows = valDm.rows[key];
-    if(!rows) return '<div class="val-dm-board-note">'+(valLocalStatus.connected
-      ? 'Loading the full leaderboard…'
-      : 'The full leaderboard is kept on your PC — open this with the local helper running to see it.')+'</div>';
-    return '<div class="val-dm-board">' + rows.map(r=>{
+  function valDmBoardHtml(e){
+    const s = e.s;
+    const board = valDmBoards()[s.id];
+    if(!board){
+      return '<div class="val-dm-board-note">'+(valDm.boardBusy === s.id ? 'Loading the full leaderboard…'
+        : (state.valorant.apiKey ? 'Loading the full leaderboard…' : 'Add your HenrikDev API key (RR Tracker) to see the full leaderboard.'))+'</div>';
+    }
+    // `me` is per seat: on a game two tracked accounts shared, mark the one this row belongs to
+    const n = e.acc.name.toLowerCase(), t = e.acc.tag.toLowerCase();
+    return '<div class="val-dm-board">' + board.rows.map(r=>{
+      const isMe = r.n.toLowerCase() === n && r.tag.toLowerCase() === t;
       const eff = r.t > 0 ? r.t : (r.pk || 0);
-      const higher = s.ab >= 0 && eff > s.mt && !r.me;
+      const higher = s.ab >= 0 && eff > s.mt && !isMe;
       const beaten = higher && r.pl > s.pl;
       const rank = eff
         ? valDmTierHtml(eff)+'<span>'+escapeHtml(valTierLabel(eff))+(r.t > 0 ? '' : ' <span class="val-live-dim">peak</span>')+'</span>'
-        : '<span class="val-live-dim">'+(r.e && r.e !== 'forbidden' ? 'Not read yet' : 'Unrated')+'</span>';
+        : '<span class="val-live-dim">'+(r.e === 'pending' ? 'Not read yet' : 'Unrated')+'</span>';
       const mark = beaten ? '<span class="val-dm-mark beat" title="Ranked above you — you finished ahead">✓ beat</span>'
         : (higher ? '<span class="val-dm-mark" title="Ranked above you">▲</span>' : '');
-      return '<div class="val-dm-brow'+(r.me?' is-self':'')+'" style="--tier:'+valTierColor(eff ? valTierLabel(eff) : '')+';">'
+      return '<div class="val-dm-brow'+(isMe?' is-self':'')+'" style="--tier:'+valTierColor(eff ? valTierLabel(eff) : '')+';">'
         + '<span class="val-dm-bpl">'+r.pl+'</span>'
         + '<span class="val-dm-bname">'+valDmPlayerName(r.n ? r.n+'#'+r.tag : '')+mark+'</span>'
         + '<span class="val-dm-brank">'+rank+'</span>'
@@ -4136,8 +4298,8 @@
     }).join('') + '</div>';
   }
 
-  function valDmRowHtml(e, showLabel){
-    const s = e.s, key = e.label+'|'+s.id;
+  function valDmRowHtml(e, showAcc){
+    const s = e.s, key = e.acc.id+'|'+s.id;
     const v = valDmVerdict(s);
     const avgTier = s.avg ? Math.floor(s.avg/100) : 0;
     const open = valDm.open === key;
@@ -4146,7 +4308,7 @@
       + '<button type="button" class="val-dm-row" data-dmkey="'+encodeURIComponent(key)+'" aria-expanded="'+open+'">'
       + '<span class="val-dm-place"><b>'+valOrdinal(s.pl)+'</b><span>of '+s.n+'</span></span>'
       + '<span class="val-dm-where"><b>'+escapeHtml(valDmMapName(s.map))+'</b>'
-      +   '<span>'+escapeHtml(valTimeAgo(s.t))+(showLabel ? ' · '+escapeHtml(e.label) : '')+'</span></span>'
+      +   '<span>'+escapeHtml(valTimeAgo(s.t))+(showAcc ? ' · '+escapeHtml(e.acc.name) : '')+'</span></span>'
       + '<span class="val-dm-kd"><b>'+s.k+'/'+s.d+'</b><span>'+kd+' K/D</span></span>'
       + '<span class="val-dm-cell" style="--tier:'+valTierColor(valTierLabel(avgTier))+';"><span class="val-dm-lbl">Lobby avg</span>'
       +   (avgTier ? '<span class="val-dm-tier">'+valDmTierHtml(avgTier)+'<b>'+escapeHtml(valTierLabel(avgTier))+'</b></span>' : '<span class="val-live-dim">—</span>')+'</span>'
@@ -4156,55 +4318,80 @@
       + '<span class="val-dm-verdict '+v.cls+'">'+escapeHtml(v.text)
       +   (v.pct != null ? '<span class="val-dm-meter"><span style="width:'+v.pct+'%;"></span></span>' : '')+'</span>'
       + '</button>';
-    if(open) html += valDmBoardHtml(key, s)
+    if(open) html += valDmBoardHtml(e)
       + (s.ra && s.t && s.ra - s.t > 6*3600*1000 ? '<div class="val-dm-board-note">Ranks as of '+escapeHtml(new Date(s.ra).toLocaleDateString())+', when this game was first read.</div>' : '');
     return html + '</div>';
   }
 
+  function renderValDmAccounts(){
+    const wrap = el('valDmAccounts'); if(!wrap) return;
+    const ids = valDmState().tracked;
+    const accs = state.valorant.accounts;
+    el('valDmAccountsSummary').textContent = accs.length
+      ? ('Tracking ' + (ids.filter(id=> accs.some(a=> a.id === id)).length || 'no') + ' of ' + accs.length + ' RR Tracker account' + (accs.length===1?'':'s') + ' · change')
+      : 'Add your accounts in RR Tracker first';
+    wrap.innerHTML = accs.map(a=>
+      '<button type="button" class="val-dm-acc'+(ids.includes(a.id)?' on':'')+'" data-dmacc="'+encodeURIComponent(a.id)+'" aria-pressed="'+ids.includes(a.id)+'">'
+      + escapeHtml(valDmAccName(a)) + '</button>').join('');
+  }
+
   function renderValDm(){
     const body = el('valDmBody'); if(!body) return;
-    const lists = valDmLists();
-    const labels = lists.map(x=> x.label);
-    if(valDm.filter !== 'all' && !labels.includes(valDm.filter)) valDm.filter = 'all';
+    renderValDmAccounts();
+    const accs = valDmTrackedAccounts();
+    if(valDm.filter !== 'all' && !accs.some(a=> a.id === valDm.filter)) valDm.filter = 'all';
 
-    // status line
-    const st = el('valDmStatus');
     let status = '';
-    if(valDm.busy) status = 'Reading your recent deathmatches…';
-    else if(valDm.waitFor && valDm.timer) status = 'Waiting for Riot to publish the game you just finished…';
-    else if(valDm.remaining > 0 && valDm.timer) status = valDm.remaining+' more game'+(valDm.remaining===1?'':'s')+' to read — continuing shortly';
-    else if(valDm.lastAt) status = 'Updated '+valTimeAgo(valDm.lastAt);
-    else if(!valLocalStatus.connected) status = lists.length ? 'Start the local helper to pick up new games' : '';
-    st.textContent = status;
-    el('valDmRefreshBtn').disabled = valDm.busy || !valLocalStatus.connected || !state.valorant.localServerToken || !appCanWrite();
+    if(valDm.busy) status = valDm.progress || 'Checking for new deathmatches…';
+    else if(valDm.lastAt) status = 'Updated ' + valTimeAgo(valDm.lastAt) + ' · checks every few minutes while open';
+    el('valDmStatus').textContent = status;
+    el('valDmRefreshBtn').disabled = valDm.busy || !valDmCanSync();
 
-    const err = el('valDmErr');
     const errs = [];
     if(valDm.err) errs.push(valDm.err);
-    Object.entries(valDm.accErr).forEach(([l, m])=> errs.push(l+': '+m));
+    Object.entries(valDm.accErr).forEach(([id, m])=>{
+      const a = state.valorant.accounts.find(x=> x.id === id);
+      errs.push((a ? valDmAccName(a) : 'Account') + ': ' + m);
+    });
+    const err = el('valDmErr');
     err.style.display = errs.length ? 'block' : 'none';
     err.textContent = errs.join(' · ');
 
     const ft = el('valDmFilter');
-    ft.style.display = labels.length > 1 ? '' : 'none';
-    if(labels.length > 1){
-      ft.innerHTML = ['all'].concat(labels).map(l=>
-        '<button type="button" data-dmfilter="'+encodeURIComponent(l)+'" class="'+(valDm.filter === l ? 'active' : '')+'">'+escapeHtml(l === 'all' ? 'All accounts' : l)+'</button>').join('');
+    ft.style.display = accs.length > 1 ? '' : 'none';
+    if(accs.length > 1){
+      ft.innerHTML = [{ id:'all', name:'All accounts' }].concat(accs).map(a=>
+        '<button type="button" data-dmfilter="'+encodeURIComponent(a.id)+'" class="'+(valDm.filter === a.id ? 'active' : '')+'">'+escapeHtml(a.name)+'</button>').join('');
     }
 
     const entries = valDmEntries();
     if(!entries.length){
-      body.innerHTML = '<div class="val-live-empty">'+(valDm.busy ? 'Reading your deathmatches…'
-        : (valLocalStatus.connected
-          ? 'No deathmatches yet. Play one and come back here: every saved account’s games are picked up from Riot’s match history, even if this page was closed while you played.'
-          : 'Your deathmatches show up here: who was in each lobby, its average rank, the highest-ranked player and how many players ranked above you that you beat. Start the local helper on your PC to read them.'))+'</div>';
+      let msg;
+      if(!state.valorant.apiKey) msg = 'Deathmatch history reads your games from the HenrikDev API — add your key under <b>RR Tracker → API key</b> first.';
+      else if(!accs.length) msg = 'Pick which of your RR Tracker accounts are yours (above) and their recent deathmatches will show up here.';
+      else if(valDm.busy) msg = 'Reading your deathmatches…';
+      else msg = 'No deathmatches yet. Play one and come back: who was in the lobby, its average rank, the highest-ranked player and how many players ranked above you that you beat.';
+      body.innerHTML = '<div class="val-live-empty">'+msg+'</div>';
       return;
     }
     body.innerHTML = valDmTallyHtml(entries)
-      + '<div class="val-dm-list">' + entries.map(e=> valDmRowHtml(e, valDm.filter === 'all' && labels.length > 1)).join('') + '</div>';
+      + '<div class="val-dm-list">' + entries.map(e=> valDmRowHtml(e, valDm.filter === 'all' && accs.length > 1)).join('') + '</div>';
+    if(entries.some(e=> String(e.s.map).indexOf('/') >= 0)) ensureValMapDb();
   }
 
-  el('valDmCard').addEventListener('click', e=>{
+  // The pane is static markup; only its contents are rebuilt, so clicks are delegated from it.
+  el('valSubtabDm').addEventListener('click', e=>{
+    const accBtn = e.target.closest('[data-dmacc]');
+    if(accBtn){
+      if(!appCanWrite()) return;
+      const id = decodeURIComponent(accBtn.dataset.dmacc);
+      const dm = valDmState();
+      dm.tracked = dm.tracked.includes(id) ? dm.tracked.filter(x=> x !== id) : dm.tracked.concat(id);
+      save();
+      renderValDm();
+      maybeSyncValDm(true);
+      return;
+    }
     const f = e.target.closest('[data-dmfilter]');
     if(f){ valDm.filter = decodeURIComponent(f.dataset.dmfilter); valDm.open = ''; renderValDm(); return; }
     const row = e.target.closest('[data-dmkey]');
@@ -4212,13 +4399,16 @@
       const key = decodeURIComponent(row.dataset.dmkey);
       valDm.open = valDm.open === key ? '' : key;
       renderValDm();
-      // a leaderboard this page load hasn't fetched (another device read the game, or the page
-      // was reloaded) is one cache-backed helper call away
-      if(valDm.open && !valDm.rows[key]) maybeSyncValDm(true);
+      if(valDm.open){
+        const [accId, matchId] = key.split('|');
+        const acc = state.valorant.accounts.find(a=> a.id === accId);
+        if(acc && !valDmBoards()[matchId]) loadValDmBoard(acc, matchId);
+      }
       return;
     }
     if(e.target.closest('#valDmRefreshBtn')) maybeSyncValDm(true);
   });
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) maybeSyncValDm(); });
 
   /* The add form is always on screen, so Escape can't close it any more — it clears the field and
      whatever validation error is showing instead, which is the only thing left to undo. */
@@ -4254,6 +4444,7 @@
     renderValLocalPanel();
     if(active === 'live') renderValLive(); else syncValLivePolling();
     if(active === 'vod') renderValVod();
+    if(active === 'dm'){ renderValDm(); maybeSyncValDm(); }
     // Live Match settings live over in the Settings view, so they're synced here rather than in
     // renderValLive() (which only owns the panel on the Valorant tab)
     el('valLiveRegionSelect').value = state.valorant.live.regionOverride || '';

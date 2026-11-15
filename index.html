@@ -996,6 +996,7 @@
       <button data-subtab="shop" id="valSubtabBtnShop">Shop Tracker</button>
       <button data-subtab="rr" id="valSubtabBtnRR">RR Tracker</button>
       <button data-subtab="live" id="valSubtabBtnLive">Live Match</button>
+      <button data-subtab="dm" id="valSubtabBtnDm">Deathmatch</button>
       <button data-subtab="vod" id="valSubtabBtnVod">VOD Review</button>
     </div>
 
@@ -1181,11 +1182,14 @@
         <div class="val-err" id="valLiveErr" style="display:none;"></div>
         <div id="valLiveBody"></div>
       </div>
+    </div>
 
-      <!-- DEATHMATCH HISTORY — every saved account's recent deathmatches, read back from Riot's
-           match history by the local helper after the game (POST /dm-history), so a game counts even
-           if this page was shut while you played. Summaries live in state.valorant.dmHistory; the full
-           leaderboards stay on the PC. Rebuilt by renderValDm(), so clicks are delegated off the card. -->
+    <!-- DEATHMATCH HISTORY — your recent deathmatches, read back after the game from the HenrikDev
+         API in the browser (no local helper): each lobby's average rank, its highest-ranked player
+         and how many players ranked above you that you beat. Summaries live in
+         state.valorant.dm.games; full leaderboards are a per-device localStorage cache. Rebuilt by
+         renderValDm(), so every control here is delegated off #valSubtabDm. -->
+    <div class="val-subtab-panel" id="valSubtabDm" style="display:none;">
       <div class="val-live-card val-dm-card" id="valDmCard">
         <div class="val-live-head">
           <div class="val-dm-heading">
@@ -1197,6 +1201,11 @@
             <button class="btn btn-sm" id="valDmRefreshBtn" title="Check for new deathmatches" aria-label="Check for new deathmatches">⟳</button>
           </div>
         </div>
+        <details class="val-dm-pick">
+          <summary id="valDmAccountsSummary">Choose your accounts</summary>
+          <div class="val-dm-pick-note">Which RR Tracker accounts are yours? Only these have their deathmatches read.</div>
+          <div class="val-dm-accs" id="valDmAccounts"></div>
+        </details>
         <div class="val-err" id="valDmErr" style="display:none;"></div>
         <div id="valDmBody"></div>
       </div>

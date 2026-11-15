@@ -4972,7 +4972,21 @@
   /* Deathmatch history (renderValDm() in valorant.js) — the same dark overlay card as Live Match,
      one row per game. Rank colour rides on --tier exactly like the live rows, so a tier colour is
      only ever painted on the tier name, never on a player name. */
-  .val-dm-card{margin-top:14px;}
+  .val-dm-card{margin-top:0;}
+  .val-dm-pick{margin:-4px 0 12px;font-size:12px;color:var(--muted);}
+  .val-dm-pick summary{cursor:pointer;font-weight:600;width:max-content;max-width:100%;}
+  .val-dm-pick summary:hover{color:var(--text);}
+  .val-dm-pick-note{margin:8px 0 6px;color:var(--faint);font-size:11.5px;}
+  .val-dm-accs{display:flex;flex-wrap:wrap;gap:6px;}
+  .val-dm-acc{
+    border:1px solid var(--border);background:var(--surface);color:var(--muted);
+    border-radius:999px;padding:5px 11px;font-size:12px;font-weight:600;cursor:pointer;
+    font-family:'Inter',sans-serif;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  }
+  .val-dm-acc:hover{color:var(--text);}
+  .val-dm-acc.on{color:var(--text);border-color:var(--violet);box-shadow:inset 0 0 0 1px var(--violet);}
+  .val-dm-acc.on::before{content:'✓ ';}
+  .val-dm-acc:focus-visible{outline:2px solid var(--violet);outline-offset:2px;}
   .val-dm-heading{display:flex;flex-direction:column;gap:3px;min-width:0;}
   .val-dm-title{font-size:13px;font-weight:800;color:var(--text);letter-spacing:.2px;}
   .val-dm-filter{margin:0;}

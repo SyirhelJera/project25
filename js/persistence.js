@@ -352,14 +352,41 @@
     if(!(state.valorant.live.historyDepth >= 5 && state.valorant.live.historyDepth <= 20)) state.valorant.live.historyDepth = 10;
     if(state.valorant.live.showEnemyStats===undefined) state.valorant.live.showEnemyStats = true;
     if(state.valorant.live.showIncognito===undefined) state.valorant.live.showIncognito = false;
-    /* Deathmatch history — { [account label]: [compact per-game summary] }, newest first, capped
-       at VAL_DM_CAP in valorant.js. Summaries only: the full leaderboards (other people's puuids)
-       stay in the local helper's disk cache. See README.md, "Deathmatch history". */
-    if(!state.valorant.dmHistory || typeof state.valorant.dmHistory !== 'object' || Array.isArray(state.valorant.dmHistory)) state.valorant.dmHistory = {};
-    Object.keys(state.valorant.dmHistory).forEach(label=>{
-      const list = state.valorant.dmHistory[label];
-      state.valorant.dmHistory[label] = Array.isArray(list) ? list.filter(x=> x && typeof x.id === 'string') : [];
-    });
+    /* Deathmatch history — { tracked:[RR Tracker account id], games:{ [account id]: [compact
+       per-game summary] } }, newest first, capped at VAL_DM_CAP in valorant.js. Summaries only:
+       full leaderboards are a per-device localStorage cache. See README.md, "Deathmatch history".
+       The first build (Nov 2026) read games through the local helper and kept them in
+       `dmHistory`, keyed by the helper's account label ("Name#Tag (note)"); those are moved onto
+       the RR Tracker account with the matching Riot ID, which also seeds `tracked`, so nothing
+       already read has to be fetched again. */
+    {
+      const v = state.valorant;
+      if(!v.dm || typeof v.dm !== 'object') v.dm = {};
+      if(!Array.isArray(v.dm.tracked)) v.dm.tracked = [];
+      if(!v.dm.games || typeof v.dm.games !== 'object' || Array.isArray(v.dm.games)) v.dm.games = {};
+      const accounts = Array.isArray(v.accounts) ? v.accounts : [];
+      if(v.dmHistory && typeof v.dmHistory === 'object'){
+        Object.keys(v.dmHistory).forEach(label=>{
+          const list = v.dmHistory[label];
+          const acc = accounts.find(a=> a && a.name && label.toLowerCase().startsWith((a.name+'#'+a.tag).toLowerCase()));
+          if(!acc || !Array.isArray(list)) return;
+          const have = Array.isArray(v.dm.games[acc.id]) ? v.dm.games[acc.id] : [];
+          list.forEach(x=>{ if(x && x.id && !have.some(h=> h.id === x.id)) have.push(x); });
+          have.sort((p,q)=> (q.t||0) - (p.t||0));
+          v.dm.games[acc.id] = have;
+          if(!v.dm.tracked.includes(acc.id)) v.dm.tracked.push(acc.id);
+        });
+        delete v.dmHistory;
+      }
+      // an account removed from the RR Tracker takes its deathmatches with it
+      const ids = new Set(accounts.map(a=> a && a.id));
+      v.dm.tracked = v.dm.tracked.filter(id=> ids.has(id));
+      Object.keys(v.dm.games).forEach(id=>{
+        const list = v.dm.games[id];
+        if(!ids.has(id) || !Array.isArray(list)) { delete v.dm.games[id]; return; }
+        v.dm.games[id] = list.filter(x=> x && typeof x.id === 'string');
+      });
+    }
     /* VOD review — a per-mistake tally, kept as { id, name, days:{'YYYY-MM-DD':n} }. The daily
        buckets are what let the panel's range toggle answer "today" and "last 7 days" without
        storing one record per button press; VOD_DAY_CAP in valorant.js trims the oldest keys so a
